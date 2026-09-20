@@ -51,8 +51,8 @@ pub(super) fn shared_wgpu_test_device(
 ) -> Option<&'static (::wgpu::Device, ::wgpu::Queue)> {
     use std::sync::OnceLock;
 
-    static DEVICES: [OnceLock<Option<(::wgpu::Device, ::wgpu::Queue)>>; 6] =
-        [const { OnceLock::new() }; 6];
+    static DEVICES: [OnceLock<Option<(::wgpu::Device, ::wgpu::Queue)>>; 8] =
+        [const { OnceLock::new() }; 8];
     let requested = std::env::var("TILEINK_TEST_API");
     let api = device_selection::TestApi::parse(match &requested {
         Ok(value) => Some(value.as_str()),

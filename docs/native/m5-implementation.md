@@ -1,6 +1,6 @@
 # M5: retained frames and host targets
 
-Status: complete for Windows DX12/Vulkan (2026-09-19). Baseline: `79e6153e` (Windows M4 complete).
+Status: complete for Windows DX12/Vulkan (2026-09-19). The later macOS continuation is also complete on Apple M2; see [Mac M5](m5-metal.md). Windows commands and measurements below are historical records of that implementation. Baseline: `79e6153e` (Windows M4 complete).
 The user requested M5 before connecting gfx_ui to native DX12/Vulkan. No gfx_ui
 native features are claimed as implemented. Performance comparisons remain waived;
 exact pixels, lifetime correctness and actual reuse are required.
@@ -93,8 +93,8 @@ comparison was run, as requested.
 
 Evidence is stored under `G:/Code/northstar-trading-app/target/agent-work/m5-*`.
 All four Windows M5 plan checkboxes and the host-interop exit condition are verified.
-Mac compilation and GPU validation remain deferred for lack of hardware and are
-not replaced with a Windows result.
+Mac compilation and GPU validation were deferred during this Windows run; the
+subsequent real-Mac evidence is recorded separately in [Mac M5](m5-metal.md).
 
 ## Retained execution and incremental uploads
 

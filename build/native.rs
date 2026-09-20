@@ -10,6 +10,12 @@ mod dxc;
 mod dxil_reflection;
 #[path = "native/interfaces.rs"]
 mod interfaces;
+#[cfg(feature = "metal")]
+#[path = "native/metal.rs"]
+mod metal;
+#[cfg(feature = "metal")]
+#[path = "native/metal_catalog.rs"]
+mod metal_catalog;
 #[path = "native/program.rs"]
 mod program;
 #[path = "native/source.rs"]
@@ -71,6 +77,10 @@ pub fn generate() -> io::Result<()> {
     let mut declarations =
         String::from("pub static SHADER_ARTIFACTS: &[NativeShaderArtifact] = &[\n");
     let mut manifest = Vec::new();
+    #[cfg(feature = "metal")]
+    if os == "macos" {
+        metal_catalog::generate(&root, &out, &mut declarations, &mut manifest)?;
+    }
     if !targets.is_empty() {
         let user_cache = if cfg!(windows) {
             env::var_os("LOCALAPPDATA").map(PathBuf::from)

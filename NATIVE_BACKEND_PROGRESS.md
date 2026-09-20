@@ -1,7 +1,14 @@
 # Native backend implementation record
 
-Status: **M0/M1 complete. Windows M2 toolchain and M3 minimum native adapters complete.
-The full NativeRenderer/Canvas shader inventory remains M4; Mac hardware validation is deferred.**
+Current macOS status (2026-09-19): **M1–M5 complete on Apple M2**. The shared
+29-frame retained corpus passes all 18 variants (522 exact outputs); the native
+Metal host completes eight real presentation frames and a 640×360 → 480×270 resize.
+See [Mac M5 closeout](docs/native/m5-metal.md). Older deferred/incomplete entries
+below are historical; the broader M6 device matrix remains open.
+
+Status: **Windows milestones are recorded below. Native Metal now implements
+all production shader families and the shared immediate/retained renderer.**
+See [Metal implementation and same-M2 acceptance](docs/native/metal.md).
 
 Current Windows M3 record: [implementation and exact acceptance](docs/native/m3-completion.md),
 [verification receipt](docs/native/m3-completion-verification.json). Shared batches, owning receipts,

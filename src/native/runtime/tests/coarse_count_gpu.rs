@@ -3,12 +3,12 @@ use crate::shared::gpu_constants::COARSE_WORKGROUP_SIZE;
 
 #[path = "coarse_count/scene.rs"]
 mod scene;
-use super::four_api::Routes;
+use super::coarse_routes::Routes;
 use scene::{CountScene, bytes, count_scene};
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
-fn four_api_coarse_count_preserves_paged_draw_and_stack_semantics() -> Result<()> {
+fn native_routes_coarse_count_preserves_paged_draw_and_stack_semantics() -> Result<()> {
     let routes = Routes::new()?;
     for count in [0, 1, 255, 256, 257, 513] {
         for linked in [false, true] {
@@ -31,7 +31,7 @@ fn four_api_coarse_count_preserves_paged_draw_and_stack_semantics() -> Result<()
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
-fn four_api_coarse_count_checks_glyph_bounds_and_analytic_clip_proofs() -> Result<()> {
+fn native_routes_coarse_count_checks_glyph_bounds_and_analytic_clip_proofs() -> Result<()> {
     let routes = Routes::new()?;
     let mut scenes = Vec::new();
     // Bitmap glyph cases: translated, boundary-touching, mirrored, empty and invalid images.
@@ -120,7 +120,7 @@ fn four_api_coarse_count_checks_glyph_bounds_and_analytic_clip_proofs() -> Resul
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
-fn four_api_coarse_tile_counts_reduce_chunks_and_validate_wrappers() -> Result<()> {
+fn native_routes_coarse_tile_counts_reduce_chunks_and_validate_wrappers() -> Result<()> {
     let routes = Routes::new()?;
     for chunks in [0u32, 1, 2, 255, 256, 257] {
         for stack in 0..4 {
@@ -159,7 +159,7 @@ fn four_api_coarse_tile_counts_reduce_chunks_and_validate_wrappers() -> Result<(
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
-fn four_api_coarse_particle_counts_ignore_stale_capacity_and_padded_groups() -> Result<()> {
+fn native_routes_coarse_particle_counts_ignore_stale_capacity_and_padded_groups() -> Result<()> {
     let routes = Routes::new()?;
     for draws in [0u32, 1, 255, 256, 257, 513] {
         for linked in [false, true] {
@@ -212,3 +212,31 @@ mod emit_chunks;
 
 #[path = "coarse_count/emit_scene.rs"]
 mod emit_scene;
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn native_routes_coarse_invalid_optional_references_leave_streams_empty() -> Result<()> {
+    let routes = Routes::new()?;
+    for mode in 0..4 {
+        let mut scene = count_scene(1, false, 0);
+        scene.draws[2] = u32::MAX;
+        match mode {
+            0 => scene.draws[0] = 1, // one-past-end path
+            1 => scene.draws[0] = u32::MAX,
+            2 | 3 => {
+                let list = (scene.config[0] * 8 + scene.config[7] * 6 + scene.config[8]) as usize;
+                scene.work[list] = if mode == 2 { 8 } else { u32::MAX };
+            }
+            _ => unreachable!(),
+        }
+        scene.expect_counts(0, 0);
+        for entry in ["coarse_count", "coarse_count_bins"] {
+            routes.check(
+                &scene.batch(entry)?,
+                &[bytes(&scene.expected)],
+                &format!("{entry} invalid optional reference {mode}"),
+            )?;
+        }
+    }
+    routes.validate()
+}

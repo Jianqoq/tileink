@@ -3,7 +3,7 @@ use super::*;
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
-fn four_api_coarse_emit_preserves_order_wrappers_and_capacity_guards() -> Result<()> {
+fn native_routes_coarse_emit_preserves_order_wrappers_and_capacity_guards() -> Result<()> {
     let routes = Routes::new()?;
     for draws in [0, 1, 255, 256, 257, 513] {
         for linked in [false, true] {
@@ -24,7 +24,7 @@ fn four_api_coarse_emit_preserves_order_wrappers_and_capacity_guards() -> Result
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
-fn four_api_coarse_emit_preserves_paint_fast_paths_and_glyph_indices() -> Result<()> {
+fn native_routes_coarse_emit_preserves_paint_fast_paths_and_glyph_indices() -> Result<()> {
     let routes = Routes::new()?;
     for mode in 0..21 {
         for entry in ["coarse_emit", "coarse_emit_bins"] {
@@ -42,7 +42,7 @@ fn four_api_coarse_emit_preserves_paint_fast_paths_and_glyph_indices() -> Result
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
-fn four_api_coarse_emit_reverses_nested_stack_end_order() -> Result<()> {
+fn native_routes_coarse_emit_reverses_nested_stack_end_order() -> Result<()> {
     let routes = Routes::new()?;
     for entry in ["coarse_emit", "coarse_emit_bins"] {
         let mut scene = paint_scene(4, entry.ends_with("bins"));
@@ -76,7 +76,7 @@ fn four_api_coarse_emit_reverses_nested_stack_end_order() -> Result<()> {
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
-fn four_api_coarse_emit_carries_glyph_offsets_across_draw_pages() -> Result<()> {
+fn native_routes_coarse_emit_carries_glyph_offsets_across_draw_pages() -> Result<()> {
     let routes = Routes::new()?;
     for linked in [false, true] {
         for entry in ["coarse_emit", "coarse_emit_bins"] {
@@ -94,7 +94,7 @@ fn four_api_coarse_emit_carries_glyph_offsets_across_draw_pages() -> Result<()> 
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
-fn four_api_coarse_emit_preserves_sparse_tiles_and_partial_bin_edges() -> Result<()> {
+fn native_routes_coarse_emit_preserves_sparse_tiles_and_partial_bin_edges() -> Result<()> {
     let routes = Routes::new()?;
     for mode in 0..3 {
         let scene = emission_grid_scene(mode);

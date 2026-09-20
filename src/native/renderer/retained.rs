@@ -73,34 +73,34 @@ impl NativeRenderer {
     }
 
     pub fn invalidate_retained_history(&mut self) {
-        #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
+        #[cfg(tileink_native_runtime)]
         self.recording.retained.invalidate();
     }
 
     pub fn incremental_render_config(&self) -> IncrementalRenderConfig {
-        #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
+        #[cfg(tileink_native_runtime)]
         {
             self.recording.retained.config()
         }
-        #[cfg(not(all(target_os = "windows", any(feature = "dx12", feature = "vulkan"))))]
+        #[cfg(not(tileink_native_runtime))]
         {
             Default::default()
         }
     }
 
     pub fn set_incremental_render_config(&mut self, config: IncrementalRenderConfig) {
-        #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
+        #[cfg(tileink_native_runtime)]
         self.recording.retained.set_config(config);
-        #[cfg(not(all(target_os = "windows", any(feature = "dx12", feature = "vulkan"))))]
+        #[cfg(not(tileink_native_runtime))]
         let _ = config;
     }
 
     pub fn incremental_render_stats(&self) -> IncrementalRenderStats {
-        #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
+        #[cfg(tileink_native_runtime)]
         {
             self.recording.retained.stats().clone()
         }
-        #[cfg(not(all(target_os = "windows", any(feature = "dx12", feature = "vulkan"))))]
+        #[cfg(not(tileink_native_runtime))]
         {
             Default::default()
         }
@@ -123,7 +123,7 @@ impl NativeRenderer {
         output: Option<crate::NativeRenderTarget<'_>>,
         synchronization: Option<crate::native::interop::Synchronization>,
     ) -> Result<NativeSubmission, NativeError> {
-        #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
+        #[cfg(tileink_native_runtime)]
         {
             if self
                 .persistent_scene
@@ -147,7 +147,7 @@ impl NativeRenderer {
             );
             self.submit_synchronized(selected, text, readback, output, synchronization)
         }
-        #[cfg(not(all(target_os = "windows", any(feature = "dx12", feature = "vulkan"))))]
+        #[cfg(not(tileink_native_runtime))]
         {
             let _ = (scene, text, readback, output, synchronization);
             Err(NativeError::Unavailable(

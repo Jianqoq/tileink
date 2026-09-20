@@ -8,11 +8,7 @@ use std::hash::Hash;
 
 #[derive(Debug)]
 #[cfg_attr(
-    all(
-        not(test),
-        feature = "wgpu",
-        not(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))
-    ),
+    all(not(test), feature = "wgpu", not(tileink_native_runtime)),
     expect(
         dead_code,
         reason = "M1 shared submission contract; WGPU enqueue is infallible"

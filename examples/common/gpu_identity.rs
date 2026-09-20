@@ -48,10 +48,22 @@ pub fn physical_identity(
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
-#[cfg(not(any(windows, target_os = "linux")))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 pub fn physical_identity(
     _adapter: &wgpu::Adapter,
     _device: &wgpu::Device,
 ) -> Result<String, Box<dyn std::error::Error>> {
     Err("DX12/Vulkan physical identity is supported on Windows/Linux".into())
+}
+
+#[cfg(target_os = "macos")]
+pub fn physical_identity(
+    _adapter: &wgpu::Adapter,
+    device: &wgpu::Device,
+) -> Result<String, Box<dyn std::error::Error>> {
+    use objc2_metal::MTLDevice;
+    // SAFETY: identity query only; the Metal handle cannot escape the live guard.
+    let guard =
+        unsafe { device.as_hal::<wgpu::hal::api::Metal>() }.ok_or("missing Metal device")?;
+    Ok(format!("{:016x}", guard.raw_device().registryID()))
 }

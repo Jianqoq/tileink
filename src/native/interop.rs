@@ -1,11 +1,15 @@
 //! Typed unsafe boundaries for host-created native devices and images.
 #[cfg(all(target_os = "windows", feature = "dx12"))]
 pub mod dx12;
+#[cfg(all(target_os = "macos", feature = "metal"))]
+pub mod metal;
 #[cfg(all(target_os = "windows", feature = "vulkan"))]
 pub mod vulkan;
 
 #[derive(Clone)]
 pub(crate) enum Synchronization {
+    #[cfg(all(target_os = "macos", feature = "metal"))]
+    Metal(metal::TargetSynchronization),
     #[cfg(all(target_os = "windows", feature = "dx12"))]
     Dx12(dx12::TargetSynchronization),
     #[cfg(all(target_os = "windows", feature = "vulkan"))]
@@ -14,6 +18,8 @@ pub(crate) enum Synchronization {
 impl Synchronization {
     pub(crate) fn outgoing(&self) -> crate::NativeTargetState {
         match *self {
+            #[cfg(all(target_os = "macos", feature = "metal"))]
+            Self::Metal(_) => crate::NativeTargetState {},
             #[cfg(all(target_os = "windows", feature = "dx12"))]
             Self::Dx12(ref sync) => crate::NativeTargetState {
                 state: sync.outgoing,

@@ -14,7 +14,9 @@ while (($#)); do
 done
 
 case "$wgpu_mode" in native|portable|both) ;; *) echo "usage: run_tests.sh [native|portable|both] [-- cargo test args...]" >&2; exit 2 ;; esac
-for argument in "${cargo_args[@]}"; do
+# Bash 3.2 treats an empty array as unset under nounset. Expand it only when
+# populated so the stock macOS shell can enter the full, unfiltered test matrix.
+for argument in ${cargo_args[@]+"${cargo_args[@]}"}; do
     [[ "$argument" != --test-threads* ]] || { echo "Test thread count is fixed at 1; do not pass --test-threads" >&2; exit 2; }
 done
 
@@ -36,7 +38,7 @@ run_test() {
     ((++step))
     write_quiet_progress "WGPU release tests [$mode, $label, single-threaded]" "$step" "$total"
     invoke_quiet_command "WGPU release tests [$mode, $label, single-threaded]" "$log_path" "" \
-        env TILEINK_RUN_WGPU_TESTS=1 TILEINK_WGPU_MODE="$mode" cargo "${args[@]}"
+        env TILEINK_RUN_WGPU_TESTS=1 TILEINK_TEST_API=metal TILEINK_WGPU_MODE="$mode" cargo "${args[@]}"
 }
 
 run_focused_test() {
@@ -56,7 +58,7 @@ run_focused_test() {
     ((++step))
     write_quiet_progress "WGPU release tests [$mode, focused, single-threaded]" "$step" "$total"
     invoke_quiet_command "WGPU release tests [$mode, focused, single-threaded]" "$log_path" "" \
-        env TILEINK_RUN_WGPU_TESTS=1 TILEINK_WGPU_MODE="$mode" cargo "${args[@]}"
+        env TILEINK_RUN_WGPU_TESTS=1 TILEINK_TEST_API=metal TILEINK_WGPU_MODE="$mode" cargo "${args[@]}"
 }
 
 for mode in "${modes[@]}"; do

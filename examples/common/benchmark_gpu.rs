@@ -12,11 +12,10 @@ pub fn device(
     let backends = match api {
         "vulkan" => wgpu::Backends::VULKAN,
         "dx12" => wgpu::Backends::DX12,
-        _ => panic!("benchmark API must be vulkan or dx12"),
+        "metal" => wgpu::Backends::METAL,
+        _ => panic!("GPU API must be vulkan, dx12, or metal"),
     };
-    let expected = std::env::var("TILEINK_BENCH_GPU")
-        .expect("set TILEINK_BENCH_GPU to the physical LUID (Windows) or device UUID (Linux)")
-        .to_ascii_lowercase();
+    let expected = requested_identity(api);
     let mut descriptor = wgpu::InstanceDescriptor {
         backends,
         ..wgpu::InstanceDescriptor::new_without_display_handle()
@@ -98,7 +97,7 @@ pub fn device(
                     .collect();
             serde_json::json!({"mode":"DynamicDxc", "path":path, "sha256":sha256})
         } else {
-            serde_json::json!({"mode":"WGPU WGSL to SPIR-V"})
+            serde_json::json!({"mode": if api == "metal" { "WGPU WGSL to MSL" } else { "WGPU WGSL to SPIR-V" }})
         };
         let metadata = serde_json::json!({
             "physical_identity":identity, "api":format!("{:?}",info.backend),
@@ -168,4 +167,23 @@ pub fn default_device(portable: Option<bool>) -> (wgpu::Device, wgpu::Queue) {
         features.contains(wgpu::Features::PIPELINE_CACHE),
     );
     (device, queue)
+}
+
+// macOS test runners explicitly select Metal. Pin the system device's registry
+// identity before enumeration, while permitting callers to select another GPU.
+fn requested_identity(api: &str) -> String {
+    if let Ok(identity) = std::env::var("TILEINK_BENCH_GPU") {
+        return identity.to_ascii_lowercase();
+    }
+    #[cfg(target_os = "macos")]
+    if api == "metal" {
+        use objc2_metal::MTLDevice;
+        return format!(
+            "{:016x}",
+            objc2_metal::MTLCreateSystemDefaultDevice()
+                .expect("Metal device unavailable")
+                .registryID()
+        );
+    }
+    panic!("set TILEINK_BENCH_GPU to the physical GPU identity for {api}");
 }

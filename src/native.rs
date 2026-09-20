@@ -1,5 +1,5 @@
-//! Explicit native-backend selection. The M1 feature boundary does not pretend
-//! to provide a GPU renderer before its adapter is implemented.
+//! Explicit native-backend selection and platform availability. Each build owns
+//! one adapter; unavailable platforms return errors without switching backends.
 
 use std::{error::Error, fmt};
 
@@ -7,11 +7,13 @@ use std::{error::Error, fmt};
 pub enum NativeBackend {
     Dx12,
     Vulkan,
+    Metal,
 }
 
 impl NativeBackend {
     fn unavailable(self) -> BackendUnavailable {
         let (enabled, platform) = match self {
+            Self::Metal => (cfg!(feature = "metal"), cfg!(target_os = "macos")),
             Self::Dx12 => (cfg!(feature = "dx12"), cfg!(target_os = "windows")),
             Self::Vulkan => (
                 cfg!(feature = "vulkan"),
@@ -36,6 +38,7 @@ impl fmt::Display for NativeBackend {
         f.write_str(match self {
             Self::Dx12 => "DX12",
             Self::Vulkan => "Vulkan",
+            Self::Metal => "Metal",
         })
     }
 }
@@ -105,7 +108,7 @@ mod tests {
 mod shaders;
 pub use shaders::{NativeShaderArtifact, SHADER_ARTIFACTS};
 
-#[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
+#[cfg(tileink_native_runtime)]
 #[cfg_attr(
     not(test),
     expect(

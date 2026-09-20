@@ -287,3 +287,21 @@ acquire/release barrier，宿主负责另一队列的对应 barrier 和 acquire/
 `native_present` 展示两种 API 的真实窗口、resize 和 GPU present；DX12 使用 UAV
 中间目标再 GPU copy，Vulkan 直接写入兼容的 swapchain image。此例没有 CPU 图像
 回传路径。设备丢失后由宿主重建 context/renderer；gfx_ui feature 接入是后续工作。
+
+
+## 原生 Metal
+
+macOS 可使用 `--no-default-features --features metal` 构建原生 Metal 后端。
+它复用 Canvas、RetainedScene 和共享执行计划，通过独立维护的 MSL shader 与
+Metal command buffer 执行，不依赖 wgpu/wgpu-hal 运行时。四个后端 feature
+（wgpu、dx12、vulkan、metal）互斥，默认仍为 wgpu。
+
+Apple 工具链、设备要求、异步资源生命周期、外部纹理/shared-event 接入和同设备
+零像素差验收范围见仓库的 `docs/native/metal.md`。当前实测设备是 Apple M2；
+普通提交不等待 GPU，显式 readback/完成等待才建立 CPU 完成边界。
+
+Metal retained acceptance covers the shared 29-state sequence across 18 variants,
+including owned/transient/persistent targets and independent Auto/ForceFull renderers.
+The `native_present` example demonstrates CAMetalLayer presentation with separate
+host/render queues, shared-event handoff and resize. The recorded Apple M2 result
+closes Mac M1–M5; broader GPU/platform certification remains separate.

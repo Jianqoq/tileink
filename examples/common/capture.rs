@@ -12,7 +12,10 @@ use std::{
     path::{Path, PathBuf},
     rc::Rc,
 };
-use tileink::{Image, TextFontSystem, WgpuRenderer};
+use tileink::{Image, TextFontSystem};
+
+#[cfg(feature = "wgpu")]
+use tileink::WgpuRenderer;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -58,6 +61,7 @@ impl Drop for Reset {
     }
 }
 
+#[cfg(feature = "wgpu")]
 pub fn run(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -76,7 +80,7 @@ pub fn run(
     )
 }
 
-#[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
+#[cfg(tileink_native_runtime)]
 pub fn run_native(
     context: &tileink::NativeContext,
     inputs: Rc<Inputs>,
@@ -118,13 +122,14 @@ fn run_backend(
     })
 }
 
+#[cfg(feature = "wgpu")]
 pub(super) fn new_renderer(width: u32, height: u32, clear: Color) -> Option<WgpuRenderer> {
     SESSION.with(|slot| {
         slot.borrow().as_ref().map(|s| match &s.backend {
             Backend::Wgpu { device, queue } => {
                 WgpuRenderer::new(device, queue, width, height, clear)
             }
-            #[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
+            #[cfg(tileink_native_runtime)]
             Backend::Native(_) => {
                 panic!("a native capture cannot create an implicit wgpu renderer")
             }
@@ -140,6 +145,7 @@ pub(super) fn svg_tree(path: &Path) -> Option<Result<usvg::Tree>> {
     SESSION.with(|slot| slot.borrow().as_ref().map(|s| s.inputs.svg(path)))
 }
 
+#[cfg(feature = "wgpu")]
 pub fn record_pipelines(name: &str, renderer: &WgpuRenderer) {
     SESSION.with(|slot| {
         if let Some(session) = slot.borrow_mut().as_mut() {
@@ -178,8 +184,9 @@ pub(super) fn render(
         render(renderer.scene_renderer())?;
         let image = renderer.image()?;
         match &renderer {
+            #[cfg(feature = "wgpu")]
             Renderer::Wgpu(renderer) => record_pipelines(name, renderer),
-            #[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
+            #[cfg(tileink_native_runtime)]
             Renderer::Native(_) => {}
         }
         SESSION.with(|slot| -> Result<()> {

@@ -1,5 +1,7 @@
 //! Shared scheduler boundary. Native commands own input bytes; submission copies
 //! staged uniforms before CommandBatch reuses an arena. API owners retire leases.
+#[cfg(feature = "metal")]
+mod metal;
 use super::{
     Result,
     program::{Dispatch, Params},
@@ -36,6 +38,8 @@ impl Receipt {
         match &mut *self.owner.0.borrow_mut() {
             #[cfg(feature = "dx12")]
             Device::Dx12(device) => device.is_complete(&self.ticket),
+            #[cfg(feature = "metal")]
+            Device::Metal(device) => device.is_complete(&self.ticket),
             #[cfg(feature = "vulkan")]
             Device::Vulkan(device) => device.is_complete(&self.ticket),
         }
@@ -49,6 +53,8 @@ impl Receipt {
 }
 
 enum Device {
+    #[cfg(feature = "metal")]
+    Metal(Box<super::metal::Metal>),
     #[cfg(feature = "dx12")]
     Dx12(Box<super::dx12::Dx12>),
     #[cfg(feature = "vulkan")]
@@ -138,6 +144,8 @@ impl Adapter {
         match &*self.0.borrow() {
             #[cfg(feature = "dx12")]
             Device::Dx12(device) => device.allocate_buffer(size),
+            #[cfg(feature = "metal")]
+            Device::Metal(device) => device.allocate_buffer(size),
             #[cfg(feature = "vulkan")]
             Device::Vulkan(device) => device.allocate_buffer(size),
         }
@@ -162,6 +170,8 @@ impl Adapter {
         match &*self.0.borrow() {
             #[cfg(feature = "dx12")]
             Device::Dx12(device) => device.allocate_texture(size, layers, array),
+            #[cfg(feature = "metal")]
+            Device::Metal(device) => device.allocate_texture(size, layers, array),
             #[cfg(feature = "vulkan")]
             Device::Vulkan(device) => device.allocate_texture(size, layers, array),
         }
@@ -188,6 +198,10 @@ impl Adapter {
         options: &crate::native::NativeContextOptions,
     ) -> Result<Self> {
         let device = match backend {
+            #[cfg(feature = "metal")]
+            NativeBackend::Metal => {
+                Device::Metal(Box::new(super::metal::Metal::with_options(options)?))
+            }
             #[cfg(feature = "dx12")]
             NativeBackend::Dx12 => {
                 Device::Dx12(Box::new(super::dx12::Dx12::with_options(options)?))
@@ -205,6 +219,8 @@ impl Adapter {
         match &*self.0.borrow() {
             #[cfg(feature = "dx12")]
             Device::Dx12(device) => device.limits(),
+            #[cfg(feature = "metal")]
+            Device::Metal(device) => device.limits(),
             #[cfg(feature = "vulkan")]
             Device::Vulkan(device) => device.limits(),
         }
@@ -234,6 +250,8 @@ impl Adapter {
         let (result, unconfirmed) = match &mut *device {
             #[cfg(feature = "dx12")]
             Device::Dx12(device) => (device.submit_compute(batch), device.unconfirmed()),
+            #[cfg(feature = "metal")]
+            Device::Metal(device) => (device.submit_compute(batch), device.unconfirmed()),
             #[cfg(feature = "vulkan")]
             Device::Vulkan(device) => (device.submit_compute(batch), device.unconfirmed()),
         };
@@ -267,6 +285,8 @@ impl Adapter {
         match &mut *self.0.borrow_mut() {
             #[cfg(feature = "dx12")]
             Device::Dx12(device) => device.readback_batch(ticket),
+            #[cfg(feature = "metal")]
+            Device::Metal(device) => device.readback_batch(ticket),
             #[cfg(feature = "vulkan")]
             Device::Vulkan(device) => device.readback_batch(ticket),
         }
@@ -275,12 +295,16 @@ impl Adapter {
         match &*self.0.borrow() {
             #[cfg(feature = "dx12")]
             Device::Dx12(device) => device.pending_count(),
+            #[cfg(feature = "metal")]
+            Device::Metal(device) => device.pending_count(),
             #[cfg(feature = "vulkan")]
             Device::Vulkan(device) => device.pending_count(),
         }
     }
     pub fn assert_valid(&self) -> Result<()> {
         match &*self.0.borrow() {
+            #[cfg(feature = "metal")]
+            Device::Metal(device) => device.assert_valid(),
             #[cfg(feature = "dx12")]
             Device::Dx12(device) => super::dx12::assert_valid(&device.validation_queue()),
             #[cfg(feature = "vulkan")]
@@ -364,6 +388,8 @@ impl BatchAdapter for Adapter {
         let (result, unconfirmed) = match &mut *device {
             #[cfg(feature = "dx12")]
             Device::Dx12(device) => (device.submit_batch(&commands), device.unconfirmed()),
+            #[cfg(feature = "metal")]
+            Device::Metal(device) => (device.submit_batch(&commands), device.unconfirmed()),
             #[cfg(feature = "vulkan")]
             Device::Vulkan(device) => (device.submit_batch(&commands), device.unconfirmed()),
         };
@@ -389,7 +415,7 @@ impl Adapter {
             let Device::Dx12(device) = &*self.0.borrow();
             super::dx12::assert_valid_with_wgpu_clears(&device.validation_queue())
         }
-        #[cfg(feature = "vulkan")]
+        #[cfg(any(feature = "vulkan", feature = "metal"))]
         self.assert_valid()
     }
 }
@@ -401,6 +427,13 @@ impl Adapter {
     ) -> Result<crate::NativeContext> {
         unsafe {
             match &*host.adapter.0.borrow() {
+                #[cfg(feature = "metal")]
+                Device::Metal(device) => Ok(crate::NativeContext::from_metal(
+                    crate::native::interop::metal::ContextDescriptor {
+                        device: device.device.clone(),
+                        queue: device.queue.clone(),
+                    },
+                )?),
                 #[cfg(feature = "dx12")]
                 Device::Dx12(device) => {
                     Ok(crate::NativeContext::from_dx12(device.import_descriptor())?)

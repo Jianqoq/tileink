@@ -13,7 +13,8 @@ fn stale_refs(scene: &mut CountScene) -> usize {
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
-fn four_api_coarse_emit_chunks_chain_preserves_order_and_ignores_spare_capacity() -> Result<()> {
+fn native_routes_coarse_emit_chunks_chain_preserves_order_and_ignores_spare_capacity() -> Result<()>
+{
     let routes = Routes::new()?;
     for draws in [0u32, 1, 255, 256, 257, 513] {
         for linked in [false, true] {
@@ -53,7 +54,7 @@ fn four_api_coarse_emit_chunks_chain_preserves_order_and_ignores_spare_capacity(
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
-fn four_api_coarse_emit_chunks_classifies_paint_and_keeps_glyph_destinations() -> Result<()> {
+fn native_routes_coarse_emit_chunks_classifies_paint_and_keeps_glyph_destinations() -> Result<()> {
     let routes = Routes::new()?;
     for mode in 0..21 {
         let kind_scene = super::emit_scene::paint_scene(mode, true);
@@ -77,7 +78,7 @@ fn four_api_coarse_emit_chunks_classifies_paint_and_keeps_glyph_destinations() -
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
-fn four_api_coarse_emit_chunks_chain_carries_glyphs_and_nonzero_tile_ranges() -> Result<()> {
+fn native_routes_coarse_emit_chunks_chain_carries_glyphs_and_nonzero_tile_ranges() -> Result<()> {
     let routes = Routes::new()?;
     for linked in [false, true] {
         let mut scene = super::emit_scene::glyph_page_scene(linked, false);

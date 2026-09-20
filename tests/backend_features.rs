@@ -8,13 +8,13 @@ fn exactly_one_backend_is_accepted_by_the_compiler() {
     let directory =
         std::env::temp_dir().join(format!("tileink-backend-features-{}", std::process::id()));
     std::fs::create_dir_all(&directory).unwrap();
-    for mask in 0u32..8 {
+    for mask in 0u32..16 {
         let mut command = Command::new(std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()));
         command
             .arg(&source)
             .args(["--crate-type", "lib", "--emit", "metadata", "--out-dir"])
             .arg(&directory);
-        for (index, feature) in ["wgpu", "dx12", "vulkan"].iter().enumerate() {
+        for (index, feature) in ["wgpu", "dx12", "vulkan", "metal"].iter().enumerate() {
             if mask & (1 << index) != 0 {
                 command.args(["--cfg", &format!("feature=\"{feature}\"")]);
             }

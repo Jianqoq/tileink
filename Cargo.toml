@@ -60,6 +60,12 @@ windows = { version = "0.62.2", optional = true, features = [
 [target.'cfg(any(target_os = "windows", target_os = "linux"))'.dependencies]
 ash = { version = "0.38", optional = true }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { version = "0.6.4", optional = true }
+objc2-metal = { version = "0.3.2", optional = true }
+objc2-foundation = { version = "0.3.2", optional = true }
+dispatch2 = { version = "0.3.0", optional = true }
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3", features = ["Window", "Performance"] }
 
@@ -73,6 +79,7 @@ default = ["wgpu"]
 wgpu = ["dep:wgpu", "dep:pollster", "dep:naga", "dep:windows"]
 dx12 = ["dep:serde_json", "dep:sha2", "dep:windows", "windows/Win32_Graphics_Dxgi", "windows/Win32_Graphics_Dxgi_Common", "windows/Win32_System_Threading", "windows/Win32_Security"]
 vulkan = ["dep:serde_json", "dep:sha2", "dep:ash"]
+metal = ["dep:serde_json", "dep:sha2", "dep:objc2", "dep:objc2-metal", "dep:objc2-foundation", "dep:dispatch2"]
 bench-internals = []
 directwrite-reference = [
     "wgpu",
@@ -95,6 +102,15 @@ serde_json = "1"
 winit = "0.30"
 criterion = "0.8.2"
 sha2 = "0.11.0"
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+objc2-app-kit = "0.3.2"
+objc2-quartz-core = "0.3.2"
+objc2-core-foundation = "0.3.2"
+objc2 = "0.6.4"
+objc2-metal = "0.3.2"
+objc2-foundation = "0.3.2"
+dispatch2 = "0.3.0"
 
 [[bench]]
 name = "native_target_capacity_dx12"

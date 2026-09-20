@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
-fn four_api_coarse_tile_kinds_reduce_flags_and_respect_stack_precedence() -> Result<()> {
+fn native_routes_coarse_tile_kinds_reduce_flags_and_respect_stack_precedence() -> Result<()> {
     let routes = Routes::new()?;
     for left in [0u32, 1, 2, 3, 4, 5, 6, 7, 128] {
         for right in [0u32, 1, 2, 3, 4, 128] {

@@ -16,7 +16,11 @@ mod pixels;
 mod report;
 #[cfg(windows)]
 mod retained;
+#[cfg(windows)]
+mod retained_contract;
 mod retained_sequence;
+#[cfg(windows)]
+mod retained_wgpu;
 mod svg;
 
 use std::path::PathBuf;

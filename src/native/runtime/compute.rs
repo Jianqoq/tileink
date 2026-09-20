@@ -141,7 +141,7 @@ impl ComputeBatch {
         let shader = crate::NATIVE_SHADER_ARTIFACTS
             .iter()
             .find(|a| a.entry == entry && !a.bindings.is_empty())
-            .ok_or("unknown native compute program")?;
+            .ok_or_else(|| format!("unknown native compute program: {entry}"))?;
         if grid.iter().any(|n| *n > 65535)
             || grid.iter().map(|v| *v as u64).product::<u64>() > u32::MAX as u64
         {

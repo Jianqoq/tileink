@@ -1,7 +1,10 @@
 use std::cell::Cell;
+#[cfg(any(feature = "dx12", feature = "vulkan"))]
 use std::rc::Rc;
 
 pub(crate) enum Allocation {
+    #[cfg(feature = "metal")]
+    Metal(objc2::rc::Retained<objc2::runtime::ProtocolObject<dyn objc2_metal::MTLTexture>>),
     #[cfg(feature = "dx12")]
     Dx12(Rc<Dx12Allocation>),
     #[cfg(feature = "vulkan")]

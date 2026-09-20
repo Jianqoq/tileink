@@ -1,6 +1,9 @@
 //! One scene callback shared by wgpu and native example capture.
 use peniko::Color;
-use tileink::{Canvas, Image, TextContext, TextFontSystem, WgpuRenderer};
+use tileink::{Canvas, Image, TextContext, TextFontSystem};
+
+#[cfg(feature = "wgpu")]
+use tileink::WgpuRenderer;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -14,6 +17,7 @@ pub trait SceneRenderer {
     ) -> Result<()>;
 }
 
+#[cfg(feature = "wgpu")]
 impl SceneRenderer for WgpuRenderer {
     fn render(&mut self, canvas: &Canvas) -> Result<()> {
         WgpuRenderer::render(self, canvas);
@@ -31,17 +35,19 @@ impl SceneRenderer for WgpuRenderer {
 }
 
 pub(super) enum Backend {
+    #[cfg(feature = "wgpu")]
     Wgpu {
         device: wgpu::Device,
         queue: wgpu::Queue,
     },
-    #[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
+    #[cfg(tileink_native_runtime)]
     Native(tileink::NativeContext),
 }
 
 impl Backend {
     pub fn create(&self, width: u32, height: u32) -> Result<Renderer> {
         Ok(match self {
+            #[cfg(feature = "wgpu")]
             Self::Wgpu { device, queue } => Renderer::Wgpu(Box::new(WgpuRenderer::new(
                 device,
                 queue,
@@ -49,7 +55,7 @@ impl Backend {
                 height,
                 Color::TRANSPARENT,
             ))),
-            #[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
+            #[cfg(tileink_native_runtime)]
             Self::Native(context) => Renderer::Native(Box::new(NativeFrame {
                 renderer: tileink::NativeRenderer::with_context(context, width, height)?,
                 image: None,
@@ -59,30 +65,34 @@ impl Backend {
 }
 
 pub(super) enum Renderer {
+    #[cfg(feature = "wgpu")]
     Wgpu(Box<WgpuRenderer>),
-    #[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
+    #[cfg(tileink_native_runtime)]
     Native(Box<NativeFrame>),
 }
 
 impl Renderer {
     pub fn scene_renderer(&mut self) -> &mut dyn SceneRenderer {
         match self {
+            #[cfg(feature = "wgpu")]
             Self::Wgpu(renderer) => renderer.as_mut(),
-            #[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
+            #[cfg(tileink_native_runtime)]
             Self::Native(frame) => frame.as_mut(),
         }
     }
     pub fn set_clear_color(&mut self, clear: Color) {
         match self {
+            #[cfg(feature = "wgpu")]
             Self::Wgpu(renderer) => renderer.set_clear_color(clear),
-            #[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
+            #[cfg(tileink_native_runtime)]
             Self::Native(frame) => frame.renderer.set_clear_color(clear),
         }
     }
     pub fn image(&mut self) -> Result<Image> {
         match self {
+            #[cfg(feature = "wgpu")]
             Self::Wgpu(renderer) => Ok(renderer.image()),
-            #[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
+            #[cfg(tileink_native_runtime)]
             Self::Native(frame) => frame
                 .image
                 .take()
@@ -91,13 +101,13 @@ impl Renderer {
     }
 }
 
-#[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
+#[cfg(tileink_native_runtime)]
 pub(super) struct NativeFrame {
     renderer: tileink::NativeRenderer,
     image: Option<Image>,
 }
 
-#[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
+#[cfg(tileink_native_runtime)]
 impl SceneRenderer for NativeFrame {
     fn render(&mut self, canvas: &Canvas) -> Result<()> {
         self.image = Some(self.renderer.render_to_image(canvas)?.readback()?);

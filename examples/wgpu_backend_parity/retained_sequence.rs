@@ -2,8 +2,9 @@
 
 // The frame catalog is portable; construction is used by GPU runs and CPU tests.
 #[cfg(any(windows, test))]
+#[path = "retained_sequence/state.rs"]
 mod state;
-#[cfg(windows)]
+#[cfg(any(windows, test))]
 pub use state::Sequence;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

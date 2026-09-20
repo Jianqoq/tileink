@@ -139,3 +139,32 @@ impl Routes {
         Ok(())
     }
 }
+
+#[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
+impl Routes {
+    pub fn retained_variants(
+        &self,
+        fonts: &super::common::fonts::Snapshot,
+    ) -> Result<Vec<retained::Variant>> {
+        let mut variants = Vec::new();
+        for route in &self.routes {
+            for kind in [
+                super::retained_contract::Target::Owned,
+                super::retained_contract::Target::Transient,
+                super::retained_contract::Target::Persistent,
+            ] {
+                for full in [false, true] {
+                    variants.push(retained::Variant::new(
+                        route.renderer.context(),
+                        &route.name,
+                        route.metadata.clone(),
+                        fonts,
+                        kind,
+                        full,
+                    )?);
+                }
+            }
+        }
+        Ok(variants)
+    }
+}

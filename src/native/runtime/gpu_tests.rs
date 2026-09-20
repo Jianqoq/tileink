@@ -1,3 +1,4 @@
+use super::program::{Params, Probe};
 use super::{Result, dx12, vulkan};
 #[path = "tests/cases.rs"]
 mod cases;
@@ -97,6 +98,7 @@ mod coarse_count;
 
 #[path = "tests/four_api.rs"]
 mod four_api;
+use four_api as coarse_routes;
 #[path = "tests/pixel_math_gpu.rs"]
 mod pixel_math;
 
@@ -231,3 +233,8 @@ mod public_renderer;
 mod recording;
 #[path = "tests/retained_renderer_gpu.rs"]
 mod retained_renderer;
+
+#[path = "tests/filter_morphology_cases.rs"]
+mod filter_morphology_cases;
+#[path = "tests/filter_transfer_cases.rs"]
+mod filter_transfer_cases;

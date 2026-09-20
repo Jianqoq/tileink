@@ -8,8 +8,6 @@ pub mod liquid_glass_fast_path;
 pub mod rendering;
 
 use std::{
-    cell::RefCell,
-    collections::HashMap,
     fs,
     path::{Path, PathBuf},
 };
@@ -18,11 +16,17 @@ use peniko::{
     Color,
     kurbo::{Affine, BezPath, Circle, Rect, Shape, Stroke},
 };
-use tileink::{Canvas, FillRule, Image, Radius, Region, SvgOptions, WgpuRenderer};
+use tileink::{Canvas, FillRule, Image, Radius, Region, SvgOptions};
+
+#[cfg(feature = "wgpu")]
+use std::{cell::RefCell, collections::HashMap};
+#[cfg(feature = "wgpu")]
+use tileink::WgpuRenderer;
 
 pub const EXAMPLE_WIDTH: u32 = 1920;
 pub const EXAMPLE_HEIGHT: u32 = 1080;
 
+#[cfg(feature = "wgpu")]
 thread_local! {
     static WGPU_RENDERERS: RefCell<HashMap<(WgpuMode, u32, u32), WgpuRenderer>> = RefCell::new(HashMap::new());
 }
@@ -152,28 +156,35 @@ pub fn render_to_png_wgpu_with(
     if let Some(result) = capture::render(name, width, height, clear, &mut render) {
         return result;
     }
-    if wgpu_compare_portable_mode() {
-        return render_to_png_wgpu_compare_portable(name, width, height, clear, render);
-    }
+    #[cfg(not(feature = "wgpu"))]
+    return Err("native examples require an explicit capture context".into());
+    #[cfg(feature = "wgpu")]
+    {
+        if wgpu_compare_portable_mode() {
+            return render_to_png_wgpu_compare_portable(name, width, height, clear, render);
+        }
 
-    let out = wgpu_example_output(name);
-    WGPU_RENDERERS.with(|renderers| -> Result<(), Box<dyn std::error::Error>> {
-        let mut renderers = renderers.borrow_mut();
-        let renderer = renderers
-            .entry((wgpu_mode(), width, height))
-            .or_insert_with(|| new_wgpu_renderer_for_mode(width, height, clear, wgpu_mode()));
-        renderer.set_clear_color(clear);
-        render(renderer)?;
-        save_example_image(&renderer.image(), &out)
-    })?;
-    println!("Wrote {}", out.display());
-    Ok(())
+        let out = wgpu_example_output(name);
+        WGPU_RENDERERS.with(|renderers| -> Result<(), Box<dyn std::error::Error>> {
+            let mut renderers = renderers.borrow_mut();
+            let renderer = renderers
+                .entry((wgpu_mode(), width, height))
+                .or_insert_with(|| new_wgpu_renderer_for_mode(width, height, clear, wgpu_mode()));
+            renderer.set_clear_color(clear);
+            render(renderer)?;
+            save_example_image(&renderer.image(), &out)
+        })?;
+        println!("Wrote {}", out.display());
+        Ok(())
+    }
 }
 
+#[cfg(feature = "wgpu")]
 pub fn new_wgpu_renderer(width: u32, height: u32, clear: Color) -> WgpuRenderer {
     new_wgpu_renderer_for_mode(width, height, clear, wgpu_mode())
 }
 
+#[cfg(feature = "wgpu")]
 fn render_to_png_wgpu_compare_portable(
     name: &str,
     width: u32,
@@ -210,6 +221,7 @@ fn render_to_png_wgpu_compare_portable(
     })
 }
 
+#[cfg(feature = "wgpu")]
 fn new_wgpu_renderer_for_mode(
     width: u32,
     height: u32,

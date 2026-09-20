@@ -106,9 +106,9 @@ pub use text::{
 #[doc(hidden)]
 pub use render::upload::uniforms::benchmark::UniformWriteBenchmark;
 
-#[cfg(any(feature = "dx12", feature = "vulkan"))]
+#[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
 mod native;
-#[cfg(any(feature = "dx12", feature = "vulkan"))]
+#[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
 pub use native::{
     BackendUnavailable, BackendUnavailableReason, NativeBackend, NativeContext,
     NativeContextOptions, NativeError, NativeImageSubmission, NativeRenderTarget, NativeRenderer,
@@ -123,10 +123,10 @@ pub use wgpu::{ImageResourceUploadBenchmark, PreparedImageResourceUpload};
 #[cfg(all(feature = "wgpu", feature = "bench-internals"))]
 pub use wgpu::FilterCompilationBenchmark;
 
-#[cfg(any(feature = "dx12", feature = "vulkan"))]
+#[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
 pub use native::interop as native_interop;
 
-#[cfg(any(feature = "dx12", feature = "vulkan"))]
+#[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
 pub use native::{NativeTargetState, NativeTargetSubmission, NativeTargetUse};
 
 mod backend_features;

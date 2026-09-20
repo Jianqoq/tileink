@@ -3,6 +3,8 @@ use super::{Result, adapter::Adapter};
 use std::{cell::Cell, rc::Rc};
 
 pub enum Allocation {
+    #[cfg(feature = "metal")]
+    Metal(objc2::rc::Retained<objc2::runtime::ProtocolObject<dyn objc2_metal::MTLBuffer>>),
     #[cfg(feature = "dx12")]
     Dx12(windows::Win32::Graphics::Direct3D12::ID3D12Resource),
     #[cfg(feature = "vulkan")]

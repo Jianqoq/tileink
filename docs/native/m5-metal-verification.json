@@ -1,0 +1,338 @@
+{
+  "schema": 1,
+  "date": "2026-09-19",
+  "status": "Mac M1\u2013M5 complete on the recorded device; wider M6 matrix remains open",
+  "device": {
+    "api": "Metal",
+    "device": 0,
+    "driver": "",
+    "driver_info": "",
+    "features": "Features { features_wgpu: FeaturesWGPU(0x0), features_webgpu: FeaturesWebGPU(0x0) }",
+    "memory_hints": "MemoryUsage",
+    "name": "Apple M2",
+    "physical_identity": "000000010000049a",
+    "pipeline_cache_feature_enabled": false,
+    "pipeline_cache_requested": false,
+    "rgba8unorm_features": "TextureFormatFeatures { allowed_usages: TextureUsages(COPY_SRC | COPY_DST | TEXTURE_BINDING | STORAGE_BINDING | RENDER_ATTACHMENT | TRANSIENT_ATTACHMENT), flags: TextureFormatFeatureFlags(FILTERABLE | MULTISAMPLE_X2 | MULTISAMPLE_X4 | MULTISAMPLE_RESOLVE | STORAGE_READ_ONLY | STORAGE_WRITE_ONLY | STORAGE_READ_WRITE | BLENDABLE) }",
+    "runtime_compiler": {
+      "mode": "WGPU WGSL to MSL"
+    },
+    "vendor": 0
+  },
+  "os": "macOS 15.0.1 (24A348)",
+  "xcode": "16.2 (16C5032a)",
+  "metal_validation": true,
+  "retained": {
+    "frames": 29,
+    "variants": 18,
+    "outputs": 522,
+    "different_bytes": 0,
+    "report_hashes": {
+      "input.json": "ded03dc5d7c31cab2dec7fba96b1e172d70158bbb8a5ec1dc7630cb3d2306493",
+      "wgpu-results.json": "46428ee21c1855221222ef59c9b79fc651ee57d739c877a383d37103a4b81fb1",
+      "native-results.json": "243a1013ccd34d0e4c15ac79f0492ec25ae252dba1ae20ac7a3225648a0d834a"
+    },
+    "frame_output_sha256": {
+      "initial": "76179010eb7fde0183e509978d44aeaf3291bb1a87d0d628d436f057fc6d3867",
+      "static": "76179010eb7fde0183e509978d44aeaf3291bb1a87d0d628d436f057fc6d3867",
+      "replace-geometry": "ab64733d4cf7d06161f524f034447f20509d416249985b6752657a976a9cc751",
+      "replace-image": "fd5097151da25feb0e470f89c31e76731898d9444ac69088710e1e2f77f78d7c",
+      "fractional-transform": "ac98e6f7d4169ad9f35acda526e9d9b62111d82c65b0c3b4e6b2910e164918fa",
+      "reorder": "926cace685b4382ff757ee10d1c9d3d5fe30b3665c9d83e32a195eb0a2aded38",
+      "reparent-into-clip": "acd7000be1c908f98e2788a6be763e0a1a227107443a53431786eb2dffc4ea0d",
+      "mask-edit": "08443fc6323294795f072e4be5d24e785311bb2b8ceecafb8d73eee0e9fb2170",
+      "backdrop-background-edit": "fab0adf4cfa2fa3b87090794fef0f9ff0d59fb67ad2d29c5fcb2198ee6edca92",
+      "replace-clipped-text": "fab0adf4cfa2fa3b87090794fef0f9ff0d59fb67ad2d29c5fcb2198ee6edca92",
+      "remove": "9544a03a5e5c2f128d190de343ce1b90e96c84c899197e77b5c254860c911e50",
+      "reinsert": "fde5087af7df5ac88f62ddd6c44ab42874945d803de93d649cdf4fbacebe21ba",
+      "invalidate-rect": "fde5087af7df5ac88f62ddd6c44ab42874945d803de93d649cdf4fbacebe21ba",
+      "resize-grow": "26403511282baafc37ed421b18e6be5fca603f1423777322cf9d80605ac48ffe",
+      "resize-shrink": "2ffc8c61a3dbf145d8c080622f46a569a151cee0cb98ebceaa5b795b007a4f06",
+      "resize-tile-15": "6cdd02a5338bb60f4a5d562e89f5d24940aad42b2effd716c139540404b76ff1",
+      "resize-tile-16": "df1fa1305014fcbe51e110ee92d504d23bc0e0cc3f3c66fb74e00b063f97121a",
+      "resize-tile-17": "8bf8a0638751b5beb2462c6661925760aa2ae7ffedf4b27d214cdb48b2256084",
+      "resize-dpi": "bd2acdf3bbb40f0bca732af89631e432aae0739dad3ddd02f0ad6e8e3abf19d4",
+      "local-edit-after-resize": "682dd30abee9da01fb5610323c1a7a77076fecb18e78fb8b0a9a8f37699d2d3a",
+      "same-size-new-target": "682dd30abee9da01fb5610323c1a7a77076fecb18e78fb8b0a9a8f37699d2d3a",
+      "same-target-new-history": "682dd30abee9da01fb5610323c1a7a77076fecb18e78fb8b0a9a8f37699d2d3a",
+      "external-clear-new-history": "682dd30abee9da01fb5610323c1a7a77076fecb18e78fb8b0a9a8f37699d2d3a",
+      "swap-image": "f31776125dcbadd6c838790593ba64a021e89b958255213d1a6062366e2830d7",
+      "return-to-older-image": "f31776125dcbadd6c838790593ba64a021e89b958255213d1a6062366e2830d7",
+      "journal-overflow": "45fc13795d71d1e3586f6d2fc15bea82f8b49fb1235179bd42d0d2904c4cb708",
+      "incremental-after-journal-overflow": "70f2b574269e21db8264b1d91e7da871db5a7febd12224aa171d14ec1e3aef3e",
+      "remove-all-content": "6c78c6df4f73e8d0d5d20140e9a37d779a78965136ffeae6b1b9ace6e5e8203c",
+      "empty-static": "6c78c6df4f73e8d0d5d20140e9a37d779a78965136ffeae6b1b9ace6e5e8203c"
+    }
+  },
+  "presentation": {
+    "frames": 8,
+    "physical_sizes": [
+      [
+        640,
+        360
+      ],
+      [
+        480,
+        270
+      ]
+    ],
+    "gpu_semantic_tests": 2,
+    "cpu_pixel_round_trip": false,
+    "separate_host_and_render_queues": true,
+    "log_sha256": "b4cc7a078d391f92a6b735362a32643279664b3cb8975ddb4fad5109582972df"
+  },
+  "native_library_tests": {
+    "passed": 744,
+    "failed": 0,
+    "ignored": 0
+  },
+  "svg": {
+    "images": 1712,
+    "different_bytes": 0
+  },
+  "examples": {
+    "images": 45,
+    "different_bytes": 0
+  },
+  "checks": [
+    {
+      "step": "retained",
+      "command": [
+        "bash",
+        "scripts/mac/run_native_metal_tests.sh",
+        "--retained"
+      ],
+      "exit_code": 0,
+      "seconds": 45.61,
+      "log": "/tmp/tileink-m5-final-retained.txt",
+      "log_sha256": "9875668ad784de47995d93eb96913889de1eb5510435ca261696158f0367c205"
+    },
+    {
+      "step": "present",
+      "command": [
+        "bash",
+        "scripts/mac/run_native_metal_tests.sh",
+        "--present"
+      ],
+      "exit_code": 0,
+      "seconds": 3.49,
+      "log": "/tmp/tileink-m5-final-present.txt",
+      "log_sha256": "89851893ad55986f7de5353740f907deb7816487559471949f232b6e2f485b74"
+    },
+    {
+      "step": "metal-lib",
+      "command": [
+        "cargo",
+        "test",
+        "--release",
+        "--no-default-features",
+        "--features",
+        "metal",
+        "--lib",
+        "--",
+        "--include-ignored",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "seconds": 21.62,
+      "log": "/tmp/tileink-m5-final-metal-lib.txt",
+      "log_sha256": "b0092f7e9146eef449fd6bd6ba6b69b001685b58c6b48b202d7c0a65cfe44913"
+    },
+    {
+      "step": "contracts",
+      "command": [
+        "cargo",
+        "test",
+        "--release",
+        "--no-default-features",
+        "--features",
+        "metal",
+        "--test",
+        "backend_features",
+        "--test",
+        "native_shader_abi",
+        "--test",
+        "native_shader_inventory",
+        "--test",
+        "metal_toolchain",
+        "--test",
+        "mac_test_runner",
+        "--",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "seconds": 3.29,
+      "log": "/tmp/tileink-m5-final-contracts.txt",
+      "log_sha256": "2aa9de89b2e19d63196ab122199c60269d0281e3cd29c4f2cfbafced8cceef2c"
+    },
+    {
+      "step": "wgpu-tests",
+      "command": [
+        "bash",
+        "scripts/mac/run_tests.sh",
+        "both"
+      ],
+      "exit_code": 0,
+      "seconds": 145.89,
+      "log": "/tmp/tileink-m5-final-wgpu-tests.txt",
+      "log_sha256": "f9a13f090c812f837c442052646534bd78e2f0b52d88c6726c016f86063d03c4"
+    },
+    {
+      "step": "metal-svg",
+      "command": [
+        "bash",
+        "scripts/mac/run_native_metal_tests.sh",
+        "--svg"
+      ],
+      "exit_code": 0,
+      "seconds": 23.54,
+      "log": "/tmp/tileink-m5-final-metal-svg.txt",
+      "log_sha256": "ee9fc9716bc604c25b6e98cbbecfa3d4c93d3b428014ff12cadbce61d7916f59"
+    },
+    {
+      "step": "metal-examples",
+      "command": [
+        "bash",
+        "scripts/mac/run_native_metal_tests.sh",
+        "--examples"
+      ],
+      "exit_code": 0,
+      "seconds": 13.59,
+      "log": "/tmp/tileink-m5-final-metal-examples.txt",
+      "log_sha256": "c2a222a1c1b31f84d83fd3160f5c79d228bebe15e6575ed08fc00d757c4c1c3f"
+    },
+    {
+      "step": "wgpu-svg",
+      "command": [
+        "bash",
+        "scripts/mac/run_svg_tests.sh",
+        "all",
+        "both"
+      ],
+      "exit_code": 0,
+      "seconds": 26.49,
+      "log": "/tmp/tileink-m5-final-wgpu-svg.txt",
+      "log_sha256": "818286973a4a74dd731a58e81a09d188acdf1bbb1e998d6c0c087db8aee5643d"
+    },
+    {
+      "step": "wgpu-examples",
+      "command": [
+        "bash",
+        "scripts/mac/run_examples.sh",
+        "both"
+      ],
+      "exit_code": 0,
+      "seconds": 3.89,
+      "log": "/tmp/tileink-m5-final-wgpu-examples.txt",
+      "log_sha256": "615025f23a5a60c81d54ac0adb2711c452da0b185c5aa16fe27ca2c06f9e795e"
+    },
+    {
+      "step": "wgpu-clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--release",
+        "--all-targets"
+      ],
+      "exit_code": 0,
+      "seconds": 27.17,
+      "log": "/tmp/tileink-m5-final-wgpu-clippy.txt",
+      "log_sha256": "d6be21bbd7cc20f0bcb82710bc0e59af809a83822fe84a9af2151729687e4f3d"
+    },
+    {
+      "step": "metal-clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--release",
+        "--no-default-features",
+        "--features",
+        "metal",
+        "--all-targets"
+      ],
+      "exit_code": 0,
+      "seconds": 27.46,
+      "log": "/tmp/tileink-m5-final-metal-clippy.txt",
+      "log_sha256": "dea2cfb3e5d84ada0b50224dc76d26fb5fefacdd5d4f6f286eb2da26b6a0c0b1"
+    },
+    {
+      "step": "format",
+      "command": [
+        "cargo",
+        "fmt",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 1.89,
+      "log": "/tmp/tileink-m5-final-format.txt",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "step": "diff-check",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 0.13,
+      "log": "/tmp/tileink-m5-final-diff-check.txt",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "source_sha256": {
+    "examples/native_window/app.rs": "05d1bb3e76d9976460309905b574b0220bcbb8eb42cba031dde9c8fa613fe964",
+    "examples/native_window/dx12.rs": "8eef766f4786c152ed0415536d20ddc46f380687fdaa641ed380a9e622fc0f9e",
+    "examples/native_window/dx12_copy.rs": "7abb40488cf715a15219654166069b9984bf716e44c5343d68fab48c9dedbe76",
+    "examples/native_window/main.rs": "4238316271a49a97b221c6ea77e0b80cd280cb3fc7787f925c6f38ef4e1cab51",
+    "examples/native_window/metal/present.metal": "0e193efb61802adcdbb26eb3938052976b09c94328b6e9cdbb546e2dadeaf495",
+    "examples/native_window/metal/present.rs": "c4b07bcc8fa1e53d37fd173dc22f23e18244b8461a576a2a01a1ecb0b5a30529",
+    "examples/native_window/metal/present_tests.rs": "f08c7fdfbd3ab51b6bc901e40b8c36f753bbef0c2e669a686044e05671f7df74",
+    "examples/native_window/metal.rs": "5a82f292e3fd8f0b3211583e9e208329d7ed7ff2453bf2fcc557f8bc5e8ca66b",
+    "examples/native_window/vulkan.rs": "1d56c6b7e24d85a92fad387e349c7658223d3b1d0de8f85da418a7c8320e1ca5",
+    "examples/native_window/vulkan_capabilities.rs": "df090d9dbcdb650d5dc7f8b02e7f5a661742ae2c8dd07068961f970bcf6d4bc4",
+    "examples/wgpu_backend_parity/native/retained.rs": "dc17764a09ad05099f26e4aaeb9e17121d20c91daed65cd0779f150a4219817a",
+    "examples/wgpu_backend_parity/retained_contract.rs": "4c584d0553ce1a660bb9ab1747af605902b8df2188e26ad2a678262c67941f43",
+    "examples/wgpu_backend_parity/retained_sequence/state.rs": "bf86e7f676e1e9c84b3d33e61fbaeda5352c2b1248de230e461d8f345a44baac",
+    "examples/wgpu_backend_parity/retained_sequence.rs": "6fadb0c40950cdc3527d80f6ce45b22095892a5eab648868b72124b18611f332",
+    "examples/wgpu_backend_parity/retained_wgpu.rs": "a16f4b771eeb811cef500b19a1f2de4d064e6060f59a9e5245929311a9d81396",
+    "src/native/runtime/metal/lifecycle_tests.rs": "57c9f5c796dee14450db834df25ad34c18fcba583c293b5ffc638e88ee8d3871",
+    "tests/metal_retained_parity.rs": "34360a296d6e5fdfaeae00d6f36d7e00a09df4ee45a0dea16246528a99c449e8"
+  },
+  "limitations": [
+    "Only recorded Apple M2 GPU/OS/toolchain tested; no Intel/AMD Mac or wider driver claim.",
+    "Failure-state behavior is injected deterministically; no physical GPU removal performed.",
+    "Windows fixture extraction was compiled through the macOS runners; Windows GPU validation was not rerun on this Mac.",
+    "Performance comparisons waived; no performance claim.",
+    "Tracked cross-platform PNG baselines unchanged; generated differences saved for separate review."
+  ],
+  "evidence_directory": "target/metal-validation",
+  "baseline_commit": "b8ed4cb65c22bc1b98af508cfe0f2ce55f5383d9",
+  "final_followup_checks": [
+    {
+      "check": "presentation retirement regression and real resize",
+      "result": "passed",
+      "log_sha256": "b4cc7a078d391f92a6b735362a32643279664b3cb8975ddb4fad5109582972df"
+    },
+    {
+      "check": "default all-target Clippy after fixture cfg cleanup",
+      "result": "passed",
+      "log_sha256": "45042f5ca30c8b539e86a2562730acebe51c735365c25e2d96572feb26a5cda2"
+    },
+    {
+      "check": "cargo package",
+      "result": "passed",
+      "log_sha256": "2d5652cc009104b99c045dacc70c71975ab01f9cc270ba6b3c57735612e4933f"
+    },
+    {
+      "check": "packaged native Metal library build",
+      "result": "passed",
+      "log_sha256": "0d8ae2b7350d73e3217c926ef2df9257e94573b204d3d89f382bb8b18ec38f2d"
+    },
+    {
+      "check": "normal/build dependency audit without wgpu or naga",
+      "result": "passed",
+      "log_sha256": "c8e68e4f57bdcd522bd8d13b40a3deb6d6f82321eaf9e5c9ec1f0ba1e534ac25"
+    }
+  ]
+}

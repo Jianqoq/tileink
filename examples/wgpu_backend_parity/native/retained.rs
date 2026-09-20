@@ -1,9 +1,9 @@
-use super::super::retained::Target;
-use super::super::{
+use crate::common::fonts::Snapshot;
+use crate::retained_contract::Target;
+use crate::{
     Result,
     retained_sequence::{Frame, Sequence},
 };
-use crate::common::fonts::Snapshot;
 use serde_json::{Value, json};
 use tileink::{Image, IncrementalRenderMode, NativeRenderer, TextContext, TextFontSystem};
 
@@ -19,48 +19,43 @@ pub struct Variant {
     active: usize,
     history_epoch: u64,
 }
-impl super::Routes {
-    pub fn retained_variants(&self, fonts: &Snapshot) -> Result<Vec<Variant>> {
-        let mut variants = Vec::new();
-        for route in &self.routes {
-            for kind in [Target::Owned, Target::Transient, Target::Persistent] {
-                for full in [false, true] {
-                    let mut renderer =
-                        NativeRenderer::with_context(route.renderer.context(), 1, 1)?;
-                    if full {
-                        let mut config = renderer.incremental_render_config();
-                        config.mode = IncrementalRenderMode::ForceFull;
-                        renderer.set_incremental_render_config(config);
-                    }
-                    let name = format!(
-                        "{}-{}-{}",
-                        route.name,
-                        kind.name(),
-                        if full { "force-full" } else { "auto" }
-                    );
-                    let mut metadata = route.metadata.clone();
-                    metadata["route"] = json!(name);
-                    metadata["target"] = json!(kind.name());
-                    metadata["incremental_mode"] = json!(if full { "ForceFull" } else { "Auto" });
-                    variants.push(Variant {
-                        name,
-                        metadata,
-                        renderer,
-                        fonts: fonts.font_system(),
-                        text: TextContext::new(),
-                        full,
-                        kind,
-                        textures: Vec::new(),
-                        active: 0,
-                        history_epoch: 1,
-                    });
-                }
-            }
-        }
-        Ok(variants)
-    }
-}
 impl Variant {
+    pub fn new(
+        context: &tileink::NativeContext,
+        route_name: &str,
+        mut metadata: Value,
+        fonts: &Snapshot,
+        kind: Target,
+        full: bool,
+    ) -> Result<Self> {
+        let mut renderer = NativeRenderer::with_context(context, 1, 1)?;
+        if full {
+            let mut config = renderer.incremental_render_config();
+            config.mode = IncrementalRenderMode::ForceFull;
+            renderer.set_incremental_render_config(config);
+        }
+        let name = format!(
+            "{route_name}-{}-{}",
+            kind.name(),
+            if full { "force-full" } else { "auto" }
+        );
+        metadata["route"] = json!(name);
+        metadata["target"] = json!(kind.name());
+        metadata["incremental_mode"] = json!(if full { "ForceFull" } else { "Auto" });
+        Ok(Self {
+            name,
+            metadata,
+            renderer,
+            fonts: fonts.font_system(),
+            text: TextContext::new(),
+            full,
+            kind,
+            textures: Vec::new(),
+            active: 0,
+            history_epoch: 1,
+        })
+    }
+
     pub fn render(&mut self, sequence: &Sequence, frame: Frame) -> Result<(Image, Value)> {
         if frame == Frame::Invalidate {
             self.renderer.invalidate_retained_history();
@@ -128,7 +123,7 @@ impl Variant {
         };
         let stats = self.renderer.incremental_render_stats();
         let row = json!({"route": self.name, "frame": frame.name(), "stats": format!("{stats:?}")});
-        super::super::retained::validate_image(
+        crate::retained_contract::validate_image(
             &self.name, &stats, false, self.full, sequence, frame, &image,
         )?;
         Ok((image, row))

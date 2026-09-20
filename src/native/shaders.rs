@@ -8,6 +8,8 @@ pub struct NativeShaderArtifact {
     pub cache_key: &'static str,
     pub workgroup: [u32; 3],
     pub(crate) bindings: &'static [Binding],
+    #[cfg(feature = "metal")]
+    pub(crate) uniforms: &'static [UniformLayout],
     pub bytes: &'static [u8],
 }
 
@@ -37,4 +39,13 @@ impl BindingKind {
     pub(crate) fn writable(self) -> bool {
         matches!(self, Self::Write | Self::TextureWrite)
     }
+}
+
+/// Scalar offsets are flattened so equivalent vector/scalar MSL declarations
+/// are checked against the same host byte layout without requiring field names.
+#[cfg(feature = "metal")]
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct UniformLayout {
+    pub slot: u32,
+    pub fields: &'static [(u32, u8)],
 }

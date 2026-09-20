@@ -20,6 +20,9 @@ pub trait Host {
     fn acquire(&mut self, size: [u32; 2]) -> Result<NativeTexture>;
     fn target_use<'a>(&self, target: NativeRenderTarget<'a>) -> Result<NativeTargetUse<'a>>;
     fn present(&mut self, submission: NativeTargetSubmission) -> Result;
+    fn finish(&mut self) -> Result {
+        Ok(())
+    }
 }
 struct State {
     // Renderer resources and imported images must be released before the host window.
@@ -35,6 +38,7 @@ struct App {
     smoke: bool,
     frames: u32,
     error: Option<Box<dyn Error>>,
+    sizes: Vec<[u32; 2]>,
 }
 fn scene(size: [u32; 2]) -> Result<RetainedScene> {
     let root = RetainedNodeId::for_owner(1);
@@ -71,6 +75,8 @@ impl App {
                 .with_inner_size(winit::dpi::PhysicalSize::new(640, 360)),
         )?;
         let host: Box<dyn Host> = match self.backend.as_str() {
+            #[cfg(all(target_os = "macos", feature = "metal"))]
+            "metal" => Box::new(super::metal::Host::new(&window)?),
             #[cfg(feature = "dx12")]
             "dx12" => Box::new(super::dx12::Host::new(&window)?),
             #[cfg(feature = "vulkan")]
@@ -121,6 +127,9 @@ impl App {
         state.host.present(submission)?;
         state.host.context().check_validation()?;
         self.frames += 1;
+        if self.sizes.last() != Some(&size) {
+            self.sizes.push(size);
+        }
         if self.smoke && self.frames == 3 {
             let _ = state
                 .window
@@ -178,7 +187,9 @@ pub fn run() -> Result {
     let mut app = App {
         state: None,
         backend: args.first().cloned().unwrap_or_else(|| {
-            if cfg!(feature = "dx12") {
+            if cfg!(feature = "metal") {
+                "metal".into()
+            } else if cfg!(feature = "dx12") {
                 "dx12".into()
             } else {
                 "vulkan".into()
@@ -187,14 +198,25 @@ pub fn run() -> Result {
         smoke: args.iter().any(|s| s == "--smoke"),
         frames: 0,
         error: None,
+        sizes: Vec::new(),
     };
     EventLoop::new()?.run_app(&mut app)?;
+    if let Some(state) = &mut app.state {
+        state.host.finish()?;
+    }
     if let Some(error) = app.error {
         return Err(error);
     }
+    if app.smoke && (app.frames != 8 || app.sizes.len() < 2) {
+        return Err(format!(
+            "smoke did not complete eight frames and a real resize: {:?}",
+            app.sizes
+        )
+        .into());
+    }
     println!(
-        "{}: {} native present frames completed",
-        app.backend, app.frames
+        "{}: {} native present frames completed; physical sizes {:?}",
+        app.backend, app.frames, app.sizes
     );
     Ok(())
 }

@@ -1,14 +1,7 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// Independent MSL implementation of the same integer probe/32-byte ABI.
-struct ProbeParams {
-    uint count;
-    uint source_offset;
-    uint destination_offset;
-    uint stride;
-    uint4 value;
-};
+#include "probe_params.metal"
 
 kernel void clear_words(device uint* destination [[buffer(0)]],
     constant ProbeParams& params [[buffer(2)]], uint id [[thread_position_in_grid]]) {
@@ -51,7 +44,7 @@ uint read_texel(const device uint* source, constant ProbeParams& params,
     return bytes.x | (bytes.y << 8) | (bytes.z << 16) | (bytes.w << 24);
 }
 
-// Independent source; requires real Apple compiler/GPU verification before acceptance.
+// Same-device clear/copy/layout/sampling acceptance: tests/metal_probes.rs.
 kernel void sample_words(device uint* destination [[buffer(0)]],
     const device uint* source [[buffer(1)]], constant ProbeParams& params [[buffer(2)]],
     texture2d<float, access::read> texels [[texture(3)]], uint id [[thread_position_in_grid]]) {

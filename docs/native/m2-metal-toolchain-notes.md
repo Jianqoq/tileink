@@ -1,6 +1,6 @@
 # M2 independent Metal shader source and toolchain
 
-Status: planned, not implemented or validated on a Mac. The user clarified on 2026-09-13 that macOS uses its own Metal Shading Language (MSL) source. This replaces the earlier shared-HLSL-to-Metal proposal. M0/M1 runtime scope is unchanged.
+Status: implemented and validated on Apple M2 (2026-09-19); see [Metal implementation and evidence](metal.md). The user clarified on 2026-09-13 that macOS uses its own Metal Shading Language (MSL) source. This replaces the earlier shared-HLSL-to-Metal proposal. M0/M1 runtime scope is unchanged.
 
 DX12 and Vulkan share version-controlled HLSL compiled by DXC to DXIL and SPIR-V. macOS uses independently maintained `.metal` source under `src/shaders/metal/`, compiled by the Apple Metal toolchain. HLSL conversion through DXIL, SPIR-V or another intermediate language is not the macOS source strategy. Existing WGSL remains the independent wgpu reference.
 
@@ -12,4 +12,4 @@ M2 establishes MSL clear/copy/layout/sampling probes and verifies entry points, 
 
 Packaging and negative tests cover missing `.metal`/include files, missing tools, stale caches, ABI mismatches and unsupported capabilities. Minimum platform requirements are selected from measured tool and device support, not inherited from the abandoned shader-converter proposal.
 
-The Windows four-API zero-difference requirement remains unchanged. Cross-OS or cross-GPU global equality is not automatically added. A complete native Metal renderer and its full corpus/performance acceptance remain a later rendering milestone; M2 shader probes do not imply completion of that adapter.
+The Windows four-API zero-difference requirement remains unchanged. Cross-OS or cross-GPU global equality is not automatically added. M2 shader probes alone do not imply renderer completion. The complete Metal renderer and retained/host acceptance are now separately recorded in [Mac M5](m5-metal.md); performance comparisons remain waived.

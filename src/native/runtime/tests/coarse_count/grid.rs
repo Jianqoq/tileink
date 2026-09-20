@@ -68,7 +68,8 @@ pub(super) fn grid_scene() -> (CountScene, Vec<u32>, usize) {
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
-fn four_api_coarse_counts_cover_partial_bins_sparse_tiles_and_final_empty_range() -> Result<()> {
+fn native_routes_coarse_counts_cover_partial_bins_sparse_tiles_and_final_empty_range() -> Result<()>
+{
     let routes = Routes::new()?;
     for mode in 0..4 {
         let (mut scene, counts, _) = grid_scene();

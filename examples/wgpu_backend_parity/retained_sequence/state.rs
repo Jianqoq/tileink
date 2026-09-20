@@ -4,7 +4,7 @@ use super::super::Result;
 use super::Frame;
 #[cfg(test)]
 use super::{FRAMES, names};
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 use peniko::kurbo::Point;
 use peniko::{
     Color, Extend,
@@ -16,7 +16,7 @@ use tileink::{
     RetainedLayerDescriptor as Layer, RetainedNodeId as Node, RetainedParent as Parent,
     RetainedScene,
 };
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 use tileink::{TextContext, TextLayoutOptions};
 
 pub struct Sequence {
@@ -73,9 +73,9 @@ fn region() -> Region {
 }
 
 impl Sequence {
-    // Font-backed capture is used by the Windows four-route GPU runner.
+    // Font-backed capture is shared by Windows and macOS GPU runners.
     // Keep the frame-state model and its CPU tests available on other targets.
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     pub fn new(fonts: &super::super::common::fonts::Snapshot) -> Result<Self> {
         let mut font_system = fonts.font_system();
         let mut text_context = TextContext::new();

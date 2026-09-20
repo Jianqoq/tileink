@@ -1,5 +1,4 @@
-//! Native execution modules for the M3 minimum vertical slice.
-//! Full Canvas program coverage and the NativeRenderer facade follow in M4.
+//! Native API adapters execute shared Canvas/retained compute batches.
 pub(super) mod adapter;
 #[cfg(feature = "dx12")]
 mod dx12;
@@ -8,8 +7,12 @@ mod gpu_tests;
 #[cfg(test)]
 #[path = "runtime/tests/isolation.rs"]
 mod isolation;
-#[cfg(test)]
+#[cfg(all(test, not(feature = "metal")))]
 mod lifecycle_gpu_tests;
+#[cfg(feature = "metal")]
+mod metal;
+#[cfg(all(test, feature = "metal"))]
+mod metal_lifecycle_gpu_tests;
 mod pipeline_cache;
 mod program;
 mod submissions;

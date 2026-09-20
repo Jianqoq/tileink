@@ -114,3 +114,14 @@ DX12 buffer states and queue presentation follow [Microsoft's swapchain contract
 Mac MSL compilation/GPU verification remains deferred. This integration does not
 implement gfx_ui's feature selection or automatic device recreation: a lost device
 is terminal for its context, and the host constructs a new context/renderer.
+
+## macOS Metal
+
+`native_interop::metal` provides typed device/queue and texture imports plus per-use
+shared-event waits/signals. Ownership, initialization and exclusive access are unsafe
+host obligations; unsupported texture formats/usages/mips and untracked hazards are
+rejected. Imported targets use RGBA8Unorm; the host owns drawable format conversion.
+`cargo run --release --no-default-features --features metal --example native_present -- metal`
+demonstrates two-queue handoff and GPU conversion into CAMetalLayer BGRA drawables.
+Add `--smoke` to verify eight frames and a real resize. See [Mac M5](m5-metal.md) for
+completion, failure, lifetime and validation evidence.

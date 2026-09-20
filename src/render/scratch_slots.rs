@@ -18,7 +18,7 @@ impl ScratchSlots {
     }
 
     // Native surface pools grow live leases; wgpu sizes its slots before acquiring.
-    #[cfg(any(test, feature = "dx12", feature = "vulkan"))]
+    #[cfg(any(test, feature = "dx12", feature = "vulkan", feature = "metal"))]
     pub(crate) fn push_occupied(&mut self) -> usize {
         let index = self.occupied.len();
         self.occupied.push(true);
@@ -33,7 +33,7 @@ impl ScratchSlots {
         self.occupied[index] = false;
     }
 
-    #[cfg(any(test, feature = "dx12", feature = "vulkan"))]
+    #[cfg(any(test, feature = "dx12", feature = "vulkan", feature = "metal"))]
     pub(crate) fn is_occupied(&self, index: usize) -> bool {
         self.occupied.get(index).copied().unwrap_or(false)
     }

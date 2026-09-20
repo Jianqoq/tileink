@@ -12,15 +12,15 @@ pub struct NativeRenderer {
     context: NativeContext,
     size: (u32, u32),
     images: ImageResourceStore,
-    #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
+    #[cfg(tileink_native_runtime)]
     target: Option<super::NativeTexture>,
-    #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
+    #[cfg(tileink_native_runtime)]
     surfaces: Rc<std::cell::RefCell<super::runtime::compute::SurfacePool>>,
-    #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
+    #[cfg(tileink_native_runtime)]
     recording: super::runtime::renderer::recording::Recording,
-    #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
+    #[cfg(tileink_native_runtime)]
     persistent_scene: Option<crate::retained_scene::PersistentSceneMaterializer>,
-    #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
+    #[cfg(tileink_native_runtime)]
     history: Option<output::HistoryRecord>,
 }
 
@@ -38,7 +38,7 @@ impl NativeRenderer {
         width: u32,
         height: u32,
     ) -> Result<Self, NativeError> {
-        #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
+        #[cfg(tileink_native_runtime)]
         {
             validate_size((width, height), context.adapter.limits().image_dimension)?;
             Ok(Self {
@@ -54,7 +54,7 @@ impl NativeRenderer {
                 history: None,
             })
         }
-        #[cfg(not(all(target_os = "windows", any(feature = "dx12", feature = "vulkan"))))]
+        #[cfg(not(tileink_native_runtime))]
         {
             let _ = (width, height);
             Err(NativeError::Unavailable(context.backend().unavailable()))
@@ -90,7 +90,7 @@ impl NativeRenderer {
     /// Set the premultiplied background for subsequent root frames. Child canvases
     /// and filter intermediates retain transparent initial contents.
     pub fn set_clear_color(&mut self, clear: peniko::Color) {
-        #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
+        #[cfg(tileink_native_runtime)]
         {
             let clear = crate::shared::image::premul_color_to_rgba8_pack(clear);
             if self.recording.clear_color != clear {
@@ -98,7 +98,7 @@ impl NativeRenderer {
                 self.invalidate_retained_history();
             }
         }
-        #[cfg(not(all(target_os = "windows", any(feature = "dx12", feature = "vulkan"))))]
+        #[cfg(not(tileink_native_runtime))]
         {
             let _ = clear;
         }
@@ -206,10 +206,7 @@ impl NativeRenderer {
     }
 }
 
-#[cfg(any(
-    test,
-    all(target_os = "windows", any(feature = "dx12", feature = "vulkan"))
-))]
+#[cfg(any(test, tileink_native_runtime))]
 pub(super) fn validate_size(size: (u32, u32), max_dimension: u32) -> Result<(), NativeError> {
     if size.0 == 0 || size.1 == 0 || size.0 > max_dimension || size.1 > max_dimension {
         return Err(NativeError::Recording(
@@ -254,5 +251,5 @@ mod tests {
     }
 }
 
-#[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
+#[cfg(tileink_native_runtime)]
 mod output;

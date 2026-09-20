@@ -5,6 +5,7 @@ pub(super) enum TestApi {
     Default,
     Dx12,
     Vulkan,
+    Metal,
 }
 
 impl TestApi {
@@ -13,7 +14,8 @@ impl TestApi {
             None => Ok(Self::Default),
             Some("dx12") => Ok(Self::Dx12),
             Some("vulkan") => Ok(Self::Vulkan),
-            Some(_) => Err("TILEINK_TEST_API must be dx12 or vulkan when supplied"),
+            Some("metal") => Ok(Self::Metal),
+            Some(_) => Err("TILEINK_TEST_API must be dx12, vulkan, or metal when supplied"),
         }
     }
 
@@ -22,6 +24,7 @@ impl TestApi {
             Self::Default => None,
             Self::Dx12 => Some("dx12"),
             Self::Vulkan => Some("vulkan"),
+            Self::Metal => Some("metal"),
         }
     }
 
@@ -33,17 +36,26 @@ impl TestApi {
 #[test]
 fn every_api_and_texture_mode_has_an_independent_cached_device() {
     let mut slots = Vec::new();
-    for api in [TestApi::Default, TestApi::Dx12, TestApi::Vulkan] {
+    for api in [
+        TestApi::Default,
+        TestApi::Dx12,
+        TestApi::Vulkan,
+        TestApi::Metal,
+    ] {
         for portable in [false, true] {
             slots.push(api.slot(portable));
         }
     }
     slots.sort_unstable();
-    assert_eq!(slots, [0, 1, 2, 3, 4, 5]);
+    assert_eq!(slots, [0, 1, 2, 3, 4, 5, 6, 7]);
 }
 
 #[test]
 fn an_explicit_request_never_means_default_selection() {
+    assert_eq!(
+        TestApi::parse(Some("metal")).unwrap().explicit_name(),
+        Some("metal")
+    );
     assert_eq!(TestApi::parse(None).unwrap().explicit_name(), None);
     assert_eq!(
         TestApi::parse(Some("dx12")).unwrap().explicit_name(),
@@ -57,7 +69,7 @@ fn an_explicit_request_never_means_default_selection() {
 
 #[test]
 fn unknown_or_empty_requests_are_rejected() {
-    for value in ["", "auto", "native", "portable", "DX12", "metal"] {
+    for value in ["", "auto", "native", "portable", "DX12", "METAL"] {
         assert!(TestApi::parse(Some(value)).is_err());
     }
 }

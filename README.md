@@ -15,7 +15,7 @@ explicit output-history identity.
 
 Release notes are maintained in the [changelog](CHANGELOG.md).
 
-The [native HLSL backend plan](NATIVE_BACKEND_PLAN.md) adds opt-in DX12/Vulkan
+The [native backend plan](NATIVE_BACKEND_PLAN.md) adds opt-in DX12/Vulkan
 backends with exact pixel parity. M0/M1 and the Windows M2 shader toolchain are
 complete. [Windows M3](docs/native/m3-completion.md) provides shared native batches,
 resource ownership, cached shaders/pipelines and four-API exact texture/numerical
@@ -24,7 +24,11 @@ Canvas and text rendering, explicit completion/readback and configurable backgro
 clearing. [Windows M4](docs/native/m4-completion.md) passes 1,712 SVGs and 45 example
 images with exact six-route parity on the recorded GPU/driver. Native retained rendering, incremental uploads and
 host device/target interop are documented in [M5](docs/native/m5-implementation.md).
-Metal hardware verification is deferred.
+[Native Metal](docs/native/metal.md) uses independent MSL and direct Metal commands.
+Mac M1–M5 now pass same-device SVG/example and retained comparisons on Apple M2,
+including host shared-event synchronization and window resize/present. Build with
+`--no-default-features --features metal`; see [Mac M5](docs/native/m5-metal.md) for
+acceptance scope and reproducible commands.
 
 This repository uses [upstream wgpu](WGPU_BACKEND.md), without a vendored HAL or
 consumer Cargo patches. DX12 write-only texture ordering is handled at Tileink's

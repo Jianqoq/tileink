@@ -113,6 +113,8 @@ impl ComputeBatch {
             {
                 texture.state.initialized.set(true);
                 match &texture.state.allocation {
+                    #[cfg(feature = "metal")]
+                    crate::native::runtime::texture::Allocation::Metal(_) => {}
                     #[cfg(feature = "dx12")]
                     crate::native::runtime::texture::Allocation::Dx12(allocation) => {
                         allocation.state.set(allocation.final_state)
@@ -126,6 +128,11 @@ impl ComputeBatch {
                     && id.index() == index
                 {
                     match (&texture.state.allocation, sync) {
+                        #[cfg(feature = "metal")]
+                        (
+                            crate::native::runtime::texture::Allocation::Metal(_),
+                            crate::native::interop::Synchronization::Metal(_),
+                        ) => {}
                         #[cfg(feature = "dx12")]
                         (
                             crate::native::runtime::texture::Allocation::Dx12(allocation),

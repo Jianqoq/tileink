@@ -20,8 +20,8 @@ impl ComputeBatch {
         if self.resources.iter().any(|resource| matches!(resource, Resource::PersistentBuffer(old) if Rc::ptr_eq(&old.buffer.state, &buffer.state))) {
             return Err("persistent buffer already imported in this batch".into());
         }
-        if !buffer.state.initialized.get()
-            && !(updates.len() == 1 && updates[0].0 == 0 && updates[0].1.len() == buffer.state.size)
+        if !(buffer.state.initialized.get()
+            || updates.len() == 1 && updates[0].0 == 0 && updates[0].1.len() == buffer.state.size)
         {
             return Err("new persistent buffer requires a complete upload".into());
         }

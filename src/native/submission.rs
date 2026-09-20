@@ -6,7 +6,7 @@ use crate::Image;
 #[derive(Debug)]
 pub struct NativeSubmission {
     backend: NativeBackend,
-    #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
+    #[cfg(tileink_native_runtime)]
     receipt: super::runtime::adapter::Receipt,
 }
 
@@ -18,16 +18,16 @@ impl NativeSubmission {
     /// Inspect the submission fence without waiting, mapping pixels or releasing
     /// resources. Call `wait` (or image `readback`) to retire the completed work.
     pub fn is_complete(&self) -> Result<bool, NativeError> {
-        #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
+        #[cfg(tileink_native_runtime)]
         {
             self.receipt.is_complete().map_err(NativeError::Completion)
         }
-        #[cfg(not(all(target_os = "windows", any(feature = "dx12", feature = "vulkan"))))]
+        #[cfg(not(tileink_native_runtime))]
         {
             Err(NativeError::Unavailable(self.backend.unavailable()))
         }
     }
-    #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
+    #[cfg(tileink_native_runtime)]
     pub(super) fn new(backend: NativeBackend, receipt: super::runtime::adapter::Receipt) -> Self {
         Self { backend, receipt }
     }
@@ -38,11 +38,11 @@ impl NativeSubmission {
     }
 
     fn readback(self) -> Result<Vec<Vec<u8>>, NativeError> {
-        #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
+        #[cfg(tileink_native_runtime)]
         {
             self.receipt.readback().map_err(NativeError::Readback)
         }
-        #[cfg(not(all(target_os = "windows", any(feature = "dx12", feature = "vulkan"))))]
+        #[cfg(not(tileink_native_runtime))]
         Err(NativeError::Unavailable(self.backend.unavailable()))
     }
 }

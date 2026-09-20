@@ -199,3 +199,46 @@ fn texture_table_count_and_register_ranges_are_explicit() {
         "SRV ranges overlap even when starting bindings differ"
     );
 }
+
+#[test]
+fn metal_internal_lengths_are_typed_bounded_and_part_of_the_cache_contract() {
+    let mut interface = interfaces::get("probe").unwrap();
+    let original = interface.cache_bytes();
+    let sizes = abi::Resource {
+        binding: 29,
+        kind: abi::Kind::Uniform,
+        size: 128,
+        count: 1,
+        internal: true,
+        fields: (0..8u8)
+            .map(|i| abi::Field {
+                name: char::from(b'a' + i).to_string(),
+                offset: u32::from(i) * 16,
+                lanes: 4,
+                scalar: abi::Scalar::U32,
+            })
+            .collect(),
+    };
+    interface
+        .resources
+        .insert("metal_buffer_sizes".into(), sizes);
+    interface
+        .entries
+        .get_mut("copy_words")
+        .unwrap()
+        .push("metal_buffer_sizes".into());
+    abi::validate(&interface).unwrap();
+    assert_ne!(interface.cache_bytes(), original);
+    for mode in 0..4 {
+        let mut wrong = interface.clone();
+        let resource = wrong.resources.get_mut("metal_buffer_sizes").unwrap();
+        match mode {
+            0 => resource.binding = 28,
+            1 => resource.size = 124,
+            2 => resource.fields[0].scalar = abi::Scalar::F32,
+            3 => resource.fields[1].offset = 0,
+            _ => unreachable!(),
+        }
+        assert!(abi::validate(&wrong).is_err(), "malformed metadata {mode}");
+    }
+}

@@ -2,7 +2,7 @@ use super::Result;
 use tileink::Image;
 
 /// Read the application target's physical RGBA bytes, excluding only row padding.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 pub fn rgba8(device: &wgpu::Device, queue: &wgpu::Queue, texture: &wgpu::Texture) -> Result<Image> {
     let size = texture.size();
     if texture.format() != wgpu::TextureFormat::Rgba8Unorm

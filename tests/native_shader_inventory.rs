@@ -48,7 +48,24 @@ fn migration_inventory_covers_every_reference_entry_and_texture_variant() {
             }
             status => panic!("unknown HLSL migration status: {status}"),
         }
-        assert_eq!(program["msl"], "unported");
+        match program["msl"].as_str().unwrap() {
+            "unported" => {}
+            "macos-corpus-validated" => {
+                for field in ["msl_source", "msl_verification"] {
+                    let path = program[field]
+                        .as_str()
+                        .expect("Metal coverage needs source/evidence");
+                    assert!(
+                        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                            .join(path)
+                            .is_file()
+                    );
+                }
+                #[cfg(all(target_os = "macos", feature = "metal"))]
+                assert!(tileink::NATIVE_SHADER_ARTIFACTS.iter().any(|artifact| artifact.entry == program["native_entry"].as_str().unwrap()));
+            }
+            status => panic!("unknown MSL migration status: {status}"),
+        }
     }
     assert_eq!(actual, expected);
 }

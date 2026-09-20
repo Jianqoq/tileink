@@ -9,6 +9,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- Add the exclusive macOS `metal` backend with offline independent MSL, reflected
+  ABI validation, full Canvas/retained rendering, persistent resources and typed
+  host device/texture/shared-event interop. Add same-device exact SVG, example and
+  retained acceptance runners, plus Metal support in `native_present` with real
+  resize/present smoke checks and RGBA-to-BGRA GPU channel tests. Verified on Apple M2.
+
 - Add Windows native retained rendering with dirty-range buffer uploads, persistent
   image/offscreen caches, journal recovery, independent renderer history and
   transient/persistent targets with explicit origins.

@@ -1,6 +1,6 @@
 # Tileink 原生 GPU 后端实施计划（HLSL / MSL）
 
-状态：**M0/M1、Windows M2 工具链、M3 和 Windows M4 已完成。完整 immediate 语料通过六路逐字节验收；native retained、外部目标和持续帧属于 M5。Mac MSL 编译与实机验证延后。** 当前验收记录见 [M4 完成记录](docs/native/m4-completion.md) 和 [实施记录](NATIVE_BACKEND_PROGRESS.md)。
+状态：**Windows M1–M5 已完成；macOS 原生 Metal M1–M5 已在 Apple M2 实机完成验收。** Metal 结果见 [实现记录](docs/native/metal.md) 和 [Mac M5 完成记录](docs/native/m5-metal.md)。Windows 结果见 [M4 完成记录](docs/native/m4-completion.md) 与 [M5 完成记录](docs/native/m5-implementation.md)。M6 更广 GPU/平台矩阵仍未完成；不将单设备结果推广为完整硬件支持。
 
 日期：2026-09-07。代码调研基线：`eabbe0b97b392582d663206c1f2aad51f76695aa`。
 
@@ -44,7 +44,7 @@
 
 ## 3. Feature 与运行时选择
 
-2026-09-19 更新：三个后端 feature 互斥，每次构建必须且只能选择一个，默认 wgpu。
+2026-09-19 更新：四个后端 feature 互斥，每次构建必须且只能选择一个，默认 wgpu。
 已删除 native 聚合项及 native-* 旧名称，不保留别名。此前里程碑报告保留当时的配置记录。
 
 | Feature | 作用 | 平台 |
@@ -52,14 +52,15 @@
 | `wgpu` | 启用可选 wgpu 依赖、WGSL 构建和现有 WgpuRenderer | 保留目前支持范围；列入 `default` |
 | `dx12` | 启用原生 DX12 Adapter、HLSL→DXIL 构建 | Windows |
 | `vulkan` | 启用原生 Vulkan Adapter、HLSL→SPIR-V 构建 | 当前 Windows，其他平台尚未完成 |
+| `metal` | 启用原生 Metal Adapter、独立 MSL→metallib 构建 | macOS，当前实测 Apple M2 |
 
-必须验证默认 wgpu、无默认加 dx12、无默认加 vulkan；无后端、三个两两组合及全部启用均必须编译失败。
+必须验证各平台上合法的单后端构建；四个 feature 的 16 种组合中，恰好启用一个才合法。无后端及任意多后端组合必须编译失败。
 四路像素验证分别构建各后端，导出相同输入的规范像素后跨进程比较，不为测试放开互斥约束。
 
 平台不支持的 Adapter 不编译原生 API 代码；请求不可用后端返回明确的 `BackendUnavailable`/能力错误。
 dx12 在非 Windows 上不会变成另一种后端。`--all-features` 是非法配置，不能用于成功构建验收。
 
-默认 `Renderer`/`WgpuRenderer` 入口在启用 `wgpu` 时保持其既有含义。新增显式 `NativeRenderer` 和 `NativeBackend::{Dx12, Vulkan}` 入口；不根据是否安装了某个驱动悄悄改变默认后端。强制选择的后端不可用时失败，测试中绝不自动回退。
+默认 `Renderer`/`WgpuRenderer` 入口在启用 `wgpu` 时保持其既有含义。新增显式 `NativeRenderer` 和 `NativeBackend::{Dx12, Vulkan, Metal}` 入口；不根据是否安装了某个驱动悄悄改变默认后端。强制选择的后端不可用时失败，测试中绝不自动回退。
 
 `directwrite-reference`、`vello-compare`、现有示例和 benchmark 的依赖需要逐项处理：需要 wgpu 的入口声明相应 `required-features`，共享测试则真正变为后端无关。将纯 CPU 测试误加上 wgpu feature、或者把原生单后端测试全部跳过，都不算完成拆分。
 
@@ -207,7 +208,7 @@ PNG 工件使用现有严格解码比较语义，保留失败的四张输出、�
 - 首次完整渲染、连续静态帧、实际增量帧、ForceFull、目标替换和独立重复运行均比较每一帧。至少三次独立运行用于检查不稳定输出；固定 case manifest 与实际输出计数，缺一个 case/frame/route 就失败。
 - 普通无 GPU runner 可以执行构建/CPU/比较器测试，并明确报告未认证项。发布所需的硬件 job 缺 GPU、缺后端、跳过全部 GPU 测试或退回软件适配器，均不能算通过。
 - M0 记录可用设备；原生功能完成前，required Windows 矩阵覆盖 NVIDIA、AMD、Intel 的代表设备和记录的驱动版本。某项环境缺失时保留未完成状态，不能静默缩小矩阵后宣布完整支持。
-- Linux 对同机 wgpu-Vulkan/原生 Vulkan 执行适用的相等与语义测试；macOS 延续现有 wgpu-Metal 回归。原生 Metal 将来加入时，需要新的明确像素验收矩阵。
+- Linux 对同机 wgpu-Vulkan/原生 Vulkan 执行适用的相等与语义测试；macOS 延续现有 wgpu-Metal 回归。原生 Metal 的当前像素矩阵见 [Mac M5 验收](docs/native/m5-metal.md)，其他 Mac GPU/系统仍待实测。
 
 ### 语义与边界场景
 
@@ -269,19 +270,21 @@ Tileink 层 resize benchmark 覆盖渲染目标变化。窗口 swapchain 的 acq
 - [x] 建立 179 项 program/variant 移植清单、最小公共 ABI 和 DXIL/SPIR-V 反射检查；clear/copy/layout/手动 RGBA8 sampling 四 API 探针已通过。完整渲染 ABI 随 M4 各项移植验收。
 - [x] 加入错误缓存、缺失编译器、绑定/stride 不匹配、native-only/wgpu-only 构建测试（Windows）。
 - [x] 从实际 Cargo 包验证 Windows native/default 构建和 HLSL/MSL/ABI 文件包含；普通 wgpu 构建不额外要求原生编译器。
-- [ ] 建立独立维护的 `src/shaders/metal/` MSL 源码与 include；在 macOS 上用 Apple Metal 工具链编译并验证产物，记录工具/SDK 版本、语言版本、目标 GPU/系统、全部 flags、能力与分发条件。
-- [ ] 将编译目标分为 DXIL、SPIR-V、Metal，以独立目标模块承载编译、反射和诊断；公共逻辑 program / variant、ABI 与缓存协议共用；HLSL/MSL 分别追踪源文件和 include 图，缓存键包含源语言、目标平台、完整工具链及 SDK 身份。
-- [ ] 对 Metal 产物验证入口、资源绑定、buffer layout / stride、纹理访问与数值语义；在实际 Mac GPU 上执行最小 clear / copy / layout / sampling 探针，与同机 wgpu-Metal 逐字节比较。工具或设备缺失时保留未完成，不能只凭交叉编译通过。
-- [ ] 加入 macOS shader 打包与构建测试，覆盖缺失工具、过期缓存、错误 ABI 和不支持能力；默认 wgpu 用户无需安装原生 shader 工具链。
+- [x] 建立独立维护的 `src/shaders/metal/` MSL 源码与 include；在 macOS 上用 Apple Metal 工具链编译并验证产物，记录工具/SDK 版本、语言版本、目标 GPU/系统、全部 flags、能力与分发条件。
+- [x] 将编译目标分为 DXIL、SPIR-V、Metal，以独立目标模块承载编译、反射和诊断；公共逻辑 program / variant、ABI 与缓存协议共用；HLSL/MSL 分别追踪源文件和 include 图，缓存键包含源语言、目标平台、完整工具链及 SDK 身份。
+- [x] 对 Metal 产物验证入口、资源绑定、buffer layout / stride、纹理访问与数值语义；在实际 Mac GPU 上执行最小 clear / copy / layout / sampling 探针，与同机 wgpu-Metal 逐字节比较。工具或设备缺失时保留未完成，不能只凭交叉编译通过。
+- [x] 加入 macOS shader 打包与构建测试，覆盖缺失工具、过期缓存、错误 ABI 和不支持能力；默认 wgpu 用户无需安装原生 shader 工具链。
 
 **退出条件：** 共用 HLSL 可生成 DXIL/SPIR-V，独立 MSL 可生成已在实际 Mac 上验证的 Metal 产物；三种目标通过规定的最小语义与 ABI 探针。布局和缓存错误被可靠拒绝，macOS shader 构建不依赖 HLSL 转译，原生路径不依赖运行时 WGSL 转译。Metal shader 支持不等于原生 Metal 渲染器完成；Windows 四路零差异要求保持不变。
+
+2026-09-19：上述 Metal 工具链、反射、探针和打包构建已在 Mac 实测通过，见 [Metal 验收](docs/native/metal.md)。
 
 ### M3 — 两个原生 Adapter 的最小纵向切片
 
 Windows 最小纵向切片已实现并完成四路 GPU 验证，见 [M3 closeout](docs/native/m3-completion.md)。
 原生执行代码已接入共享 `BatchAdapter`，DX12/Vulkan 分目录，模块入口使用同名 `.rs` 而非 `mod.rs`。
 306 组 clear/copy/layout/硬件 RGBA8 与数值探针重复三轮四路逐字节一致；完整 Canvas shader 移植仍属于 M4。
-Mac 按用户决定延期，不计入本轮 Windows M3 验收；性能比较仍按用户要求停用。
+Windows M3 当时不包含 Mac；2026-09-19 已补齐 Metal Adapter、同机探针及生命周期验收。性能比较仍按用户要求停用。
 
 - [x] 先接通 DX12 的 device、资源、pipeline、dispatch、提交、完成、readback；尽早用相同 Interface 接通 Vulkan，验证边界确实容纳两种 API。
 - [x] 执行 clear/copy、布局哨兵、简单着色以及采样/量化/运算顺序风险探针；加入资源状态、GPU 生命周期与错误 device 测试。
@@ -293,6 +296,8 @@ Mac 按用户决定延期，不计入本轮 Windows M3 验收；性能比较仍�
 ### M4 — 完整计算管线和绘制效果
 
 2026-09-13：Windows range scatter 与 cumsum 三个入口已完成四 API 逐字节验证，见 [range scatter](docs/native/m4-range-scatter.md) 与 [cumsum](docs/native/m4-cumsum.md)。[scan 六阶段](docs/native/m4-scan.md)也已通过四路验证。[coarse 分配链的 8 个入口](docs/native/m4-coarse-allocation.md)也已通过验收。[coarse 计数、偏移与类型归类的 6 个入口](docs/native/m4-coarse-count.md)已通过四路内核验证。[coarse 三种粒子输出](docs/native/m4-coarse-emission.md)也已通过四路内核验证。2026-09-14：最后四项 fine 变体已验收，179/179 项 Windows HLSL 内核全部通过四 API 对比，见 [fine interpreter](docs/native/m4-fine-interpreter.md).
+
+2026-09-19：Mac M4 已通过同机 wgpu-Metal/native Metal 的 1,712 SVG 与 45 示例逐字节对照，见 [Metal 记录](docs/native/metal.md)。
 
 2026-09-19: Windows M4 complete. See [M4 closeout](docs/native/m4-completion.md): 1,712 SVGs and 45 example images pass all six routes exactly. Native retained/interop remains M5. No performance comparison was run.
 
@@ -313,7 +318,7 @@ Mac 按用户决定延期，不计入本轮 Windows M3 验收；性能比较仍�
 
 **退出条件：** 完整功能在持续运行和目标变化后仍保持四路零差异；原生路径可以被未来宿主提供的 device/queue/目标使用。
 
-2026-09-19：Windows M5 已完成。见 [M5 完成记录](docs/native/m5-implementation.md) 和 [验证清单](docs/native/m5-verification.json)：29 帧 × 36 路 retained、1,712 SVG 与 45 示例六路全部零差异，原生宿主同步和窗口 resize/present 已通过。Mac 仍按用户决定延期；gfx_ui 接入另行实施。
+2026-09-19：Windows M5 已完成。见 [M5 完成记录](docs/native/m5-implementation.md) 和 [验证清单](docs/native/m5-verification.json)：29 帧 × 36 路 retained、1,712 SVG 与 45 示例六路全部零差异，原生宿主同步和窗口 resize/present 已通过。Mac M5 现已补齐：29 帧 × 18 变体逐字节一致、宿主双队列 shared-event 同步、真实窗口 8 帧呈现及 resize，见 [Mac M5](docs/native/m5-metal.md)。gfx_ui 接入另行实施。
 
 ### M6 — 全量验收、性能与文档
 
@@ -363,4 +368,4 @@ feature 检查覆盖默认 wgpu、关闭默认后的 dx12 和 vulkan 单选构�
 - [DXC SPIR-V 映射与布局](https://github.com/microsoft/DirectXShaderCompiler/blob/main/docs/SPIR-V.rst)：绑定、布局及对应 Vulkan 能力约束。
 - [HLSL precise 指令约束](https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/precise)：浮点优化控制的适用范围；不构成四路像素一致性保证。
 
-M2 的独立 MSL 源码、工具链边界与验证条件见 [Metal shader 工具链补充](docs/native/m2-metal-toolchain-notes.md)。当前是计划约束，尚未实现或完成实际 Mac 验证。
+M2 的独立 MSL 源码、工具链边界与验证条件见 [Metal shader 工具链补充](docs/native/m2-metal-toolchain-notes.md)。这些约束现已实现并完成 Apple M2 实机验证，见 [Metal 实现](docs/native/metal.md)。

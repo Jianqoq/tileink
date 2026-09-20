@@ -17,7 +17,7 @@ pub struct Probe {
 }
 
 impl Probe {
-    pub fn validate(&self) -> super::super::Result<()> {
+    pub fn validate(&self) -> Result<(), Box<dyn std::error::Error>> {
         let p = self.params;
         if self.source.is_empty()
             || self.destination.is_empty()

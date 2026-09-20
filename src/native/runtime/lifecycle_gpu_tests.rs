@@ -1,6 +1,7 @@
 //! Native lifetime checks run in each legal single-backend build.
 #[cfg(feature = "dx12")]
 use super::dx12::Dx12 as Device;
+use super::program::{Params, Probe};
 #[cfg(feature = "vulkan")]
 use super::vulkan::Vulkan as Device;
 use super::{Result, submissions};

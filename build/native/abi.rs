@@ -169,13 +169,17 @@ pub fn validate(abi: &Interface) -> io::Result<()> {
         } else if r.size != if r.kind == Kind::Sampler { 0 } else { 4 } || !r.fields.is_empty() {
             return Err(invalid("invalid resource size"));
         }
-        if r.internal
-            && (name != "dispatch_grid"
-                || r.binding != 31
-                || r.kind != Kind::Uniform
-                || r.size != 16)
-            || r.binding == 31 && !r.internal
-        {
+        let valid_internal = r.kind == Kind::Uniform
+            && match name.as_str() {
+                "dispatch_grid" => r.binding == 31 && r.size == 16,
+                "metal_buffer_sizes" => {
+                    r.binding == 29
+                        && r.size == 128
+                        && r.fields.iter().all(|field| field.scalar == Scalar::U32)
+                }
+                _ => false,
+            };
+        if (r.internal && !valid_internal) || (r.binding == 31 && !r.internal) {
             return Err(invalid("invalid internal dispatch binding"));
         }
     }
