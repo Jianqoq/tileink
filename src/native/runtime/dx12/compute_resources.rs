@@ -9,6 +9,7 @@ use windows::Win32::Graphics::Direct3D12::*;
 pub(super) struct Resources {
     handles: Vec<Option<ID3D12Resource>>,
     uploads: Vec<ID3D12Resource>,
+    staging: Vec<ID3D12Resource>,
     uniform_offsets: Vec<Option<u64>>,
 }
 
@@ -17,27 +18,38 @@ impl Resources {
         device: &ID3D12Device,
         list: &ID3D12GraphicsCommandList,
         batch: &ComputeBatch,
+        staging: &mut Vec<ID3D12Resource>,
     ) -> Result<Self> {
         let uniforms = Uniforms::new(
             batch,
             D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT as usize,
         )?;
+        // Empty / persistent-texture-only batches must not evict the previous
+        // frame's upload cache: their next real draw can reuse it unchanged.
+        let has_uploads = batch.resources().iter().any(|input| {
+            matches!(input, Resource::Buffer(_) | Resource::PersistentBuffer(_))
+                && !input.bytes().is_empty()
+        });
+        let mut cached = if has_uploads {
+            std::mem::take(staging)
+        } else {
+            Vec::new()
+        }
+        .into_iter();
         unsafe {
             let uniform = if uniforms.bytes.is_empty() {
                 None
             } else {
-                Some(buffer::create(
+                Some(super::staging::prepare(
                     device,
-                    uniforms.bytes.len(),
-                    D3D12_HEAP_TYPE_UPLOAD,
-                    D3D12_RESOURCE_STATE_GENERIC_READ,
-                    D3D12_RESOURCE_FLAG_NONE,
-                    Some(&uniforms.bytes),
+                    &uniforms.bytes,
+                    &mut cached,
                 )?)
             };
             let mut this = Self {
                 handles: Vec::new(),
                 uploads: Vec::new(),
+                staging: uniform.iter().cloned().collect(),
                 uniform_offsets: uniforms.offsets,
             };
             for (index, input) in batch.resources().iter().enumerate() {
@@ -53,14 +65,7 @@ impl Resources {
                     let crate::native::runtime::buffer::Allocation::Dx12(resource) =
                         &input.buffer.state.allocation;
                     if !input.bytes.is_empty() {
-                        let upload = buffer::create(
-                            device,
-                            input.bytes.len(),
-                            D3D12_HEAP_TYPE_UPLOAD,
-                            D3D12_RESOURCE_STATE_GENERIC_READ,
-                            D3D12_RESOURCE_FLAG_NONE,
-                            Some(&input.bytes),
-                        )?;
+                        let upload = super::staging::prepare(device, &input.bytes, &mut cached)?;
                         buffer::transition(
                             list,
                             resource,
@@ -70,7 +75,7 @@ impl Resources {
                         for &[source, destination, size] in &input.copies {
                             list.CopyBufferRegion(resource, destination, &upload, source, size);
                         }
-                        this.uploads.push(upload);
+                        this.staging.push(upload);
                     }
                     this.handles.push(Some(resource.clone()));
                     continue;
@@ -100,14 +105,7 @@ impl Resources {
                     D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                     None,
                 )?;
-                let upload = buffer::create(
-                    device,
-                    input.bytes().len(),
-                    D3D12_HEAP_TYPE_UPLOAD,
-                    D3D12_RESOURCE_STATE_GENERIC_READ,
-                    D3D12_RESOURCE_FLAG_NONE,
-                    Some(input.bytes()),
-                )?;
+                let upload = super::staging::prepare(device, input.bytes(), &mut cached)?;
                 buffer::transition(
                     list,
                     &resource,
@@ -116,7 +114,7 @@ impl Resources {
                 );
                 list.CopyBufferRegion(&resource, 0, &upload, 0, input.bytes().len() as u64);
                 this.handles.push(Some(resource));
-                this.uploads.push(upload);
+                this.staging.push(upload);
             }
             Ok(this)
         }
@@ -129,11 +127,14 @@ impl Resources {
     pub fn uniform_offset(&self, index: usize) -> Option<u64> {
         self.uniform_offsets[index]
     }
-    pub fn into_owners(self) -> Vec<ID3D12Resource> {
-        self.handles
-            .into_iter()
-            .flatten()
-            .chain(self.uploads)
-            .collect()
+    pub fn into_owners(self) -> (Vec<ID3D12Resource>, Vec<ID3D12Resource>) {
+        (
+            self.handles
+                .into_iter()
+                .flatten()
+                .chain(self.uploads)
+                .collect(),
+            self.staging,
+        )
     }
 }

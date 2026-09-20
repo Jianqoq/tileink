@@ -10,6 +10,7 @@ pub struct Frame {
     pub list: ID3D12GraphicsCommandList,
     _allocator: ID3D12CommandAllocator,
     _buffers: Vec<ID3D12Resource>,
+    pub(super) uploads: Vec<ID3D12Resource>,
     _heaps: Vec<ID3D12DescriptorHeap>,
     _pipelines: Vec<Pipeline>,
     readbacks: Vec<Readback>,
@@ -19,6 +20,7 @@ impl Frame {
         device: &ID3D12Device,
         batch: &ComputeBatch,
         pipelines: &BTreeMap<&'static str, Pipeline>,
+        staging: &mut Vec<ID3D12Resource>,
     ) -> Result<Self> {
         let synchronization = match &batch.synchronization {
             Some((id, crate::native::interop::Synchronization::Dx12(sync))) => Some((*id, sync)),
@@ -48,11 +50,13 @@ impl Frame {
                 list,
                 _allocator: allocator,
                 _buffers: Vec::new(),
+                uploads: Vec::new(),
                 _heaps: Vec::new(),
                 _pipelines: Vec::new(),
                 readbacks: Vec::new(),
             };
-            let gpu = super::compute_resources::Resources::record(device, &frame.list, batch)?;
+            let gpu =
+                super::compute_resources::Resources::record(device, &frame.list, batch, staging)?;
             let mut states = vec![D3D12_RESOURCE_STATE_COPY_DEST; batch.resources().len()];
             for (index, resource) in batch.resources().iter().enumerate() {
                 if let Resource::Texture(texture) = resource
@@ -203,7 +207,7 @@ impl Frame {
                     buffer::transition(&frame.list, gpu.get(id), states[id], final_state);
                 }
             }
-            frame._buffers = gpu.into_owners();
+            (frame._buffers, frame.uploads) = gpu.into_owners();
             frame.list.Close()?;
             Ok(frame)
         }

@@ -1,6 +1,7 @@
 mod context;
 mod debug;
 mod retirement;
+mod staging;
 mod validation;
 pub(super) use debug::enable_validation;
 use validation::cache_retryable;
@@ -35,6 +36,7 @@ struct GpuOwners {
     pipelines: BTreeMap<&'static str, ID3D12PipelineState>,
     fence: ID3D12Fence,
     pending: Pending<work::Work>,
+    staging: Vec<ID3D12Resource>,
     compute_pipelines: BTreeMap<&'static str, compute_pipeline::Pipeline>,
     cache_identity: Vec<u8>,
 }
@@ -118,7 +120,12 @@ impl Dx12 {
                 pass.shader.entry,
             )?;
         }
-        let frame = compute::Frame::record(&self.gpu.device, batch, &self.gpu.compute_pipelines)?;
+        let frame = compute::Frame::record(
+            &self.gpu.device,
+            batch,
+            &self.gpu.compute_pipelines,
+            &mut self.gpu.staging,
+        )?;
         self.submit_work(work::Work::Compute(frame))
     }
     fn submit_work(&mut self, work: work::Work) -> Result<Ticket> {
@@ -176,10 +183,16 @@ impl Dx12 {
         if latest.is_some_and(|value| completed >= value) {
             self.retirement = Retirement::Idle;
         }
-        self.gpu
-            .pending
-            .take_completed(ticket, completed)?
-            .readback()
+        let mut work = self.gpu.pending.take_completed(ticket, completed)?;
+        let result = work.readback();
+        // Never recycle on Drop or uncertain submission: only a confirmed fence
+        // permits overwriting upload memory that belonged to an earlier frame.
+        if let work::Work::Compute(frame) = &mut work
+            && !frame.uploads.is_empty()
+        {
+            self.gpu.staging = std::mem::take(&mut frame.uploads);
+        }
+        result
     }
 
     #[cfg(test)]

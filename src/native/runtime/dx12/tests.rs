@@ -311,3 +311,70 @@ fn wgpu_clear_advisory_never_hides_correctness_errors() -> Result<()> {
     }
     Ok(())
 }
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn staging_reuse_preserves_in_flight_and_resized_uploads() -> Result<()> {
+    if super::super::isolation::run(
+        "native::runtime::dx12::tests::staging_reuse_preserves_in_flight_and_resized_uploads",
+    )? {
+        return Ok(());
+    }
+    let mut device = Dx12::new(&std::env::var("TILEINK_NATIVE_GPU")?)?;
+    let batch = |size, value| -> Result<_> {
+        let mut batch = super::super::compute::ComputeBatch::new();
+        for bytes in [vec![value; size], vec![value + 1; 128]] {
+            let id = batch.buffer(bytes)?;
+            batch.readback(id)?;
+        }
+        Ok(batch)
+    };
+    let handle = |device: &Dx12, ticket: &super::super::submissions::Ticket| {
+        let super::work::Work::Compute(frame) = device.gpu.pending.get(ticket).unwrap() else {
+            panic!("expected compute frame");
+        };
+        frame.uploads[0].as_raw()
+    };
+    let a = device.submit_compute(&batch(4096, 17)?)?;
+    let b = device.submit_compute(&batch(4096, 29)?)?;
+    let first = handle(&device, &a);
+    assert_ne!(first, handle(&device, &b));
+    assert!(device.gpu.staging.is_empty());
+    assert_eq!(
+        device.readback_batch(&a)?,
+        vec![vec![17; 4096], vec![18; 128]]
+    );
+    let c = device.submit_compute(&batch(2048, 53)?)?;
+    assert_eq!(first, handle(&device, &c));
+    assert_eq!(
+        device.readback_batch(&c)?,
+        vec![vec![53; 2048], vec![54; 128]]
+    );
+    assert_eq!(
+        device.readback_batch(&b)?,
+        vec![vec![29; 4096], vec![30; 128]]
+    );
+    for (size, value) in [(8192, 71), (128, 91), (16384, 113)] {
+        let ticket = device.submit_compute(&batch(size, value)?)?;
+        assert_eq!(
+            device.readback_batch(&ticket)?,
+            vec![vec![value; size], vec![value + 1; 128]]
+        );
+    }
+    let cached = device.gpu.staging[0].as_raw();
+    let empty = device.submit_compute(&super::super::compute::ComputeBatch::new())?;
+    assert!(device.readback_batch(&empty)?.is_empty());
+    assert_eq!(
+        device.gpu.staging.first().map(Interface::as_raw),
+        Some(cached)
+    );
+    assert_valid(&device.validation_queue())?;
+    // Execute succeeded, Signal did not: the new upload remains quarantined and
+    // neither retirement nor another submit may recycle its storage.
+    device.inject_signal_failure = true;
+    assert!(device.submit_compute(&batch(128, 127)?).is_err());
+    assert!(device.unconfirmed());
+    assert_eq!(device.pending_count(), 1);
+    assert!(device.gpu.staging.is_empty());
+    assert!(device.submit_compute(&batch(128, 131)?).is_err());
+    Ok(())
+}

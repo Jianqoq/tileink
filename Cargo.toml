@@ -386,3 +386,8 @@ windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win
 name = "vulkan_staging_reuse"
 required-features = ["vulkan"]
 harness = false
+
+[[bench]]
+name = "dx12_staging_reuse"
+required-features = ["dx12"]
+harness = false

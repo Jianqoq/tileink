@@ -117,6 +117,7 @@ impl Dx12 {
                     pipelines: BTreeMap::new(),
                     fence,
                     pending: Pending::new(),
+                    staging: Vec::new(),
                     compute_pipelines: BTreeMap::new(),
                     cache_identity,
                 },
