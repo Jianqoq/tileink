@@ -100,3 +100,99 @@ fn capacity_target_keeps_logical_scratch_extent_and_rejects_invalid_bounds() {
         );
     }
 }
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn resizing_scratch_reuses_capacity_without_changing_logical_bounds() -> Result<()> {
+    assert_scratch_capacity(false)
+}
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn exact_roots_cannot_consume_scratch_capacity_during_resize() -> Result<()> {
+    assert_scratch_capacity(true)
+}
+
+fn assert_scratch_capacity(owned_root: bool) -> Result<()> {
+    use crate::native::runtime::compute::SurfacePool;
+    use crate::{NativeBackend, NativeContext, NativeContextOptions};
+    use std::{cell::RefCell, rc::Rc};
+
+    #[cfg(feature = "dx12")]
+    let backend = NativeBackend::Dx12;
+    #[cfg(feature = "vulkan")]
+    let backend = NativeBackend::Vulkan;
+    #[cfg(feature = "metal")]
+    let backend = NativeBackend::Metal;
+    #[cfg(feature = "dx12")]
+    unsafe {
+        NativeContext::enable_dx12_validation()?
+    };
+    let context = NativeContext::new(
+        backend,
+        &NativeContextOptions {
+            physical_adapter: Some(std::env::var("TILEINK_NATIVE_GPU")?),
+            validation: true,
+        },
+    )?;
+    let pool = Rc::new(RefCell::new(SurfacePool::new(&context)));
+    let main = context.create_texture(40, 32)?;
+    let mut previous = None;
+    for (index, size) in [[16, 12], [20, 14], [18, 13]].into_iter().enumerate() {
+        let mut batch = ComputeBatch::with_surfaces(pool.clone());
+        let image = batch.import_texture(&main)?;
+        let mut targets = if owned_root {
+            Targets::new(&mut batch, size, 0)?
+        } else {
+            Targets::from_image(&batch, image, size)?
+        };
+        let slot = targets.acquire(&mut batch)?;
+        let scratch = targets.get(slot)?;
+        assert_eq!(scratch.size, size);
+        let texture = batch.persistent_texture(scratch.image())?.unwrap();
+        let identity = Rc::downgrade(&texture.state);
+        if index == 2 {
+            assert!(
+                std::rc::Weak::ptr_eq(previous.as_ref().unwrap(), &identity),
+                "a smaller logical viewport must reuse the preceding scratch allocation"
+            );
+        }
+        assert_eq!(scratch.byte_len(), batch.size(scratch.image())? as u64);
+        let physical_bytes = batch.size(scratch.image())?;
+        let color = if index == 1 { 0xff352f17u32 } else { 0 };
+        if color != 0 {
+            use crate::native::runtime::program::filter::{self, BasicFilter};
+            use crate::shared::filter_config::FilterConfig;
+            let extent = texture.size();
+            filter::encode(
+                &mut batch,
+                BasicFilter::Clear,
+                FilterConfig {
+                    width: extent.0,
+                    height: extent.1,
+                    region_width: extent.0,
+                    region_height: extent.1,
+                    clear_color: color,
+                    ..Default::default()
+                },
+                None,
+                None,
+                scratch.image(),
+            )?;
+        }
+        batch.readback(scratch.image())?;
+        let receipt = context
+            .adapter
+            .submit_compute(&batch)
+            .map_err(|error| format!("{error:?}"))?;
+        drop(targets);
+        drop(batch);
+        assert_eq!(
+            receipt.readback()?,
+            vec![color.to_le_bytes().repeat(physical_bytes / 4)]
+        );
+        previous = Some(identity);
+    }
+    context.check_validation()?;
+    Ok(())
+}

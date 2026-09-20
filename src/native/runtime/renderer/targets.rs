@@ -20,6 +20,19 @@ impl Surface {
         size: [u32; 2],
         clear_color: u32,
     ) -> Result<Self> {
+        Self::allocate_inner(batch, size, clear_color, false)
+    }
+
+    fn allocate_scratch(batch: &mut ComputeBatch, size: [u32; 2]) -> Result<Self> {
+        Self::allocate_inner(batch, size, 0, true)
+    }
+
+    fn allocate_inner(
+        batch: &mut ComputeBatch,
+        size: [u32; 2],
+        clear_color: u32,
+        scratch: bool,
+    ) -> Result<Self> {
         if size.contains(&0) || size.iter().any(|&n| n > i32::MAX as u32) {
             return Err("invalid native surface dimensions".into());
         }
@@ -27,12 +40,17 @@ impl Surface {
             .checked_mul(size[1] as usize)
             .and_then(|n| n.checked_mul(4))
             .ok_or("native surface size overflow")?;
-        if let Some(image) = batch.reusable_surface(size, clear_color)? {
+        let reusable = if scratch {
+            batch.reusable_scratch_surface(size)?
+        } else {
+            batch.reusable_surface(size, clear_color)?
+        };
+        if let Some(image) = reusable {
             return Ok(Self {
                 image,
                 persistent: batch.persistent_texture(image)?.cloned(),
                 size,
-                bytes: bytes as u64,
+                bytes: batch.size(image)? as u64,
             });
         }
         let mut pixels = Vec::new();
@@ -138,7 +156,7 @@ impl Targets {
         batch.size(self.main.image)?;
         let index = if let Some(index) = self.slots.acquire() {
             if self.scratch[index].is_none() {
-                match Surface::allocate(batch, self.main.size, 0) {
+                match Surface::allocate_scratch(batch, self.main.size) {
                     Ok(surface) => self.scratch[index] = Some(surface),
                     Err(error) => {
                         self.slots.release(index);
@@ -148,7 +166,7 @@ impl Targets {
             }
             index
         } else {
-            let surface = Surface::allocate(batch, self.main.size, 0)?;
+            let surface = Surface::allocate_scratch(batch, self.main.size)?;
             self.scratch.push(Some(surface));
             self.slots.push_occupied()
         };
