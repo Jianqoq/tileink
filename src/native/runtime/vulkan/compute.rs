@@ -38,7 +38,7 @@ pub struct Frame {
     gpu: Option<Arena>,
     persistent_buffers: Vec<std::rc::Rc<Arena>>,
     resources: Vec<GpuResource>,
-    upload: Option<Arena>,
+    pub(super) upload: Option<super::staging::Staging>,
     readback: Option<Arena>,
     outputs: Vec<(usize, usize)>,
     readback_size: usize,
@@ -52,6 +52,7 @@ impl Frame {
         family: u32,
         batch: &ComputeBatch,
         pipelines: &BTreeMap<&'static str, Pipeline>,
+        staging: &mut Option<super::staging::Staging>,
     ) -> Result<Self> {
         let limits = &properties.limits;
         // Every owned image is allocated, including images reachable only through a table.
@@ -166,15 +167,9 @@ impl Frame {
         }
         let host = vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT;
         if upload.len() != 0 {
-            let arena = Arena::new(
-                device,
-                memory,
-                &[upload.len() as u64],
-                vk::BufferUsageFlags::TRANSFER_SRC | vk::BufferUsageFlags::UNIFORM_BUFFER,
-                host,
-            )?;
-            arena.write(&upload)?;
-            this.upload = Some(arena);
+            this.upload = Some(super::staging::Staging::prepare(
+                device, memory, &upload, staging,
+            )?);
         }
         this.gpu = Some(Arena::new(
             device,
@@ -213,7 +208,7 @@ impl Frame {
                 }
                 Resource::Buffer(_) => {
                     GpuResource::Buffer(if this.uniform_offsets[index].is_some() {
-                        this.upload.as_ref().unwrap().buffers[0]
+                        this.upload.as_ref().unwrap().arena.buffers[0]
                     } else {
                         *buffers.next().unwrap()
                     })
@@ -333,7 +328,7 @@ impl Frame {
                             .collect();
                         device.cmd_copy_buffer(
                             command,
-                            this.upload.as_ref().unwrap().buffers[0],
+                            this.upload.as_ref().unwrap().arena.buffers[0],
                             gpu[i].buffer(),
                             &copies,
                         );
@@ -365,14 +360,14 @@ impl Frame {
                     }
                     image.upload(
                         command,
-                        this.upload.as_ref().unwrap().buffers[0],
+                        this.upload.as_ref().unwrap().arena.buffers[0],
                         source_offsets[i],
                     );
                     continue;
                 }
                 device.cmd_copy_buffer(
                     command,
-                    this.upload.as_ref().unwrap().buffers[0],
+                    this.upload.as_ref().unwrap().arena.buffers[0],
                     gpu[i].buffer(),
                     &[vk::BufferCopy {
                         src_offset: source_offsets[i],

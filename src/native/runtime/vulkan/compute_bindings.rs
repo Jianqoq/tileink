@@ -90,7 +90,7 @@ impl Frame {
                 }
                 let (buffer, offset, range) = if binding.internal {
                     (
-                        self.upload.as_ref().unwrap().buffers[0],
+                        self.upload.as_ref().unwrap().arena.buffers[0],
                         grid_offset,
                         binding.size as u64,
                     )

@@ -381,3 +381,8 @@ path = "examples/native_window/main.rs"
 
 [target.'cfg(windows)'.dev-dependencies]
 windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_System_LibraryLoader", "Win32_Graphics_Gdi"] }
+
+[[bench]]
+name = "vulkan_staging_reuse"
+required-features = ["vulkan"]
+harness = false

@@ -5,6 +5,7 @@ mod context;
 mod frame;
 mod limits;
 mod pipeline;
+mod staging;
 mod upload;
 mod validation;
 mod work;
@@ -31,6 +32,7 @@ pub struct Vulkan {
     layout: vk::PipelineLayout,
     pipelines: BTreeMap<&'static str, vk::Pipeline>,
     pending: Pending<work::Work>,
+    staging: Option<staging::Staging>,
     properties: vk::PhysicalDeviceProperties,
     compute_pipelines: BTreeMap<&'static str, compute_pipeline::Pipeline>,
     family: u32,
@@ -168,6 +170,7 @@ impl Vulkan {
             self.family,
             batch,
             &self.compute_pipelines,
+            &mut self.staging,
         )?;
         self.submit_work(work::Work::Compute(Box::new(frame)))
     }
@@ -271,9 +274,16 @@ impl Vulkan {
                 return Err(error.into());
             }
         }
-        self.pending
-            .take_completed(ticket, ticket.serial())?
-            .readback()
+        let mut work = self.pending.take_completed(ticket, ticket.serial())?;
+        let result = work.readback();
+        // Only a successfully waited fence permits reuse. Never recycle on Drop,
+        // rejection, timeout or unknown completion (device-loss quarantine).
+        if let work::Work::Compute(frame) = &mut work
+            && let Some(staging) = frame.upload.take()
+        {
+            self.staging = Some(staging);
+        }
+        result
     }
     #[cfg(test)]
     pub fn readback(&mut self, ticket: &Ticket) -> Result<Vec<u8>> {
@@ -342,6 +352,7 @@ impl Drop for Vulkan {
                 return;
             }
             self.pending.clear_after_completion();
+            self.staging = None;
             self.compute_pipelines.clear();
             for pipeline in self.pipelines.values() {
                 self.device.destroy_pipeline(*pipeline, None);

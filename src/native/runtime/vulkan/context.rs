@@ -231,6 +231,7 @@ impl Vulkan {
                 layout: vk::PipelineLayout::null(),
                 pipelines: BTreeMap::new(),
                 pending: Pending::new(),
+                staging: None,
                 properties,
                 compute_pipelines: BTreeMap::new(),
                 family,
