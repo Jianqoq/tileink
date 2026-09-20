@@ -205,11 +205,17 @@ fn filter_blur_half_width(std_dev: f32) -> i32 {
     return i32(max(ceil(std_dev * 3.0), 1.0));
 }
 
+// A literal-zero FMA can be folded back into a reassociable multiply. The host
+// supplies positive zero at runtime to preserve each Gaussian recurrence step.
+fn filter_blur_product(a: f32, b: f32, rounding_zero: f32) -> f32 {
+    return fma(a, b, rounding_zero);
+}
+
 fn filter_blur_pack_average(accumulator: vec4<f32>, sum: f32) -> u32 {
     if (sum > 0.0) {
         // Average and quantize in stored channel units. Dividing by 255 and
         // multiplying back permits reciprocal reassociation at byte boundaries.
-        let average = fma(accumulator, vec4<f32>(1.0 / sum), vec4<f32>(0.0));
+        let average = fma(accumulator, vec4<f32>(1.0 / sum), vec4<f32>(config.rounding_zero));
         let channels = vec4<u32>(clamp(
             average + vec4<f32>(0.5), vec4<f32>(0.0), vec4<f32>(255.0),
         ));
@@ -221,7 +227,7 @@ fn filter_blur_pack_average(accumulator: vec4<f32>, sum: f32) -> u32 {
 fn filter_blur_source_sample_pixel(x: f32, y: f32) -> vec4<f32> {
     // Materialize the sample in stored channel units before weighting it. This
     // prevents the sampler's UNORM scale from being regrouped with the tap weight.
-    return fma(filter_source_sample_premul(x, y), vec4<f32>(255.0), vec4<f32>(0.0));
+    return fma(filter_source_sample_premul(x, y), vec4<f32>(255.0), vec4<f32>(config.rounding_zero));
 }
 
 fn filter_blur_source_pixel(x: u32, y: u32) -> vec4<f32> {
@@ -313,7 +319,7 @@ fn filter_blur_pixel_global(xy: vec2<u32>, dst_ix: u32, std_dev: f32) -> u32 {
 
     var weight = exp(-1.0 / two_sigma_sq);
     let weight_ratio_decay = exp(-2.0 / two_sigma_sq);
-    var weight_ratio = weight * weight_ratio_decay;
+    var weight_ratio = filter_blur_product(weight, weight_ratio_decay, config.rounding_zero);
     var d = 1i;
     loop {
         if (d > half_width) {
@@ -321,7 +327,7 @@ fn filter_blur_pixel_global(xy: vec2<u32>, dst_ix: u32, std_dev: f32) -> u32 {
         }
         let next_d = d + 1i;
         let has_pair = next_d <= half_width;
-        let next_weight = weight * weight_ratio;
+        let next_weight = filter_blur_product(weight, weight_ratio, config.rounding_zero);
         let pair_weight = weight + select(0.0, next_weight, has_pair);
         sum += 2.0 * pair_weight;
 
@@ -406,14 +412,14 @@ fn filter_blur_pixel_global(xy: vec2<u32>, dst_ix: u32, std_dev: f32) -> u32 {
         }
 
         if (has_pair) {
-            // Preserve each product's rounding boundary. Reassociating the
-            // three factors makes the recurrence drift across shader targets.
-            weight = fma(next_weight, fma(weight_ratio, weight_ratio_decay, 0.0), 0.0);
-            weight_ratio = fma(weight_ratio, fma(weight_ratio_decay, weight_ratio_decay, 0.0), 0.0);
+            // Advance two single-tap steps with an explicitly rounded ratio.
+            let next_ratio = filter_blur_product(weight_ratio, weight_ratio_decay, config.rounding_zero);
+            weight = filter_blur_product(next_weight, next_ratio, config.rounding_zero);
+            weight_ratio = filter_blur_product(next_ratio, weight_ratio_decay, config.rounding_zero);
             d += 2i;
         } else {
             weight = next_weight;
-            weight_ratio *= weight_ratio_decay;
+            weight_ratio = filter_blur_product(weight_ratio, weight_ratio_decay, config.rounding_zero);
             d += 1i;
         }
     }
@@ -429,7 +435,7 @@ fn filter_blur_pixel_interior(xy: vec2<u32>, dst_ix: u32, std_dev: f32) -> u32 {
     let two_sigma_sq = 2.0 * sigma * sigma;
     var weight = exp(-1.0 / two_sigma_sq);
     let weight_ratio_decay = exp(-2.0 / two_sigma_sq);
-    var weight_ratio = weight * weight_ratio_decay;
+    var weight_ratio = filter_blur_product(weight, weight_ratio_decay, config.rounding_zero);
     var sum = 1.0;
     let base_x = i32(xy.x);
     let base_y = i32(xy.y);
@@ -437,7 +443,7 @@ fn filter_blur_pixel_interior(xy: vec2<u32>, dst_ix: u32, std_dev: f32) -> u32 {
     var d = 1i;
     loop {
         if (d + 1i > half_width) { break; }
-        let next_weight = weight * weight_ratio;
+        let next_weight = filter_blur_product(weight, weight_ratio, config.rounding_zero);
         let pair_weight = weight + next_weight;
         sum += 2.0 * pair_weight;
         let offset = f32(d) + next_weight / pair_weight;
@@ -445,8 +451,9 @@ fn filter_blur_pixel_interior(xy: vec2<u32>, dst_ix: u32, std_dev: f32) -> u32 {
         accumulator = fma(plus, vec4<f32>(pair_weight), accumulator);
         let minus = filter_blur_sample_pair(base_x, base_y, -offset);
         accumulator = fma(minus, vec4<f32>(pair_weight), accumulator);
-        weight = fma(next_weight, fma(weight_ratio, weight_ratio_decay, 0.0), 0.0);
-        weight_ratio = fma(weight_ratio, fma(weight_ratio_decay, weight_ratio_decay, 0.0), 0.0);
+        let next_ratio = filter_blur_product(weight_ratio, weight_ratio_decay, config.rounding_zero);
+        weight = filter_blur_product(next_weight, next_ratio, config.rounding_zero);
+        weight_ratio = filter_blur_product(next_ratio, weight_ratio_decay, config.rounding_zero);
         d += 2i;
     }
     if (d <= half_width) {
@@ -492,7 +499,7 @@ fn filter_blur_pixel_shared(local_xy: vec2<u32>, half_width: i32, std_dev: f32) 
 
     var weight = exp(-1.0 / two_sigma_sq);
     let weight_ratio_decay = exp(-2.0 / two_sigma_sq);
-    var weight_ratio = weight * weight_ratio_decay;
+    var weight_ratio = filter_blur_product(weight, weight_ratio_decay, config.rounding_zero);
     var d = 1i;
     loop {
         if (d > half_width) {
@@ -514,8 +521,8 @@ fn filter_blur_pixel_shared(local_xy: vec2<u32>, half_width: i32, std_dev: f32) 
         accumulator = fma(plus, vec4<f32>(weight), accumulator);
         let minus = filter_blur_channels(shared_blur_pixels[minus_ix]);
         accumulator = fma(minus, vec4<f32>(weight), accumulator);
-        weight *= weight_ratio;
-        weight_ratio *= weight_ratio_decay;
+        weight = filter_blur_product(weight, weight_ratio, config.rounding_zero);
+        weight_ratio = filter_blur_product(weight_ratio, weight_ratio_decay, config.rounding_zero);
         d += 1i;
     }
 

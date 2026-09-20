@@ -4,11 +4,13 @@ use crate::Canvas;
 use crate::shared::{execution::ExecOp, layer::Layer};
 
 #[derive(Default)]
+#[cfg(any(feature = "wgpu", test))]
 pub(crate) struct BatchSchedule {
     submissions: u32,
     root_batches_before_submit: Option<usize>,
 }
 
+#[cfg(any(feature = "wgpu", test))]
 impl BatchSchedule {
     pub(crate) fn set_initial_root_batch_budget(&mut self, batches: usize) {
         self.root_batches_before_submit = Some(batches);

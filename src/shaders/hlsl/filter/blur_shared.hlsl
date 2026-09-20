@@ -53,14 +53,15 @@ void filter_blur_shared_region(uint3 local:SV_GroupThreadID,uint3 group:SV_Group
     float4 accumulator=blur_channels(shared_blur_pixels[center]);
     float sum=1.0;
     float sigma=max(std_dev,0.0001), two_sigma_sq=2.0*sigma*sigma;
-    float weight=exp(-1.0/two_sigma_sq), decay=exp(-2.0/two_sigma_sq), ratio=weight*decay;
+    float weight=exp(-1.0/two_sigma_sq), decay=exp(-2.0/two_sigma_sq);
+    float ratio=blur_product(weight,decay,config.rounding_zero);
     for (uint distance=1u;distance<=radius;++distance) {
         sum+=2.0*weight;
         uint delta=horizontal ? distance : distance*stride;
         accumulator=mad(blur_channels(shared_blur_pixels[center+delta]),weight,accumulator);
         accumulator=mad(blur_channels(shared_blur_pixels[center-delta]),weight,accumulator);
-        weight*=ratio;
-        ratio*=decay;
+        weight=blur_product(weight,ratio,config.rounding_zero);
+        ratio=blur_product(ratio,decay,config.rounding_zero);
     }
-    target_texture[xy]=rgba8_to_unorm(blur_pack_average(accumulator,sum));
+    target_texture[xy]=rgba8_to_unorm(blur_pack_average(accumulator,sum,config.rounding_zero));
 }

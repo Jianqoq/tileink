@@ -1,5 +1,16 @@
 # Native backend implementation record
 
+Current Windows M6 scope (2026-09-20): NVIDIA RTX 4090 and AMD Radeon integrated
+graphics, DX12/Vulkan only. Both devices pass seven routes in three fresh serial
+runs: 126 processes and 81,102 exact RGBA outputs with frozen source/shader hashes.
+Release tests, strict Clippy and native lifecycle/window checks pass. After the
+22 changed baseline PNGs were submitted for review, the user authorized commit/push
+on 2026-09-20. The scoped Windows M6 delivery is complete. See
+[M6 Windows](docs/native/m6-windows.md) and its
+[verification receipt](docs/native/m6-windows-verification.json).
+Performance comparisons remain excluded. Intel, Linux and fresh Mac M6 validation
+are outside this delivery; mirrored MSL rounding changes require Mac verification.
+
 Current macOS status (2026-09-19): **M1–M5 complete on Apple M2**. The shared
 29-frame retained corpus passes all 18 variants (522 exact outputs); the native
 Metal host completes eight real presentation frames and a 640×360 → 480×270 resize.

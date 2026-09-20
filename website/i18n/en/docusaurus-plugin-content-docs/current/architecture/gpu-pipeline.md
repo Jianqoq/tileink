@@ -5,6 +5,17 @@ title: GPU pipeline
 
 # GPU pipeline
 
+Windows acceptance builds wgpu, DX12 and Vulkan separately. Each GPU process pins
+one physical adapter and one route. Full SVG, example and retained sequences run
+three times and compare raw premultiplied RGBA8 without row padding, including
+RGB at zero alpha. Source, resource, font and executable hashes accompany results;
+missing output or API validation errors fail acceptance. Metal device results are
+recorded separately and cannot be inferred from Windows results.
+
+Native full tile-bin uploads consume dirty journals after staging, preventing
+retained geometry updates from accumulating unused entries. Abandoning a batch
+does not lose the next frame's data: the next recording copies a complete snapshot.
+
 ```mermaid
 flowchart LR
   Records[Scene records] --> Scan[Path scan]

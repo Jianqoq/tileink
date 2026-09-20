@@ -5,7 +5,9 @@ title: 架构总览
 
 # 架构总览
 
-Tileink 把“场景怎么变化”与“像素怎么生成”分开。`Canvas`/`RetainedScene` 负责场景语义；共享的 WGPU backend 负责 scan、binning、raster 和 filters。
+Tileink 把“场景怎么变化”与“像素怎么生成”分开。`Canvas`/`RetainedScene` 负责场景语义；编译时选择的后端负责 scan、binning、raster 和 filters。
+
+`wgpu`、`dx12`、`vulkan`、`metal` 四个 feature 互斥，默认使用 `wgpu`。原生 DX12/Vulkan 使用 HLSL，Metal 使用独立维护的 MSL；shader 和 pipeline 使用缓存。CPU 场景准备与 retained 语义共享，API 资源、同步和提交按后端实现。
 
 ```mermaid
 flowchart LR

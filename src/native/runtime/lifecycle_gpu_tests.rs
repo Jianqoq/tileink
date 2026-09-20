@@ -8,6 +8,8 @@ use super::{Result, submissions};
 
 #[path = "tests/batches.rs"]
 mod batches;
+#[path = "tests/brush_bounds_gpu.rs"]
+mod brush_bounds;
 #[path = "tests/cases.rs"]
 mod cases;
 #[path = "tests/interop_gpu.rs"]
@@ -61,6 +63,11 @@ fn queued_native_submissions_keep_leases_and_reject_wrong_devices() -> Result<()
         assert_eq!(device.readback(ticket)?, case.expected);
     }
     assert_eq!(device.pending_count(), 0);
+    // The synchronous probe path must remain reusable after a queue of independently
+    // retired submissions, with no stale output allocation or validation state.
+    for case in &cases {
+        assert_eq!(device.execute(case)?, case.expected);
+    }
     assert!(device.readback(&tickets[0]).is_err());
     // Dropping a receipt does not retire GPU work; teardown must still cover it.
     drop(device.submit(&cases[0])?);
@@ -76,3 +83,9 @@ fn queued_native_submissions_keep_leases_and_reject_wrong_devices() -> Result<()
 
 #[path = "tests/completion_and_history_gpu.rs"]
 mod completion_and_history;
+
+#[path = "tests/pixel_rounding_gpu.rs"]
+mod pixel_rounding;
+
+#[path = "tests/renderer_rounding_gpu.rs"]
+mod renderer_rounding;

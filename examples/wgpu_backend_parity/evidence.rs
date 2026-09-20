@@ -1,4 +1,6 @@
-use super::{Result, options::Options};
+use super::Result;
+#[cfg(feature = "wgpu")]
+use super::options::Options;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
@@ -92,6 +94,7 @@ pub fn resource_snapshot(paths: &[PathBuf]) -> Result<Value> {
     Ok(json!(resources))
 }
 
+#[cfg(feature = "wgpu")]
 pub fn create_manifest(
     options: &Options,
     cases: &[String],

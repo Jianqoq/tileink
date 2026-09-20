@@ -7,6 +7,11 @@ title: Architecture overview
 
 Tileink separates how scene state changes from how pixels are produced. Immediate and retained scenes converge on the same execution plan and GPU pipeline.
 
+Exactly one renderer feature is compiled: `wgpu` (default), `dx12`, `vulkan`, or
+`metal`. Native DX12/Vulkan use HLSL; Metal uses independently maintained MSL.
+Shaders and pipelines are cached. CPU scene preparation and retained semantics
+are shared, while API resources, synchronization and submission belong to each backend.
+
 ```mermaid
 flowchart LR
   App[Application] -->|record| Canvas

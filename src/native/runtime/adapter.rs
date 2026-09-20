@@ -2,23 +2,15 @@
 //! staged uniforms before CommandBatch reuses an arena. API owners retire leases.
 #[cfg(feature = "metal")]
 mod metal;
-use super::{
-    Result,
-    program::{Dispatch, Params},
-    submissions::Ticket,
-};
-use crate::{
-    native::NativeBackend,
-    render::{
-        backend::{BatchAdapter, SubmitError},
-        upload::uniforms::UniformWrites,
-    },
-};
-use std::{
-    cell::RefCell,
-    hash::{Hash, Hasher},
-    rc::Rc,
-};
+#[cfg(test)]
+use super::program::{Dispatch, Params};
+use super::{Result, submissions::Ticket};
+#[cfg(test)]
+use crate::render::{backend::BatchAdapter, upload::uniforms::UniformWrites};
+use crate::{native::NativeBackend, render::backend::SubmitError};
+#[cfg(test)]
+use std::hash::{Hash, Hasher};
+use std::{cell::RefCell, rc::Rc};
 
 #[derive(Clone)]
 pub struct Adapter(Rc<RefCell<Device>>);
@@ -61,6 +53,7 @@ enum Device {
     Vulkan(Box<super::vulkan::Vulkan>),
 }
 
+#[cfg(test)]
 // Allocation identity and device generation are separate. Rc<()> value equality
 // would equate all allocations, so only pointer identity participates in Eq/Hash.
 #[derive(Clone)]
@@ -68,26 +61,32 @@ pub struct UniformBuffer {
     device: Rc<RefCell<Device>>,
     allocation: Rc<()>,
 }
+#[cfg(test)]
 impl PartialEq for UniformBuffer {
     fn eq(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.allocation, &other.allocation)
     }
 }
+#[cfg(test)]
 impl Eq for UniformBuffer {}
+#[cfg(test)]
 impl Hash for UniformBuffer {
     fn hash<H: Hasher>(&self, state: &mut H) {
         Rc::as_ptr(&self.allocation).hash(state);
     }
 }
 
+#[cfg(test)]
 pub struct Encoder {
     device: Rc<RefCell<Device>>,
     commands: Vec<Command>,
 }
+#[cfg(test)]
 struct Command {
     dispatch: Dispatch,
     uniform: Option<(UniformBuffer, u64)>,
 }
+#[cfg(test)]
 impl Encoder {
     pub fn dispatch(&mut self, dispatch: impl Into<Dispatch>) {
         self.commands.push(Command {
@@ -271,6 +270,7 @@ impl Adapter {
                 }
             })
     }
+    #[cfg(test)]
     pub fn uniform_buffer(&self) -> UniformBuffer {
         UniformBuffer {
             device: self.0.clone(),
@@ -319,6 +319,7 @@ impl Adapter {
             }
         }
     }
+    #[cfg(test)]
     fn resolve(
         &self,
         encoder: Encoder,
@@ -365,6 +366,7 @@ impl Adapter {
     }
 }
 
+#[cfg(test)]
 impl BatchAdapter for Adapter {
     type Buffer = UniformBuffer;
     type Encoder = Encoder;

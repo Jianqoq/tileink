@@ -153,14 +153,23 @@ replaced when repeating a run: choose a new output directory each time.
 
 With the explicit GPU/compiler/layer environment in
 [`m3-completion.md`](../../docs/native/m3-completion.md), run
-`cargo test --release --features native --lib native::runtime -- --include-ignored --test-threads=1 --nocapture`.
+`cargo test --release --no-default-features --features dx12 --lib native::runtime -- --include-ignored --test-threads=1 --nocapture`
+and repeat with `--features vulkan`.
 The old `--test native_shader_gpu` target was moved into the production native
 module with separate test fixtures. `TILEINK_NATIVE_GPU_REPORT` optionally writes
 the per-case four-route hashes and exact comparison report. This runs correctness
 checks, not performance comparisons.
 # Native immediate four-API corpus
 
-The release `wgpu_backend_parity` example now accepts `--native` when built with
-`--features native`. It compares the same SVG/example inputs across wgpu DX12,
+The release acceptance runner builds separate executables with mutually exclusive
+backend features. It compares the same SVG/example inputs across wgpu DX12,
 wgpu Vulkan, native DX12 and native Vulkan on one explicitly selected GPU.
 See [commands, validation prerequisites and evidence contract](../../docs/native/m4-corpus-runner.md).
+# Native backend acceptance
+
+`run_native_acceptance.ps1 -Output <new-directory>` builds release executables for
+the mutually exclusive `wgpu`, `dx12`, and `vulkan` features, then runs GPU jobs
+serially and compares raw pixels. It requires Python 3.9+ (override with `-Python`),
+the pinned wgpu DXC DLL and native API validation setup. See
+[M6 Windows acceptance](../../docs/native/m6-windows.md) for routes, manifests,
+device selection, corpus coverage and failure rules. It does not run benchmarks.

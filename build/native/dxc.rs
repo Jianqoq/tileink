@@ -76,11 +76,14 @@ impl Dxc {
 
     pub fn flags(target: &str, entry: &str) -> io::Result<Vec<String>> {
         let mut args = vec![
-            "-T", "cs_6_0", "-E", entry, "-HV", "2021", "-Ges", "-WX", "-O3", "-Gis",
+            "-T", "cs_6_0", "-E", entry, "-HV", "2021", "-Ges", "-WX", "-O3",
         ];
         match target {
+            // DXIL precise FMad is non-fused, unlike WGSL fma. Do not force
+            // global -Gis here; explicit shader products protect required rounds.
             "dxil" => (),
-            "spirv" => args.extend(["-spirv", "-fspv-target-env=vulkan1.1"]),
+            // SPIR-V keeps explicit Fma while forbidding implicit contraction.
+            "spirv" => args.extend(["-Gis", "-spirv", "-fspv-target-env=vulkan1.1"]),
             _ => return Err(io::Error::other("unknown DXC shader target")),
         }
         Ok(args.into_iter().map(str::to_owned).collect())

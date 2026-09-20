@@ -9,6 +9,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- Add separate-build Windows acceptance for the exclusive wgpu/DX12/Vulkan
+  features: complete SVG/example/retained corpora, three serial runs, seven routes,
+  explicit GPU identity, API validation and strict raw RGBA comparison evidence.
+- Scope host helpers and generated constants to their backend consumers, keeping
+  shared scene semantics and backend-specific tests. Move wgpu tile debug capture
+  into its own module. Native complete tile-bin uploads now consume dirty journals,
+  fixing retained geometry updates accumulating unused CPU staging entries.
+- Preserve native image-pattern reads on the tested AMD Vulkan stack by expressing
+  brush bounds checks as nested valid-range branches, retaining overflow and
+  out-of-range protection and covering both image rendering and bounds on GPU.
+- Align fused interpolation, gradient range reduction and filter product rounding
+  across Windows backends. Remove DXIL precise propagation that broke fused
+  intersections, and validate the runtime positive-zero filter operand before
+  allocation. Mirrored MSL changes still require fresh Mac validation.
+
 - Add the exclusive macOS `metal` backend with offline independent MSL, reflected
   ABI validation, full Canvas/retained rendering, persistent resources and typed
   host device/texture/shared-event interop. Add same-device exact SVG, example and

@@ -92,17 +92,30 @@ pub fn write_rust(out: &Path) -> io::Result<()> {
         }
     }
     fs::write(out.join("tileink_gpu_constants.rs"), rust_constants(&host))?;
-    let mut validation = rust_constants(&read_hlsl("validation/sdf_config.hlsli")?);
-    validation.push_str(&rust_constants(&read_hlsl("shared/stack_constants.hlsli")?));
-    let mut brush = read_hlsl("shared/brush/constants.hlsli")?;
-    brush.retain(|name, _| name == "BRUSH_TEXTURE_PLACEMENT_BIT");
-    validation.push_str(&rust_constants(&brush));
+    // The Metal SDF probe is the remaining host consumer of these validation
+    // headers. Shader-only declarations must not become unused Rust globals.
+    let mut sdf = read_hlsl("validation/sdf_config.hlsli")?;
+    sdf.retain(|name, _| name == "SDF_PROBE_REQUEST_WORDS");
+    let validation = rust_constants(&sdf);
     fs::write(out.join("tileink_native_test_constants.rs"), validation)
 }
 
 fn rust_constants(constants: &BTreeMap<String, u32>) -> String {
     let mut source = String::from("// Generated from maintained HLSLI constants. Do not edit.\n");
     for (name, value) in constants {
+        // Generate host declarations only for their consumers. Shader constants
+        // remain authoritative even when a backend has no Rust-side use.
+        match name.as_str() {
+            "PATH_MASK_COORDINATE_SCALE"
+            | "TURBULENCE_COORDINATE_OFFSET"
+            | "TURBULENCE_MAX_EFFECTIVE_OCTAVES" => {
+                source.push_str("#[cfg(not(feature = \"wgpu\"))]\n")
+            }
+            "SHARED_BLUR_TILE_WIDTH" | "SHARED_BLUR_TILE_HEIGHT" => {
+                source.push_str("#[cfg(feature = \"wgpu\")]\n")
+            }
+            _ => {}
+        }
         let visibility = if name == "TILE_SIZE" {
             "pub"
         } else {

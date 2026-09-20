@@ -12,7 +12,7 @@ struct FilterConfig {
     uint active_tile_count;
     uint compact_tiles;
     uint dispatch_width;
-    uint active_tile_pad1;
+    float rounding_zero;
     uint downsample;
     uint downsample_filter;
     uint upsample_filter;

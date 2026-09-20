@@ -22,7 +22,7 @@ uint turbulence_pixel(constant FilterConfig& c,const device uint* selectors,cons
         float amplitude=1;
         for(uint octave=0;octave<c.turbulence_num_octaves;++octave) {
             float4 value;
-            for(uint channel=0;channel<4;++channel) value[channel]=perlin(selectors,gradients,c.table_index,channel,sample*frequency,stitch,wrap,extent);
+            for(uint channel=0;channel<4;++channel) value[channel]=perlin(selectors,gradients,c.table_index,channel,sample*frequency,stitch,wrap,extent,c.rounding_zero);
             accumulated+=(c.turbulence_kind==0?abs(value):value)*amplitude;
             if(octave+1>=c.turbulence_num_octaves) break;
             amplitude*=0.5f;if(amplitude==0) break;

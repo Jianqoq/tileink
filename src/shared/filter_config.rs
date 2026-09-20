@@ -14,7 +14,9 @@ pub struct FilterConfig {
     pub active_tile_count: u32,
     pub compact_tiles: u32,
     pub dispatch_width: u32,
-    pub active_tile_pad1: u32,
+    /// Positive zero supplied at runtime to preserve shader product rounding.
+    /// Literal-zero folding can reassociate filter recurrences and fused dots.
+    pub rounding_zero: f32,
     pub downsample: u32,
     pub downsample_filter: u32,
     pub upsample_filter: u32,
@@ -132,7 +134,7 @@ impl Default for FilterConfig {
             active_tile_count: 0,
             compact_tiles: 0,
             dispatch_width: 0,
-            active_tile_pad1: 0,
+            rounding_zero: 0.0,
             downsample: 1,
             downsample_filter: 0,
             upsample_filter: 0,

@@ -347,8 +347,9 @@ fn filter_turbulence_gradient_dot(
     y: f32,
 ) -> f32 {
     let ix = gradient_offset + (channel * TURBULENCE_TABLE_LEN + selector) * 2u;
-    // Keep the gradient dot product on the same rounding path on both APIs.
-    return fma(turbulence_gradients[ix], x, turbulence_gradients[ix + 1u] * y);
+    // Preserve the second product before the fused dot. Literal-zero folding
+    // otherwise lets tested compilers reassociate it across noise interpolation.
+    return fma(turbulence_gradients[ix], x, fma(turbulence_gradients[ix + 1u], y, config.rounding_zero));
 }
 
 fn liquid_glass_pixel(
@@ -971,8 +972,9 @@ fn lighting_power(base: f32, exponent: f32) -> f32 {
 
 // Share an explicit product and sum order for lighting vectors. Specular
 // lighting normalizes the completed dot to avoid per-component division error.
+// Runtime zero keeps the innermost product from being folded/reassociated.
 fn lighting_dot3(a: vec3<f32>, b: vec3<f32>) -> f32 {
-    return fma(a.x, b.x, fma(a.y, b.y, fma(a.z, b.z, 0.0)));
+    return fma(a.x, b.x, fma(a.y, b.y, fma(a.z, b.z, config.rounding_zero)));
 }
 
 fn composite_inputs_pixel(input1: u32, input2: u32, composite_operator: u32, k1: f32, k2: f32, k3: f32, k4: f32) -> u32 {

@@ -2,6 +2,10 @@
 
 ## M0/M1 delivery decision (2026-09-13)
 
+The same user decision applies to [M6 Windows acceptance](docs/native/m6-windows.md):
+no Criterion or resize timing comparison is run or used as a completion gate.
+Exact pixels, lifecycle semantics, API validation and build checks remain required.
+
 On 2026-09-13 the user instructed: **“不用比较性能了”** (stop performance comparisons). For this M0/M1 closeout, no further Criterion comparisons, resize timing or telemetry are required. Performance is not an acceptance gate for this delivery, and `performance_accepted` remains false. Historical regressions, rejected experiments and incomplete timing runs remain preserved. This does not waive functionality, exact pixels, feature/dependency checks, release tests or code review.
 
 The procedures below remain historical/method documentation; they do not request additional performance work for this closeout.

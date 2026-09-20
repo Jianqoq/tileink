@@ -59,3 +59,29 @@ impl Scatter {
         &self.destination
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Scatter;
+
+    #[test]
+    fn scatter_rejects_truncated_payloads_and_overlapping_destinations() {
+        let source = [8u32, 1, 0, 0, 0, 0, 1, 0, 0x01020304];
+        let pack = |words: &[u32]| bytemuck::cast_slice(words).to_vec();
+        let valid = Scatter::new(pack(&source), vec![0; 4]).unwrap();
+        assert_eq!(valid.workgroups, 1);
+        assert_eq!(valid.source, pack(&source));
+        assert!(Scatter::new(pack(&source[..8]), vec![0; 4]).is_err());
+        assert!(Scatter::new(pack(&source), vec![0; 3]).is_err());
+        let overlap = [12u32, 2, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 3, 4];
+        assert!(Scatter::new(pack(&overlap), vec![0; 8]).is_err());
+        let mut adjacent = overlap;
+        adjacent[8] = 1;
+        assert_eq!(
+            Scatter::new(pack(&adjacent), vec![0; 8])
+                .unwrap()
+                .workgroups,
+            2
+        );
+    }
+}

@@ -74,6 +74,8 @@ fn native_image_cache_reuses_initialized_arrays_without_upload() -> Result<()> {
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn native_vector_aliases_share_one_recording_per_batch() -> Result<()> {
+    // Also regresses AMD Vulkan pattern reads being discarded by a miscompiled
+    // brush bounds guard: the child image uploads correctly but the parent is empty.
     use crate::{Canvas, ImageKey, PatternSampling, Radius};
     use peniko::{Color, Extend, kurbo::Rect};
     let mut child = Canvas::new(4, 4, 1.0);

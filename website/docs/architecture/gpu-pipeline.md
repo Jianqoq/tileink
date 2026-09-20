@@ -5,6 +5,10 @@ title: GPU Pipeline
 
 # GPU Pipeline
 
+Windows 验收分别构建 wgpu、DX12、Vulkan，每个 GPU 进程固定物理设备和一条渲染路径。完整 SVG、示例及 retained 状态序列各执行三轮，比较无行填充的预乘 RGBA8；透明像素的 RGB 也必须完全一致。源码、资源、字体和可执行文件摘要随结果保存，缺失输出或 API validation 错误都会导致失败。Metal 的设备验收单独记录，不由 Windows 结果推断。
+
+原生完整 tile-bin 上传在暂存后消费 dirty journal，避免连续 retained 几何更新积累无用条目。提交前放弃批次不会丢失下一帧数据，因为下一次记录仍复制完整快照。
+
 ```mermaid
 flowchart LR
   Records[Scene records] --> ScanCount[Scan count]

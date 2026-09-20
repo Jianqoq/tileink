@@ -71,6 +71,7 @@ impl<A: BatchAdapter> CommandBatch<A> {
         }
     }
 
+    #[cfg(feature = "wgpu")]
     pub(crate) fn adapter(&self) -> &A {
         &self.adapter
     }

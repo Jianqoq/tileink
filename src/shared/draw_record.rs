@@ -132,6 +132,7 @@ impl DrawRecord {
         }
     }
 
+    #[cfg(feature = "wgpu")]
     pub(crate) fn fill_rule(self) -> FillRule {
         match self.fill_rule.0 {
             value if value == FillRule::EvenOdd as u32 => FillRule::EvenOdd,

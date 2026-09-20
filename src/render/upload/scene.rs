@@ -2,14 +2,13 @@
 //! tile bins and retained capacity from this same preparation state.
 use super::{glyph_capacity::GlyphCapacityCache, paint::PaintUploadState, text::TextUpload};
 use crate::shared::execution::ExecPlan;
+#[cfg(feature = "wgpu")]
+use crate::shared::gpu_plan::{CoarseBinningStats, GpuScanChunkRange};
 use crate::{
     Canvas,
     shared::{
         gpu_coarse::LayerStackRecord,
-        gpu_plan::{
-            CoarseBinningStats, GpuBufferLengths, GpuLengthOverrides, GpuScanChunkRange,
-            PersistentPathPlans, TileDrawBins,
-        },
+        gpu_plan::{GpuBufferLengths, GpuLengthOverrides, PersistentPathPlans, TileDrawBins},
     },
     text::{PreparedTextChanges, PreparedTextData},
 };
@@ -29,10 +28,12 @@ pub(crate) struct SceneUploadStaging {
 }
 
 impl SceneUploadStaging {
+    #[cfg(feature = "wgpu")]
     pub(crate) fn coarse_binning_stats(&self, tiles: &[u32]) -> CoarseBinningStats {
         self.tile_draw_bins.coarse_binning_stats(tiles)
     }
 
+    #[cfg(feature = "wgpu")]
     pub(crate) fn scan_ranges(&self) -> &[GpuScanChunkRange] {
         self.path_plans.scan_ranges()
     }
@@ -41,6 +42,7 @@ impl SceneUploadStaging {
         self.tile_draw_bins.active_batch_ids(tiles, draw_batch_ids)
     }
 
+    #[cfg(feature = "wgpu")]
     pub(crate) fn draws_in_bounds(
         &self,
         bounds: crate::shared::bounds::Bounds,

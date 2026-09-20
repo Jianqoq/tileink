@@ -4,7 +4,8 @@
 [![crates.io](https://img.shields.io/crates/v/tileink.svg)](https://crates.io/crates/tileink)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 
-Tileink is a tile-based, GPU-compute 2D renderer for Rust and WGPU. It combines an immediate
+Tileink is a tile-based, GPU-compute 2D renderer for Rust, with wgpu and native DX12,
+Vulkan and Metal backends. It combines an immediate
 `Canvas` with a transactional, incremental `RetainedScene` for interfaces and other large scenes
 where only a small part changes from frame to frame.
 
@@ -40,9 +41,10 @@ command boundary through wgpu's public synchronization API.
 
 ## Feature flags
 
-Exactly one renderer feature must be enabled: `wgpu` (default), `dx12`, or
-`vulkan`. To use a native backend, pass `--no-default-features --features dx12`
-or `--no-default-features --features vulkan`. Missing or conflicting selections
+Exactly one renderer feature must be enabled: `wgpu` (default), `dx12`, `vulkan`,
+or `metal`. To use a native backend, pass `--no-default-features --features dx12`,
+`--no-default-features --features vulkan`, or `--no-default-features --features metal`.
+Missing or conflicting selections
 are compile errors, including feature conflicts introduced by dependencies.
 
 | Configuration | Current behavior |
@@ -50,11 +52,13 @@ are compile errors, including feature conflicts introduced by dependencies.
 | Default / `wgpu` | Existing WGPU renderer and texture interop |
 | `dx12` | Windows DX12 immediate/retained renderer and host interop using cached HLSL/DXIL |
 | `vulkan` | Windows Vulkan immediate/retained renderer and host interop using cached HLSL/SPIR-V; Linux runtime remains unavailable |
+| `metal` | macOS immediate/retained renderer and host interop using cached, independently maintained MSL |
 
 The former `native`, `native-dx12`, and `native-vulkan` feature names were removed;
 there are no compatibility aliases. Backend parity runs use separate builds.
 See the [backend feature contract](docs/native/backend-features.md) for current
-commands and the status of test-harness migration.
+commands. [M6 Windows acceptance](docs/native/m6-windows.md) runs the complete
+corpora in separate backend processes, with strict byte comparisons and device evidence.
 
 Native builds find DXC in the [default toolchain caches](docs/native/toolchain-discovery.md)
 when `TILEINK_NATIVE_DXC_PATH` / `TILEINK_DXC_PATH` are unset. Explicit paths take

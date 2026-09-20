@@ -1,5 +1,6 @@
 use crate::shared::image::rgba8_pack;
 
+#[cfg(feature = "wgpu")]
 pub(crate) const MASK_OPAQUE: u8 = 255;
 
 /// Parameters for contrast-dependent text coverage compensation.
@@ -186,6 +187,7 @@ pub(crate) fn premul_f32_to_u32(c: [f32; 4]) -> u32 {
     ])
 }
 
+#[cfg(feature = "wgpu")]
 pub(crate) fn src_over_premul_u8(dst: u32, src: u32) -> u32 {
     let sa = (src >> 24) as u8;
     if sa == 0 {

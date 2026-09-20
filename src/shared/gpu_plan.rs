@@ -1,4 +1,6 @@
-use std::{collections::HashSet, ops::Range};
+#[cfg(any(feature = "wgpu", test))]
+use std::collections::HashSet;
+use std::ops::Range;
 
 use bytemuck::{Pod, Zeroable};
 
@@ -320,6 +322,7 @@ pub(crate) struct TileDrawBins {
     affected_dense_bins: DenseIndexSet,
 }
 
+#[cfg(any(feature = "wgpu", test))]
 /// Candidate-loop work executed by the two native coarse kernels.
 ///
 /// Compact kernels process one 256-draw page per workgroup round. Dense kernels assign one lane
@@ -334,6 +337,7 @@ pub(crate) struct CoarseBinningStats {
 }
 
 impl TileDrawBins {
+    #[cfg(any(feature = "wgpu", test))]
     pub(crate) fn coarse_binning_stats(&self, tiles: &[u32]) -> CoarseBinningStats {
         CoarseBinningStats {
             active_tiles: tiles.len() as u32,
@@ -417,6 +421,7 @@ impl TileDrawBins {
         }
     }
 
+    #[cfg(any(feature = "wgpu", test))]
     /// Returns painter-ordered draws touching a pixel region without scanning the scene draw
     /// table. Persistent bins already maintain the spatial reverse index; transient bins use the
     /// same uploaded page/flat representation so local offscreen extraction has one code path.
@@ -953,6 +958,7 @@ impl TileDrawBins {
         self.compactions += 1;
     }
 
+    #[cfg(any(feature = "wgpu", test))]
     pub(crate) fn take_dirty(&mut self) -> (bool, Vec<usize>, Vec<u32>) {
         let full = std::mem::take(&mut self.full_upload);
         self.dirty_records.sort_unstable();
@@ -964,6 +970,18 @@ impl TileDrawBins {
             std::mem::take(&mut self.dirty_records),
             std::mem::take(&mut self.dirty_pages),
         )
+    }
+
+    /// Native uploads copy the complete snapshot on every recording. Consume the
+    /// journal without sorting unused incremental ranges; otherwise retained tile
+    /// membership edits accumulate dirty entries indefinitely. An abandoned batch
+    /// remains safe because the next recording also copies a complete snapshot.
+    #[cfg(not(feature = "wgpu"))]
+    pub(crate) fn finish_full_upload(&mut self) {
+        self.full_upload = false;
+        let records = std::mem::take(&mut self.dirty_records);
+        let pages = std::mem::take(&mut self.dirty_pages);
+        self.recycle_dirty(records, pages);
     }
 
     /// Returns upload-consumed dirty-list storage so retained updates reuse its capacity.
@@ -980,6 +998,7 @@ impl TileDrawBins {
         }
     }
 
+    #[cfg(any(feature = "wgpu", test))]
     pub(crate) fn active_page_count(&self) -> usize {
         self.active_pages
     }
@@ -1004,6 +1023,7 @@ impl TileDrawBins {
         self.upload_indices().len()
     }
 
+    #[cfg(any(feature = "wgpu", test))]
     pub(crate) fn compactions(&self) -> u64 {
         self.compactions
     }
@@ -1486,6 +1506,7 @@ pub(crate) struct GpuCanvasConfig {
 }
 
 impl GpuCanvasConfig {
+    #[cfg(feature = "wgpu")]
     pub(crate) fn new(canvas: &Canvas, lengths: GpuBufferLengths, clear_color: u32) -> Self {
         Self {
             width: canvas.physical_width(),

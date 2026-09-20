@@ -7,7 +7,9 @@
 use std::rc::Rc;
 
 use crate::shared::execution::{ExecPlan, ROOT_COMMAND_LIST_ID};
-use crate::shared::gpu_plan::{plan_stack_depths, required_scratch_count};
+use crate::shared::gpu_plan::plan_stack_depths;
+#[cfg(any(feature = "wgpu", test))]
+use crate::shared::gpu_plan::required_scratch_count;
 use crate::text::{PreparedTextChanges, PreparedTextData};
 use crate::{Canvas, TextContext, TextFontSystem};
 
@@ -23,10 +25,12 @@ pub(crate) struct PreparedPlan {
     pub(crate) plan: Rc<ExecPlan>,
     pub(crate) reused_metadata: bool,
     pub(crate) stack_depths: (usize, usize),
+    #[cfg(any(feature = "wgpu", test))]
     pub(crate) upload_filters: bool,
 }
 
 impl PreparedPlan {
+    #[cfg(any(feature = "wgpu", test))]
     /// Keep scratch planning and adapter allocation in the existing measured scope.
     /// This preserves stage attribution when preparation moves out of an adapter.
     pub(crate) fn prepare_scratch(&self, allocate: impl FnOnce(usize)) {
@@ -66,6 +70,7 @@ impl ScenePreparation {
             plan,
             reused_metadata,
             stack_depths: self.stack_depths,
+            #[cfg(any(feature = "wgpu", test))]
             upload_filters: !reused_metadata
                 || changes.is_some_and(|changes| changes.filter_resources_changed),
         }

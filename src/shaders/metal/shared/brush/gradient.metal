@@ -8,9 +8,11 @@ float gradient_extend(float t,uint mode) {
 uint gradient_ramp(Words paint,uint payload,uint count,float t,uint extend) {
     if(!count) return 0;
     uint last=count-1;
-    float position=gradient_extend(t,extend)*float(last);
+    float extended=gradient_extend(t,extend);
+    float position=extended*float(last);
     uint a=uint(floor(position)),b=min(a+1,last);
-    float fraction=position-float(a);
+    // Preserve the fractional residual instead of rounding the product first.
+    float fraction=fma(extended,float(last),-float(a));
     uint left=paint[payload+a],right=paint[payload+b];
     return fraction<=0.00000011920929f || a==b ? left : mix_pixel(left,right,fraction);
 }

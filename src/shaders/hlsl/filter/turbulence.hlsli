@@ -4,8 +4,8 @@
 #include "turbulence_noise.hlsli"
 #include "color_space.hlsli"
 #include "../shared/pixel.hlsli"
-float4 turbulence_channels(ByteAddressBuffer selectors,ByteAddressBuffer gradients,uint table,float2 position,bool stitch,int2 wrap,int2 extent) {
-    return float4(turbulence_noise(selectors,gradients,table,0u,position,stitch,wrap,extent),turbulence_noise(selectors,gradients,table,1u,position,stitch,wrap,extent),turbulence_noise(selectors,gradients,table,2u,position,stitch,wrap,extent),turbulence_noise(selectors,gradients,table,3u,position,stitch,wrap,extent));
+float4 turbulence_channels(ByteAddressBuffer selectors,ByteAddressBuffer gradients,uint table,float2 position,bool stitch,int2 wrap,int2 extent,float rounding_zero) {
+    return float4(turbulence_noise(selectors,gradients,table,0u,position,stitch,wrap,extent,rounding_zero),turbulence_noise(selectors,gradients,table,1u,position,stitch,wrap,extent,rounding_zero),turbulence_noise(selectors,gradients,table,2u,position,stitch,wrap,extent,rounding_zero),turbulence_noise(selectors,gradients,table,3u,position,stitch,wrap,extent,rounding_zero));
 }
 uint turbulence_pack(float4 value,uint kind,uint linear_rgb) {
     if(kind==1u) value=value*0.5+0.5;
@@ -38,7 +38,7 @@ uint turbulence_pixel(ConstantBuffer<FilterConfig> config,ByteAddressBuffer sele
     }
     float ratio=1.0;float4 value=0.0;
     for(uint octave=0u;octave<config.turbulence_num_octaves;++octave) {
-        float4 noise=turbulence_channels(selectors,gradients,config.table_index,sample_base*frequency,stitch,wrap,extent);
+        float4 noise=turbulence_channels(selectors,gradients,config.table_index,sample_base*frequency,stitch,wrap,extent,config.rounding_zero);
         value+=(config.turbulence_kind==0u ? abs(noise) : noise)*ratio;
         if(octave+1u>=config.turbulence_num_octaves) break;
         ratio*=0.5;

@@ -25,14 +25,15 @@ change shader source or invalidate shader content hashes.
 
 Pixel parity must use separately compiled executables for wgpu-DX12,
 wgpu-Vulkan, DX12, and Vulkan, with matching GPU, inputs, fonts, and frame sequence.
-There is no test-only exception to feature exclusivity. Migration of the former
-combined-process corpus and low-level GPU test harnesses is still in progress;
-their previous multi-feature invocations are not valid verification commands.
+There is no test-only exception to feature exclusivity. The maintained
+[Windows corpus runner](m6-windows.md) builds each backend separately and compares
+all SVGs, examples and retained variants across processes. Previous multi-feature
+invocations are not valid verification commands.
 The independent lifetime suite is already migrated to
 `native::runtime::lifecycle_gpu_tests`: run it in each native-only build with
 `--ignored --test-threads=1` and the pinned GPU/validation environment. It covers
 receipts, staged batches, persistent resources, imported targets and backend-specific
-queue synchronization. It does not replace the remaining cross-build kernel/corpus acceptance.
+queue synchronization. It complements the cross-build corpus acceptance.
 Historical M0–M5 reports retain the feature names and commands actually used at
 their recorded commits. Those reports are evidence of those commits, not new
 verification of this migration.

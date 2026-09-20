@@ -156,3 +156,7 @@ pub mod glass;
 
 #[path = "filter/brush.rs"]
 pub(crate) mod brush;
+
+#[cfg(test)]
+#[path = "filter/validation_tests.rs"]
+mod validation_tests;

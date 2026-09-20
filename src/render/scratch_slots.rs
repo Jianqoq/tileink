@@ -6,6 +6,7 @@ pub(crate) struct ScratchSlots {
 }
 
 impl ScratchSlots {
+    #[cfg(any(feature = "wgpu", test))]
     pub(crate) fn reset(&mut self, count: usize) {
         self.occupied.clear();
         self.occupied.resize(count, false);
@@ -25,6 +26,7 @@ impl ScratchSlots {
         index
     }
 
+    #[cfg(any(feature = "wgpu", test))]
     pub(crate) fn occupy(&mut self, index: usize) {
         self.occupied[index] = true;
     }
@@ -38,10 +40,12 @@ impl ScratchSlots {
         self.occupied.get(index).copied().unwrap_or(false)
     }
 
+    #[cfg(any(feature = "wgpu", test))]
     pub(crate) fn any_occupied(&self) -> bool {
         self.occupied.iter().any(|used| *used)
     }
 
+    #[cfg(any(feature = "wgpu", test))]
     pub(crate) fn release_all(&mut self) {
         self.occupied.fill(false);
     }

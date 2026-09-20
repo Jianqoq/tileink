@@ -2,8 +2,8 @@
 
 ## Current implementation boundary
 
-The minimum Windows runtime implements shared `BatchAdapter` dispatch/uniform
-staging, owning context-generation receipts, bounded readback/teardown and strict
+The Windows runtime implements compute command/uniform staging,
+owning context-generation receipts, bounded readback/teardown and strict
 pre-recording validation. API-specific device, pipeline, texture and frame code is
 separate under `src/native/runtime/dx12/` and `vulkan/`; named `.rs` files are the
 module roots. See [M3 closeout](docs/native/m3-completion.md) for the executable
@@ -15,8 +15,22 @@ window presentation examples. See [M5 implementation](docs/native/m5-implementat
 and [host integration](docs/native/host-interop.md) for executable coverage.
 Device loss is terminal for a context: fail-stop quarantine protects pending
 resources, and the host reconstructs the context/renderer. Automatic device
-recreation is not provided. Mac compilation and real GPU validation remain deferred.
+recreation is not provided. Independent Metal/MSL compilation and Apple M2 GPU
+acceptance are recorded in [Mac M5](docs/native/m5-metal.md). Current Windows M6
+verification does not claim a new macOS run.
 Performance comparisons were stopped at the user's request.
+
+[M6 Windows acceptance](docs/native/m6-windows.md) documents the separate-build
+feature matrix and exact comparison rules. Native full tile-bin snapshots consume
+CPU dirty journals after staging; abandoned recordings remain safe because every
+subsequent recording stages the complete snapshot again.
+
+Low-level `FilterConfig.rounding_zero` must contain IEEE-754 positive zero
+(`to_bits() == 0`). Typed defaults provide this value; native filter recording
+rejects all other bit patterns, including negative zero and NaN, before allocating
+resources. Selected filter products use this runtime operand to preserve the
+specified rounding against literal-zero folding in the tested compilers. This is
+a compilation workaround, not a promise about untested toolchains.
 
 ## Context and ownership
 

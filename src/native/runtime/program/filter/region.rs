@@ -40,6 +40,9 @@ pub(super) fn record(
     reads: ReadBindings<'_>,
     target: ResourceId,
 ) -> Result<()> {
+    if config.rounding_zero.to_bits() != 0 {
+        return Err("filter rounding operand must be positive zero".into());
+    }
     validate_texture(batch, target, [config.width, config.height])?;
     for (_, id) in reads.textures {
         validate_texture(batch, *id, reads.texture_extent)?;

@@ -96,6 +96,7 @@ impl RetainedScene {
         Some(changes)
     }
 
+    #[cfg(feature = "wgpu")]
     #[cfg(test)]
     pub(crate) fn to_canvas(&self) -> Canvas {
         let mut canvas = Canvas::new(self.width, self.height, self.scale);
@@ -103,6 +104,7 @@ impl RetainedScene {
         canvas
     }
 
+    #[cfg(feature = "wgpu")]
     #[cfg(test)]
     fn append_children(&self, canvas: &mut Canvas, parent: RetainedParent) {
         let node = &self.nodes[&parent.node];
@@ -114,6 +116,7 @@ impl RetainedScene {
         }
     }
 
+    #[cfg(feature = "wgpu")]
     #[cfg(test)]
     fn append_node(&self, canvas: &mut Canvas, id: RetainedNodeId) {
         let node = &self.nodes[&id];

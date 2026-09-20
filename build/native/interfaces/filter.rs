@@ -34,7 +34,7 @@ pub(super) fn config() -> Resource {
             field!(active_tile_count, U32, 1),
             field!(compact_tiles, U32, 1),
             field!(dispatch_width, U32, 1),
-            field!(active_tile_pad1, U32, 1),
+            field!(rounding_zero, F32, 1),
             field!(downsample, U32, 1),
             field!(downsample_filter, U32, 1),
             field!(upsample_filter, U32, 1),

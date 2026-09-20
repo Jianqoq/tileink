@@ -44,6 +44,7 @@ pub(crate) struct TileDrawRecord {
     pub(crate) end: u32,
 }
 
+#[cfg(feature = "wgpu")]
 #[cfg(test)]
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -56,6 +57,7 @@ pub(crate) enum FineTileKind {
     AnalyticWithStack = 5,
 }
 
+#[cfg(feature = "wgpu")]
 #[cfg(test)]
 impl FineTileKind {
     pub(crate) fn from_word(word: u32) -> Self {
@@ -146,6 +148,7 @@ pub(crate) fn coarse_work_emit_chunk_record_word_offset(
     ) + tile_count * TILE_EMIT_CHUNK_RECORD_WORDS
 }
 
+#[cfg(any(feature = "wgpu", test))]
 pub(crate) fn coarse_work_word_len(
     tile_count: usize,
     ptcl_capacity: usize,

@@ -4,12 +4,16 @@
 #include "sample.hlsli"
 #include "../shared/pixel.hlsli"
 
+// A runtime positive zero keeps DXC/driver optimizers from folding mad(a,b,0)
+// back into a reassociable multiply. This protects Gaussian recurrence rounding;
+// the host validates the operand, and cross-API GPU tests certify the toolchain.
+float blur_product(float a,float b,float rounding_zero) { return mad(a,b,rounding_zero); }
 float4 blur_channels(uint pixel) {
     return float4(pixel&255u,(pixel>>8u)&255u,(pixel>>16u)&255u,pixel>>24u);
 }
-uint blur_pack_average(float4 accumulator,float sum) {
+uint blur_pack_average(float4 accumulator,float sum,float rounding_zero) {
     if (sum<=0.0) return 0u;
-    float4 average=mad(accumulator,1.0/sum,0.0);
+    float4 average=mad(accumulator,1.0/sum,rounding_zero);
     uint4 bytes=uint4(clamp(average+0.5,0.0,255.0));
     return rgba8_pack(bytes.r,bytes.g,bytes.b,bytes.a);
 }
@@ -31,7 +35,7 @@ bool blur_pair_inside(int2 xy,int2 axis,float offset,int4 bounds) {
 }
 float4 blur_sample_pair(ConstantBuffer<FilterConfig> config,Texture2D<float4> source,int2 xy,int2 axis,float offset) {
     float4 sample=filter_sample_premul(source,uint2(config.width,config.height),float2(xy)+float2(axis)*offset);
-    return mad(sample,255.0,0.0);
+    return mad(sample,255.0,config.rounding_zero);
 }
 uint filter_blur_pixel(ConstantBuffer<FilterConfig> config,Texture2D<float4> source,uint2 xy,float std_dev) {
     int half_width=blur_half_width(std_dev);
@@ -48,11 +52,11 @@ uint filter_blur_pixel(ConstantBuffer<FilterConfig> config,Texture2D<float4> sou
     float4 accumulator=blur_channels(center);
     float weight=exp(-1.0/two_sigma_sq);
     float decay=exp(-2.0/two_sigma_sq);
-    float ratio=weight*decay;
+    float ratio=blur_product(weight,decay,config.rounding_zero);
     for (int d=1;d<=half_width;d+=2) {
         int next_d=d+1;
         bool pair=next_d<=half_width;
-        float next_weight=weight*ratio;
+        float next_weight=blur_product(weight,ratio,config.rounding_zero);
         float pair_weight=weight+(pair ? next_weight : 0.0);
         sum+=2.0*pair_weight;
         if (pair && (interior || blur_pair_inside(base,axis,float(d),bounds))) {
@@ -81,10 +85,11 @@ uint filter_blur_pixel(ConstantBuffer<FilterConfig> config,Texture2D<float4> sou
                     accumulator=mad(blur_channels(unorm_to_rgba8(source.Load(int3(position,0)))),next_weight,accumulator);
             }
         }
-        // Each recurrence product has the same explicit rounding boundary as WGSL.
-        weight=mad(next_weight,mad(ratio,decay,0.0),0.0);
-        ratio=mad(ratio,mad(decay,decay,0.0),0.0);
+        // Advance the single-tap recurrence twice, sharing the intermediate ratio.
+        float next_ratio=blur_product(ratio,decay,config.rounding_zero);
+        weight=blur_product(next_weight,next_ratio,config.rounding_zero);
+        ratio=blur_product(next_ratio,decay,config.rounding_zero);
     }
-    return blur_pack_average(accumulator,sum);
+    return blur_pack_average(accumulator,sum,config.rounding_zero);
 }
 #endif

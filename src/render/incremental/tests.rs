@@ -625,6 +625,25 @@ fn active_scan_uses_persistent_chunk_allocations_after_a_path_is_removed() {
     let mut damage = DamageTiles::new((64, 16));
     damage.add_bounds(Bounds::new(32, 0, 48, 16));
     let active = ActiveScanPlan::new(&canvas, &damage, plans.scan_ranges());
+    let record = &canvas.path_records[2];
+    let part = |base: u32, count: u32| &active.indices[base as usize..(base + count) as usize];
+    assert_eq!(
+        part(active.line_base, active.line_count),
+        (record.line_start..record.line_start + record.line_count).collect::<Vec<_>>()
+    );
+    assert_eq!(part(active.path_base, active.path_count), &[record.path_id]);
+    assert_eq!(
+        part(active.backdrop_base, active.backdrop_count),
+        (record.data_offset..record.data_offset + record.data_len).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        active.cumsum.chunk_lens.iter().sum::<u32>(),
+        record.data_len
+    );
+    assert_eq!(
+        active.cumsum.chunk_backdrop_offsets.first(),
+        Some(&record.data_offset)
+    );
     let chunks = &active.indices
         [active.chunk_base as usize..(active.chunk_base + active.chunk_count) as usize];
 

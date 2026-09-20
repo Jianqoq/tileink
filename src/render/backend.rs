@@ -3,7 +3,9 @@
 //! This is the first implemented adapter boundary. Pipeline/resource operations
 //! remain in their current modules until they move through the same seam.
 
+#[cfg(any(feature = "wgpu", test))]
 use super::upload::uniforms::UniformWrites;
+#[cfg(any(feature = "wgpu", test))]
 use std::hash::Hash;
 
 #[derive(Debug)]
@@ -22,6 +24,7 @@ pub(crate) enum SubmitError<E> {
     Unconfirmed(E),
 }
 
+#[cfg(any(feature = "wgpu", test))]
 pub(crate) trait BatchAdapter {
     type Buffer: Clone + Eq + Hash;
     type Encoder;

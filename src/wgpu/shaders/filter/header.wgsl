@@ -68,7 +68,7 @@ struct FilterConfig {
     active_tile_count: u32,
     compact_tiles: u32,
     dispatch_width: u32,
-    active_tile_pad1: u32,
+    rounding_zero: f32,
     downsample: u32,
     downsample_filter: u32,
     upsample_filter: u32,

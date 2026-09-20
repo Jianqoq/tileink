@@ -104,12 +104,15 @@ impl<T> Pending<T> {
     pub fn len(&self) -> usize {
         self.frames.len()
     }
+    #[cfg(any(feature = "vulkan", feature = "metal"))]
     pub fn values(&self) -> impl Iterator<Item = &T> {
         self.frames.values()
     }
+    #[cfg(any(feature = "vulkan", feature = "metal"))]
     pub fn clear_after_completion(&mut self) {
         self.frames.clear();
     }
+    #[cfg(any(feature = "vulkan", feature = "metal"))]
     pub fn quarantine(&mut self) {
         for (_, frame) in std::mem::take(&mut self.frames) {
             std::mem::forget(frame);

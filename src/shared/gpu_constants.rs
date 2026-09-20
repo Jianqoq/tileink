@@ -8,7 +8,7 @@ const _: () = assert!(COARSE_WORKGROUP_SIZE.is_power_of_two() && COARSE_WORKGROU
 const _: () = assert!(FILTER_WORKGROUP_SIZE > 0 && FILTER_WORKGROUP_SIZE <= 1024);
 
 // Validation layouts are not part of the production renderer constants.
-#[cfg(all(test, tileink_native_runtime))]
+#[cfg(all(test, feature = "metal"))]
 include!(concat!(
     env!("OUT_DIR"),
     "/tileink_native_test_constants.rs"

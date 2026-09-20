@@ -132,6 +132,10 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         self.check_readback(self.encode(pairs), pairs, frame);
     }
 
+    #[allow(
+        dead_code,
+        reason = "shared fixture: correctness tests assert readback; Criterion only submits"
+    )]
     pub fn assert_split_submissions_cleared(&self, frame: u32) {
         for _ in 0..64 {
             for binding in &self.bindings {

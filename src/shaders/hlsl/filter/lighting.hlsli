@@ -9,7 +9,8 @@ float lighting_power(float base,float exponent) {
     if (exponent<=0.0) return 1.0;
     return pow(base,exponent);
 }
-float lighting_dot3(float3 a,float3 b) { return mad(a.x,b.x,mad(a.y,b.y,mad(a.z,b.z,0.0))); }
+// Runtime zero preserves the innermost product before the nested fused sums.
+float lighting_dot3(ConstantBuffer<FilterConfig> config,float3 a,float3 b) { return mad(a.x,b.x,mad(a.y,b.y,mad(a.z,b.z,config.rounding_zero))); }
 float lighting_alpha_byte(Texture2D<float4> source,uint2 xy) {
     return float(unorm_to_rgba8(source.Load(int3(xy,0)))>>24u);
 }
@@ -46,7 +47,7 @@ uint filter_lighting_pixel(ConstantBuffer<FilterConfig> config,Texture2D<float4>
     float dx=lighting_gradient(config,source,xy,true)*config.surface_scale;
     float dy=lighting_gradient(config,source,xy,false)*config.surface_scale;
     float3 normal=float3(-dx,-dy,1.0);
-    float normal_len=sqrt(lighting_dot3(normal,normal));
+    float normal_len=sqrt(lighting_dot3(config,normal,normal));
     float world_x=float(config.surface_origin_x)+float(xy.x)+0.5;
     float world_y=float(config.surface_origin_y)+float(xy.y)+0.5;
     float3 light=float3(config.light_p0-world_x,config.light_p1-world_y,config.light_p2-z);
@@ -56,15 +57,15 @@ uint filter_lighting_pixel(ConstantBuffer<FilterConfig> config,Texture2D<float4>
         float elevation=config.light_p1*LIGHTING_DEGREES_TO_RADIANS;
         light=float3(cos(azimuth)*cos(elevation),sin(azimuth)*cos(elevation),sin(elevation));
     } else {
-        float len=sqrt(lighting_dot3(light,light));
+        float len=sqrt(lighting_dot3(config,light,light));
         if (len<=LIGHTING_DIRECTION_EPSILON) return no_light;
         light/=len;
         if (config.light_kind==2u) {
             float3 spot=float3(config.light_p3-config.light_p0,config.light_p4-config.light_p1,config.light_p5-config.light_p2);
-            float spot_len=sqrt(lighting_dot3(spot,spot));
+            float spot_len=sqrt(lighting_dot3(config,spot,spot));
             if (spot_len<=LIGHTING_DIRECTION_EPSILON) return no_light;
             spot/=spot_len;
-            float focus=-lighting_dot3(light,spot);
+            float focus=-lighting_dot3(config,light,spot);
             if (focus<0.0) return no_light;
             if (config.light_p7>=0.0 && focus<cos(config.light_p7*LIGHTING_DEGREES_TO_RADIANS)) return no_light;
             attenuation=lighting_power(focus,config.light_p6);
@@ -72,14 +73,14 @@ uint filter_lighting_pixel(ConstantBuffer<FilterConfig> config,Texture2D<float4>
     }
     float3 color=float3(config.light_r,config.light_g,config.light_b);
     if (config.lighting_output_kind==0u) {
-        float amount=config.light_constant*attenuation*max(lighting_dot3(normal/normal_len,light),0.0);
+        float amount=config.light_constant*attenuation*max(lighting_dot3(config,normal/normal_len,light),0.0);
         color=clamp(color*amount,0.0,1.0);
         return pack_premul_rgba8(color.r,color.g,color.b,1.0);
     }
     float3 half_vector=float3(light.xy,light.z+1.0);
-    float half_len=sqrt(lighting_dot3(half_vector,half_vector));
+    float half_len=sqrt(lighting_dot3(config,half_vector,half_vector));
     if (half_len<=LIGHTING_DIRECTION_EPSILON) return no_light;
-    float cosine=max(lighting_dot3(normal,half_vector)/(normal_len*half_len),0.0);
+    float cosine=max(lighting_dot3(config,normal,half_vector)/(normal_len*half_len),0.0);
     float amount=config.light_constant*attenuation*lighting_power(cosine,config.specular_exponent);
     color=clamp(color*amount,0.0,1.0);
     return pack_premul_rgba8(color.r,color.g,color.b,max(max(color.r,color.g),color.b));

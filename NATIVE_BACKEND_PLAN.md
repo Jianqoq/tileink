@@ -17,7 +17,7 @@
 ### 首期范围
 
 - 完整保留 Canvas、RetainedScene、路径、SDF、文字、图片、渐变、裁剪、混合、图层、mask、filter、backdrop、SVG 以及增量绘制语义。
-- Windows：原生 DX12 和 Vulkan；允许一个构建同时包含 wgpu 和两条原生路径，并显式选择实例使用的后端。
+- Windows：原生 DX12 和 Vulkan；每次构建只能选择 wgpu、dx12、vulkan 之一，跨后端验收使用独立可执行文件。
 - 保留 Linux、macOS 上现有 wgpu 构建与行为。原生 Vulkan 在 Linux 上的构建和适用测试也纳入验证；Windows 的四路门槛不能被 Linux 的两路结果替代。
 - 原生渲染支持自有离屏目标和调用方提供的兼容纹理，为之后 gfx_ui 接入提供设备、目标及同步接口。
 - M2 增加 macOS 专属 MSL 源码、Metal shader 产物与 ABI 验证；MSL 不由 HLSL 转译生成。M0/M1 不增加 Metal 运行时实现；原生 Metal Adapter 的完整渲染验收另列里程碑，不能以 MoltenVK 代替。
@@ -68,7 +68,7 @@ dx12 在非 Windows 上不会变成另一种后端。`--all-features` 是非法�
 
 ## 4. 模块边界与接口
 
-设计采用一个共享渲染调度 Module 和三个 GPU Adapter。Interface 以 Tileink 需要的计算任务为限，不复制一套通用图形 API。
+设计采用一个共享渲染调度 Module 和四个 GPU Adapter（wgpu、DX12、Vulkan、Metal）。Interface 以 Tileink 需要的计算任务为限，不复制一套通用图形 API。
 
 ```mermaid
 flowchart TD
@@ -86,8 +86,8 @@ flowchart TD
     SPIRV --> V
     MSL[macOS 独立 MSL 源码] --> MC[Metal 工具链]
     MC --> ML[Metal library]
-    ML -. 后续渲染接入 .-> M[Metal Adapter]
-    Seam -. 未来实现 .-> M
+    ML --> M[Metal Adapter]
+    Seam --> M
 ```
 
 ### 拟定职责分布
@@ -99,11 +99,12 @@ flowchart TD
 | `src/render/backend.rs` | 私有 Seam：有类型的资源与 program 标识、批次编码、upload/copy/dispatch、必要的同步和完成查询；不暴露 DX12/Vulkan/wgpu 类型 |
 | `src/wgpu/` | 保留公开 wgpu 接口；接入共享调度，适配 wgpu 资源、绑定、WGSL/既有 DXIL、提交与 readback |
 | `src/native/` | 原生公开构造入口、能力与错误、目标/提交生命周期；把选择分派到具体 Adapter |
-| `src/native/dx12/` | windows bindings、device/queue、资源分配、descriptor、root signature、PSO、resource state、fence、readback |
-| `src/native/vulkan/` | ash、instance/device/queue、资源分配、descriptor、pipeline layout、pipeline、image layout、barrier、同步、readback |
+| `src/native/runtime/dx12/` | windows bindings、device/queue、资源分配、descriptor、root signature、PSO、resource state、fence、readback |
+| `src/native/runtime/vulkan/` | ash、instance/device/queue、资源分配、descriptor、pipeline layout、pipeline、image layout、barrier、同步、readback |
+| `src/native/runtime/metal/` | Metal device/queue、资源、pipeline、command buffer、同步与 readback |
 | `src/shaders/hlsl/` | 共享 HLSL 算法与 include；差异仅限必要的绑定或能力适配，不复制 DX12/Vulkan 算法主体 |
 | `src/shaders/metal/` | macOS 专属 `.metal` 算法与 include，独立维护；遵守与 HLSL/WGSL 相同的数值、采样和输出语义 |
-| `build/shaders/` | 公共 program/variant 清单、ABI 与缓存协议；DXC 和 Metal 编译/反射/诊断分别由目标模块负责；与运行时 device 生命周期无关 |
+| `build/native/` | 公共 program/variant 清单、ABI 与缓存协议；DXC 和 Metal 编译/反射/诊断分别由目标模块负责；与运行时 device 生命周期无关 |
 | `tests/support/` | 共用场景序列、执行清单、设备匹配、readback 与零差异断言；后端差异藏在测试 Adapter 内 |
 
 文件按实际职责再拆分，不一次建立大量空文件。Metal 只通过这些现有边界扩展，不提交永远返回 unsupported 的空实现，也不预先设计多队列图形引擎。
@@ -322,6 +323,10 @@ Windows M3 当时不包含 Mac；2026-09-19 已补齐 Metal Adapter、同机探�
 
 ### M6 — 全量验收、性能与文档
 
+2026-09-20：用户将本轮限定为现有 Windows DX12/Vulkan 环境。当前可用设备为 NVIDIA RTX 4090 和 AMD Radeon 集成显卡；Windows 验收入口、工程修复与实测结果见 [M6 Windows](docs/native/m6-windows.md)。Intel、Linux 和新的 macOS M6 验证仍须单独完成，不能用现有 Windows 结果勾选完整平台矩阵。
+
+Windows M6 已完成：两块 GPU 各完成七条路径、三轮独立进程验证，共 81,102 份 RGBA 输出零差异；release 测试、严格 Clippy、原生生命周期及窗口检查通过。提交 22 张基线 PNG 的审阅材料后，用户于 2026-09-20 指示 commit/push，接受本次交付。完整跨平台矩阵仍未完成。证据见 [验证记录](docs/native/m6-windows-verification.json)。
+
 - [ ] 串行 release 语义/边界/回归测试、全部 SVG、全部示例和完整 feature/平台构建矩阵通过。
 - [ ] required GPU 矩阵实际完成四路运行；生成完整 manifest、像素报告、失败工件和设备覆盖记录，缺项仍记未完成。
 - 性能比较已由用户取消：不运行 Criterion 或 resize 性能对照，也不将其作为 M6 退出门槛。
@@ -352,7 +357,7 @@ feature 检查覆盖默认 wgpu、关闭默认后的 dx12 和 vulkan 单选构�
 1. 固定提交/资源/运行环境的清单，四路实际后端与 GPU 身份，预期及实际 case/frame 数量。
 2. 每项四路 `different_pixels = 0`、`max_channel_delta = 0` 的比较报告，以及相对旧基线的独立回归结论。
 3. 语义和状态序列测试结果、API validation 结果、缺失/不支持环境的明确记录。
-4. 同 API 的 wgpu/原生 Criterion 对照、默认 wgpu 重构前后对照、resize PMax 帧及时间占比。
+4. 性能比较已按用户要求取消，不运行 Criterion 或 resize 计时，也不宣称性能无退化。
 5. feature/打包结果、文档及两个审查维度：仓库规范、用户需求。任何 required 项缺失时不能标记完成。
 
 ## 10. M2 macOS shader 支持与后续 Metal Adapter

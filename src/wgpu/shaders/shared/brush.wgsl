@@ -256,10 +256,12 @@ fn sample_ramp(payload_offset: u32, payload_len: u32, t: f32, extend: u32) -> u3
     var color = 0u;
     if (payload_len > 0u) {
         let last = payload_len - 1u;
-        let position = apply_extend(t, extend) * f32(last);
+        let extended = apply_extend(t, extend);
+        let position = extended * f32(last);
         let left_ix = u32(floor(position));
         let right_ix = min(left_ix + 1u, last);
-        let frac = position - f32(left_ix);
+        // Preserve the fractional residual instead of rounding the product first.
+        let frac = fma(extended, f32(last), -f32(left_ix));
         let left = brush_word(payload_offset + left_ix);
         let right = brush_word(payload_offset + right_ix);
         if (frac <= 0.00000011920929 || left_ix == right_ix) {

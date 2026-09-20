@@ -33,13 +33,15 @@ kernel void filter_blur_shared_region(constant FilterConfig& config [[buffer(0)]
     uint center=(local.y+(horizontal?0:radius))*stride+local.x+(horizontal?radius:0);
     float4 accumulated=float4(byte_channels(pixels[center]));
     float sigma=max(deviation,0.0001f),variance=2.0f*sigma*sigma;
-    float total=1,weight=exp(-1.0f/variance),decay=exp(-2.0f/variance),ratio=weight*decay;
+    float total=1,weight=exp(-1.0f/variance),decay=exp(-2.0f/variance);
+    float ratio=blur_product(weight,decay,config.rounding_zero);
     for(uint distance=1;distance<=radius;++distance) {
         uint delta=horizontal?distance:distance*stride;
         total+=2.0f*weight;
         accumulated=fma(float4(byte_channels(pixels[center+delta])),weight,accumulated);
         accumulated=fma(float4(byte_channels(pixels[center-delta])),weight,accumulated);
-        weight*=ratio;ratio*=decay;
+        weight=blur_product(weight,ratio,config.rounding_zero);
+        ratio=blur_product(ratio,decay,config.rounding_zero);
     }
-    target.write(unpack_pixel(blur_pack(accumulated,total)),xy);
+    target.write(unpack_pixel(blur_pack(accumulated,total,config.rounding_zero)),xy);
 }

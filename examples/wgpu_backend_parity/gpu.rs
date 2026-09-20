@@ -1,5 +1,5 @@
 #[path = "../common/gpu_identity.rs"]
-mod gpu_identity;
+pub(super) mod gpu_identity;
 use gpu_identity::physical_identity;
 
 use peniko::Color;

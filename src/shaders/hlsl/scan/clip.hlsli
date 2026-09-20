@@ -8,12 +8,10 @@
 // permits device-specific mad implementations, so exact results remain gated by
 // the same-physical-GPU four-route tests, not assumed from the intrinsic name.
 float x_at_y(float4 points,float y) {
-    precise float result=mad(points.z-points.x,(y-points.y)/(points.w-points.y),points.x);
-    return result;
+    return mad(points.z-points.x,(y-points.y)/(points.w-points.y),points.x);
 }
 float y_at_x(float4 points,float x) {
-    precise float result=mad(points.w-points.y,(x-points.x)/(points.z-points.x),points.y);
-    return result;
+    return mad(points.w-points.y,(x-points.x)/(points.z-points.x),points.y);
 }
 float clip_y_at_x(float4 points,float x,float tile_min_y,float tile_max_y) {
     float y=y_at_x(points,x);

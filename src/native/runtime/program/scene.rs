@@ -160,6 +160,7 @@ impl SceneCache {
             stack_depths: crate::shared::gpu_plan::plan_stack_depths(&plan),
             plan,
             reused_metadata: false,
+            #[cfg(test)]
             upload_filters: true,
         };
         self.record_prepared(batch, canvas, text, images, options, prepared)
@@ -295,6 +296,7 @@ impl SceneCache {
         let indices: &[u8] = bytemuck::cast_slice(self.staging.tile_draw_bins.upload_indices());
         work[index_base * size_of::<u32>()..index_base * size_of::<u32>() + indices.len()]
             .copy_from_slice(indices);
+        self.staging.tile_draw_bins.finish_full_upload();
         let active_batches = if let Some(active) = options.active {
             if active.dimensions() != (lengths.tiles_width as u32, lengths.tiles_height as u32) {
                 return Err("native damage dimensions differ from scene".into());
@@ -374,6 +376,10 @@ impl SceneCache {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "scene_tests.rs"]
+mod upload_journal_tests;
 
 impl Scene {
     pub(crate) fn plan_handle(&self) -> Rc<ExecPlan> {
