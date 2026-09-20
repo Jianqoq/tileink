@@ -10,7 +10,8 @@ pub struct Frame {
     pub list: ID3D12GraphicsCommandList,
     _allocator: ID3D12CommandAllocator,
     _buffers: Vec<ID3D12Resource>,
-    pub(super) uploads: Vec<ID3D12Resource>,
+    pub(super) uploads: Vec<super::buffer_cache::Buffer>,
+    pub(super) storage: Vec<super::buffer_cache::Buffer>,
     _heaps: Vec<ID3D12DescriptorHeap>,
     _pipelines: Vec<Pipeline>,
     readbacks: Vec<Readback>,
@@ -20,7 +21,8 @@ impl Frame {
         device: &ID3D12Device,
         batch: &ComputeBatch,
         pipelines: &BTreeMap<&'static str, Pipeline>,
-        staging: &mut Vec<ID3D12Resource>,
+        staging: &mut super::buffer_cache::Pool,
+        storage: &mut super::buffer_cache::Pool,
     ) -> Result<Self> {
         let synchronization = match &batch.synchronization {
             Some((id, crate::native::interop::Synchronization::Dx12(sync))) => Some((*id, sync)),
@@ -51,12 +53,18 @@ impl Frame {
                 _allocator: allocator,
                 _buffers: Vec::new(),
                 uploads: Vec::new(),
+                storage: Vec::new(),
                 _heaps: Vec::new(),
                 _pipelines: Vec::new(),
                 readbacks: Vec::new(),
             };
-            let gpu =
-                super::compute_resources::Resources::record(device, &frame.list, batch, staging)?;
+            let gpu = super::compute_resources::Resources::record(
+                device,
+                &frame.list,
+                batch,
+                staging,
+                storage,
+            )?;
             let mut states = vec![D3D12_RESOURCE_STATE_COPY_DEST; batch.resources().len()];
             for (index, resource) in batch.resources().iter().enumerate() {
                 if let Resource::Texture(texture) = resource
@@ -207,8 +215,9 @@ impl Frame {
                     buffer::transition(&frame.list, gpu.get(id), states[id], final_state);
                 }
             }
-            (frame._buffers, frame.uploads) = gpu.into_owners();
+            (frame._buffers, frame.uploads, frame.storage) = gpu.into_owners();
             frame.list.Close()?;
+
             Ok(frame)
         }
     }

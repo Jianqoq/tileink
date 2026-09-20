@@ -1,7 +1,9 @@
+mod buffer_cache;
 mod context;
 mod debug;
 mod retirement;
 mod staging;
+mod storage;
 mod validation;
 pub(super) use debug::enable_validation;
 use validation::cache_retryable;
@@ -36,7 +38,8 @@ struct GpuOwners {
     pipelines: BTreeMap<&'static str, ID3D12PipelineState>,
     fence: ID3D12Fence,
     pending: Pending<work::Work>,
-    staging: Vec<ID3D12Resource>,
+    staging: buffer_cache::Pool,
+    storage: buffer_cache::Pool,
     compute_pipelines: BTreeMap<&'static str, compute_pipeline::Pipeline>,
     cache_identity: Vec<u8>,
 }
@@ -125,6 +128,7 @@ impl Dx12 {
             batch,
             &self.gpu.compute_pipelines,
             &mut self.gpu.staging,
+            &mut self.gpu.storage,
         )?;
         self.submit_work(work::Work::Compute(frame))
     }
@@ -187,10 +191,9 @@ impl Dx12 {
         let result = work.readback();
         // Never recycle on Drop or uncertain submission: only a confirmed fence
         // permits overwriting upload memory that belonged to an earlier frame.
-        if let work::Work::Compute(frame) = &mut work
-            && !frame.uploads.is_empty()
-        {
-            self.gpu.staging = std::mem::take(&mut frame.uploads);
+        if let work::Work::Compute(frame) = &mut work {
+            self.gpu.staging.retire(std::mem::take(&mut frame.uploads));
+            self.gpu.storage.retire(std::mem::take(&mut frame.storage));
         }
         result
     }

@@ -332,13 +332,18 @@ fn staging_reuse_preserves_in_flight_and_resized_uploads() -> Result<()> {
         let super::work::Work::Compute(frame) = device.gpu.pending.get(ticket).unwrap() else {
             panic!("expected compute frame");
         };
-        frame.uploads[0].as_raw()
+        [
+            frame.uploads[0].resource.as_raw(),
+            frame.storage[0].resource.as_raw(),
+        ]
     };
     let a = device.submit_compute(&batch(4096, 17)?)?;
     let b = device.submit_compute(&batch(4096, 29)?)?;
     let first = handle(&device, &a);
-    assert_ne!(first, handle(&device, &b));
-    assert!(device.gpu.staging.is_empty());
+    let second = handle(&device, &b);
+    assert_ne!(first[0], second[0]);
+    assert_ne!(first[1], second[1]);
+    assert!(device.gpu.staging.frames.is_empty());
     assert_eq!(
         device.readback_batch(&a)?,
         vec![vec![17; 4096], vec![18; 128]]
@@ -353,6 +358,57 @@ fn staging_reuse_preserves_in_flight_and_resized_uploads() -> Result<()> {
         device.readback_batch(&b)?,
         vec![vec![29; 4096], vec![30; 128]]
     );
+    // Resize retires all frame slots together. Both completed lists must survive
+    // so rebuilding the pipeline does not allocate the second frame again.
+    let d = device.submit_compute(&batch(4096, 41)?)?;
+    let e = device.submit_compute(&batch(4096, 43)?)?;
+    assert_eq!(second, handle(&device, &d));
+    assert_eq!(first, handle(&device, &e));
+    assert_eq!(
+        device.readback_batch(&e)?,
+        vec![vec![43; 4096], vec![44; 128]]
+    );
+    assert_eq!(
+        device.readback_batch(&d)?,
+        vec![vec![41; 4096], vec![42; 128]]
+    );
+    // Resource order changes between frames; small uploads must not consume
+    // the large allocation and force the following large upload to allocate.
+    let uploads: Vec<_> = device
+        .gpu
+        .staging
+        .frames
+        .last()
+        .unwrap()
+        .iter()
+        .map(|buffer| buffer.resource.as_raw())
+        .collect();
+    let storage: Vec<_> = device
+        .gpu
+        .storage
+        .frames
+        .last()
+        .unwrap()
+        .iter()
+        .map(|buffer| buffer.resource.as_raw())
+        .collect();
+    let mut reordered = super::super::compute::ComputeBatch::new();
+    for bytes in [vec![61; 128], vec![63; 4096]] {
+        let id = reordered.buffer(bytes)?;
+        reordered.readback(id)?;
+    }
+    let ticket = device.submit_compute(&reordered)?;
+    let super::work::Work::Compute(frame) = device.gpu.pending.get(&ticket).unwrap() else {
+        panic!("expected compute frame");
+    };
+    assert_eq!(frame.uploads[0].resource.as_raw(), uploads[1]);
+    assert_eq!(frame.uploads[1].resource.as_raw(), uploads[0]);
+    assert_eq!(frame.storage[0].resource.as_raw(), storage[1]);
+    assert_eq!(frame.storage[1].resource.as_raw(), storage[0]);
+    assert_eq!(
+        device.readback_batch(&ticket)?,
+        vec![vec![61; 128], vec![63; 4096]]
+    );
     for (size, value) in [(8192, 71), (128, 91), (16384, 113)] {
         let ticket = device.submit_compute(&batch(size, value)?)?;
         assert_eq!(
@@ -360,21 +416,47 @@ fn staging_reuse_preserves_in_flight_and_resized_uploads() -> Result<()> {
             vec![vec![value; size], vec![value + 1; 128]]
         );
     }
-    let cached = device.gpu.staging[0].as_raw();
+    let cached = device.gpu.staging.frames.last().unwrap()[0]
+        .resource
+        .as_raw();
+    let cached_storage = device.gpu.storage.frames.last().unwrap()[0]
+        .resource
+        .as_raw();
     let empty = device.submit_compute(&super::super::compute::ComputeBatch::new())?;
     assert!(device.readback_batch(&empty)?.is_empty());
     assert_eq!(
-        device.gpu.staging.first().map(Interface::as_raw),
+        device
+            .gpu
+            .staging
+            .frames
+            .last()
+            .unwrap()
+            .first()
+            .map(|buffer| buffer.resource.as_raw()),
         Some(cached)
+    );
+    assert_eq!(
+        device
+            .gpu
+            .storage
+            .frames
+            .last()
+            .unwrap()
+            .first()
+            .map(|buffer| buffer.resource.as_raw()),
+        Some(cached_storage)
     );
     assert_valid(&device.validation_queue())?;
     // Execute succeeded, Signal did not: the new upload remains quarantined and
     // neither retirement nor another submit may recycle its storage.
+    let free_uploads = device.gpu.staging.frames.len();
+    let free_storage = device.gpu.storage.frames.len();
     device.inject_signal_failure = true;
     assert!(device.submit_compute(&batch(128, 127)?).is_err());
     assert!(device.unconfirmed());
     assert_eq!(device.pending_count(), 1);
-    assert!(device.gpu.staging.is_empty());
+    assert_eq!(device.gpu.staging.frames.len(), free_uploads - 1);
+    assert_eq!(device.gpu.storage.frames.len(), free_storage - 1);
     assert!(device.submit_compute(&batch(128, 131)?).is_err());
     Ok(())
 }
