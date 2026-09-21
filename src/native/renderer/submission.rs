@@ -58,57 +58,80 @@ impl NativeRenderer {
                 stats.arena_fragmentation = changes.arena_fragmentation;
                 stats.arena_compactions = changes.arena_compactions;
             }
-            let result = (|| {
-                let mut batch = crate::native::runtime::compute::ComputeBatch::with_surfaces(
-                    self.surfaces.clone(),
-                );
-                let output_id = batch
-                    .import_texture(&route.render_target)
-                    .map_err(NativeError::Recording)?;
-                let target = self
-                    .recording
-                    .record(
-                        &mut batch,
-                        canvas,
-                        &self.images,
-                        text,
-                        limits,
-                        crate::native::runtime::renderer::FrameOptions {
-                            target: Some(output_id),
-                            ..Default::default()
-                        },
-                    )
-                    .map_err(NativeError::Recording)?;
-                route.encode_copy(&mut batch, target)?;
-                if let Some(sync) = synchronization {
-                    batch
-                        .synchronize_target(output.expect("synchronized output").texture, sync)
+            // An unchanged owned target needs no GPU work after its previous
+            // submission has been explicitly completed. Pending writes, readback,
+            // external output and synchronization still require a real receipt.
+            let completed = self.completed.as_ref().filter(|completed| {
+                completed.get()
+                    && !readback
+                    && output.is_none()
+                    && synchronization.is_none()
+                    && self
+                        .recording
+                        .retained
+                        .active_tiles()
+                        .is_some_and(|tiles| tiles.list().is_empty())
+            });
+            let skipped = completed.is_some();
+            let result = if let Some(completed) = completed {
+                Ok(NativeSubmission::already_completed(
+                    self.context.backend(),
+                    completed.clone(),
+                ))
+            } else {
+                (|| {
+                    let mut batch = crate::native::runtime::compute::ComputeBatch::with_surfaces(
+                        self.surfaces.clone(),
+                    );
+                    let output_id = batch
+                        .import_texture(&route.render_target)
                         .map_err(NativeError::Recording)?;
-                }
-                if readback {
-                    batch.readback(target).map_err(NativeError::Recording)?;
-                }
-                self.recording.retained.stats_mut().gpu_uploaded_bytes = batch
-                    .resources()
-                    .iter()
-                    .map(|resource| {
-                        use crate::native::runtime::compute::Resource;
-                        match resource {
-                            Resource::Buffer(bytes) => bytes.len() as u64,
-                            Resource::PersistentBuffer(upload) => upload.bytes.len() as u64,
-                            Resource::Texture(texture) => texture.bytes.len() as u64,
-                            _ => 0,
-                        }
-                    })
-                    .sum();
-                self.context.submit_compute(&batch)
-            })();
+                    let target = self
+                        .recording
+                        .record(
+                            &mut batch,
+                            canvas,
+                            &self.images,
+                            text,
+                            limits,
+                            crate::native::runtime::renderer::FrameOptions {
+                                target: Some(output_id),
+                                ..Default::default()
+                            },
+                        )
+                        .map_err(NativeError::Recording)?;
+                    route.encode_copy(&mut batch, target)?;
+                    if let Some(sync) = synchronization {
+                        batch
+                            .synchronize_target(output.expect("synchronized output").texture, sync)
+                            .map_err(NativeError::Recording)?;
+                    }
+                    if readback {
+                        route.encode_readback(&mut batch, target)?;
+                    }
+                    self.recording.retained.stats_mut().gpu_uploaded_bytes = batch
+                        .resources()
+                        .iter()
+                        .map(|resource| {
+                            use crate::native::runtime::compute::Resource;
+                            match resource {
+                                Resource::Buffer(bytes) => bytes.len() as u64,
+                                Resource::PersistentBuffer(upload) => upload.bytes.len() as u64,
+                                Resource::Texture(texture) => texture.bytes.len() as u64,
+                                _ => 0,
+                            }
+                        })
+                        .sum();
+                    self.context.submit_compute(&batch)
+                })()
+            };
             self.recording
                 .retained
                 .finish_frame(plan, result.is_ok(), result.is_ok());
             let submission = result?;
+            self.completed = Some(submission.completion());
             let stats = self.recording.retained.stats_mut();
-            stats.queue_submissions = 1;
+            stats.queue_submissions = u32::from(!skipped);
             route.record_stats(stats);
             self.history = Some(route.capture_history());
             if route.owns_target {

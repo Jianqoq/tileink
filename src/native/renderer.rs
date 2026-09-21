@@ -22,7 +22,16 @@ pub struct NativeRenderer {
     persistent_scene: Option<crate::retained_scene::PersistentSceneMaterializer>,
     #[cfg(tileink_native_runtime)]
     history: Option<output::HistoryRecord>,
+    #[cfg(tileink_native_runtime)]
+    completed: Option<Rc<std::cell::Cell<bool>>>,
 }
+
+#[cfg(all(
+    test,
+    tileink_native_runtime,
+    any(feature = "dx12", feature = "vulkan", feature = "metal")
+))]
+mod gpu_tests;
 
 impl NativeRenderer {
     pub fn new(backend: NativeBackend, width: u32, height: u32) -> Result<Self, NativeError> {
@@ -52,6 +61,7 @@ impl NativeRenderer {
                 recording: Default::default(),
                 persistent_scene: None,
                 history: None,
+                completed: None,
             })
         }
         #[cfg(not(tileink_native_runtime))]

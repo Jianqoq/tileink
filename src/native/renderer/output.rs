@@ -14,6 +14,7 @@ pub(super) struct HistoryRecord {
     origin: [u32; 2],
 }
 pub(super) struct OutputRoute<'a> {
+    size: (u32, u32),
     pub render_target: NativeTexture,
     pub owns_target: bool,
     pub history_owner: HistoryOwner,
@@ -70,7 +71,14 @@ impl<'a> OutputRoute<'a> {
         let owns_target = output.is_none() || copy.is_some();
         let render_target = if owns_target {
             match &renderer.target {
-                Some(target) if target.size() == size => target.clone(),
+                Some(target) => match crate::render::target_capacity::resized_capacity(
+                    target.size(),
+                    size,
+                    || renderer.context.adapter.limits().image_dimension,
+                ) {
+                    None => target.clone(),
+                    Some(capacity) => renderer.context.create_texture(capacity.0, capacity.1)?,
+                },
                 _ => renderer.context.create_texture(size.0, size.1)?,
             }
         } else {
@@ -78,6 +86,7 @@ impl<'a> OutputRoute<'a> {
         };
         let history = output.filter(|target| !matches!(target.history, History::Transient));
         Ok(Self {
+            size,
             history_texture: history
                 .map_or_else(|| render_target.clone(), |target| target.texture.clone()),
             history_origin: history.map_or([0; 2], |target| target.origin),
@@ -113,7 +122,7 @@ impl<'a> OutputRoute<'a> {
             let destination = batch
                 .import_texture(target.texture)
                 .map_err(NativeError::Recording)?;
-            let size = self.render_target.size();
+            let size = self.size;
             batch
                 .copy_texture(TextureCopy {
                     source,
@@ -124,6 +133,38 @@ impl<'a> OutputRoute<'a> {
                 })
                 .map_err(NativeError::Recording)?;
         }
+        Ok(())
+    }
+
+    /// Owned history may have spare capacity. Readback exposes only logical
+    /// pixels, just as external copies do; it must never stretch that capacity.
+    pub fn encode_readback(
+        &self,
+        batch: &mut ComputeBatch,
+        source: ResourceId,
+    ) -> Result<(), NativeError> {
+        let target = if self.render_target.size() == self.size {
+            source
+        } else {
+            let texture = self
+                .render_target
+                .context
+                .create_texture(self.size.0, self.size.1)?;
+            let destination = batch
+                .import_texture(&texture)
+                .map_err(NativeError::Recording)?;
+            batch
+                .copy_texture(TextureCopy {
+                    source,
+                    destination,
+                    source_origin: [0; 3],
+                    destination_origin: [0; 3],
+                    extent: [self.size.0, self.size.1, 1],
+                })
+                .map_err(NativeError::Recording)?;
+            destination
+        };
+        batch.readback(target).map_err(NativeError::Recording)?;
         Ok(())
     }
     pub fn record_stats(&self, stats: &mut crate::IncrementalRenderStats) {

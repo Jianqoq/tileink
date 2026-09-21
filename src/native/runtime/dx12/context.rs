@@ -119,6 +119,8 @@ impl Dx12 {
                     pending: Pending::new(),
                     staging: super::buffer_cache::Pool::default(),
                     storage: super::buffer_cache::Pool::default(),
+                    tables: Vec::new(),
+                    commands: Vec::new(),
                     compute_pipelines: BTreeMap::new(),
                     cache_identity,
                 },

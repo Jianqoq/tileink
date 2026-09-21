@@ -40,6 +40,8 @@ struct GpuOwners {
     pending: Pending<work::Work>,
     staging: buffer_cache::Pool,
     storage: buffer_cache::Pool,
+    tables: Vec<compute_tables::Tables>,
+    commands: Vec<command_cache::Commands>,
     compute_pipelines: BTreeMap<&'static str, compute_pipeline::Pipeline>,
     cache_identity: Vec<u8>,
 }
@@ -129,8 +131,10 @@ impl Dx12 {
             &self.gpu.compute_pipelines,
             &mut self.gpu.staging,
             &mut self.gpu.storage,
+            &mut self.gpu.tables,
+            &mut self.gpu.commands,
         )?;
-        self.submit_work(work::Work::Compute(frame))
+        self.submit_work(work::Work::Compute(Box::new(frame)))
     }
     fn submit_work(&mut self, work: work::Work) -> Result<Ticket> {
         // Record/allocate before registering; both work types use the same
@@ -194,6 +198,14 @@ impl Dx12 {
         if let work::Work::Compute(frame) = &mut work {
             self.gpu.staging.retire(std::mem::take(&mut frame.uploads));
             self.gpu.storage.retire(std::mem::take(&mut frame.storage));
+            self.gpu.commands.push(frame.command_owners());
+            // Descriptor writes may overwrite an older frame only after this
+            // confirmed fence completion, never on Drop or uncertain submission.
+            if let Some(tables) = frame.tables.take()
+                && !tables.is_empty()
+            {
+                self.gpu.tables.push(tables);
+            }
         }
         result
     }
@@ -334,3 +346,8 @@ impl Dx12 {
         self.inject_signal_failure = true;
     }
 }
+
+#[cfg(test)]
+mod command_cache_tests;
+
+mod command_cache;

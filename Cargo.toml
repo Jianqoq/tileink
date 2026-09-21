@@ -2,6 +2,10 @@
 resolver = "3"
 members = []
 
+[[bench]]
+name = "backend_comparison"
+harness = false
+
 [package]
 name = "tileink"
 version = "0.1.2"

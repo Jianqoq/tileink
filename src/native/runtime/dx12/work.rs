@@ -3,7 +3,7 @@ use windows::{Win32::Graphics::Direct3D12::*, core::Interface};
 #[derive(Clone)]
 pub enum Work {
     Probes(Vec<frame::Frame>),
-    Compute(compute::Frame),
+    Compute(Box<compute::Frame>),
 }
 impl Work {
     pub fn lists(&self) -> Result<Vec<Option<ID3D12CommandList>>> {

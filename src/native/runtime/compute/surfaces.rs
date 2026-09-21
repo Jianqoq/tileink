@@ -39,9 +39,12 @@ impl SurfacePool {
         };
         let texture = loop {
             match resources.acquire(size) {
-                // A retained surface still owns its pixels. Remove its pool lease
-                // instead of clearing/reusing an allocation pinned by the cache.
-                Some(entry) if Rc::strong_count(&entry.allocation.state) != 1 => continue,
+                // Pinned pixels cannot be overwritten. Defer the lease to the next
+                // frame so cache invalidation can release it for reuse; dropping
+                // the lease here permanently lost reusable allocations every frame.
+                Some(entry) if Rc::strong_count(&entry.allocation.state) != 1 => {
+                    resources.recycle(entry);
+                }
                 Some(entry) if entry.allocation.size() == size => break entry.allocation,
                 Some(entry) if scratch => {
                     let current = entry.allocation.size();
@@ -160,6 +163,49 @@ fn scratch_capacity(current: [u32; 2], required: [u32; 2], limit: u32) -> [u32; 
 #[cfg(test)]
 mod tests {
     use super::scratch_capacity;
+
+    #[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
+    #[test]
+    #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+    fn pinned_surface_rejoins_pool_after_owner_releases_it() -> super::Result<()> {
+        use super::*;
+        use crate::native::{NativeBackend, NativeContextOptions};
+        #[cfg(feature = "dx12")]
+        let backend = NativeBackend::Dx12;
+        #[cfg(feature = "vulkan")]
+        let backend = NativeBackend::Vulkan;
+        #[cfg(feature = "metal")]
+        let backend = NativeBackend::Metal;
+        let context = NativeContext::new(
+            backend,
+            &NativeContextOptions {
+                physical_adapter: Some(std::env::var("TILEINK_NATIVE_GPU").expect("pin the GPU")),
+                validation: false,
+            },
+        )?;
+        for scratch in [false, true] {
+            let mut pool = SurfacePool::new(&context);
+            let first = pool.acquire([84, 42], scratch)?;
+            let identity = Rc::downgrade(&first.state);
+            pool.resources.begin_frame();
+            pool.scratch_resources.begin_frame();
+            let second = pool.acquire([84, 42], scratch)?;
+            assert!(
+                !Rc::ptr_eq(&first.state, &second.state),
+                "pinned pixels must not alias"
+            );
+            drop(first);
+            pool.resources.begin_frame();
+            pool.scratch_resources.begin_frame();
+            let recovered = pool.acquire([84, 42], scratch)?;
+            assert!(
+                std::ptr::eq(identity.as_ptr(), Rc::as_ptr(&recovered.state)),
+                "a temporarily pinned allocation must return to the pool"
+            );
+        }
+        context.check_validation()?;
+        Ok(())
+    }
 
     #[test]
     fn scratch_capacity_grows_reuses_shrinks_and_respects_device_limit() {

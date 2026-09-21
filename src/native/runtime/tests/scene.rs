@@ -300,3 +300,7 @@ fn failed_scene_recording_does_not_reuse_the_previous_canvas_plan() -> Result<()
     assert!(retried.plan.draw_order.len() > original.plan.draw_order.len());
     Ok(())
 }
+
+#[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
+#[path = "scene_gpu.rs"]
+mod gpu_tests;

@@ -1,5 +1,34 @@
 # Vulkan staging uploads during resize
 
+## Completed compute resource reuse
+
+The backend comparison also exposed repeated device-local buffer, command pool,
+descriptor pool and fence allocation. `vulkan/frame_cache.rs` retains these owners
+after a successful fence wait and readback attempt. Each new recording takes exclusive
+ownership of a free slot; unretired and unknown-completion submissions cannot enter
+the cache. Empty submissions preserve useful storage and descriptor slots. Teardown
+releases completed cache entries before destroying the device.
+
+Device-local buffers and descriptor capacities grow geometrically. Descriptor growth
+preserves previous capacity in every descriptor class and the set count, so alternating
+workloads do not repeatedly shrink and recreate the pool. Command buffers, descriptor
+pools and fences are reset only after confirmed retirement. Existing queue/memory
+barriers remain required when persistent scratch storage crosses frame boundaries.
+The cache retains the historical number of simultaneously unretired slots and their
+high-water capacities. This removes allocation churn rather than moving waits elsewhere.
+
+Immutable samplers are the exception to exclusive slot ownership: nearest and linear
+each have one shared context owner, referenced by every in-flight frame that uses it.
+They do not need retirement before reuse because their state cannot change. This
+removes repeated sampler creation/destruction, which remained a significant driver
+cost after command and storage pooling. Compute command buffers declare
+`ONE_TIME_SUBMIT`: each recording is submitted once and reset only after retirement.
+
+Focused GPU regressions cover overlapping submissions, out-of-order retirement,
+empty batches, growth, alternating descriptor requirements, exact readbacks and
+failed/unknown submission quarantine. See [backend comparison](backend-performance.md)
+for the end-to-end measurement procedure.
+
 Native Vulkan previously concatenated the packed uniforms, all resource payloads and dispatch
 grids into a growing frame-sized Vec, then copied that Vec into coherent staging memory. Replay
 resize uploads about 16 MB per frame, making the intermediate allocation and memory copies visible

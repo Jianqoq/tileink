@@ -39,3 +39,30 @@ impl Drop for Sampler {
         }
     }
 }
+// Sampler state is immutable, so concurrent frames can share one owner per
+// filtering mode. This removes per-frame vkCreateSampler/vkDestroySampler churn.
+#[derive(Default)]
+pub(super) struct Cache {
+    nearest: Option<std::rc::Rc<Sampler>>,
+    linear: Option<std::rc::Rc<Sampler>>,
+}
+
+impl Cache {
+    pub(super) fn get(
+        &mut self,
+        device: &ash::Device,
+        filter: SamplerFilter,
+    ) -> Result<std::rc::Rc<Sampler>> {
+        let slot = match filter {
+            SamplerFilter::Nearest => &mut self.nearest,
+            SamplerFilter::Linear => &mut self.linear,
+        };
+        if slot.is_none() {
+            *slot = Some(std::rc::Rc::new(Sampler::new(
+                &std::rc::Rc::new(device.clone()),
+                filter,
+            )?));
+        }
+        Ok(slot.as_ref().unwrap().clone())
+    }
+}

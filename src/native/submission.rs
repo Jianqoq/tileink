@@ -7,7 +7,9 @@ use crate::Image;
 pub struct NativeSubmission {
     backend: NativeBackend,
     #[cfg(tileink_native_runtime)]
-    receipt: super::runtime::adapter::Receipt,
+    receipt: Option<super::runtime::adapter::Receipt>,
+    #[cfg(tileink_native_runtime)]
+    completed: std::rc::Rc<std::cell::Cell<bool>>,
 }
 
 impl NativeSubmission {
@@ -20,7 +22,9 @@ impl NativeSubmission {
     pub fn is_complete(&self) -> Result<bool, NativeError> {
         #[cfg(tileink_native_runtime)]
         {
-            self.receipt.is_complete().map_err(NativeError::Completion)
+            self.receipt.as_ref().map_or(Ok(true), |receipt| {
+                receipt.is_complete().map_err(NativeError::Completion)
+            })
         }
         #[cfg(not(tileink_native_runtime))]
         {
@@ -29,7 +33,29 @@ impl NativeSubmission {
     }
     #[cfg(tileink_native_runtime)]
     pub(super) fn new(backend: NativeBackend, receipt: super::runtime::adapter::Receipt) -> Self {
-        Self { backend, receipt }
+        Self {
+            backend,
+            receipt: Some(receipt),
+            completed: Default::default(),
+        }
+    }
+
+    #[cfg(tileink_native_runtime)]
+    pub(super) fn completion(&self) -> std::rc::Rc<std::cell::Cell<bool>> {
+        self.completed.clone()
+    }
+
+    #[cfg(tileink_native_runtime)]
+    pub(super) fn already_completed(
+        backend: NativeBackend,
+        completed: std::rc::Rc<std::cell::Cell<bool>>,
+    ) -> Self {
+        assert!(completed.get(), "empty work requires observed completion");
+        Self {
+            backend,
+            receipt: None,
+            completed,
+        }
     }
 
     /// Wait explicitly, with the backend's bounded completion wait, and retire resources.
@@ -40,7 +66,12 @@ impl NativeSubmission {
     fn readback(self) -> Result<Vec<Vec<u8>>, NativeError> {
         #[cfg(tileink_native_runtime)]
         {
-            self.receipt.readback().map_err(NativeError::Readback)
+            let pixels = self.receipt.as_ref().map_or_else(
+                || Ok(Vec::new()),
+                |receipt| receipt.readback().map_err(NativeError::Readback),
+            )?;
+            self.completed.set(true);
+            Ok(pixels)
         }
         #[cfg(not(tileink_native_runtime))]
         Err(NativeError::Unavailable(self.backend.unavailable()))

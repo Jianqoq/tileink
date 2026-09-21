@@ -29,6 +29,9 @@ use std::{ops::Range, rc::Rc};
 
 #[derive(Default)]
 struct SceneBuffers {
+    work: super::cached_buffer::CachedBuffer,
+    chunks: super::cached_buffer::CachedBuffer,
+    spills: super::cached_buffer::CachedBuffer,
     coarse_text: super::cached_buffer::CachedBuffer,
     fine_text: super::cached_buffer::CachedBuffer,
     scan: scene_scan::ScanBuffers,
@@ -277,39 +280,10 @@ impl SceneCache {
                 None
             },
         )?;
-        let mut work = Vec::<u8>::new();
-        work.try_reserve_exact(work_words.max(1) * size_of::<u32>())?;
-        work.resize(work_words.max(1) * size_of::<u32>(), 0);
-        let record_base = coarse_work_tile_draw_record_word_offset(
-            lengths.tile_count,
-            lengths.coarse_ptcl_capacity,
-            lengths.coarse_glyph_capacity,
-        );
-        let records: &[u8] = bytemuck::cast_slice(self.staging.tile_draw_bins.upload_records());
-        work[record_base * size_of::<u32>()..record_base * size_of::<u32>() + records.len()]
-            .copy_from_slice(records);
-        let index_base = coarse_work_tile_draw_index_word_offset(
-            lengths.tile_count,
-            lengths.coarse_ptcl_capacity,
-            lengths.coarse_glyph_capacity,
-        );
-        let indices: &[u8] = bytemuck::cast_slice(self.staging.tile_draw_bins.upload_indices());
-        work[index_base * size_of::<u32>()..index_base * size_of::<u32>() + indices.len()]
-            .copy_from_slice(indices);
-        self.staging.tile_draw_bins.finish_full_upload();
         let active_batches = if let Some(active) = options.active {
             if active.dimensions() != (lengths.tiles_width as u32, lengths.tiles_height as u32) {
                 return Err("native damage dimensions differ from scene".into());
             }
-            let offset = crate::shared::gpu_coarse::coarse_work_active_tile_list_word_offset(
-                lengths.tile_count,
-                lengths.coarse_ptcl_capacity,
-                lengths.coarse_glyph_capacity,
-                lengths.tile_draw_index_count,
-                lengths.tile_draw_chunk_count,
-            ) * size_of::<u32>();
-            let bytes: &[u8] = bytemuck::cast_slice(active.list());
-            work[offset..offset + bytes.len()].copy_from_slice(bytes);
             self.staging.active_batch_ids(
                 active.list(),
                 canvas
@@ -320,8 +294,47 @@ impl SceneCache {
         } else {
             Vec::new()
         };
-        let work = batch.buffer(work)?;
-        let chunks = allocate(
+        // Scan/coarse dispatches initialize their GPU outputs. Upload only the CPU
+        // tile bins and active list, rather than clearing and transferring the whole
+        // work arena (including PTCL, glyph and emit scratch) on every frame.
+        let record_base = coarse_work_tile_draw_record_word_offset(
+            lengths.tile_count,
+            lengths.coarse_ptcl_capacity,
+            lengths.coarse_glyph_capacity,
+        ) * size_of::<u32>();
+        let index_base = coarse_work_tile_draw_index_word_offset(
+            lengths.tile_count,
+            lengths.coarse_ptcl_capacity,
+            lengths.coarse_glyph_capacity,
+        ) * size_of::<u32>();
+        let mut updates = Vec::new();
+        let records: &[u8] = bytemuck::cast_slice(self.staging.tile_draw_bins.upload_records());
+        if !records.is_empty() {
+            updates.push((record_base, records));
+        }
+        let indices: &[u8] = bytemuck::cast_slice(self.staging.tile_draw_bins.upload_indices());
+        if !indices.is_empty() {
+            updates.push((index_base, indices));
+        }
+        if let Some(active) = options.active {
+            let offset = crate::shared::gpu_coarse::coarse_work_active_tile_list_word_offset(
+                lengths.tile_count,
+                lengths.coarse_ptcl_capacity,
+                lengths.coarse_glyph_capacity,
+                lengths.tile_draw_index_count,
+                lengths.tile_draw_chunk_count,
+            ) * size_of::<u32>();
+            let bytes: &[u8] = bytemuck::cast_slice(active.list());
+            if !bytes.is_empty() {
+                updates.push((offset, bytes));
+            }
+        }
+        let work =
+            self.buffers
+                .work
+                .patches(batch, work_words.max(1) * size_of::<u32>(), &updates)?;
+        self.staging.tile_draw_bins.finish_full_upload();
+        let chunks = self.buffers.chunks.scratch(
             batch,
             lengths.coarse_chunk_count,
             size_of::<CoarseChunkRecord>(),
@@ -343,7 +356,10 @@ impl SceneCache {
             clip_spill_depth,
             group_spill_depth,
         )?;
-        let spills = allocate(batch, spill_words, size_of::<u32>())?;
+        let spills = self
+            .buffers
+            .spills
+            .scratch(batch, spill_words, size_of::<u32>())?;
         self.plan = Some(prepared.plan.clone());
         Ok(Scene {
             active_batches,

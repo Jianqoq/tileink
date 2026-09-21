@@ -109,7 +109,7 @@ impl FilterAdapter for Execution<'_> {
         // Localized draws retain root glyph/run indices, so they must use the
         // same prepared text data rather than rebuilding a local glyph atlas.
         self.scene = Some(unsafe {
-            SceneCache::default().record_with_plan(
+            self.filter_scenes.next().record_with_plan(
                 self.batch,
                 canvas,
                 self.text,

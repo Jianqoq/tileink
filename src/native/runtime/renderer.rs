@@ -22,6 +22,7 @@ mod backdrops;
 mod filter_encoding;
 mod filter_kernels;
 mod filter_resources;
+mod filter_scenes;
 mod filters;
 mod frame;
 pub(crate) mod images;
@@ -43,6 +44,7 @@ pub(crate) struct FrameOptions {
 }
 
 struct FrameResources<'a> {
+    filter_scenes: filter_scenes::FilterScenes<'a>,
     images: &'a Images<'a>,
     text: Option<&'a crate::text::PreparedTextData>,
     retained: &'a mut RetainedRenderState<Surface>,
@@ -51,6 +53,7 @@ struct FrameResources<'a> {
 /// Records one Canvas in an existing frame batch. Its image placements and scene
 /// stay associated through recursive operations; errors invalidate the whole batch.
 pub(crate) struct Execution<'a> {
+    filter_scenes: filter_scenes::FilterScenes<'a>,
     batch: &'a mut ComputeBatch,
     scene: Option<Scene>,
     pending_plan: Option<std::rc::Rc<crate::shared::execution::ExecPlan>>,
@@ -80,6 +83,7 @@ impl<'a> Execution<'a> {
             batch,
             canvas,
             FrameResources {
+                filter_scenes: filter_scenes::FilterSceneCache::default().frame(),
                 images,
                 text,
                 retained: &mut RetainedRenderState::default(),
@@ -97,6 +101,7 @@ impl<'a> Execution<'a> {
         limit: u32,
     ) -> Result<Self> {
         let FrameResources {
+            filter_scenes,
             images,
             text,
             retained,
@@ -119,6 +124,7 @@ impl<'a> Execution<'a> {
         let filters = filter_resources::FilterResources::record(batch, scene.plan(), None, images)?;
         let paths = prepare_paths(batch, scene.plan())?;
         Ok(Self {
+            filter_scenes,
             batch,
             scene: Some(scene),
             pending_plan: None,

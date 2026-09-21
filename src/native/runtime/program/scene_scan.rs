@@ -7,7 +7,7 @@ use super::super::{
     compute::{ComputeBatch, ResourceId},
 };
 use super::cumsum::CumsumPlan;
-use super::resources::{allocate, allocation_size, upload};
+use super::resources::{allocation_size, upload};
 #[path = "scene_scan/prepare.rs"]
 mod prepare;
 use crate::shared::{
@@ -30,6 +30,14 @@ pub struct ScanOutput {
 
 #[derive(Default)]
 pub(crate) struct ScanBuffers {
+    backdrops: super::cached_buffer::CachedBuffer,
+    tile_segment_ranges: super::cached_buffer::CachedBuffer,
+    counts: super::cached_buffer::CachedBuffer,
+    cursors: super::cached_buffer::CachedBuffer,
+    bumps: super::cached_buffer::CachedBuffer,
+    totals: super::cached_buffer::CachedBuffer,
+    offsets: super::cached_buffer::CachedBuffer,
+    segments: super::cached_buffer::CachedBuffer,
     cumsum: super::cumsum::CumsumBuffers,
     lines: super::cached_buffer::CachedBuffer,
     paths: super::cached_buffer::CachedBuffer,
@@ -143,14 +151,33 @@ pub(crate) fn encode_cached(
             .ranges
             .upload(batch, plans.scan_ranges(), Some(&dirty.scan_ranges))?;
     let active = upload(batch, &[0u32])?;
-    let backdrops = allocate(batch, lengths.backdrop_len, size_of::<i32>())?;
-    let tile_segment_ranges = allocate(batch, lengths.backdrop_len, size_of::<TileSegmentRange>())?;
-    let counts = allocate(batch, lengths.backdrop_len, size_of::<u32>())?;
-    let cursors = allocate(batch, lengths.backdrop_len, size_of::<u32>())?;
-    let bumps = allocate(batch, lengths.path_count, size_of::<u32>())?;
-    let totals = allocate(batch, lengths.scan_chunk_count, size_of::<u32>())?;
-    let offsets = allocate(batch, lengths.scan_chunk_count, size_of::<u32>())?;
-    let segments = allocate(batch, lengths.segment_capacity, size_of::<LineSegment>())?;
+    let backdrops = buffers
+        .backdrops
+        .scratch(batch, lengths.backdrop_len, size_of::<i32>())?;
+    let tile_segment_ranges = buffers.tile_segment_ranges.scratch(
+        batch,
+        lengths.backdrop_len,
+        size_of::<TileSegmentRange>(),
+    )?;
+    let counts = buffers
+        .counts
+        .scratch(batch, lengths.backdrop_len, size_of::<u32>())?;
+    let cursors = buffers
+        .cursors
+        .scratch(batch, lengths.backdrop_len, size_of::<u32>())?;
+    let bumps = buffers
+        .bumps
+        .scratch(batch, lengths.path_count, size_of::<u32>())?;
+    let totals = buffers
+        .totals
+        .scratch(batch, lengths.scan_chunk_count, size_of::<u32>())?;
+    let offsets = buffers
+        .offsets
+        .scratch(batch, lengths.scan_chunk_count, size_of::<u32>())?;
+    let segments =
+        buffers
+            .segments
+            .scratch(batch, lengths.segment_capacity, size_of::<LineSegment>())?;
     // SAFETY: Canvas builds bounded path/line records and disjoint path work
     // allocations. PersistentPathPlans partitions those allocations into bounded
     // chunks. Their extents are checked above. The ordered clear/count/prefix/

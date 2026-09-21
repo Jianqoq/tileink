@@ -18,7 +18,7 @@ pub(crate) mod output;
 pub(crate) mod resource_writes;
 pub(crate) mod retained;
 pub(crate) mod retained_surfaces;
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(any(feature = "wgpu", tileink_native_runtime, test))]
 pub(crate) mod target_capacity;
 pub(crate) mod vector_images;
 

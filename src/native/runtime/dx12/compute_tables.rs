@@ -3,20 +3,20 @@ use super::super::compute::{Pass, Resource, SamplerFilter};
 use crate::native::shaders::BindingKind;
 use windows::Win32::Graphics::Direct3D12::*;
 
+#[derive(Clone)]
 struct Heap {
     heap: ID3D12DescriptorHeap,
     step: usize,
     next: usize,
+    capacity: usize,
 }
 impl Heap {
     unsafe fn new(
         device: &ID3D12Device,
         kind: D3D12_DESCRIPTOR_HEAP_TYPE,
         count: usize,
+        cached: Option<Self>,
     ) -> Result<Option<Self>> {
-        if count == 0 {
-            return Ok(None);
-        }
         let limit = if kind == D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER {
             D3D12_MAX_SHADER_VISIBLE_SAMPLER_HEAP_SIZE as usize
         } else {
@@ -25,16 +25,27 @@ impl Heap {
         if count > limit {
             return Err("native DX12 shader-visible heap capacity exceeded".into());
         }
+        if let Some(mut cached) = cached
+            && cached.capacity >= count
+        {
+            cached.next = 0;
+            return Ok(Some(cached));
+        }
+        if count == 0 {
+            return Ok(None);
+        }
+        let capacity = count.next_power_of_two().min(limit);
         unsafe {
             Ok(Some(Self {
                 heap: device.CreateDescriptorHeap(&D3D12_DESCRIPTOR_HEAP_DESC {
                     Type: kind,
-                    NumDescriptors: count as u32,
+                    NumDescriptors: capacity as u32,
                     Flags: D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,
                     NodeMask: 0,
                 })?,
                 step: device.GetDescriptorHandleIncrementSize(kind) as usize,
                 next: 0,
+                capacity,
             }))
         }
     }
@@ -47,6 +58,7 @@ impl Heap {
         }
     }
     unsafe fn allocate(&mut self) -> D3D12_CPU_DESCRIPTOR_HANDLE {
+        debug_assert!(self.next < self.capacity);
         unsafe {
             let handle = D3D12_CPU_DESCRIPTOR_HANDLE {
                 ptr: self.heap.GetCPUDescriptorHandleForHeapStart().ptr + self.next * self.step,
@@ -56,15 +68,20 @@ impl Heap {
         }
     }
 }
+#[derive(Clone)]
 pub(super) struct Tables {
     resources: Option<Heap>,
     samplers: Option<Heap>,
 }
 impl Tables {
+    pub(super) fn is_empty(&self) -> bool {
+        self.resources.is_none() && self.samplers.is_none()
+    }
     pub unsafe fn new(
         device: &ID3D12Device,
         list: &ID3D12GraphicsCommandList,
         passes: &[Pass],
+        cached: Option<Self>,
     ) -> Result<Self> {
         let mut counts = [0usize; 2];
         for pass in passes {
@@ -76,10 +93,22 @@ impl Tables {
             }
         }
         unsafe {
-            let this = Self {
-                resources: Heap::new(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, counts[0])?,
-                samplers: Heap::new(device, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, counts[1])?,
-            };
+            let mut this = cached.unwrap_or(Self {
+                resources: None,
+                samplers: None,
+            });
+            this.resources = Heap::new(
+                device,
+                D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
+                counts[0],
+                this.resources.take(),
+            )?;
+            this.samplers = Heap::new(
+                device,
+                D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER,
+                counts[1],
+                this.samplers.take(),
+            )?;
             let heaps: Vec<_> = [&this.resources, &this.samplers]
                 .into_iter()
                 .filter_map(|h| h.as_ref().map(|h| Some(h.heap.clone())))
@@ -154,11 +183,12 @@ impl Tables {
             }
         }
     }
-    pub fn into_heaps(self) -> Vec<ID3D12DescriptorHeap> {
-        [self.resources, self.samplers]
+    #[cfg(test)]
+    pub(super) fn heaps(&self) -> Vec<ID3D12DescriptorHeap> {
+        [&self.resources, &self.samplers]
             .into_iter()
             .flatten()
-            .map(|h| h.heap)
+            .map(|h| h.heap.clone())
             .collect()
     }
 }

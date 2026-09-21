@@ -87,6 +87,7 @@ mod tests {
 
 #[derive(Default)]
 pub(crate) struct Recording {
+    filter_scenes: super::filter_scenes::FilterSceneCache,
     pub(crate) clear_color: u32,
     pub(crate) retained: crate::render::retained::RetainedRenderState<super::Surface>,
     scene: SceneCache,
@@ -196,6 +197,7 @@ impl Recording {
             batch,
             canvas,
             super::FrameResources {
+                filter_scenes: self.filter_scenes.frame(),
                 images: &images,
                 text: self.text.as_ref(),
                 retained: &mut self.retained,
@@ -208,3 +210,6 @@ impl Recording {
         )
     }
 }
+
+#[cfg(test)]
+mod gpu_tests;

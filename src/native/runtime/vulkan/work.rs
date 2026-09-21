@@ -10,7 +10,7 @@ impl Work {
     pub fn commands(&self) -> Vec<vk::CommandBuffer> {
         match self {
             Self::Probes(v) => v.iter().map(|f| f.command).collect(),
-            Self::Compute(f) => vec![f.command],
+            Self::Compute(f) => vec![f.commands.command],
         }
     }
     pub fn fence(&self) -> Result<vk::Fence> {
@@ -19,7 +19,7 @@ impl Work {
                 .last()
                 .map(|f| f.fence)
                 .ok_or_else(|| "empty native submission".into()),
-            Self::Compute(f) => Ok(f.fence),
+            Self::Compute(f) => Ok(f.commands.fence),
         }
     }
     pub fn readback(&self) -> Result<Vec<Vec<u8>>> {

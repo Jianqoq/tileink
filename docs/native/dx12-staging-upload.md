@@ -1,5 +1,20 @@
 # DX12 upload resource reuse
 
+## Completed command and descriptor reuse
+
+The backend comparison found that creating descriptor heaps, command allocators and
+command lists could cost more CPU time than scene recording. The context now retains
+each completed frame's descriptor tables and command owners. A successful fence wait
+is required before resetting the allocator/list or overwriting descriptors; failed
+Signal and unknown completion continue to quarantine owners. Empty batches do not
+evict useful descriptor heaps. Heap capacities grow geometrically within API limits.
+The cache retains the historical peak of simultaneously unretired slots.
+
+The GPU regression verifies concurrent isolation, reuse after retirement, empty
+submissions, heap growth, exact readback and failed-Signal quarantine. This is a
+root-cause allocation fix with no new waits or changes to shader/presentation behavior.
+See [backend comparison](backend-performance.md).
+
 Replay resize previously called `CreateCommittedResource` for every constant/data upload,
 even after the previous frame's GPU work had completed. The DX12 compute recorder now consumes
 an exclusively owned list of completed upload resources, reuses each sufficiently large buffer,

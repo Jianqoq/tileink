@@ -12,17 +12,29 @@ pub struct Frame {
     _buffers: Vec<ID3D12Resource>,
     pub(super) uploads: Vec<super::buffer_cache::Buffer>,
     pub(super) storage: Vec<super::buffer_cache::Buffer>,
-    _heaps: Vec<ID3D12DescriptorHeap>,
+    pub(super) tables: Option<super::compute_tables::Tables>,
     _pipelines: Vec<Pipeline>,
     readbacks: Vec<Readback>,
 }
 impl Frame {
+    pub(super) fn command_owners(&self) -> super::command_cache::Commands {
+        super::command_cache::Commands {
+            list: self.list.clone(),
+            allocator: self._allocator.clone(),
+        }
+    }
+    #[cfg(test)]
+    pub(super) fn descriptor_heaps(&self) -> Vec<ID3D12DescriptorHeap> {
+        self.tables.as_ref().unwrap().heaps()
+    }
     pub fn record(
         device: &ID3D12Device,
         batch: &ComputeBatch,
         pipelines: &BTreeMap<&'static str, Pipeline>,
         staging: &mut super::buffer_cache::Pool,
         storage: &mut super::buffer_cache::Pool,
+        tables: &mut Vec<super::compute_tables::Tables>,
+        commands: &mut Vec<super::command_cache::Commands>,
     ) -> Result<Self> {
         let synchronization = match &batch.synchronization {
             Some((id, crate::native::interop::Synchronization::Dx12(sync))) => Some((*id, sync)),
@@ -44,9 +56,8 @@ impl Frame {
             }
         }
         unsafe {
-            let allocator = device.CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT)?;
-            let list: ID3D12GraphicsCommandList =
-                device.CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, &allocator, None)?;
+            let super::command_cache::Commands { allocator, list } =
+                super::command_cache::Commands::acquire(device, commands)?;
             let mut frame = Self {
                 synchronization: synchronization.map(|(_, sync)| sync.clone()),
                 list,
@@ -54,7 +65,7 @@ impl Frame {
                 _buffers: Vec::new(),
                 uploads: Vec::new(),
                 storage: Vec::new(),
-                _heaps: Vec::new(),
+                tables: None,
                 _pipelines: Vec::new(),
                 readbacks: Vec::new(),
             };
@@ -88,8 +99,12 @@ impl Frame {
             if let Some((id, sync)) = synchronization {
                 states[id.index()] = sync.incoming;
             }
-            let mut tables =
-                super::compute_tables::Tables::new(device, &frame.list, batch.passes())?;
+            let mut tables = super::compute_tables::Tables::new(
+                device,
+                &frame.list,
+                batch.passes(),
+                tables.pop(),
+            )?;
             for command in batch.commands() {
                 let pass = match command {
                     crate::native::runtime::compute::Command::Dispatch(index) => {
@@ -146,7 +161,7 @@ impl Frame {
                     .list
                     .Dispatch(pass.grid[0], pass.grid[1], pass.grid[2]);
             }
-            frame._heaps = tables.into_heaps();
+            frame.tables = Some(tables);
             for id in batch.outputs() {
                 let id = id.index();
                 let size = batch.resources()[id].byte_len();

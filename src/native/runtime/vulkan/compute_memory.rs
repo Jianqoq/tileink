@@ -3,6 +3,7 @@ use super::super::Result;
 use ash::vk;
 
 pub struct Arena {
+    pub(super) capacities: Vec<u64>,
     device: ash::Device,
     pub buffers: Vec<vk::Buffer>,
     memory: vk::DeviceMemory,
@@ -16,6 +17,7 @@ impl Arena {
         flags: vk::MemoryPropertyFlags,
     ) -> Result<Self> {
         let mut this = Self {
+            capacities: sizes.to_vec(),
             device: device.clone(),
             buffers: Vec::new(),
             memory: vk::DeviceMemory::null(),

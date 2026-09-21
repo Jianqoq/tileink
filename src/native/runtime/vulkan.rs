@@ -32,7 +32,7 @@ pub struct Vulkan {
     layout: vk::PipelineLayout,
     pipelines: BTreeMap<&'static str, vk::Pipeline>,
     pending: Pending<work::Work>,
-    staging: Option<staging::Staging>,
+    frame_cache: frame_cache::Cache,
     properties: vk::PhysicalDeviceProperties,
     compute_pipelines: BTreeMap<&'static str, compute_pipeline::Pipeline>,
     family: u32,
@@ -170,7 +170,7 @@ impl Vulkan {
             self.family,
             batch,
             &self.compute_pipelines,
-            &mut self.staging,
+            &mut self.frame_cache,
         )?;
         self.submit_work(work::Work::Compute(Box::new(frame)))
     }
@@ -274,14 +274,18 @@ impl Vulkan {
                 return Err(error.into());
             }
         }
-        let mut work = self.pending.take_completed(ticket, ticket.serial())?;
+        let work = self.pending.take_completed(ticket, ticket.serial())?;
         let result = work.readback();
         // Only a successfully waited fence permits reuse. Never recycle on Drop,
         // rejection, timeout or unknown completion (device-loss quarantine).
-        if let work::Work::Compute(frame) = &mut work
-            && let Some(staging) = frame.upload.take()
-        {
-            self.staging = Some(staging);
+        if let work::Work::Compute(frame) = work {
+            if let Some(staging) = frame.upload {
+                self.frame_cache.staging = Some(staging);
+            }
+            if let Some(arena) = frame.gpu {
+                self.frame_cache.retire_storage(arena);
+            }
+            self.frame_cache.commands.push(frame.commands);
         }
         result
     }
@@ -352,7 +356,7 @@ impl Drop for Vulkan {
                 return;
             }
             self.pending.clear_after_completion();
-            self.staging = None;
+            self.frame_cache = Default::default();
             self.compute_pipelines.clear();
             for pipeline in self.pipelines.values() {
                 self.device.destroy_pipeline(*pipeline, None);
@@ -405,3 +409,13 @@ impl Vulkan {
 
 #[path = "vulkan/synchronization.rs"]
 mod synchronization;
+
+#[cfg(test)]
+mod memory_cache_tests;
+
+mod frame_cache;
+
+#[cfg(test)]
+mod command_cache_tests;
+#[cfg(test)]
+mod sampler_tests;

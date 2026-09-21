@@ -1,5 +1,12 @@
 # Retained benchmarks
 
+## Native comparison follow-up
+
+The later user request restores native-versus-wgpu performance work. The previous
+closeout waiver below remains historical. The four-route Criterion procedure and
+resource-reuse invariants are documented in
+[native backend performance](docs/native/backend-performance.md).
+
 ## M0/M1 delivery decision (2026-09-13)
 
 The same user decision applies to [M6 Windows acceptance](docs/native/m6-windows.md):

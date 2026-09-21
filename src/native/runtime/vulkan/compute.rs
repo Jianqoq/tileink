@@ -6,7 +6,7 @@ use super::compute_texture::Image;
 enum GpuResource {
     TextureTable,
     Buffer(vk::Buffer),
-    Sampler(super::compute_sampler::Sampler),
+    Sampler(std::rc::Rc<super::compute_sampler::Sampler>),
     Image(std::rc::Rc<Image>),
 }
 impl GpuResource {
@@ -31,11 +31,8 @@ use std::collections::BTreeMap;
 pub struct Frame {
     pub synchronization: Option<crate::native::interop::vulkan::TargetSynchronization>,
     device: ash::Device,
-    pool: vk::CommandPool,
-    descriptors: vk::DescriptorPool,
-    pub fence: vk::Fence,
-    pub command: vk::CommandBuffer,
-    gpu: Option<Arena>,
+    pub(super) commands: super::frame_cache::Commands,
+    pub(super) gpu: Option<Arena>,
     persistent_buffers: Vec<std::rc::Rc<Arena>>,
     resources: Vec<GpuResource>,
     pub(super) upload: Option<super::staging::Staging>,
@@ -45,6 +42,27 @@ pub struct Frame {
     uniform_offsets: Vec<Option<u64>>,
 }
 impl Frame {
+    #[cfg(test)]
+    pub(super) fn sampler_identities(&self) -> Vec<usize> {
+        self.resources
+            .iter()
+            .filter_map(|resource| {
+                if let GpuResource::Sampler(sampler) = resource {
+                    Some(std::rc::Rc::as_ptr(sampler) as usize)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+    #[cfg(test)]
+    pub(super) fn command_handles(&self) -> (vk::CommandPool, vk::DescriptorPool, vk::Fence) {
+        self.commands.handles()
+    }
+    #[cfg(test)]
+    pub(super) fn storage_buffers(&self) -> &[vk::Buffer] {
+        &self.gpu.as_ref().unwrap().buffers
+    }
     pub fn record(
         device: &ash::Device,
         memory: &vk::PhysicalDeviceMemoryProperties,
@@ -52,7 +70,7 @@ impl Frame {
         family: u32,
         batch: &ComputeBatch,
         pipelines: &BTreeMap<&'static str, Pipeline>,
-        staging: &mut Option<super::staging::Staging>,
+        frame_cache: &mut super::frame_cache::Cache,
     ) -> Result<Self> {
         let limits = &properties.limits;
         // Every owned image is allocated, including images reachable only through a table.
@@ -110,10 +128,7 @@ impl Frame {
         let mut this = Self {
             synchronization: synchronization.map(|(_, sync)| sync.clone()),
             device: device.clone(),
-            pool: vk::CommandPool::null(),
-            descriptors: vk::DescriptorPool::null(),
-            fence: vk::Fence::null(),
-            command: vk::CommandBuffer::null(),
+            commands: frame_cache.acquire_commands(device, family, batch.passes())?,
             gpu: None,
             persistent_buffers: Vec::new(),
             resources: Vec::new(),
@@ -168,33 +183,33 @@ impl Frame {
         let host = vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT;
         if upload.len() != 0 {
             this.upload = Some(super::staging::Staging::prepare(
-                device, memory, &upload, staging,
+                device,
+                memory,
+                &upload,
+                &mut frame_cache.staging,
             )?);
         }
-        this.gpu = Some(Arena::new(
-            device,
-            memory,
-            &batch
-                .resources()
-                .iter()
-                .enumerate()
-                .filter_map(|(index, b)| {
-                    if this.uniform_offsets[index].is_some() {
-                        return None;
-                    }
-                    if let Resource::Buffer(bytes) = b {
-                        Some(bytes.len() as u64)
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>(),
-            vk::BufferUsageFlags::STORAGE_BUFFER
-                | vk::BufferUsageFlags::UNIFORM_BUFFER
-                | vk::BufferUsageFlags::TRANSFER_SRC
-                | vk::BufferUsageFlags::TRANSFER_DST,
-            vk::MemoryPropertyFlags::DEVICE_LOCAL,
-        )?);
+        this.gpu = Some(
+            frame_cache.acquire_storage(
+                device,
+                memory,
+                &batch
+                    .resources()
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, b)| {
+                        if this.uniform_offsets[index].is_some() {
+                            return None;
+                        }
+                        if let Resource::Buffer(bytes) = b {
+                            Some(bytes.len() as u64)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+            )?,
+        );
         let mut buffers = this.gpu.as_ref().unwrap().buffers.iter();
         let mut resource_device = None;
         for (index, resource) in batch.resources().iter().enumerate() {
@@ -214,9 +229,7 @@ impl Frame {
                     })
                 }
                 Resource::Sampler(filter) => {
-                    let shared =
-                        resource_device.get_or_insert_with(|| std::rc::Rc::new(device.clone()));
-                    GpuResource::Sampler(super::compute_sampler::Sampler::new(shared, *filter)?)
+                    GpuResource::Sampler(frame_cache.samplers.get(device, *filter)?)
                 }
                 Resource::Texture(texture) => {
                     if let Some(texture) = &texture.persistent {
@@ -241,59 +254,14 @@ impl Frame {
             )?);
         }
         unsafe {
-            this.pool = device.create_command_pool(
-                &vk::CommandPoolCreateInfo::default().queue_family_index(family),
-                None,
+            let command = this.commands.command;
+            // A retired slot is reset and recorded again before its next submit;
+            // the driver need not preserve this recording for repeated execution.
+            device.begin_command_buffer(
+                command,
+                &vk::CommandBufferBeginInfo::default()
+                    .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
             )?;
-            this.fence = device.create_fence(&vk::FenceCreateInfo::default(), None)?;
-            this.command = device.allocate_command_buffers(
-                &vk::CommandBufferAllocateInfo::default()
-                    .command_pool(this.pool)
-                    .level(vk::CommandBufferLevel::PRIMARY)
-                    .command_buffer_count(1),
-            )?[0];
-            let command = this.command;
-            let mut counts = [0u32; 5];
-            for pass in batch.passes() {
-                for b in pass.shader.bindings {
-                    let i = match b.kind {
-                        BindingKind::Sampler => 4,
-                        BindingKind::Uniform => 0,
-                        BindingKind::Read | BindingKind::Write => 1,
-                        BindingKind::Texture
-                        | BindingKind::TextureArray
-                        | BindingKind::TextureTable => 2,
-                        BindingKind::TextureWrite => 3,
-                    };
-                    counts[i] = counts[i]
-                        .checked_add(b.count)
-                        .ok_or("native Vulkan descriptor count overflow")?;
-                }
-            }
-            if !batch.passes().is_empty() {
-                let sizes: Vec<_> = [
-                    vk::DescriptorType::UNIFORM_BUFFER,
-                    vk::DescriptorType::STORAGE_BUFFER,
-                    vk::DescriptorType::SAMPLED_IMAGE,
-                    vk::DescriptorType::STORAGE_IMAGE,
-                    vk::DescriptorType::SAMPLER,
-                ]
-                .into_iter()
-                .zip(counts)
-                .filter(|(_, n)| *n != 0)
-                .map(|(ty, descriptor_count)| vk::DescriptorPoolSize {
-                    ty,
-                    descriptor_count,
-                })
-                .collect();
-                this.descriptors = device.create_descriptor_pool(
-                    &vk::DescriptorPoolCreateInfo::default()
-                        .max_sets(u32::try_from(batch.passes().len())?)
-                        .pool_sizes(&sizes),
-                    None,
-                )?;
-            }
-            device.begin_command_buffer(command, &vk::CommandBufferBeginInfo::default())?;
             let gpu = &this.resources;
             // Queue order alone does not make previous shader writes/reads visible
             // to range transfers in the next batch. Cover both write and reuse hazards.
@@ -407,7 +375,7 @@ impl Frame {
                 let pipeline = &pipelines[pass.shader.entry];
                 let set = device.allocate_descriptor_sets(
                     &vk::DescriptorSetAllocateInfo::default()
-                        .descriptor_pool(this.descriptors)
+                        .descriptor_pool(this.commands.descriptors)
                         .set_layouts(&[pipeline.bindings]),
                 )?[0];
                 this.write_bindings(batch, pass, set, grids[index])?;
@@ -526,14 +494,5 @@ unsafe fn barrier(
             &[],
             &[],
         );
-    }
-}
-impl Drop for Frame {
-    fn drop(&mut self) {
-        unsafe {
-            self.device.destroy_descriptor_pool(self.descriptors, None);
-            self.device.destroy_command_pool(self.pool, None);
-            self.device.destroy_fence(self.fence, None);
-        }
     }
 }

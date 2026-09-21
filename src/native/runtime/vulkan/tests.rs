@@ -137,7 +137,7 @@ fn staging_reuse_preserves_in_flight_and_resized_uploads() -> Result<()> {
     let b = device.submit_compute(&batch(4096, 29)?)?;
     let first = handle(&device, &a);
     assert_ne!(first, handle(&device, &b));
-    assert!(device.staging.is_none());
+    assert!(device.frame_cache.staging.is_none());
     assert_eq!(device.readback_batch(&a)?, vec![vec![17; 4096]]);
     let c = device.submit_compute(&batch(2048, 53)?)?;
     assert_eq!(first, handle(&device, &c));
@@ -149,10 +149,10 @@ fn staging_reuse_preserves_in_flight_and_resized_uploads() -> Result<()> {
     }
     let empty = device.submit_compute(&super::super::compute::ComputeBatch::new())?;
     assert!(device.readback_batch(&empty)?.is_empty());
-    assert!(device.staging.is_some());
+    assert!(device.frame_cache.staging.is_some());
     device.injected_submit_error = Some(vk::Result::ERROR_OUT_OF_DEVICE_MEMORY);
     assert!(device.submit_compute(&batch(128, 127)?).is_err());
-    assert!(device.staging.is_none());
+    assert!(device.frame_cache.staging.is_none());
     assert_eq!(device.pending_count(), 0);
     let retry = device.submit_compute(&batch(128, 131)?)?;
     assert_eq!(device.readback_batch(&retry)?, vec![vec![131; 128]]);

@@ -84,10 +84,12 @@ fn local_filter_context_restores_parent_after_scan_failure() -> Result<()> {
     let canvas = Canvas::new(4, 4, 1.0);
     let mut cache = SceneCache::default();
     let mut retained = Default::default();
+    let mut filter_scenes = super::filter_scenes::FilterSceneCache::default();
     let mut execution = Execution::prepare(
         cache.prepare(&canvas),
         &mut batch,
         super::FrameResources {
+            filter_scenes: filter_scenes.frame(),
             images: &images,
             text: None,
             retained: &mut retained,
@@ -124,10 +126,12 @@ fn failed_filter_context_preparation_keeps_parent_active() -> Result<()> {
     let canvas = Canvas::new(4, 4, 1.0);
     let mut cache = SceneCache::default();
     let mut retained = Default::default();
+    let mut filter_scenes = super::filter_scenes::FilterSceneCache::default();
     let mut execution = Execution::prepare(
         cache.prepare(&canvas),
         &mut batch,
         super::FrameResources {
+            filter_scenes: filter_scenes.frame(),
             images: &images,
             text: None,
             retained: &mut retained,
