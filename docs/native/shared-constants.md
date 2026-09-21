@@ -132,3 +132,12 @@ Component-transfer table size, channel count and length also originate in
 `src/shaders/hlsl/constants.hlsli`. Public host usize constants are aliases of the
 generated values; the filter WGSL assembly injects the same size and length.
 The upload contract requires 0..255 table values and checked logical indices.
+
+Range-scatter header and descriptor strides are declared in
+`shared/range_scatter_constants.hlsli`. Native and wgpu packet writers, the native
+validator, HLSL and WGSL consume these definitions. This prevents
+fragmented-upload optimization from introducing a third independent wire layout.
+
+Metal retains its existing fixed four-word range-scatter layout in this Windows-only
+change. Any future layout change also requires updating and validating Metal; its
+shader has not been compiled or benchmarked in this run.

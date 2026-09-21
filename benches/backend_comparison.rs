@@ -19,7 +19,7 @@ fn compare(c: &mut Criterion) {
         .measurement_time(Duration::from_secs(2));
     let mut gpu = Gpu::new();
     let profile = std::env::var_os("TILEINK_COMPARE_PROFILE").is_some();
-    for name in ["unchanged", "sparse", "full", "resize", "blur"] {
+    for name in backend_comparison_support::CASES {
         if std::env::var("TILEINK_COMPARE_CASE").is_ok_and(|selected| selected != name) {
             continue;
         }
@@ -27,9 +27,13 @@ fn compare(c: &mut Criterion) {
         // Verify every phase outside timing; preserve raw bytes for four-way comparison.
         for phase in 0..16 {
             workload.advance();
-            gpu.render(&workload.scene);
-            let image = gpu.image(&workload.scene);
+            gpu.render(&mut workload);
+            let image = gpu.image(&mut workload);
             assert_eq!([image.width, image.height], workload.size());
+            assert!(
+                image.pixels.iter().any(|pixel| pixel >> 24 != 0),
+                "empty benchmark image: {name}"
+            );
             let path = output.join(format!(
                 "{name}-{phase}-{}x{}.rgba",
                 image.width, image.height
@@ -42,10 +46,10 @@ fn compare(c: &mut Criterion) {
                 b.iter_custom(|iterations| {
                     let start = Instant::now();
                     for _ in 0..iterations {
-                        // Every sample covers the same complete resize/update cycle.
+                        // Complete geometry cycles; image replacement content stays fresh.
                         for _ in 0..16 {
                             workload.advance();
-                            gpu.render(&workload.scene);
+                            gpu.render(&mut workload);
                         }
                     }
                     start.elapsed()
@@ -56,7 +60,7 @@ fn compare(c: &mut Criterion) {
         // Rewarm after Criterion analysis, outside the steady-state latency samples.
         for _ in 0..64 {
             workload.advance();
-            gpu.render(&workload.scene);
+            gpu.render(&mut workload);
         }
         let mut times = Vec::with_capacity(400);
         let mut stages = Vec::new();
@@ -64,9 +68,9 @@ fn compare(c: &mut Criterion) {
             let start = Instant::now();
             workload.advance();
             if profile {
-                stages.push(gpu.profile(&workload.scene));
+                stages.push(gpu.profile(&mut workload));
             } else {
-                gpu.render(&workload.scene);
+                gpu.render(&mut workload);
             }
             times.push(start.elapsed().as_nanos() as u64);
         }

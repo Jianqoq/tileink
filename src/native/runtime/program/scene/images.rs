@@ -48,12 +48,17 @@ impl SceneImages {
                     return Err("native image atlas page layout mismatch".into());
                 }
             }
-            let mut pixels = Vec::new();
-            pixels.try_reserve_exact(bytes)?;
-            for page in pages {
-                pixels.extend_from_slice(bytemuck::cast_slice(&page.pixels));
-            }
-            batch.texture_array_rgba8([size, size, u32::try_from(pages.len())?], pixels)?
+            let pixels = if pages.len() == 1 {
+                std::rc::Rc::clone(&pages[0].pixels)
+            } else {
+                let mut pixels = Vec::new();
+                pixels.try_reserve_exact(bytes / 4)?;
+                for page in pages {
+                    pixels.extend_from_slice(&page.pixels);
+                }
+                std::rc::Rc::new(pixels)
+            };
+            batch.texture_pixels([size, size, u32::try_from(pages.len())?], true, pixels)?
         };
         let empty = batch.texture_rgba8([1, 1], vec![0; 4])?;
         let mut textures = vec![empty; NATIVE_TEXTURE_TABLE_CAPACITY as usize];
@@ -72,11 +77,11 @@ impl SceneImages {
                 let bytes = (texture.width as usize).checked_mul(texture.height as usize)
                     .and_then(|n| n.checked_mul(4)).ok_or("native vector texture size overflow")?;
                 let mut pixels = Vec::new();
-                pixels.try_reserve_exact(bytes)?;
-                pixels.resize(bytes, 0);
-                pixels
-            } else { bytemuck::cast_slice(&texture.pixels).to_vec() };
-            *slot = batch.texture_rgba8([texture.width, texture.height], pixels)?;
+                pixels.try_reserve_exact(bytes / 4)?;
+                pixels.resize(bytes / 4, 0u32);
+                std::rc::Rc::new(pixels)
+            } else { std::rc::Rc::clone(&texture.pixels) };
+            *slot = batch.texture_pixels([texture.width, texture.height, 1], false, pixels)?;
         }
         Ok(Self {
             atlas,

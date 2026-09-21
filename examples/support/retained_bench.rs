@@ -9,6 +9,9 @@ pub mod benchmark_gpu;
 #[path = "retained_bench/context.rs"]
 mod context;
 pub use context::BenchContext;
+#[path = "retained_bench/persistent.rs"]
+mod persistent;
+pub use persistent::PersistentSession;
 
 use std::{
     error::Error,
@@ -77,39 +80,13 @@ pub fn bench_persistent(
 pub fn bench_persistent_with_config(
     context: &BenchContext,
     config: BenchConfig,
-    mut scene: RetainedScene,
+    scene: RetainedScene,
     renderer_config: IncrementalRenderConfig,
     mut mutate: impl FnMut(&mut RetainedScene, usize),
 ) -> Result<Measurements, Box<dyn Error>> {
-    let mut renderer = context.renderer();
-    renderer.set_incremental_render_config(renderer_config);
-    let texture = output_texture(renderer.device());
-    // Establish the renderer cursor before applying benchmark mutations. Otherwise the first
-    // warmup mutation is folded into initial materialization, so alternating add/remove cases
-    // accidentally measure one phase as full scene construction instead of incremental work.
-    renderer.render_retained_to_wgpu_texture(black_box(&scene), &texture)?;
-    wait_for_gpu(renderer.device(), renderer.queue())?;
-    for index in 0..config.warmup {
-        mutate(&mut scene, index);
-        renderer.render_retained_to_wgpu_texture(black_box(&scene), &texture)?;
-        wait_for_gpu(renderer.device(), renderer.queue())?;
-    }
-
-    let mut measurements = Measurements::default();
-    measurements.wall.reserve(config.frames);
-    for index in 0..config.frames {
-        let frame = config.warmup + index;
-        let transaction_started = Instant::now();
-        mutate(&mut scene, frame);
-        measurements.transaction += transaction_started.elapsed();
-        measurements.record_frame(
-            &mut renderer,
-            transaction_started,
-            config.profile,
-            |renderer| renderer.render_retained_to_wgpu_texture(black_box(&scene), &texture),
-        )?;
-    }
-    Ok(measurements)
+    let mut session = PersistentSession::new(context, scene, renderer_config, config.profile)?;
+    session.warm(config.warmup, &mut mutate)?;
+    session.measure(config.frames, mutate)
 }
 
 /// Measures one side of an alternating mutation independently while rendering the opposite side

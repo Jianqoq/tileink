@@ -91,17 +91,30 @@ impl ComputeBatch {
         Ok(id)
     }
     pub fn texture_rgba8(&mut self, size: [u32; 2], bytes: Vec<u8>) -> Result<ResourceId> {
-        self.texture(size, 1, false, bytes)
+        self.texture(size, 1, false, bytes.into())
     }
     pub fn texture_array_rgba8(&mut self, size: [u32; 3], bytes: Vec<u8>) -> Result<ResourceId> {
-        self.texture([size[0], size[1]], size[2], true, bytes)
+        self.texture([size[0], size[1]], size[2], true, bytes.into())
+    }
+    pub(crate) fn texture_pixels(
+        &mut self,
+        size: [u32; 3],
+        array: bool,
+        pixels: std::rc::Rc<Vec<u32>>,
+    ) -> Result<ResourceId> {
+        self.texture(
+            [size[0], size[1]],
+            size[2],
+            array,
+            resource::TextureBytes::Pixels(pixels),
+        )
     }
     fn texture(
         &mut self,
         size: [u32; 2],
         layers: u32,
         array: bool,
-        bytes: Vec<u8>,
+        bytes: resource::TextureBytes,
     ) -> Result<ResourceId> {
         let texture = Texture::new(size, layers, array, bytes)?;
         let id = ResourceId {
@@ -256,8 +269,8 @@ pub use copy::{Command, TextureCopy};
 mod buffers;
 pub use buffers::BufferUpload;
 
-#[path = "compute/snapshots.rs"]
-mod snapshots;
+#[path = "compute/image_storage.rs"]
+mod image_storage;
 
 impl ComputeBatch {
     pub(crate) fn synchronize_target(

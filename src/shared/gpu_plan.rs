@@ -958,7 +958,7 @@ impl TileDrawBins {
         self.compactions += 1;
     }
 
-    #[cfg(any(feature = "wgpu", test))]
+    #[cfg(any(feature = "wgpu", feature = "bench-internals", test))]
     pub(crate) fn take_dirty(&mut self) -> (bool, Vec<usize>, Vec<u32>) {
         let full = std::mem::take(&mut self.full_upload);
         self.dirty_records.sort_unstable();

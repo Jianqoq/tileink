@@ -11,7 +11,7 @@ import subprocess
 
 import acceptance
 
-CASES = ("unchanged", "sparse", "full", "resize", "blur")
+CASES = ("unchanged", "sparse", "full", "resize", "blur", "text", "images", "image_replace", "clips", "paths", "large")
 ROUTES = (("wgpu-dx12", "wgpu", "dx12"), ("native-dx12", "dx12", "dx12"),
           ("wgpu-vulkan", "wgpu", "vulkan"), ("native-vulkan", "vulkan", "vulkan"))
 
@@ -42,7 +42,7 @@ def collect(root, destination, baseline):
         estimate = json.loads((source / "estimates.json").read_text())["mean"]
         values = sorted(json.loads((destination / (name + "-latency.json")).read_text()))
         stats[name] = {
-            # One Criterion iteration is a complete 16-frame cycle.
+            # One Criterion iteration is a 16-frame geometry cycle; replacement contents stay fresh.
             "mean_us": estimate["point_estimate"] / 16000,
             "mean_ci_us": [estimate["confidence_interval"][key] / 16000
                            for key in ("lower_bound", "upper_bound")],
@@ -56,7 +56,7 @@ def collect(root, destination, baseline):
 def compare_pixels(reference, destination):
     expected = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in reference.glob("*.rgba")}
     actual = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in destination.glob("*.rgba")}
-    if len(expected) != 80 or expected != actual:
+    if len(expected) != len(CASES) * 16 or expected != actual:
         raise RuntimeError(f"Pixel mismatch: {reference} versus {destination}")
 
 

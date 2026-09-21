@@ -88,7 +88,7 @@ impl Vulkan {
             size,
             layers,
             array,
-            bytes: Vec::new(),
+            bytes: Vec::new().into(),
             persistent: None,
         };
         Ok(super::texture::Allocation::Vulkan(std::rc::Rc::new(

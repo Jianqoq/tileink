@@ -71,6 +71,11 @@ pub fn get(name: &str) -> u32 {
 
 pub fn write_rust(out: &Path) -> io::Result<()> {
     let mut host = definitions().clone();
+    for (name, value) in read_hlsl("shared/range_scatter_constants.hlsli")? {
+        if host.insert(name, value).is_some() {
+            return Err(io::Error::other("duplicate scatter host constant"));
+        }
+    }
     // Host spill allocation and both shader languages must share one layout.
     // Import shader-owned values instead of maintaining matching Rust literals.
     for (name, value) in read_hlsl("fine/constants.hlsli")? {

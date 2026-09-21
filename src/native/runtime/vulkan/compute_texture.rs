@@ -208,7 +208,7 @@ impl Image {
     pub fn upload(&self, command: vk::CommandBuffer, buffer: vk::Buffer, offset: u64) {
         self.transition(
             command,
-            vk::ImageLayout::UNDEFINED,
+            self.current_layout.get(),
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
         );
         unsafe {

@@ -6,7 +6,7 @@ fn main(
     @builtin(workgroup_id) workgroup: vec3<u32>,
     @builtin(local_invocation_id) local: vec3<u32>,
 ) {
-    let descriptor = 4u + workgroup.x * 4u;
+    let descriptor = RANGE_SCATTER_HEADER_WORDS + workgroup.x * RANGE_SCATTER_DESCRIPTOR_WORDS;
     let payload_base = upload[0];
     let dst = upload[descriptor];
     let src = upload[descriptor + 1u];

@@ -17,6 +17,8 @@ pub(crate) struct SurfacePool {
     context: NativeContext,
     resources: SceneResourcePool<NativeTexture>,
     scratch_resources: SceneResourcePool<NativeTexture>,
+    #[cfg(any(feature = "dx12", feature = "vulkan"))]
+    image_resources: SceneResourcePool<NativeTexture>,
 }
 
 impl SurfacePool {
@@ -25,6 +27,8 @@ impl SurfacePool {
             context: context.clone(),
             resources: SceneResourcePool::default(),
             scratch_resources: SceneResourcePool::default(),
+            #[cfg(any(feature = "dx12", feature = "vulkan"))]
+            image_resources: SceneResourcePool::default(),
         }
     }
 
@@ -37,35 +41,70 @@ impl SurfacePool {
         } else {
             &mut self.resources
         };
-        let texture = loop {
-            match resources.acquire(size) {
-                // Pinned pixels cannot be overwritten. Defer the lease to the next
-                // frame so cache invalidation can release it for reuse; dropping
-                // the lease here permanently lost reusable allocations every frame.
-                Some(entry) if Rc::strong_count(&entry.allocation.state) != 1 => {
-                    resources.recycle(entry);
+        let texture = match take_unpinned(resources, size) {
+            Some(texture) if texture.size() == size => texture,
+            Some(texture) if scratch => {
+                let current = texture.size();
+                let capacity = scratch_capacity(
+                    [current.0, current.1],
+                    [size.0, size.1],
+                    self.context.adapter.limits().image_dimension,
+                );
+                if capacity == [current.0, current.1] {
+                    texture
+                } else {
+                    self.context.create_texture(capacity[0], capacity[1])?
                 }
-                Some(entry) if entry.allocation.size() == size => break entry.allocation,
-                Some(entry) if scratch => {
-                    let current = entry.allocation.size();
-                    let capacity = scratch_capacity(
-                        [current.0, current.1],
-                        [size.0, size.1],
-                        self.context.adapter.limits().image_dimension,
-                    );
-                    if capacity == [current.0, current.1] {
-                        break entry.allocation;
-                    }
-                    break self.context.create_texture(capacity[0], capacity[1])?;
-                }
-                _ => break self.context.create_texture(size.0, size.1)?,
             }
+            _ => self.context.create_texture(size.0, size.1)?,
         };
         resources.recycle(SceneResources {
             target_size: size,
             allocation: texture.clone(),
         });
         Ok(texture)
+    }
+
+    #[cfg(any(feature = "dx12", feature = "vulkan"))]
+    pub(super) fn acquire_image(
+        &mut self,
+        size: [u32; 2],
+        layers: u32,
+        array: bool,
+    ) -> Result<NativeTexture> {
+        let extent = (size[0], size[1]);
+        // Image storage is exact, including its array view. Keep it separate from
+        // root/scratch capacity so changing image sizes cannot evict window targets.
+        let texture = match take_unpinned(&mut self.image_resources, extent) {
+            Some(texture)
+                if texture.size() == extent
+                    && texture.layers == layers
+                    && texture.array == array =>
+            {
+                texture
+            }
+            _ => self.context.create_texture_kind(size, layers, array)?,
+        };
+        self.image_resources.recycle(SceneResources {
+            target_size: extent,
+            allocation: texture.clone(),
+        });
+        Ok(texture)
+    }
+}
+
+fn take_unpinned(
+    resources: &mut SceneResourcePool<NativeTexture>,
+    size: (u32, u32),
+) -> Option<NativeTexture> {
+    loop {
+        let entry = resources.acquire(size)?;
+        if Rc::strong_count(&entry.allocation.state) == 1 {
+            return Some(entry.allocation);
+        }
+        // Defer pinned owners to the next frame; cache invalidation can release
+        // them then. Dropping these entries permanently loses reusable storage.
+        resources.recycle(entry);
     }
 }
 
@@ -89,6 +128,8 @@ impl ComputeBatch {
             let mut pool = pool.borrow_mut();
             pool.resources.begin_frame();
             pool.scratch_resources.begin_frame();
+            #[cfg(any(feature = "dx12", feature = "vulkan"))]
+            pool.image_resources.begin_frame();
         }
         Self {
             surface_pool: Some(pool),
@@ -163,6 +204,57 @@ fn scratch_capacity(current: [u32; 2], required: [u32; 2], limit: u32) -> [u32; 
 #[cfg(test)]
 mod tests {
     use super::scratch_capacity;
+
+    #[cfg(any(feature = "dx12", feature = "vulkan"))]
+    #[test]
+    #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+    fn image_pool_preserves_kind_and_recovers_unpinned_storage() -> super::Result<()> {
+        use super::*;
+        use crate::native::{NativeBackend, NativeContextOptions};
+        #[cfg(feature = "dx12")]
+        unsafe {
+            NativeContext::enable_dx12_validation()?;
+        }
+        #[cfg(feature = "dx12")]
+        let backend = NativeBackend::Dx12;
+        #[cfg(feature = "vulkan")]
+        let backend = NativeBackend::Vulkan;
+        let context = NativeContext::new(
+            backend,
+            &NativeContextOptions {
+                physical_adapter: Some(std::env::var("TILEINK_NATIVE_GPU")?),
+                validation: true,
+            },
+        )?;
+        for (layers, array) in [(1, false), (1, true), (2, true)] {
+            let mut pool = SurfacePool::new(&context);
+            let first = pool.acquire_image([8, 4], layers, array)?;
+            assert_eq!(
+                (first.size(), first.layers, first.array),
+                ((8, 4), layers, array)
+            );
+            let identity = Rc::downgrade(&first.state);
+            pool.image_resources.begin_frame();
+            let second = pool.acquire_image([8, 4], layers, array)?;
+            assert!(!Rc::ptr_eq(&first.state, &second.state));
+            drop(first);
+            pool.image_resources.begin_frame();
+            let recovered = pool.acquire_image([8, 4], layers, array)?;
+            assert!(std::ptr::eq(
+                identity.as_ptr(),
+                Rc::as_ptr(&recovered.state)
+            ));
+            drop(recovered);
+            pool.image_resources.begin_frame();
+            let changed = pool.acquire_image([4, 8], 3, true)?;
+            assert_eq!(
+                (changed.size(), changed.layers, changed.array),
+                ((4, 8), 3, true)
+            );
+        }
+        context.check_validation()?;
+        Ok(())
+    }
 
     #[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
     #[test]

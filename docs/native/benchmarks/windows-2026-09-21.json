@@ -1,0 +1,506 @@
+{
+  "gpu": "0f42010000000000",
+  "phase_images_per_route": 176,
+  "mean_parity": true,
+  "native_to_wgpu_ratio": {
+    "dx12": {
+      "unchanged": 0.672715671323723,
+      "sparse": 0.5731805572197629,
+      "full": 0.7861539397773886,
+      "resize": 0.5570501954498828,
+      "blur": 0.44767801070315755,
+      "text": 0.7273069295133706,
+      "images": 0.8256042767924184,
+      "image_replace": 0.9933817752850731,
+      "clips": 0.9946922143227379,
+      "paths": 0.8648881332224393,
+      "large": 0.8759724368621548
+    },
+    "vulkan": {
+      "unchanged": 0.17298302913427652,
+      "sparse": 0.6112304883371786,
+      "full": 0.8178022916149599,
+      "resize": 0.6438861200951176,
+      "blur": 0.4183785425189182,
+      "text": 0.7706620659837979,
+      "images": 0.857138874786786,
+      "image_replace": 0.9286324320757342,
+      "clips": 0.7251360015607471,
+      "paths": 0.9614588682815199,
+      "large": 0.880966667101705
+    }
+  },
+  "summary": {
+    "wgpu-dx12": {
+      "unchanged": {
+        "mean_us": 0.29529957639211374,
+        "p95_us": 0.4,
+        "max_us": 30.1
+      },
+      "sparse": {
+        "mean_us": 290.05803329586354,
+        "p95_us": 429.0,
+        "max_us": 1389.4
+      },
+      "full": {
+        "mean_us": 630.2473511904763,
+        "p95_us": 937.9,
+        "max_us": 1920.9
+      },
+      "resize": {
+        "mean_us": 357.9816451002172,
+        "p95_us": 563.7,
+        "max_us": 1066.1
+      },
+      "blur": {
+        "mean_us": 3035.4360416666664,
+        "p95_us": 3547.8,
+        "max_us": 6506.2
+      },
+      "text": {
+        "mean_us": 752.1740625,
+        "p95_us": 1339.8,
+        "max_us": 2160.3
+      },
+      "images": {
+        "mean_us": 629.7661904761906,
+        "p95_us": 928.6,
+        "max_us": 1849.1
+      },
+      "image_replace": {
+        "mean_us": 9057.690833333334,
+        "p95_us": 11818.3,
+        "max_us": 16226.0
+      },
+      "clips": {
+        "mean_us": 24348.548125,
+        "p95_us": 25708.7,
+        "max_us": 28804.7
+      },
+      "paths": {
+        "mean_us": 870.9097569444442,
+        "p95_us": 1217.7,
+        "max_us": 1860.0
+      },
+      "large": {
+        "mean_us": 5099.383125,
+        "p95_us": 7133.0,
+        "max_us": 8754.2
+      }
+    },
+    "native-dx12": {
+      "unchanged": {
+        "mean_us": 0.19865265277423183,
+        "p95_us": 0.3,
+        "max_us": 0.7
+      },
+      "sparse": {
+        "mean_us": 166.2556251505916,
+        "p95_us": 219.9,
+        "max_us": 570.4
+      },
+      "full": {
+        "mean_us": 495.47143817265635,
+        "p95_us": 753.5,
+        "max_us": 1497.6
+      },
+      "resize": {
+        "mean_us": 199.41374537054654,
+        "p95_us": 250.3,
+        "max_us": 641.4
+      },
+      "blur": {
+        "mean_us": 1358.89796875,
+        "p95_us": 1582.4,
+        "max_us": 2092.7
+      },
+      "text": {
+        "mean_us": 547.0614078564731,
+        "p95_us": 790.1,
+        "max_us": 1890.6
+      },
+      "images": {
+        "mean_us": 519.9376602364117,
+        "p95_us": 880.5,
+        "max_us": 1885.8
+      },
+      "image_replace": {
+        "mean_us": 8997.745,
+        "p95_us": 11075.3,
+        "max_us": 14732.8
+      },
+      "clips": {
+        "mean_us": 24219.31125,
+        "p95_us": 24710.8,
+        "max_us": 26283.0
+      },
+      "paths": {
+        "mean_us": 753.2395138888887,
+        "p95_us": 1018.1,
+        "max_us": 1737.6
+      },
+      "large": {
+        "mean_us": 4466.9190625,
+        "p95_us": 6449.4,
+        "max_us": 8337.7
+      }
+    },
+    "wgpu-vulkan": {
+      "unchanged": {
+        "mean_us": 1.1578656021664808,
+        "p95_us": 1.7,
+        "max_us": 10.0
+      },
+      "sparse": {
+        "mean_us": 197.4795158610051,
+        "p95_us": 245.6,
+        "max_us": 1925.8
+      },
+      "full": {
+        "mean_us": 513.1191982843155,
+        "p95_us": 816.3,
+        "max_us": 1460.4
+      },
+      "resize": {
+        "mean_us": 242.53084384395726,
+        "p95_us": 412.3,
+        "max_us": 691.0
+      },
+      "blur": {
+        "mean_us": 2349.1185416666667,
+        "p95_us": 2789.3,
+        "max_us": 4618.4
+      },
+      "text": {
+        "mean_us": 644.5418750000001,
+        "p95_us": 878.6,
+        "max_us": 1607.7
+      },
+      "images": {
+        "mean_us": 565.2256770833334,
+        "p95_us": 828.7,
+        "max_us": 2379.8
+      },
+      "image_replace": {
+        "mean_us": 9622.788333333334,
+        "p95_us": 11586.4,
+        "max_us": 15691.2
+      },
+      "clips": {
+        "mean_us": 24812.904583333333,
+        "p95_us": 26264.7,
+        "max_us": 31445.5
+      },
+      "paths": {
+        "mean_us": 770.9134027777777,
+        "p95_us": 974.0,
+        "max_us": 2775.7
+      },
+      "large": {
+        "mean_us": 5602.954375,
+        "p95_us": 7342.9,
+        "max_us": 10929.2
+      }
+    },
+    "native-vulkan": {
+      "unchanged": {
+        "mean_us": 0.20029109919314098,
+        "p95_us": 0.3,
+        "max_us": 0.6
+      },
+      "sparse": {
+        "mean_us": 120.70550091631176,
+        "p95_us": 154.7,
+        "max_us": 1815.5
+      },
+      "full": {
+        "mean_us": 419.6300562285442,
+        "p95_us": 750.4,
+        "max_us": 1531.2
+      },
+      "resize": {
+        "mean_us": 156.16224404608047,
+        "p95_us": 193.2,
+        "max_us": 482.8
+      },
+      "blur": {
+        "mean_us": 982.8207916666667,
+        "p95_us": 1142.7,
+        "max_us": 2187.6
+      },
+      "text": {
+        "mean_us": 496.72397300057094,
+        "p95_us": 725.3,
+        "max_us": 2168.7
+      },
+      "images": {
+        "mean_us": 484.4769008558076,
+        "p95_us": 756.0,
+        "max_us": 2196.4
+      },
+      "image_replace": {
+        "mean_us": 8936.033333333335,
+        "p95_us": 11768.5,
+        "max_us": 15705.4
+      },
+      "clips": {
+        "mean_us": 17992.73041666667,
+        "p95_us": 18778.6,
+        "max_us": 19971.4
+      },
+      "paths": {
+        "mean_us": 741.2015277777778,
+        "p95_us": 1091.2,
+        "max_us": 2513.7
+      },
+      "large": {
+        "mean_us": 4936.016041666667,
+        "p95_us": 7590.1,
+        "max_us": 10453.7
+      }
+    }
+  },
+  "coverage": [
+    {
+      "target": "arena_fill",
+      "cases": 11
+    },
+    {
+      "target": "bounded_translation",
+      "cases": 2
+    },
+    {
+      "target": "canvas_append",
+      "cases": 5
+    },
+    {
+      "target": "checkerboard",
+      "cases": 2
+    },
+    {
+      "target": "damage_tiles",
+      "cases": 39
+    },
+    {
+      "target": "dirty_ranges",
+      "cases": 12
+    },
+    {
+      "target": "frame_diff",
+      "cases": 7
+    },
+    {
+      "target": "glyph_capacity",
+      "cases": 6
+    },
+    {
+      "target": "node_draw_order",
+      "cases": 5
+    },
+    {
+      "target": "prepared_text",
+      "cases": 6
+    },
+    {
+      "target": "retained_frame_delta",
+      "cases": 2
+    },
+    {
+      "target": "retained_topology",
+      "cases": 3
+    },
+    {
+      "target": "text_clip",
+      "cases": 3
+    },
+    {
+      "target": "text_layout",
+      "cases": 2
+    },
+    {
+      "target": "tiles_for_bounds",
+      "cases": 6
+    },
+    {
+      "target": "tile_draw_bins",
+      "cases": 4
+    },
+    {
+      "target": "uniform_writes",
+      "cases": 6
+    },
+    {
+      "target": "dx12_staging_reuse",
+      "cases": 6
+    },
+    {
+      "target": "native_target_capacity_dx12",
+      "cases": 2
+    },
+    {
+      "target": "native_target_capacity_vulkan",
+      "cases": 2
+    },
+    {
+      "target": "scoped_damage",
+      "cases": 10
+    },
+    {
+      "target": "vulkan_frame_upload",
+      "cases": 1
+    },
+    {
+      "target": "vulkan_staging_reuse",
+      "cases": 2
+    },
+    {
+      "target": "retained_dirty_ratio",
+      "cases": 78
+    },
+    {
+      "target": "retained_stress",
+      "cases": 200
+    },
+    {
+      "target": "coarse_binning",
+      "cases": 12
+    },
+    {
+      "target": "range_scatter",
+      "cases": 15
+    },
+    {
+      "target": "root_batches",
+      "cases": 66
+    },
+    {
+      "target": "dx12_precompiled_startup",
+      "cases": 1
+    },
+    {
+      "target": "pattern_sampling",
+      "cases": 4
+    },
+    {
+      "target": "dx12_texture_order",
+      "cases": 2
+    },
+    {
+      "target": "numeric_raster",
+      "cases": 24
+    },
+    {
+      "target": "retained_portable_history",
+      "cases": 2
+    },
+    {
+      "target": "retained_resize",
+      "cases": 2
+    },
+    {
+      "target": "image_resource_uploads",
+      "cases": 14
+    },
+    {
+      "target": "filter_sampling",
+      "cases": 2
+    },
+    {
+      "target": "filter_compilation",
+      "cases": 2
+    },
+    {
+      "target": "retained_scale",
+      "cases": 402
+    }
+  ],
+  "binaries": {
+    "wgpu": "c85e0f59095fb63e2265a5bdc3ffd800d56c83e977a0c65e7638e7ed744b6aa5",
+    "dx12": "b6e6e32f80a2e9264ced1e4601ec6a1de7cc073818688d9f938526d442d8f3da",
+    "vulkan": "96fda562bc0e54ca61afe4280d3eafba01d05db1c471c7497186aa9c8c12f270"
+  },
+  "corpus": {
+    "native-dx12": [
+      {
+        "suite": "svg",
+        "outputs": 1712,
+        "different_pixels": 0
+      },
+      {
+        "suite": "examples",
+        "outputs": 45,
+        "different_pixels": 0
+      },
+      {
+        "suite": "retained",
+        "outputs": 174,
+        "different_pixels": 0
+      }
+    ],
+    "native-vulkan": [
+      {
+        "suite": "svg",
+        "outputs": 1712,
+        "different_pixels": 0
+      },
+      {
+        "suite": "examples",
+        "outputs": 45,
+        "different_pixels": 0
+      },
+      {
+        "suite": "retained",
+        "outputs": 174,
+        "different_pixels": 0
+      }
+    ],
+    "wgpu-dx12-native": [
+      {
+        "suite": "svg",
+        "outputs": 1712,
+        "different_pixels": 0
+      },
+      {
+        "suite": "examples",
+        "outputs": 45,
+        "different_pixels": 0
+      },
+      {
+        "suite": "retained",
+        "outputs": 174,
+        "different_pixels": 0
+      }
+    ],
+    "wgpu-vulkan-native": [
+      {
+        "suite": "svg",
+        "outputs": 1712,
+        "different_pixels": 0
+      },
+      {
+        "suite": "examples",
+        "outputs": 45,
+        "different_pixels": 0
+      },
+      {
+        "suite": "retained",
+        "outputs": 174,
+        "different_pixels": 0
+      }
+    ]
+  },
+  "driver": "610.62",
+  "date": "2026-09-21",
+  "completed_route_runs": 12,
+  "statistics": {
+    "mean_us": "median of three Criterion per-frame means",
+    "p95_us": "median of three per-run p95 values",
+    "max_us": "worst observed maximum across all three runs",
+    "latency_samples_per_case_per_run": 400
+  },
+  "hardware": {
+    "os": "Windows",
+    "gpu": "NVIDIA RTX 4090",
+    "cpu": "AMD Ryzen 9 9950X3D"
+  }
+}

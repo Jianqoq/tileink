@@ -76,6 +76,11 @@ fn build_wgpu() {
     for (entry, output) in WGPU_SHADER_ENTRIES {
         let mut source = expand_shader(&shader_dir.join(entry), &mut Vec::new());
         if entry == "range_scatter.wgsl" {
+            for (name, value) in gpu_constants::read_hlsl("shared/range_scatter_constants.hlsli")
+                .expect("read range scatter layout")
+            {
+                source = format!("const {name}: u32 = {value}u;\n{source}");
+            }
             source = format!(
                 "const RANGE_SCATTER_WORKGROUP_SIZE: u32 = {}u;\n{source}",
                 gpu_constants::get("RANGE_SCATTER_WORKGROUP_SIZE")

@@ -127,3 +127,56 @@ fn native_cached_buffer_rebuilds_after_discarded_dirty_upload() -> Result<()> {
     context.check_validation()?;
     Ok(())
 }
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn native_fragmented_uploads_preserve_holes_and_queued_readbacks() -> Result<()> {
+    let context = NativeContext::new(
+        super::backend(),
+        &NativeContextOptions {
+            physical_adapter: Some(std::env::var("TILEINK_NATIVE_GPU")?),
+            validation: false,
+        },
+    )?;
+    let buffer = Buffer::new(&context.adapter, 512)?;
+    let initial = vec![0xa5; 512];
+    let mut initialization = ComputeBatch::new();
+    initialization.import_buffer(&buffer, &[(0, &initial)])?;
+    context.submit_compute(&initialization)?.wait()?;
+    let mut expected = initial;
+    let mut receipts = Vec::new();
+    for phase in 0..2u32 {
+        let values: Vec<_> = (0..32u32)
+            .map(|i| (i + phase * 100).to_le_bytes())
+            .collect();
+        let updates: Vec<_> = values
+            .iter()
+            .enumerate()
+            .map(|(i, value)| (i * 12 + phase as usize * 4, value.as_slice()))
+            .collect();
+        let mut batch = ComputeBatch::new();
+        let id = batch.import_buffer(&buffer, &updates)?;
+        #[cfg(feature = "dx12")]
+        assert_eq!(
+            batch
+                .passes()
+                .iter()
+                .filter(|pass| pass.shader.entry == "range_scatter")
+                .count(),
+            1
+        );
+        for &(offset, bytes) in &updates {
+            expected[offset..offset + bytes.len()].copy_from_slice(bytes);
+        }
+        batch.readback(id)?;
+        let receipt = context
+            .adapter
+            .submit_compute(&batch)
+            .map_err(|error| format!("{error:?}"))?;
+        receipts.push((receipt, expected.clone()));
+    }
+    drop(buffer);
+    for (receipt, expected) in receipts.into_iter().rev() {
+        assert_eq!(receipt.readback()?, vec![expected]);
+    }
+    Ok(())
+}

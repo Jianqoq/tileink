@@ -1,5 +1,7 @@
 //! Packed range uploads use the production WGSL word layout. Validation rules
 //! out shader out-of-bounds access and cross-workgroup write races before recording.
+use crate::shared::gpu_constants::{RANGE_SCATTER_DESCRIPTOR_WORDS, RANGE_SCATTER_HEADER_WORDS};
+
 #[derive(Clone, Debug)]
 pub struct Scatter {
     source: Vec<u8>,
@@ -8,7 +10,7 @@ pub struct Scatter {
 }
 impl Scatter {
     pub fn new(source: Vec<u8>, destination: Vec<u8>) -> Result<Self, &'static str> {
-        if source.len() < 16
+        if source.len() < RANGE_SCATTER_HEADER_WORDS as usize * 4
             || !source.len().is_multiple_of(4)
             || destination.is_empty()
             || !destination.len().is_multiple_of(4)
@@ -22,12 +24,17 @@ impl Scatter {
         };
         let payload = word(0);
         let count = word(1);
-        if count > 65_535 || payload != 4 + count * 4 || payload > source.len() as u64 / 4 {
+        if count > 65_535
+            || payload
+                != RANGE_SCATTER_HEADER_WORDS as u64 + count * RANGE_SCATTER_DESCRIPTOR_WORDS as u64
+            || payload > source.len() as u64 / 4
+        {
             return Err("invalid scatter header/descriptor count");
         }
         let mut previous_end = 0;
         for index in 0..count as usize {
-            let descriptor = 4 + index * 4;
+            let descriptor = RANGE_SCATTER_HEADER_WORDS as usize
+                + index * RANGE_SCATTER_DESCRIPTOR_WORDS as usize;
             let dst = word(descriptor);
             let src = word(descriptor + 1);
             let len = word(descriptor + 2);

@@ -306,6 +306,7 @@ impl Frame {
                 if let GpuResource::Image(image) = &gpu[i] {
                     if let Resource::Texture(texture) = buffer
                         && texture.persistent.is_some()
+                        && texture.bytes.is_empty()
                     {
                         if let Some((_, sync)) = synchronization.filter(|(id, _)| id.index() == i) {
                             image.acquire(command, sync.incoming, family);

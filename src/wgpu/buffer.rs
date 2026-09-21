@@ -1,3 +1,4 @@
+use crate::shared::gpu_constants::{RANGE_SCATTER_DESCRIPTOR_WORDS, RANGE_SCATTER_HEADER_WORDS};
 use bytemuck::Pod;
 use std::{
     rc::Rc,
@@ -285,7 +286,8 @@ impl WgpuBuffer {
         item_size: usize,
         ranges: &[std::ops::Range<usize>],
     ) -> usize {
-        let payload_base = 4 + ranges.len() * 4;
+        let payload_base = RANGE_SCATTER_HEADER_WORDS as usize
+            + ranges.len() * RANGE_SCATTER_DESCRIPTOR_WORDS as usize;
         self.scatter_words.clear();
         self.scatter_words.resize(payload_base, 0);
         self.scatter_words[0] = u32::try_from(payload_base).expect("scatter header exceeds u32");
@@ -294,7 +296,8 @@ impl WgpuBuffer {
         let mut payload_words = 0usize;
         for (index, range) in ranges.iter().enumerate() {
             let byte_range = range.start * item_size..range.end * item_size;
-            let descriptor = 4 + index * 4;
+            let descriptor = RANGE_SCATTER_HEADER_WORDS as usize
+                + index * RANGE_SCATTER_DESCRIPTOR_WORDS as usize;
             self.scatter_words[descriptor] =
                 u32::try_from(byte_range.start / 4).expect("scatter destination exceeds u32");
             self.scatter_words[descriptor + 1] =
@@ -478,7 +481,10 @@ fn should_scatter_range_upload<T>(range_count: usize) -> bool {
 
 fn scatter_upload_size<T>(ranges: &[std::ops::Range<usize>]) -> Option<u64> {
     let item_words = std::mem::size_of::<T>() / 4;
-    let descriptor_words = ranges.len().checked_mul(4)?.checked_add(4)?;
+    let descriptor_words = ranges
+        .len()
+        .checked_mul(RANGE_SCATTER_DESCRIPTOR_WORDS as usize)?
+        .checked_add(RANGE_SCATTER_HEADER_WORDS as usize)?;
     let payload_words = ranges.iter().try_fold(0usize, |total, range| {
         total.checked_add(range.len().checked_mul(item_words)?)
     })?;

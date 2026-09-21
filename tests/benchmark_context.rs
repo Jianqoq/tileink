@@ -98,4 +98,28 @@ fn wgpu_benchmark_context_keeps_new_renderers_independent() {
         };
         assert_eq!(*pixel, expected);
     }
+
+    // A Criterion session must retain its mutation cursor across samples,
+    // including empty samples, rather than rebuilding and warming each time.
+    let mut session = retained_bench::PersistentSession::new(
+        &context,
+        scene,
+        tileink::IncrementalRenderConfig::default(),
+        false,
+    )
+    .unwrap();
+    let mut observed = Vec::new();
+    let mut mutate = |scene: &mut RetainedScene, frame: usize| {
+        observed.push(frame);
+        scene
+            .transaction()
+            .invalidate_rect(Rect::new(0.0, 0.0, 8.0, 8.0))
+            .commit()
+            .unwrap();
+    };
+    session.warm(3, &mut mutate).unwrap();
+    assert_eq!(session.measure(2, &mut mutate).unwrap().wall.len(), 2);
+    assert!(session.measure(0, &mut mutate).unwrap().wall.is_empty());
+    assert_eq!(session.measure(2, &mut mutate).unwrap().wall.len(), 2);
+    assert_eq!(observed, (0..7).collect::<Vec<_>>());
 }

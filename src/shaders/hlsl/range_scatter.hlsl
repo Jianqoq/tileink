@@ -1,4 +1,5 @@
 #include "constants.hlsli"
+#include "shared/range_scatter_constants.hlsli"
 
 // Production range_scatter.wgsl layout, with explicit native binding remapping:
 // WGSL upload binding 0 -> native source t1 / binding 1;
@@ -8,7 +9,7 @@ RWByteAddressBuffer destination : register(u0);
 
 [numthreads(RANGE_SCATTER_WORKGROUP_SIZE, 1, 1)]
 void range_scatter(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {
-    uint descriptor = 4u + group.x * 4u;
+    uint descriptor = RANGE_SCATTER_HEADER_WORDS + group.x * RANGE_SCATTER_DESCRIPTOR_WORDS;
     uint payload = source.Load(0);
     uint dst = source.Load(descriptor * 4u);
     uint src = source.Load((descriptor + 1u) * 4u);

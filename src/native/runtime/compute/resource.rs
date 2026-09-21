@@ -32,11 +32,16 @@ pub struct Texture {
     pub size: [u32; 2],
     pub layers: u32,
     pub array: bool,
-    pub bytes: Vec<u8>,
+    pub bytes: TextureBytes,
     pub persistent: Option<crate::native::NativeTexture>,
 }
 impl Texture {
-    pub(super) fn new(size: [u32; 2], layers: u32, array: bool, bytes: Vec<u8>) -> Result<Self> {
+    pub(super) fn new(
+        size: [u32; 2],
+        layers: u32,
+        array: bool,
+        bytes: TextureBytes,
+    ) -> Result<Self> {
         let count = (size[0] as usize)
             .checked_mul(size[1] as usize)
             .and_then(|n| n.checked_mul(layers as usize))
@@ -65,4 +70,25 @@ impl Texture {
 pub enum SamplerFilter {
     Nearest,
     Linear,
+}
+
+/// Retain immutable image pixels through submission without reinterpreting their
+/// allocation ownership or copying a complete atlas into a second CPU buffer.
+pub enum TextureBytes {
+    Raw(Vec<u8>),
+    Pixels(std::rc::Rc<Vec<u32>>),
+}
+impl From<Vec<u8>> for TextureBytes {
+    fn from(bytes: Vec<u8>) -> Self {
+        Self::Raw(bytes)
+    }
+}
+impl std::ops::Deref for TextureBytes {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        match self {
+            Self::Raw(bytes) => bytes,
+            Self::Pixels(pixels) => bytemuck::cast_slice(pixels),
+        }
+    }
 }

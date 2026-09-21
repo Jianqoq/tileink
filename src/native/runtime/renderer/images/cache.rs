@@ -36,18 +36,18 @@ impl<'a> Images<'a> {
             .is_none_or(|cached| cached.signature != signature || !cached.accepted.get())
         {
             let images = SceneImages::record_with_vectors(batch, upload, render)?;
-            let atlas = batch.snapshot_texture(images.atlas)?;
+            let atlas = batch.retain_image(images.atlas)?;
             let Resource::TextureTable(table) = &batch.resources()[images.table.index()] else {
                 unreachable!("image table")
             };
             let table = table.clone();
-            let mut snapshots = HashMap::new();
+            let mut retained = HashMap::new();
             let mut textures = Vec::with_capacity(table.len());
             for image in table {
-                if let std::collections::hash_map::Entry::Vacant(entry) = snapshots.entry(image) {
-                    entry.insert(batch.snapshot_texture(image)?);
+                if let std::collections::hash_map::Entry::Vacant(entry) = retained.entry(image) {
+                    entry.insert(batch.retain_image(image)?);
                 }
-                textures.push(snapshots[&image].clone());
+                textures.push(retained[&image].clone());
             }
             *cache = Some(ImageCache {
                 signature,

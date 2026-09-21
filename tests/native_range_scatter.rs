@@ -1,3 +1,11 @@
+// This standalone validator test uses the same generated HLSLI constants as the library.
+mod shared {
+    #[allow(dead_code)]
+    pub mod gpu_constants {
+        include!(concat!(env!("OUT_DIR"), "/tileink_gpu_constants.rs"));
+    }
+}
+
 #[path = "../src/native/runtime/program/scatter.rs"]
 mod scatter;
 use scatter::Scatter;

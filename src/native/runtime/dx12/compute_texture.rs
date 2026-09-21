@@ -119,32 +119,43 @@ pub(super) fn upload(
     device: &ID3D12Device,
     list: &ID3D12GraphicsCommandList,
     input: &Texture,
-) -> Result<(ID3D12Resource, ID3D12Resource)> {
+    cached: &mut super::buffer_cache::Available,
+) -> Result<(ID3D12Resource, super::buffer_cache::Buffer)> {
     unsafe {
-        let texture = allocate(
-            device,
-            input.size,
-            input.layers,
-            D3D12_RESOURCE_STATE_COPY_DEST,
-        )?;
+        let texture = if let Some(texture) = &input.persistent {
+            let crate::native::runtime::texture::Allocation::Dx12(allocation) =
+                &texture.state.allocation;
+            buffer::transition(
+                list,
+                &allocation.resource,
+                allocation.state.get(),
+                D3D12_RESOURCE_STATE_COPY_DEST,
+            );
+            allocation.resource.clone()
+        } else {
+            allocate(
+                device,
+                input.size,
+                input.layers,
+                D3D12_RESOURCE_STATE_COPY_DEST,
+            )?
+        };
         let desc = texture.GetDesc();
         let layout = TextureLayout::new(device, &desc)?;
-        let size = layout.size;
-        let mut bytes = vec![0u8; size];
-        for (destination, source) in layout.rows() {
-            bytes[destination..destination + layout.row_bytes]
-                .copy_from_slice(&input.bytes[source..source + layout.row_bytes]);
-        }
-        let upload = buffer::create(
-            device,
-            size,
-            D3D12_HEAP_TYPE_UPLOAD,
-            D3D12_RESOURCE_STATE_GENERIC_READ,
-            D3D12_RESOURCE_FLAG_NONE,
-            Some(&bytes),
-        )?;
+        let upload = super::staging::prepare_with(device, layout.size, cached, |mapped| {
+            for (destination, source) in layout.rows() {
+                mapped.write(destination, &input.bytes[source..source + layout.row_bytes]);
+            }
+        })?;
         for (layer, footprint) in layout.footprints.iter().enumerate() {
-            copy(list, &texture, &upload, *footprint, layer as u32, true);
+            copy(
+                list,
+                &texture,
+                &upload.resource,
+                *footprint,
+                layer as u32,
+                true,
+            );
         }
         Ok((texture, upload))
     }

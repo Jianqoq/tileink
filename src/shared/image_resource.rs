@@ -301,11 +301,29 @@ pub(crate) struct GpuVectorImageUpload {
     pub(crate) dirty: bool,
 }
 
+// Native batches retain upload pixels through submission; wgpu consumes the
+// upload directly and keeps its existing owned packing storage.
+#[cfg(feature = "wgpu")]
+pub(crate) type ImagePixels = Vec<u32>;
+#[cfg(not(feature = "wgpu"))]
+pub(crate) type ImagePixels = Rc<Vec<u32>>;
+
+fn image_pixels(pixels: Vec<u32>) -> ImagePixels {
+    #[cfg(feature = "wgpu")]
+    {
+        pixels
+    }
+    #[cfg(not(feature = "wgpu"))]
+    {
+        Rc::new(pixels)
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct GpuImageResourceAtlasPageUpload {
     pub(crate) index: u32,
     pub(crate) size: u32,
-    pub(crate) pixels: Vec<u32>,
+    pub(crate) pixels: ImagePixels,
     #[cfg(any(feature = "wgpu", test))]
     pub(crate) dirty: bool,
     signature: ImageResourcePageSignature,
@@ -316,7 +334,7 @@ pub(crate) struct GpuImageResourceTextureUpload {
     pub(crate) index: u32,
     pub(crate) width: u32,
     pub(crate) height: u32,
-    pub(crate) pixels: Vec<u32>,
+    pub(crate) pixels: ImagePixels,
     #[cfg(any(feature = "wgpu", test))]
     pub(crate) dirty: bool,
     signature: ImageEntrySignature,
@@ -451,7 +469,7 @@ impl<'a> ImageResourceUploadBuilder<'a> {
             page_uploads.push(GpuImageResourceAtlasPageUpload {
                 index: 0,
                 size: 1,
-                pixels: vec![0],
+                pixels: image_pixels(vec![0]),
                 #[cfg(any(feature = "wgpu", test))]
                 dirty: previous.is_none_or(|prev| prev.atlas_pages.is_empty()),
                 signature: ImageResourcePageSignature::default(),
@@ -462,14 +480,10 @@ impl<'a> ImageResourceUploadBuilder<'a> {
                 let dirty = previous_page.is_none_or(|prev| {
                     prev.size != self.page_size || prev.signature != page.signature
                 });
-                let mut pixels = if dirty {
-                    vec![0; (self.page_size * self.page_size) as usize]
+                let pixels = if let Some(previous) = previous_page.filter(|_| !dirty) {
+                    previous.pixels.clone()
                 } else {
-                    previous_page
-                        .map(|prev| prev.pixels.clone())
-                        .unwrap_or_else(|| vec![0; (self.page_size * self.page_size) as usize])
-                };
-                if dirty {
+                    let mut pixels = vec![0; (self.page_size * self.page_size) as usize];
                     for item in &page.items {
                         if let Some(image) = self.entries[item.entry_index].image.raster() {
                             copy_image_with_pad_border(
@@ -481,7 +495,8 @@ impl<'a> ImageResourceUploadBuilder<'a> {
                             );
                         }
                     }
-                }
+                    image_pixels(pixels)
+                };
                 for item in page.items {
                     placements.insert(
                         item.id,
@@ -519,22 +534,16 @@ impl<'a> ImageResourceUploadBuilder<'a> {
                     || prev.height != entry.image.height()
                     || prev.signature != entry.signature
             });
-            let pixels = if dirty {
-                entry
-                    .image
-                    .raster()
-                    .map(|image| image.pixels.clone())
-                    .unwrap_or_default()
+            let pixels = if let Some(previous) = previous_texture.filter(|_| !dirty) {
+                previous.pixels.clone()
             } else {
-                previous_texture
-                    .map(|prev| prev.pixels.clone())
-                    .unwrap_or_else(|| {
-                        entry
-                            .image
-                            .raster()
-                            .map(|image| image.pixels.clone())
-                            .unwrap_or_default()
-                    })
+                image_pixels(
+                    entry
+                        .image
+                        .raster()
+                        .map(|image| image.pixels.clone())
+                        .unwrap_or_default(),
+                )
             };
             placements.insert(
                 entry.id,

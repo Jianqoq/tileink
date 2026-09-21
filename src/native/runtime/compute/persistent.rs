@@ -41,7 +41,7 @@ impl ComputeBatch {
             size: texture.size,
             layers: texture.layers,
             array: texture.array,
-            bytes: Vec::new(),
+            bytes: Vec::new().into(),
             persistent: Some(texture.clone()),
         }));
         // Already initialized storage needs no clear command or uniform upload.
@@ -91,7 +91,9 @@ impl ComputeBatch {
                 upload.accepted.set(true);
             }
         }
-        let mut written = vec![false; self.resources.len()];
+        let mut written: Vec<_> = self.resources.iter().map(|resource| {
+            matches!(resource, Resource::Texture(texture) if !texture.bytes.is_empty())
+        }).collect();
         for command in &self.commands {
             match command {
                 super::Command::CopyTexture(copy) => written[copy.destination.index()] = true,

@@ -20,7 +20,7 @@ impl TileDrawBinsBenchmark {
             .iter()
             .flat_map(|range| range.clone())
             .filter(|&draw| draw < draw_count)
-            .collect::<HashSet<_>>();
+            .collect::<std::collections::HashSet<_>>();
         let mut initial = Canvas::new(
             TILES_SIZE.0 * crate::TILE_SIZE,
             TILES_SIZE.1 * crate::TILE_SIZE,

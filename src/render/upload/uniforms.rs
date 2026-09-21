@@ -100,6 +100,7 @@ impl<B: Clone + Eq + Hash> UniformWrites<B> {
     }
 
     /// The adapter must copy these bytes to its upload storage before clearing them.
+    #[cfg(any(feature = "wgpu", test))]
     pub(crate) fn clear(&mut self) {
         self.arenas.clear();
         self.index.clear();

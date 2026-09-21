@@ -8,7 +8,6 @@ use windows::Win32::Graphics::Direct3D12::*;
 /// Owns uploads and their resource views until the enclosing submission retires.
 pub(super) struct Resources {
     handles: Vec<Option<ID3D12Resource>>,
-    uploads: Vec<ID3D12Resource>,
     staging: Vec<super::buffer_cache::Buffer>,
     storage: Vec<super::buffer_cache::Buffer>,
     uniform_offsets: Vec<Option<u64>>,
@@ -28,10 +27,10 @@ impl Resources {
         )?;
         // Empty / persistent-texture-only batches must not evict the previous
         // frame's upload cache: their next real draw can reuse it unchanged.
-        let has_uploads = batch.resources().iter().any(|input| {
-            matches!(input, Resource::Buffer(_) | Resource::PersistentBuffer(_))
-                && !input.bytes().is_empty()
-        });
+        let has_uploads = batch
+            .resources()
+            .iter()
+            .any(|input| !input.bytes().is_empty());
         let mut cached = if has_uploads {
             staging.acquire()
         } else {
@@ -57,7 +56,6 @@ impl Resources {
             };
             let mut this = Self {
                 handles: Vec::new(),
-                uploads: Vec::new(),
                 staging: uniform.iter().cloned().collect(),
                 storage: Vec::new(),
                 uniform_offsets: uniforms.offsets,
@@ -98,15 +96,18 @@ impl Resources {
                     continue;
                 }
                 if let Resource::Texture(input) = input {
-                    if let Some(texture) = &input.persistent {
+                    if let Some(texture) = &input.persistent
+                        && input.bytes.is_empty()
+                    {
                         let crate::native::runtime::texture::Allocation::Dx12(texture) =
                             &texture.state.allocation;
                         this.handles.push(Some(texture.resource.clone()));
                         continue;
                     }
-                    let (texture, upload) = compute_texture::upload(device, list, input)?;
+                    let (texture, upload) =
+                        compute_texture::upload(device, list, input, &mut cached)?;
                     this.handles.push(Some(texture));
-                    this.uploads.push(upload);
+                    this.staging.push(upload);
                     continue;
                 }
                 let size = input
@@ -152,11 +153,7 @@ impl Resources {
         Vec<super::buffer_cache::Buffer>,
     ) {
         (
-            self.handles
-                .into_iter()
-                .flatten()
-                .chain(self.uploads)
-                .collect(),
+            self.handles.into_iter().flatten().collect(),
             self.staging,
             self.storage,
         )

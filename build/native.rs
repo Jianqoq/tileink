@@ -136,7 +136,7 @@ pub fn generate() -> io::Result<()> {
                     let output = out.join(format!("native-{entry}.{target}"));
                     write_changed(&output, &artifact.bytes)?;
                     let workgroup = format!("{:?}", description.workgroup);
-                    let bindings = if family != "probe" && family != "range-scatter" {
+                    let bindings = if family != "probe" {
                         abi::binding_declarations(&description, entry)?
                     } else {
                         "&[]".into()

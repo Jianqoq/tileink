@@ -79,6 +79,7 @@ impl Frame {
             let mut states = vec![D3D12_RESOURCE_STATE_COPY_DEST; batch.resources().len()];
             for (index, resource) in batch.resources().iter().enumerate() {
                 if let Resource::Texture(texture) = resource
+                    && texture.bytes.is_empty()
                     && let Some(texture) = &texture.persistent
                 {
                     match &texture.state.allocation {

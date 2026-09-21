@@ -30,6 +30,11 @@ fn native_image_cache_reuses_initialized_arrays_without_upload() -> Result<()> {
     let images = Images::record_cached(&mut first, &upload, &mut cache, signature, |_, _| {
         panic!("empty vector resources")
     })?;
+    #[cfg(any(feature = "dx12", feature = "vulkan"))]
+    assert!(
+        first.commands().is_empty(),
+        "CPU image uploads must initialize cache storage directly, without a second texture copy"
+    );
     let atlas = images.textures().atlas;
     let Resource::Texture(first_atlas) = &first.resources()[atlas.index()] else {
         unreachable!()
@@ -130,6 +135,104 @@ fn native_vector_aliases_share_one_recording_per_batch() -> Result<()> {
             .submit_compute(&batch)
             .map_err(|error| format!("{error:?}"))?;
         assert_eq!(receipt.readback()?, vec![[71, 19, 23, 255].repeat(32)]);
+    }
+    context.check_validation()?;
+    Ok(())
+}
+
+#[cfg(any(feature = "dx12", feature = "vulkan"))]
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn retained_image_uploads_preserve_queued_array_versions() -> Result<()> {
+    #[cfg(feature = "dx12")]
+    unsafe {
+        NativeContext::enable_dx12_validation()?;
+    }
+    let context = NativeContext::new(
+        super::backend(),
+        &NativeContextOptions {
+            physical_adapter: Some(std::env::var("TILEINK_NATIVE_GPU")?),
+            validation: true,
+        },
+    )?;
+    let pool = Rc::new(RefCell::new(SurfacePool::new(&context)));
+    let mut receipts = Vec::new();
+    let mut pinned = Vec::new();
+    let mut abandoned = ComputeBatch::with_surfaces(pool.clone());
+    let image = abandoned.texture_array_rgba8([2, 2, 2], vec![42; 32])?;
+    let unpublished = abandoned.retain_image(image)?;
+    drop(abandoned);
+    assert!(!unpublished.state.initialized.get());
+    assert_eq!(unpublished.state.content_version.get(), 0);
+    assert!(ComputeBatch::new().import_texture(&unpublished).is_err());
+    drop(unpublished);
+    for revision in 0..3 {
+        if revision == 2 {
+            pinned.clear();
+        }
+        let mut batch = ComputeBatch::with_surfaces(pool.clone());
+        let mut expected = Vec::new();
+        for (index, (size, layers, array)) in
+            [([3, 2], 1, false), ([5, 3], 2, true), ([3, 2], 1, true)]
+                .into_iter()
+                .enumerate()
+        {
+            let bytes: Vec<u8> = (0..size[0] * size[1] * layers)
+                .flat_map(|pixel| [revision as u8 + 1, index as u8 + 17, pixel as u8, 255])
+                .collect();
+            let id = if array {
+                batch.texture_array_rgba8([size[0], size[1], layers], bytes.clone())?
+            } else {
+                batch.texture_rgba8(size, bytes.clone())?
+            };
+            let retained = batch.retain_image(id)?;
+            assert_eq!(batch.import_texture(&retained)?, id);
+            assert!(
+                batch.retain_image(id).is_err(),
+                "retention must not alias an already published image"
+            );
+            if revision == 0 {
+                pinned.push(retained);
+            }
+            batch.readback(id)?;
+            expected.push(bytes);
+        }
+        assert!(
+            batch.commands().is_empty(),
+            "initial bytes need no snapshot or clear dispatch"
+        );
+        let receipt = context
+            .adapter
+            .submit_compute(&batch)
+            .map_err(|error| format!("{error:?}"))?;
+        if revision == 0 {
+            assert!(pinned.iter().all(
+                |image| image.state.initialized.get() && image.state.content_version.get() == 1
+            ));
+        }
+        drop(batch);
+        receipts.push((receipt, expected));
+    }
+    drop(pool);
+    // Read newest first after releasing all public image owners: queue ordering,
+    // rather than a CPU wait, must preserve each upload's complete array contents.
+    for (receipt, expected) in receipts.into_iter().rev() {
+        assert_eq!(receipt.readback()?, expected);
+    }
+    // Completed uploads become staging-cache candidates. Reusing a larger mapping
+    // for smaller array rows must overwrite every texel without copying row padding.
+    for width in [65, 3, 65] {
+        let bytes: Vec<u8> = (0..width * 3 * 2 * 4)
+            .map(|i| (i * 17 + width) as u8)
+            .collect();
+        let mut batch = ComputeBatch::new();
+        let id = batch.texture_array_rgba8([width, 3, 2], bytes.clone())?;
+        batch.readback(id)?;
+        let receipt = context
+            .adapter
+            .submit_compute(&batch)
+            .map_err(|error| format!("{error:?}"))?;
+        assert_eq!(receipt.readback()?, vec![bytes]);
     }
     context.check_validation()?;
     Ok(())

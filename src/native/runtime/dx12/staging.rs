@@ -7,13 +7,23 @@ pub(super) fn prepare(
     contents: &[u8],
     cached: &mut super::buffer_cache::Available,
 ) -> Result<super::buffer_cache::Buffer> {
-    let resource = match cached.take(contents.len()) {
+    prepare_with(device, contents.len(), cached, |mapped| {
+        mapped.write(0, contents)
+    })
+}
+
+/// Writes directly into retired upload storage, avoiding a second CPU packing buffer.
+pub(super) fn prepare_with(
+    device: &ID3D12Device,
+    size: usize,
+    cached: &mut super::buffer_cache::Available,
+    write: impl FnOnce(&mut Mapped<'_>),
+) -> Result<super::buffer_cache::Buffer> {
+    let resource = match cached.take(size) {
         Some(resource) => resource,
         None => buffer::create(
             device,
-            contents
-                .len()
-                .checked_next_power_of_two()
+            size.checked_next_power_of_two()
                 .ok_or("DX12 upload capacity overflow")?,
             D3D12_HEAP_TYPE_UPLOAD,
             D3D12_RESOURCE_STATE_GENERIC_READ,
@@ -29,14 +39,43 @@ pub(super) fn prepare(
             Some(&D3D12_RANGE { Begin: 0, End: 0 }),
             Some(&mut pointer),
         )?;
-        std::ptr::copy_nonoverlapping(contents.as_ptr(), pointer.cast(), contents.len());
-        resource.resource.Unmap(
-            0,
-            Some(&D3D12_RANGE {
-                Begin: 0,
-                End: contents.len(),
-            }),
-        );
+        let mut mapped = Mapped {
+            resource: &resource.resource,
+            pointer: pointer.cast(),
+            size,
+        };
+        write(&mut mapped);
     }
     Ok(resource)
+}
+
+pub(super) struct Mapped<'a> {
+    resource: &'a ID3D12Resource,
+    pointer: *mut u8,
+    size: usize,
+}
+
+impl Mapped<'_> {
+    pub fn write(&mut self, offset: usize, bytes: &[u8]) {
+        assert!(offset <= self.size && bytes.len() <= self.size - offset);
+        // The mapping is exclusively owned until Drop. Padding need not be initialized:
+        // texture copies consume only the texels described by each footprint.
+        unsafe {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), self.pointer.add(offset), bytes.len());
+        }
+    }
+}
+
+impl Drop for Mapped<'_> {
+    fn drop(&mut self) {
+        unsafe {
+            self.resource.Unmap(
+                0,
+                Some(&D3D12_RANGE {
+                    Begin: 0,
+                    End: self.size,
+                }),
+            );
+        }
+    }
 }

@@ -11,7 +11,7 @@ fn empty_images_have_initialized_atlas_and_complete_table() -> Result<()> {
     let Resource::Texture(atlas) = &batch.resources()[images.atlas.index()] else {
         panic!()
     };
-    assert_eq!(atlas.bytes, [0; 4]);
+    assert_eq!(&*atlas.bytes, &[0; 4]);
     assert!(atlas.array);
     let Resource::TextureTable(table) = &batch.resources()[images.table.index()] else {
         panic!()
@@ -41,6 +41,22 @@ fn image_upload_preserves_atlas_borders_and_table_pixels() -> Result<()> {
     );
     assert!(!upload.atlas_pages().is_empty());
     assert_eq!(upload.textures().len(), 1);
+    let unchanged = store.upload_merged(
+        &ImageResourceStore::default(),
+        4096,
+        4,
+        NATIVE_TEXTURE_TABLE_CAPACITY,
+        Some(&upload),
+    );
+    assert!(Rc::ptr_eq(
+        &upload.atlas_pages()[0].pixels,
+        &unchanged.atlas_pages()[0].pixels
+    ));
+    assert!(Rc::ptr_eq(
+        &upload.textures()[0].pixels,
+        &unchanged.textures()[0].pixels
+    ));
+    drop(unchanged);
     let mut batch = ComputeBatch::new();
     let images = SceneImages::record(&mut batch, &upload)?;
     let Resource::Texture(atlas) = &batch.resources()[images.atlas.index()] else {
@@ -51,7 +67,12 @@ fn image_upload_preserves_atlas_borders_and_table_pixels() -> Result<()> {
         .iter()
         .flat_map(|p| bytemuck::cast_slice::<_, u8>(&p.pixels).iter().copied())
         .collect();
-    assert_eq!(atlas.bytes, expected);
+    assert_eq!(
+        atlas.bytes.as_ptr(),
+        upload.atlas_pages()[0].pixels.as_ptr().cast(),
+        "a single atlas page must retain its immutable pixels instead of copying them"
+    );
+    assert_eq!(&*atlas.bytes, expected);
     let Resource::TextureTable(table) = &batch.resources()[images.table.index()] else {
         panic!()
     };
@@ -60,8 +81,18 @@ fn image_upload_preserves_atlas_borders_and_table_pixels() -> Result<()> {
         else {
             panic!()
         };
-        assert_eq!(actual.bytes, bytemuck::cast_slice::<_, u8>(&texture.pixels));
+        assert_eq!(actual.bytes.as_ptr(), texture.pixels.as_ptr().cast());
+        assert_eq!(
+            &*actual.bytes,
+            bytemuck::cast_slice::<_, u8>(&texture.pixels)
+        );
     }
+    drop(upload);
+    drop(store);
+    assert_eq!(
+        &*atlas.bytes, expected,
+        "the batch owns pixels until submission"
+    );
     Ok(())
 }
 
@@ -100,7 +131,7 @@ fn malformed_atlas_pages_are_rejected_before_recording() {
             0 => page.index += 1,
             1 => page.size += 1,
             _ => {
-                page.pixels.pop();
+                Rc::make_mut(&mut page.pixels).pop();
             }
         }
         let mut batch = ComputeBatch::new();
@@ -204,4 +235,32 @@ fn oversized_vector_dimensions_are_rejected_before_pixel_allocation() {
         panic!("invalid destination cannot invoke child rendering")
     });
     assert!(result.is_err());
+}
+
+#[test]
+fn multiple_atlas_pages_preserve_layer_order_and_ownership() -> Result<()> {
+    let mut store = ImageResourceStore::default();
+    for index in 0..3 {
+        store.insert(
+            ImageKey(index),
+            Image::from_rgba8(4, 4, [index as u8 * 73, 31, 9, 255].repeat(16)),
+        );
+    }
+    let upload = store.upload_merged(&ImageResourceStore::default(), 8, 4, 0, None);
+    assert_eq!(upload.atlas_pages().len(), 3);
+    let expected: Vec<u8> = upload
+        .atlas_pages()
+        .iter()
+        .flat_map(|page| bytemuck::cast_slice::<_, u8>(&page.pixels).iter().copied())
+        .collect();
+    let mut batch = ComputeBatch::new();
+    let images = SceneImages::record(&mut batch, &upload)?;
+    drop(upload);
+    drop(store);
+    let Resource::Texture(atlas) = &batch.resources()[images.atlas.index()] else {
+        panic!()
+    };
+    assert_eq!(atlas.layers, 3);
+    assert_eq!(&*atlas.bytes, expected);
+    Ok(())
 }

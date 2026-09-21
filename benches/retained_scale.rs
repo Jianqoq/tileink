@@ -352,19 +352,30 @@ fn retained_frame_cycles(
         for count in COUNTS {
             group.throughput(Throughput::Elements(count as u64 * 2));
             let mut warmed = false;
-            group.bench_with_input(BenchmarkId::from_parameter(count), &count, |b, &count| {
+            let workload = Workload::new(count, scenario);
+            let mut session = None;
+            group.bench_with_input(BenchmarkId::from_parameter(count), &count, |b, _| {
                 b.iter_custom(calibration::warm_once(&mut warmed, |iterations| {
-                    let workload = Workload::new(count, scenario);
-                    let scene = workload.build_scene();
-                    let measurements = bench_persistent(
-                        context,
-                        BenchConfig::paired_cycles(3, iterations, profile),
-                        scene,
-                        IncrementalRenderMode::Auto,
-                        |scene, frame| workload.mutate(scene, frame),
-                    )
-                    .expect("retained Criterion benchmark must render");
-                    measurements.wall.into_iter().sum::<Duration>()
+                    let config = BenchConfig::paired_cycles(3, iterations, profile);
+                    let session = session.get_or_insert_with(|| {
+                        let mut session = retained_bench::PersistentSession::new(
+                            context,
+                            workload.build_scene(),
+                            Default::default(),
+                            profile,
+                        )
+                        .expect("retained benchmark session must initialize");
+                        session
+                            .warm(config.warmup, |scene, frame| workload.mutate(scene, frame))
+                            .expect("retained benchmark session must warm");
+                        session
+                    });
+                    session
+                        .measure(config.frames, |scene, frame| workload.mutate(scene, frame))
+                        .expect("retained Criterion benchmark must render")
+                        .wall
+                        .into_iter()
+                        .sum::<Duration>()
                 }));
             });
         }
