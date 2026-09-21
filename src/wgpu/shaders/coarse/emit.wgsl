@@ -38,6 +38,8 @@ fn coarse_emit(
 
     let wrapper_count = active_stack_count(tile_x, tile_y);
     if (wrapper_count == INVALID) {
+        // End a reused preallocated range even when this clip rejects the tile.
+        if (lane == 0u) { store_particle(cursor, GPU_PTCL_END, 0i, 0u, 0u, 0u, 0u); }
         return;
     }
 

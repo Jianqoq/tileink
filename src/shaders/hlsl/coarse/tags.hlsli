@@ -3,11 +3,7 @@
 #include "../shared/draw_tags.hlsli"
 
 static const uint SDF_RECT = 1u;
-static const uint TILE_KIND_INTERPRETER = 0u;
-static const uint TILE_KIND_EMPTY = 1u;
-static const uint TILE_KIND_COLOR = 2u;
-static const uint TILE_KIND_SDF = 3u;
-static const uint TILE_KIND_MIXED = 4u;
+#include "../shared/tile_kinds.hlsli"
 static const uint CHUNK_CLASS_COLOR = 1u;
 static const uint CHUNK_CLASS_SDF = 2u;
 static const uint CHUNK_CLASS_OTHER = 4u;

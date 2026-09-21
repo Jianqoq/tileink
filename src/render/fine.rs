@@ -150,3 +150,11 @@ pub(crate) fn spill_layout(
 #[cfg(test)]
 #[path = "fine/tests.rs"]
 mod tests;
+
+#[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
+impl FinePlan {
+    /// The native scene owns and bounds this appended, immutable tile list.
+    pub(crate) fn set_active_tile_list_base(&mut self, base: u32) {
+        self.config.active_tile_list_base = base;
+    }
+}

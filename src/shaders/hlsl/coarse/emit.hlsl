@@ -29,7 +29,11 @@ void coarse_emit(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {
     uint2 glyphs = coarse_work.Load2(tile * COARSE_TILE_RECORD_STRIDE + COARSE_TILE_GLYPH_START);
     if (particles.x >= particles.y) return;
     uint wrappers = stack_wrapper_count(config, layer_stack, draw_records, path_records, backdrops, segment_ranges, sdf_blob, position);
-    if (wrappers == INVALID_INDEX) return;
+    if (wrappers == INVALID_INDEX) {
+        // A preallocated tile range may still contain an earlier batch's particles.
+        if (local.x == 0u) store_particle(coarse_work, config, particles.x, PTCL_END, 0u, 0u, uint2(0u,0u), 0u);
+        return;
+    }
     if (local.x == 0u) emit_stack_begins(config, coarse_work, layer_stack, draw_records, path_records, backdrops, segment_ranges, sdf_blob, particles.x, position);
     particles.x += wrappers;
     uint2 list = coarse_work.Load2(tile_draw_base(config, tile));

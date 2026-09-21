@@ -99,6 +99,7 @@ pub(crate) struct Scene {
     chunks: ResourceId,
     spills: ResourceId,
     fine_params: FineParams,
+    clip_dispatch: clip_tiles::ClipDispatch,
 }
 
 /// These texture handles must come from the upload whose placements patched the
@@ -307,7 +308,18 @@ impl SceneCache {
             lengths.coarse_ptcl_capacity,
             lengths.coarse_glyph_capacity,
         ) * size_of::<u32>();
+        let mut clip_dispatch = clip_tiles::ClipDispatch::new(
+            canvas,
+            &prepared.plan,
+            options.active.map(|a| a.list()),
+            self.staging.tile_draw_bins.upload_records(),
+            lengths,
+            prepared.stack_depths.0,
+        )?;
         let mut updates = Vec::new();
+        if !clip_dispatch.slots.is_empty() {
+            updates.push((0, bytemuck::cast_slice::<_, u8>(&clip_dispatch.slots)));
+        }
         let records: &[u8] = bytemuck::cast_slice(self.staging.tile_draw_bins.upload_records());
         if !records.is_empty() {
             updates.push((record_base, records));
@@ -315,6 +327,19 @@ impl SceneCache {
         let indices: &[u8] = bytemuck::cast_slice(self.staging.tile_draw_bins.upload_indices());
         if !indices.is_empty() {
             updates.push((index_base, indices));
+        }
+        if !clip_dispatch.kinds.is_empty() {
+            let offset = crate::shared::gpu_coarse::coarse_work_fine_tile_kind_word_offset(
+                lengths.tile_count,
+                lengths.coarse_ptcl_capacity,
+                lengths.coarse_glyph_capacity,
+                lengths.tile_draw_index_count,
+                lengths.tile_draw_chunk_count,
+            ) * size_of::<u32>();
+            updates.push((
+                offset,
+                bytemuck::cast_slice::<u32, u8>(&clip_dispatch.kinds),
+            ));
         }
         if let Some(active) = options.active {
             let offset = crate::shared::gpu_coarse::coarse_work_active_tile_list_word_offset(
@@ -329,10 +354,18 @@ impl SceneCache {
                 updates.push((offset, bytes));
             }
         }
-        let work =
-            self.buffers
-                .work
-                .patches(batch, work_words.max(1) * size_of::<u32>(), &updates)?;
+        if !clip_dispatch.data.is_empty() {
+            updates.push((
+                work_words * size_of::<u32>(),
+                bytemuck::cast_slice::<u32, u8>(&clip_dispatch.data),
+            ));
+        }
+        let work = self.buffers.work.patches(
+            batch,
+            (work_words + clip_dispatch.data.len()).max(1) * size_of::<u32>(),
+            &updates,
+        )?;
+        clip_dispatch.discard_upload_data();
         self.staging.tile_draw_bins.finish_full_upload();
         let chunks = self.buffers.chunks.scratch(
             batch,
@@ -363,6 +396,7 @@ impl SceneCache {
         self.plan = Some(prepared.plan.clone());
         Ok(Scene {
             active_batches,
+            clip_dispatch,
             layer_count: u32::try_from(prepared.plan.layer_stack_data.len())?,
             draw_count: u32::try_from(canvas.draw_records.len())?,
             plan: prepared.plan,
@@ -415,24 +449,49 @@ impl Scene {
         layers: Range<u32>,
         chunked: bool,
         limit: u32,
-    ) -> Result<()> {
+    ) -> Result<FinePlan> {
         // Bound against the uploaded allocation, never replaceable plan metadata.
         if layers.end > self.layer_count {
             return Err("native coarse layer range exceeds prepared scene".into());
         }
-        let plan = CoarsePlan::new(
+        let selection = self.clip_dispatch.ranges.get(&(layers.start, layers.end));
+        let active = selection
+            .map(|r| r.end - r.start)
+            .or(self.fine_params.active_tile_count);
+        let mut plan = CoarsePlan::new(
             self.lengths,
             CoarseBatch {
                 draw_start: batches.start,
                 draw_end: batches.end,
                 layer_stack_start: layers.start,
                 layer_stack_end: layers.end,
-                active_tile_count: self.fine_params.active_tile_count,
+                active_tile_count: active,
             },
             self.fine_params.paint_brush_base,
             chunked,
             limit,
         )?;
+        if let Some(selection) = selection {
+            plan.config.active_tile_list_base = selection.start;
+        }
+        if self.clip_dispatch.preallocated {
+            if selection.is_none() {
+                return Err("fixed clip slots require a prepared clip stack".into());
+            }
+            plan.use_preallocated_tiles();
+        }
+        let mut fine_plan = FinePlan::new(
+            self.lengths,
+            FineParams {
+                active_tile_count: active,
+                load_target: true,
+                ..self.fine_params
+            },
+            limit,
+        )?;
+        if let Some(selection) = selection {
+            fine_plan.set_active_tile_list_base(selection.start);
+        }
         // SAFETY: this object owns handles allocated from the same validated
         // Canvas/plan association; layer indices are bounded, physical draw indices
         // come from its tile bins, and scan precedes coarse.
@@ -452,8 +511,9 @@ impl Scene {
                     chunks: self.chunks,
                     batches: self.batches,
                 },
-            )
+            )?;
         }
+        Ok(fine_plan)
     }
 
     /// # Safety
@@ -464,25 +524,14 @@ impl Scene {
         batch: &mut ComputeBatch,
         target: ResourceId,
         images: &SceneImages,
-        clear_color: u32,
-        load_target: bool,
-        limit: u32,
+        plan: &FinePlan,
     ) -> Result<()> {
-        let plan = FinePlan::new(
-            self.lengths,
-            FineParams {
-                clear_color,
-                load_target,
-                ..self.fine_params
-            },
-            limit,
-        )?;
         // SAFETY: Canvas uploads and shared stack depths bound all record/spill
         // accesses; caller supplies associated images and stage ordering.
         unsafe {
             fine::encode(
                 batch,
-                &plan,
+                plan,
                 &FineBindings {
                     target,
                     draws: self.draws,
@@ -512,3 +561,6 @@ mod layers;
 
 #[path = "scene/vector_images.rs"]
 mod vector_images;
+
+#[path = "scene/clip_tiles.rs"]
+mod clip_tiles;

@@ -56,6 +56,7 @@ pub(crate) struct Execution<'a> {
     filter_scenes: filter_scenes::FilterScenes<'a>,
     batch: &'a mut ComputeBatch,
     scene: Option<Scene>,
+    fine_plan: Option<crate::render::fine::FinePlan>,
     pending_plan: Option<std::rc::Rc<crate::shared::execution::ExecPlan>>,
     filters: filter_resources::FilterResources,
     origin: (i32, i32),
@@ -127,6 +128,7 @@ impl<'a> Execution<'a> {
             filter_scenes,
             batch,
             scene: Some(scene),
+            fine_plan: None,
             pending_plan: None,
             filters,
             origin: (0, 0),
@@ -164,10 +166,13 @@ impl DrawBatchAdapter for Execution<'_> {
         Ok(())
     }
     fn coarse(&mut self, batches: Range<u32>, layers: Range<u32>) -> Result<()> {
-        self.scene
-            .as_ref()
-            .ok_or("native scene has not been scanned")?
-            .encode_coarse(self.batch, batches, layers, self.chunked, self.limit)
+        self.fine_plan = Some(
+            self.scene
+                .as_ref()
+                .ok_or("native scene has not been scanned")?
+                .encode_coarse(self.batch, batches, layers, self.chunked, self.limit)?,
+        );
+        Ok(())
     }
     fn fine(&mut self, target: RenderTargetId) -> Result<()> {
         let target = self.targets.get(target)?.image();
@@ -181,9 +186,9 @@ impl DrawBatchAdapter for Execution<'_> {
                     self.batch,
                     target,
                     self.images.textures(),
-                    0,
-                    true,
-                    self.limit,
+                    self.fine_plan
+                        .as_ref()
+                        .ok_or("native fine has no coarse plan")?,
                 )
         }
     }

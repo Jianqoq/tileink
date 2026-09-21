@@ -1,5 +1,7 @@
 # Extended Windows backend benchmarks (2026-09-21)
 
+The clips scenario has a further measured native optimization; see [clip dispatch performance](clips-performance.md).
+
 The existing 39 Cargo benchmark targets have now been exercised: 38 ordinary
 targets contain 970 cases, and the remaining target compares 11 retained scenes
 across wgpu-DX12, native DX12, wgpu-Vulkan and native Vulkan. These counts are

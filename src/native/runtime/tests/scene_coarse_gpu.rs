@@ -287,7 +287,7 @@ fn four_api_canvas_scan_geometry_feeds_layer_filters() -> Result<()> {
         else {
             unreachable!()
         };
-        scene.encode_coarse(
+        let fine_plan = scene.encode_coarse(
             &mut batch,
             *batch_id..batch_id.saturating_add(1),
             layer_stack.start as u32..layer_stack.end as u32,
@@ -296,7 +296,7 @@ fn four_api_canvas_scan_geometry_feeds_layer_filters() -> Result<()> {
         )?;
         // SAFETY: associated images, scene and coarse precede fine in this batch.
         unsafe {
-            scene.encode_fine(&mut batch, target, &images, 0, true, 65535)?;
+            scene.encode_fine(&mut batch, target, &images, &fine_plan)?;
         }
     }
     let mask = batch.texture_rgba8([33, 29], vec![0; 33 * 29 * 4])?;

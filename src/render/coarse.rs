@@ -275,3 +275,21 @@ mod tests;
 #[path = "coarse/layout.rs"]
 mod layout;
 pub(crate) use layout::validate_work_layout;
+
+#[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
+impl CoarsePlan {
+    /// Caller initialized disjoint particle ranges and interpreter kinds for every tile.
+    /// The scene has no glyphs or non-clip passes that could invalidate those ranges.
+    pub(crate) fn use_preallocated_tiles(&mut self) {
+        let emit = self
+            .passes()
+            .iter()
+            .find(|p| p.program == CoarseProgram::EmitTiles)
+            .copied();
+        self.len = 0;
+        if let Some(emit) = emit {
+            self.passes[0] = emit;
+            self.len = 1;
+        }
+    }
+}

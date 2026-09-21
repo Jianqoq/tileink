@@ -89,3 +89,6 @@ mod pixel_rounding;
 
 #[path = "tests/renderer_rounding_gpu.rs"]
 mod renderer_rounding;
+
+#[path = "tests/clip_slots_gpu.rs"]
+mod clip_slots;

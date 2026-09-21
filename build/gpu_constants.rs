@@ -76,6 +76,15 @@ pub fn write_rust(out: &Path) -> io::Result<()> {
             return Err(io::Error::other("duplicate scatter host constant"));
         }
     }
+    if host
+        .insert(
+            "TILE_KIND_INTERPRETER".into(),
+            read_hlsl("shared/tile_kinds.hlsli")?["TILE_KIND_INTERPRETER"],
+        )
+        .is_some()
+    {
+        return Err(io::Error::other("duplicate tile kind host constant"));
+    }
     // Host spill allocation and both shader languages must share one layout.
     // Import shader-owned values instead of maintaining matching Rust literals.
     for (name, value) in read_hlsl("fine/constants.hlsli")? {
@@ -111,7 +120,8 @@ fn rust_constants(constants: &BTreeMap<String, u32>) -> String {
         // Generate host declarations only for their consumers. Shader constants
         // remain authoritative even when a backend has no Rust-side use.
         match name.as_str() {
-            "PATH_MASK_COORDINATE_SCALE"
+            "TILE_KIND_INTERPRETER"
+            | "PATH_MASK_COORDINATE_SCALE"
             | "TURBULENCE_COORDINATE_OFFSET"
             | "TURBULENCE_MAX_EFFECTIVE_OCTAVES" => {
                 source.push_str("#[cfg(not(feature = \"wgpu\"))]\n")
