@@ -27,6 +27,12 @@ void coarse_emit(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {
     uint2 position = uint2(tile % config.tiles_width, tile / config.tiles_width);
     uint2 particles = coarse_work.Load2(tile * COARSE_TILE_RECORD_STRIDE + COARSE_TILE_PTCL_START);
     uint2 glyphs = coarse_work.Load2(tile * COARSE_TILE_RECORD_STRIDE + COARSE_TILE_GLYPH_START);
+    // A preceding scalar clip batch may have classified the reused tile as
+    // EMPTY/COLOR. Parallel emission always produces an interpreter stream.
+    if (local.x == 0u) {
+        uint kind = particles.x < particles.y ? TILE_KIND_INTERPRETER : TILE_KIND_EMPTY;
+        coarse_work.Store(emit_base(config, config.emit_chunk_capacity) + tile * 4u, kind);
+    }
     if (particles.x >= particles.y) return;
     uint wrappers = stack_wrapper_count(config, layer_stack, draw_records, path_records, backdrops, segment_ranges, sdf_blob, position);
     if (wrappers == INVALID_INDEX) {
@@ -65,17 +71,34 @@ void coarse_emit(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {
 
 [numthreads(COARSE_WORKGROUP_SIZE,1,1)]
 void coarse_emit_bins(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {
-    uint bins_per_row = (config.tiles_width + COARSE_BIN_SIDE - 1u) / COARSE_BIN_SIDE;
-    uint2 position = uint2(group.x % bins_per_row, group.x / bins_per_row) * COARSE_BIN_SIDE + uint2(local.x % COARSE_BIN_SIDE, local.x / COARSE_BIN_SIDE);
-    if (position.x >= config.tiles_width || position.y >= config.tiles_height) return;
-    uint tile = position.y * config.tiles_width + position.x;
+    uint tile;
+    uint2 position;
+    if (config.incremental != 0u) {
+        // Preallocated clips assign one lane to each selected tile, avoiding
+        // a whole workgroup and repeated prefix scans for a short draw list.
+        uint active = group.x * COARSE_WORKGROUP_SIZE + local.x;
+        if (active >= config.active_tile_count) return;
+        tile = coarse_tile_at(coarse_work, config, active);
+        if (tile >= config.tile_count) return;
+        position = uint2(tile % config.tiles_width, tile / config.tiles_width);
+    } else {
+        uint bins_per_row = (config.tiles_width + COARSE_BIN_SIDE - 1u) / COARSE_BIN_SIDE;
+        position = uint2(group.x % bins_per_row, group.x / bins_per_row) * COARSE_BIN_SIDE + uint2(local.x % COARSE_BIN_SIDE, local.x / COARSE_BIN_SIDE);
+        if (position.x >= config.tiles_width || position.y >= config.tiles_height) return;
+        tile = position.y * config.tiles_width + position.x;
+    }
     if (tile >= config.tile_count) return;
     uint kind_base = emit_base(config, config.emit_chunk_capacity) + tile * 4u;
     uint2 particles = coarse_work.Load2(tile * COARSE_TILE_RECORD_STRIDE + COARSE_TILE_PTCL_START);
     uint2 glyphs = coarse_work.Load2(tile * COARSE_TILE_RECORD_STRIDE + COARSE_TILE_GLYPH_START);
     if (particles.x >= particles.y) { coarse_work.Store(kind_base, TILE_KIND_EMPTY); return; }
     uint wrappers = stack_wrapper_count(config, layer_stack, draw_records, path_records, backdrops, segment_ranges, sdf_blob, position);
-    if (wrappers == INVALID_INDEX) { coarse_work.Store(kind_base, TILE_KIND_INTERPRETER); return; }
+    if (wrappers == INVALID_INDEX) {
+        // Rejected clips must not expose a previous batch's reused stream.
+        store_particle(coarse_work, config, particles.x, PTCL_END, 0u, 0u, uint2(0u,0u), 0u);
+        coarse_work.Store(kind_base, TILE_KIND_EMPTY);
+        return;
+    }
     uint flags = wrappers != 0u ? CHUNK_CLASS_OTHER : 0u;
     emit_stack_begins(config, coarse_work, layer_stack, draw_records, path_records, backdrops, segment_ranges, sdf_blob, particles.x, position);
     particles.x += wrappers;

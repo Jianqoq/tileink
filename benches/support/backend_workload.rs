@@ -1,3 +1,6 @@
+#[path = "clip_workload.rs"]
+pub(crate) mod clips;
+
 use peniko::{
     Color,
     kurbo::{Affine, Rect},
@@ -25,10 +28,21 @@ pub struct Workload {
     name: &'static str,
     phase: u32,
     image_revision: u64,
+    clip: Option<clips::Case>,
 }
 
 impl Workload {
     pub fn new(name: &'static str) -> Self {
+        if let Some(clip) = clips::CASES.iter().find(|case| case.name == name).copied() {
+            return Self {
+                scene: clip.scene(),
+                text: None,
+                name,
+                phase: 0,
+                image_revision: 0,
+                clip: Some(clip),
+            };
+        }
         let root = RetainedNodeId::for_owner(1);
         let mut scene = RetainedScene::new(1280, 800, 1.0, root).unwrap();
         let mut text = (name == "text").then(|| {
@@ -125,6 +139,7 @@ impl Workload {
             name,
             phase: 0,
             image_revision: 0,
+            clip: None,
         }
     }
 
@@ -170,7 +185,8 @@ impl Workload {
             let count = if self.name == "sparse" {
                 1
             } else {
-                Self::count(self.name)
+                self.clip
+                    .map_or_else(|| Self::count(self.name), |clip| clip.count)
             };
             for index in 0..count {
                 if self.name == "image_replace" {
@@ -180,7 +196,10 @@ impl Workload {
                 }
                 transaction.set_transform(
                     RetainedNodeId::for_owner(index + 2),
-                    Self::transform(self.name, index, self.phase),
+                    self.clip.map_or_else(
+                        || Self::transform(self.name, index, self.phase),
+                        |clip| clip.transform(index, self.phase),
+                    ),
                 );
             }
         }

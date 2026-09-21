@@ -34,9 +34,9 @@ def build(root, output, feature):
     return destination
 
 
-def collect(root, destination, baseline):
+def collect(root, destination, baseline, cases=CASES):
     stats = {}
-    for name in CASES:
+    for name in cases:
         source = root / "target/criterion/backend_comparison_cycles" / name / baseline
         shutil.copytree(source, destination / ("criterion-" + name))
         estimate = json.loads((source / "estimates.json").read_text())["mean"]
@@ -53,10 +53,10 @@ def collect(root, destination, baseline):
     return stats
 
 
-def compare_pixels(reference, destination):
+def compare_pixels(reference, destination, cases=CASES):
     expected = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in reference.glob("*.rgba")}
     actual = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in destination.glob("*.rgba")}
-    if len(expected) != len(CASES) * 16 or expected != actual:
+    if len(expected) != len(cases) * 16 or expected != actual:
         raise RuntimeError(f"Pixel mismatch: {reference} versus {destination}")
 
 
@@ -66,6 +66,7 @@ def main():
     parser.add_argument("--dxcompiler", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--runs", type=int, default=3)
+    parser.add_argument("--clip-matrix", action="store_true", help="Sweep clip count, depth and bounding-box area")
     args = parser.parse_args()
     if args.runs < 1:
         parser.error("--runs must be positive")
@@ -77,9 +78,12 @@ def main():
     binaries = {feature: build(root, output, feature) for feature in ("wgpu", "dx12", "vulkan")}
     env = dict(os.environ, CARGO_TARGET_DIR=str(root / "target"), TILEINK_BENCH_GPU=args.gpu,
                TILEINK_PARITY_DXCOMPILER=str(args.dxcompiler.resolve()))
-    for key in ("TILEINK_COMPARE_PROFILE", "TILEINK_COMPARE_CASE"):
+    for key in ("TILEINK_COMPARE_PROFILE", "TILEINK_COMPARE_CASE", "TILEINK_COMPARE_CLIP_MATRIX"):
         env.pop(key, None)
-    receipt = {"passed": False, "gpu": args.gpu, "runs": [], "sources": sources,
+    if args.clip_matrix:
+        env["TILEINK_COMPARE_CLIP_MATRIX"] = "1"
+    cases = None if args.clip_matrix else CASES
+    receipt = {"clip_matrix": args.clip_matrix, "passed": False, "gpu": args.gpu, "runs": [], "sources": sources,
                "binaries": {key: hashlib.sha256(path.read_bytes()).hexdigest()
                             for key, path in binaries.items()}}
     reference = None
@@ -96,16 +100,23 @@ def main():
                     subprocess.run([str(binaries[feature]), "--bench", "--save-baseline", baseline],
                                    cwd=root, env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
                 acceptance.verify_sources(root, sources)
-                stats = collect(root, destination, baseline)
+                actual_cases = tuple(sorted(p.name.removesuffix("-latency.json") for p in destination.glob("*-latency.json")))
+                if cases is None:
+                    cases = actual_cases
+                    if len(cases) != 16:
+                        raise RuntimeError("Clip matrix must execute all 16 controlled workloads")
+                if set(actual_cases) != set(cases):
+                    raise RuntimeError("Workload set changed between routes")
+                stats = collect(root, destination, baseline, cases)
                 reference = reference or destination
-                compare_pixels(reference, destination)
+                compare_pixels(reference, destination, cases)
                 receipt["runs"].append({"run": index + 1, "route": route, "cases": stats})
                 print(json.dumps(stats), flush=True)
                 (output / "receipt.json").write_text(json.dumps(receipt, indent=2), encoding="utf-8")
         ratios = {}
         for api in ("dx12", "vulkan"):
             ratios[api] = {}
-            for case in CASES:
+            for case in cases:
                 means = {kind: statistics.median(row["cases"][case]["mean_us"]
                          for row in receipt["runs"] if row["route"] == f"{kind}-{api}")
                          for kind in ("native", "wgpu")}

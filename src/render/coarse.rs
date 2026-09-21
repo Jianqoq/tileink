@@ -288,7 +288,23 @@ impl CoarsePlan {
             .copied();
         self.len = 0;
         if let Some(emit) = emit {
-            self.passes[0] = emit;
+            // A scalar group needs enough tiles to occupy its lanes. Small
+            // selections retain the parallel emitter; larger selections avoid
+            // per-tile workgroup prefix scans and retain fine tile classification.
+            self.passes[0] = if self.config.active_tile_count < COARSE_WORKGROUP_SIZE {
+                emit
+            } else {
+                CoarseDispatch {
+                    program: CoarseProgram::EmitBins,
+                    grid: [
+                        self.config
+                            .active_tile_count
+                            .div_ceil(COARSE_WORKGROUP_SIZE),
+                        1,
+                        1,
+                    ],
+                }
+            };
             self.len = 1;
         }
     }

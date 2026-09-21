@@ -11,15 +11,24 @@ fn compare(c: &mut Criterion) {
         std::env::var("TILEINK_COMPARE_OUTPUT").expect("set a fresh evidence directory"),
     );
     std::fs::create_dir_all(&output).unwrap();
+    let matrix = std::env::var_os("TILEINK_COMPARE_CLIP_MATRIX").is_some();
     let mut group = c.benchmark_group("backend_comparison_cycles");
     group
         .throughput(criterion::Throughput::Elements(16))
-        .sample_size(30)
-        .warm_up_time(Duration::from_millis(500))
-        .measurement_time(Duration::from_secs(2));
+        .sample_size(if matrix { 20 } else { 30 })
+        .warm_up_time(Duration::from_millis(if matrix { 250 } else { 500 }))
+        .measurement_time(Duration::from_secs(if matrix { 1 } else { 2 }));
     let mut gpu = Gpu::new();
     let profile = std::env::var_os("TILEINK_COMPARE_PROFILE").is_some();
-    for name in backend_comparison_support::CASES {
+    let cases: Vec<_> = if matrix {
+        backend_comparison_support::CLIP_CASES
+            .iter()
+            .map(|case| case.name)
+            .collect()
+    } else {
+        backend_comparison_support::CASES.to_vec()
+    };
+    for name in cases {
         if std::env::var("TILEINK_COMPARE_CASE").is_ok_and(|selected| selected != name) {
             continue;
         }
@@ -62,9 +71,10 @@ fn compare(c: &mut Criterion) {
             workload.advance();
             gpu.render(&mut workload);
         }
-        let mut times = Vec::with_capacity(400);
+        let samples = if matrix { 128 } else { 400 };
+        let mut times = Vec::with_capacity(samples);
         let mut stages = Vec::new();
-        for _ in 0..400 {
+        for _ in 0..samples {
             let start = Instant::now();
             workload.advance();
             if profile {

@@ -1701,6 +1701,12 @@ impl PersistentPathPlans {
             self.row_chunk_counts.resize(path_len, None);
             self.scan_ranges
                 .resize(path_len, GpuScanChunkRange::default());
+            // A regrown vacant slot is zero on the CPU, but a retained GPU
+            // allocation can still contain its old range. Publish the entire
+            // exposed suffix even when update_path sees no value change.
+            if path_len > old_len {
+                merge_range(&mut self.dirty_scan_ranges, old_len..path_len);
+            }
         }
 
         if full {
@@ -2269,6 +2275,34 @@ mod tests {
 
         assert_eq!(bins.dirty_records.capacity(), 0);
         assert_eq!(bins.dirty_pages.capacity(), 0);
+    }
+
+    #[test]
+    fn regrown_vacant_scan_slots_are_uploaded_over_retained_gpu_contents() {
+        let mut canvas = Canvas::new(64, 16, 1.0);
+        for x in [0.0, 32.0] {
+            canvas.push_path(
+                Rect::new(x, 0.0, x + 32.0, 16.0).to_path(0.0),
+                Color::BLACK,
+                Affine::IDENTITY,
+                FillRule::NonZero,
+                0.0,
+            );
+        }
+        let mut plans = PersistentPathPlans::default();
+        plans.update(&canvas, None);
+        plans.take_dirty();
+        let mut gpu = plans.scan_ranges().to_vec();
+        assert_ne!(gpu[1], GpuScanChunkRange::default());
+        canvas.path_records.truncate(1);
+        plans.update(&canvas, Some(&[]));
+        plans.take_dirty();
+        canvas.path_records.push(Default::default());
+        plans.update(&canvas, Some(&[]));
+        for range in plans.take_dirty().scan_ranges {
+            gpu[range.clone()].copy_from_slice(&plans.scan_ranges()[range]);
+        }
+        assert_eq!(gpu, plans.scan_ranges());
     }
 
     #[test]

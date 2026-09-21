@@ -1,5 +1,8 @@
 # Clip dispatch performance
 
+See the [count, nesting and area follow-up](clip-matrix-performance.md) for the
+controlled 16-case matrix and adaptive emission optimization.
+
 The 384 moving path clips in `backend_comparison_cycles/clips` now take about half
 as long on native DX12 and Vulkan, with identical pixels. This follow-up is against
 `d2d596ad` and supersedes the clips row in [the previous results](backend-performance-followup.md).

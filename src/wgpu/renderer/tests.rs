@@ -67,4 +67,5 @@ mod backdrop_damage;
 
 mod backdrop_order;
 
+mod clip_reprepare;
 mod filter_sampling;

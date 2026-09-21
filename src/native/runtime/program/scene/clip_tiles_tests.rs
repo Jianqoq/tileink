@@ -67,6 +67,11 @@ fn fixed_clip_slots_are_disjoint_bounded_and_drop_out_for_mixed_passes() -> supe
         1,
         "clip emission needs no GPU prefix allocation"
     );
+    assert_eq!(
+        batch.passes()[before].grid,
+        [4, 1, 1],
+        "small clip selections retain the parallel emitter"
+    );
     canvas.push_opacity_layer(
         Rect::new(0.0, 0.0, 64.0, 64.0).to_path(0.1),
         Affine::IDENTITY,
@@ -100,4 +105,29 @@ fn nested_disjoint_clips_have_no_tiles() {
     );
     let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
     assert_eq!(tiles(&canvas, &plan, 0..2, None), Some(Vec::new()));
+}
+
+#[test]
+#[cfg(any(feature = "dx12", feature = "vulkan"))]
+fn clip_emit_dispatch_covers_both_sides_of_a_scalar_workgroup() -> super::super::Result<()> {
+    // 255, 256 and 272 selected tiles: the last scalar group must cover its tail.
+    for (width, height, groups) in [(240.0, 272.0, 255), (256.0, 256.0, 1), (272.0, 256.0, 2)] {
+        let mut canvas = Canvas::new(512, 512, 1.0);
+        canvas.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, width, height), crate::Radius::ZERO);
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, 512.0, 512.0),
+            crate::Radius::ZERO,
+            peniko::Color::BLACK,
+        );
+        canvas.pop_layer();
+        let mut cache = SceneCache::default();
+        let mut batch = ComputeBatch::new();
+        let scene = cache.record(&mut batch, &canvas, None, None, 65535)?;
+        assert!(scene.clip_dispatch.preallocated);
+        let before = batch.passes().len();
+        scene.encode_coarse(&mut batch, 0..1, 0..1, true, 65535)?;
+        assert_eq!(batch.passes().len() - before, 1);
+        assert_eq!(batch.passes()[before].grid, [groups, 1, 1]);
+    }
+    Ok(())
 }

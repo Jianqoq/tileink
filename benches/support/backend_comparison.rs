@@ -1,5 +1,6 @@
 #[cfg(feature = "wgpu")]
 use peniko::Color;
+pub use workload::clips::CASES as CLIP_CASES;
 
 #[cfg(feature = "wgpu")]
 #[path = "../../examples/common/benchmark_gpu.rs"]
