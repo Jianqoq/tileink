@@ -230,3 +230,54 @@ fn many_opacity_layers_do_not_exhaust_descriptor_heaps() -> Result<(), Box<dyn s
     }
     Ok(())
 }
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn raster_invalidation_preserves_pixels_across_content_updates()
+-> Result<(), Box<dyn std::error::Error>> {
+    use crate::{RetainedNodeId, RetainedParent, RetainedScene};
+    use peniko::kurbo::{Affine, Rect};
+    let context = context()?;
+    let root = RetainedNodeId::for_owner(1);
+    let child = RetainedNodeId::for_owner(2);
+    let mut scene = RetainedScene::new(32, 32, 1.0, root)?;
+    let mut canvas = Canvas::new(32, 32, 1.0);
+    canvas.push_rect(
+        Rect::new(2.0, 2.0, 10.0, 10.0),
+        crate::Radius::ZERO,
+        peniko::Color::WHITE,
+    );
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            child,
+            Rc::new(canvas),
+            Affine::IDENTITY,
+        )
+        .commit()?;
+    let mut renderer = NativeRenderer::with_context(&context, 32, 32)?;
+    for frame in 0..6 {
+        // Include invalidation before the first upload, ordinary raster-only
+        // frames, a skipped content commit, and a following raster-only frame.
+        if frame == 3 {
+            scene
+                .transaction()
+                .set_transform(child, Affine::translate((8.0, 0.0)))
+                .commit()?;
+        }
+        let mut transaction = scene.transaction();
+        if frame % 2 == 0 {
+            transaction.invalidate_all();
+        } else {
+            transaction.invalidate_rect(Rect::new(0.0, 0.0, 4.0, 4.0));
+        }
+        transaction.commit()?;
+        let actual = renderer.render_retained_to_image(&scene)?.readback()?;
+        let mut fresh = NativeRenderer::with_context(&context, 32, 32)?;
+        let expected = fresh.render_retained_to_image(&scene)?.readback()?;
+        assert_eq!(actual.pixels, expected.pixels, "frame {frame}");
+    }
+    Ok(())
+}

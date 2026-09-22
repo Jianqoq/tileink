@@ -25,3 +25,20 @@ claim to measure full frame time or window/swapchain resize.
 
 Empty and singleton patch indexes additionally follow the bounded immutable
 reuse rule in [Stable retained delta indexes](m1-stable-delta-index.md).
+
+## Raster-only upload deltas
+
+Raster-only materializer updates publish an explicit empty `SceneBufferChanges`,
+with reusable plan structure. `None` means the input has no incremental upload
+contract, so shared/native preparation must rebuild and upload its full data.
+It must not represent unchanged retained scene storage. Output damage still
+advances normally for both rectangle invalidation and full invalidation.
+
+Initial or unaccepted GPU storage still requires full initialization, even with
+an empty delta. Journal gaps retain metadata reconciliation and the
+`full_scene_sync` flag; content edits must continue publishing their actual
+ranges. CPU `raster_invalidation_publishes_empty_upload_delta` and native GPU
+`raster_invalidation_preserves_pixels_across_content_updates` cover this contract.
+This fixes repeated full preparation/upload at the source; it does not suppress
+requested redraws or change pixels. The retained backend Criterion matrix's
+manual-invalidation cases measure the completed-frame effect.

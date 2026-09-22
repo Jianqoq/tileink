@@ -2,6 +2,8 @@
 
 Completed 181 retained configurations, 62 immediate configurations and 44 burst configurations on each of wgpu DX12, native DX12, wgpu Vulkan and native Vulkan. Every captured phase matched raw RGBA exactly. Five retained and two immediate outliers were additionally repeated three times per route in fresh processes, reversing route order in the second repetition.
 
+[Follow-up: raster invalidation root fix and repeated results](manual-invalidation-performance.md) resolves the ordinary invalidation bottleneck; cropped filters remain slower. The measurements below are the pre-fix baseline.
+
 **Performance parity has not been achieved.** Earlier 11-scene wins did not cover these broader workloads. Pixel correctness, successful execution and performance acceptance are separate results.
 
 | Matrix | Configurations per route | DX12 nominally slower | Vulkan nominally slower |

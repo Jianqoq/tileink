@@ -550,7 +550,10 @@ impl PersistentSceneMaterializer {
                 .expect("scene-data sync records buffer changes")
                 .surface_changed = surface_changed;
         } else {
-            Rc::make_mut(&mut self.canvas).buffer_changes = None;
+            // Raster damage changes pixels, not scene storage. None means an unknown
+            // (full) upload to shared/native preparation; publish an explicit empty
+            // delta so unchanged geometry and spatial bins remain reusable.
+            Rc::make_mut(&mut self.canvas).buffer_changes = Some(SceneBufferChanges::default());
         }
         if commands_dirty
             && (compacted
@@ -797,7 +800,7 @@ impl PersistentSceneMaterializer {
         }
         if let Some(buffer_changes) = &mut Rc::make_mut(&mut self.canvas).buffer_changes {
             buffer_changes.plan_structure_reused =
-                layer_plan_patched || root_offscreen_reorder_patched;
+                !scene_data_changed || layer_plan_patched || root_offscreen_reorder_patched;
             buffer_changes.plan_values_patched = position_plan_patched;
             buffer_changes.plan_layer_stack = if layer_plan_patched {
                 plan_layer_stack_changes
@@ -833,11 +836,6 @@ impl PersistentSceneMaterializer {
                 0
             };
             buffer_changes.full_scene_sync |= journal_gap;
-        } else if journal_gap {
-            Rc::make_mut(&mut self.canvas).buffer_changes = Some(SceneBufferChanges {
-                full_scene_sync: true,
-                ..Default::default()
-            });
         }
         if changes.hierarchy_changed {
             self.refresh_root_fragment_membership(
@@ -1461,3 +1459,7 @@ impl PersistentSceneMaterializer {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "lifecycle_tests.rs"]
+mod tests;
