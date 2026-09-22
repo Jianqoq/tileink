@@ -607,7 +607,7 @@ impl WgpuCoarseBuffers {
         );
         let (bins_full, dirty_records, dirty_pages) = profile_cpu(
             "prepare.coarse_buffers.upload_tile_draw_bins.take_dirty",
-            || staging.tile_draw_bins.take_dirty(),
+            || std::rc::Rc::make_mut(&mut staging.tile_draw_bins).take_dirty(),
         );
         let bins = &staging.tile_draw_bins;
         let layout = (
@@ -684,8 +684,7 @@ impl WgpuCoarseBuffers {
             dirty_pages.len()
         };
         let compactions = bins.compactions();
-        staging
-            .tile_draw_bins
+        std::rc::Rc::make_mut(&mut staging.tile_draw_bins)
             .recycle_dirty(dirty_records, dirty_pages);
         (rewritten, compactions)
     }

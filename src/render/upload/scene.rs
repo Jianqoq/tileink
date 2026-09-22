@@ -12,6 +12,7 @@ use crate::{
     },
     text::{PreparedTextChanges, PreparedTextData},
 };
+use std::rc::Rc;
 #[derive(Default)]
 pub(crate) struct SceneUploadStaging {
     pub(crate) text: TextUpload,
@@ -21,7 +22,7 @@ pub(crate) struct SceneUploadStaging {
     coarse_ptcl_underused_frames: u16,
     coarse_glyph_capacity: usize,
     coarse_glyph_underused_frames: u16,
-    pub(crate) tile_draw_bins: TileDrawBins,
+    pub(crate) tile_draw_bins: Rc<TileDrawBins>,
     tile_draw_cursors: Vec<u32>,
     pub(crate) layer_stack: Vec<LayerStackRecord>,
     pub(crate) paint: PaintUploadState,
@@ -39,7 +40,7 @@ impl SceneUploadStaging {
     }
 
     pub(crate) fn active_batch_ids(&mut self, tiles: &[u32], draw_batch_ids: &[u32]) -> Vec<u32> {
-        self.tile_draw_bins.active_batch_ids(tiles, draw_batch_ids)
+        Rc::make_mut(&mut self.tile_draw_bins).active_batch_ids(tiles, draw_batch_ids)
     }
 
     #[cfg(feature = "wgpu")]
@@ -82,7 +83,7 @@ impl SceneUploadStaging {
             canvas,
             text,
             plan,
-            &mut self.tile_draw_bins,
+            Rc::make_mut(&mut self.tile_draw_bins),
             &mut self.tile_draw_cursors,
             reused_plan,
             GpuLengthOverrides {

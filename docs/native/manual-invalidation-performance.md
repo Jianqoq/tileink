@@ -1,5 +1,7 @@
 # Retained raster invalidation performance (2026-09-22)
 
+[Subsequent cropped-filter spatial-query fix and measurements](cropped-filter-spatial-query.md) address the remaining cropped-filter bottleneck. The results below are its pre-fix baseline.
+
 The materializer previously published `buffer_changes = None` after raster-only
 invalidation. Native/shared staging interprets `None` as unknown dirty coverage,
 requiring full preparation and upload. At 100,000 nodes a diagnostic DX12 frame

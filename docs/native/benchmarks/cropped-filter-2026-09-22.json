@@ -1,0 +1,1842 @@
+{
+  "passed": true,
+  "suite": "retained",
+  "gpu": "fe3e010000000000",
+  "filter": "scale-cropped-filter-manual-invalidation-,scale-manual-invalidation-100000,scale-backdrop-manual-invalidation-100000,scale-one-move-100000,scale-affine-clip-update-100000",
+  "runs": [
+    {
+      "run": 1,
+      "route": "wgpu-dx12",
+      "cases": {
+        "scale-affine-clip-update-100000": {
+          "mean_us": 345.5856382978723,
+          "mean_ci_us": [
+            340.31584663120566,
+            354.5458191489362
+          ],
+          "p95_us": 420.3,
+          "max_us": 834.2,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "7debe5a77d7a567ae8c78c4dd804f55f390674e863d988d7f0a3d13b23db7f9f"
+          ]
+        },
+        "scale-backdrop-manual-invalidation-100000": {
+          "mean_us": 479.2616842105264,
+          "mean_ci_us": [
+            470.47903947368417,
+            491.85968421052627
+          ],
+          "p95_us": 650.5,
+          "max_us": 720.7,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100": {
+          "mean_us": 527.3292307692308,
+          "mean_ci_us": [
+            522.81214010989,
+            531.0656593406594
+          ],
+          "p95_us": 820.8,
+          "max_us": 975.3,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-1000": {
+          "mean_us": 686.7006081081081,
+          "mean_ci_us": [
+            674.3693699324324,
+            701.4848868243243
+          ],
+          "p95_us": 958.4,
+          "max_us": 1075.4,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100000": {
+          "mean_us": 1526.1251515151514,
+          "mean_ci_us": [
+            1500.2280303030304,
+            1557.5457765151511
+          ],
+          "p95_us": 1764.4,
+          "max_us": 1867.1,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-20000": {
+          "mean_us": 754.3448305084745,
+          "mean_ci_us": [
+            745.1217796610172,
+            766.7954237288136
+          ],
+          "p95_us": 988.9,
+          "max_us": 1060.9,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-5000": {
+          "mean_us": 744.3818382352943,
+          "mean_ci_us": [
+            732.3559558823529,
+            759.9538235294118
+          ],
+          "p95_us": 1069.8,
+          "max_us": 1319.2,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-manual-invalidation-100000": {
+          "mean_us": 235.4157261410788,
+          "mean_ci_us": [
+            225.6179657676349,
+            245.2039092323651
+          ],
+          "p95_us": 435.6,
+          "max_us": 592.7,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504"
+          ]
+        },
+        "scale-one-move-100000": {
+          "mean_us": 249.28714285714287,
+          "mean_ci_us": [
+            244.64913839285714,
+            255.88111607142858
+          ],
+          "p95_us": 344.4,
+          "max_us": 585.5,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "1a28d67c402db13a29e59317000567a08c534a15c7d49a39925ad348f6a83599"
+          ]
+        }
+      }
+    },
+    {
+      "run": 1,
+      "route": "native-dx12",
+      "cases": {
+        "scale-affine-clip-update-100000": {
+          "mean_us": 1935.1182758620691,
+          "mean_ci_us": [
+            1772.1750086206896,
+            2094.612185344827
+          ],
+          "p95_us": 2889.7,
+          "max_us": 3018.1,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "7debe5a77d7a567ae8c78c4dd804f55f390674e863d988d7f0a3d13b23db7f9f"
+          ]
+        },
+        "scale-backdrop-manual-invalidation-100000": {
+          "mean_us": 235.16274881516588,
+          "mean_ci_us": [
+            229.67509478672983,
+            244.52040284360191
+          ],
+          "p95_us": 316.9,
+          "max_us": 429.1,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100": {
+          "mean_us": 277.64361878453036,
+          "mean_ci_us": [
+            269.2967679558011,
+            288.933682320442
+          ],
+          "p95_us": 416.7,
+          "max_us": 525.5,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-1000": {
+          "mean_us": 406.76610655737704,
+          "mean_ci_us": [
+            404.662719262295,
+            408.8521393442623
+          ],
+          "p95_us": 587.6,
+          "max_us": 640.0,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100000": {
+          "mean_us": 503.4960483870967,
+          "mean_ci_us": [
+            417.38756451612903,
+            606.6766935483871
+          ],
+          "p95_us": 689.8,
+          "max_us": 1048.9,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-20000": {
+          "mean_us": 521.8882777777778,
+          "mean_ci_us": [
+            518.3613888888889,
+            525.8832777777777
+          ],
+          "p95_us": 683.2,
+          "max_us": 859.8,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-5000": {
+          "mean_us": 483.9371296296297,
+          "mean_ci_us": [
+            480.34,
+            487.38330787037046
+          ],
+          "p95_us": 723.8,
+          "max_us": 1032.7,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-manual-invalidation-100000": {
+          "mean_us": 191.53077922077927,
+          "mean_ci_us": [
+            182.11495670995672,
+            200.65471807359307
+          ],
+          "p95_us": 225.1,
+          "max_us": 320.2,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504"
+          ]
+        },
+        "scale-one-move-100000": {
+          "mean_us": 1490.4304545454545,
+          "mean_ci_us": [
+            1461.7903030303032,
+            1517.9168181818181
+          ],
+          "p95_us": 2055.3,
+          "max_us": 2163.1,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "1a28d67c402db13a29e59317000567a08c534a15c7d49a39925ad348f6a83599"
+          ]
+        }
+      }
+    },
+    {
+      "run": 1,
+      "route": "wgpu-vulkan",
+      "cases": {
+        "scale-affine-clip-update-100000": {
+          "mean_us": 294.3486280487805,
+          "mean_ci_us": [
+            286.4493323170732,
+            303.3756707317074
+          ],
+          "p95_us": 541.1,
+          "max_us": 1915.1,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "7debe5a77d7a567ae8c78c4dd804f55f390674e863d988d7f0a3d13b23db7f9f"
+          ]
+        },
+        "scale-backdrop-manual-invalidation-100000": {
+          "mean_us": 292.5737352941177,
+          "mean_ci_us": [
+            290.37664705882355,
+            294.92679411764703
+          ],
+          "p95_us": 381.1,
+          "max_us": 512.2,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100": {
+          "mean_us": 351.25758741258744,
+          "mean_ci_us": [
+            343.25618881118885,
+            362.42807692307696
+          ],
+          "p95_us": 501.3,
+          "max_us": 911.3,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-1000": {
+          "mean_us": 516.5588888888889,
+          "mean_ci_us": [
+            506.4741414141414,
+            529.1941414141415
+          ],
+          "p95_us": 776.4,
+          "max_us": 987.9,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100000": {
+          "mean_us": 1633.4034615384614,
+          "mean_ci_us": [
+            1592.938264423077,
+            1691.8532692307692
+          ],
+          "p95_us": 1910.3,
+          "max_us": 2198.0,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-20000": {
+          "mean_us": 743.4662686567165,
+          "mean_ci_us": [
+            737.8146268656716,
+            748.870339552239
+          ],
+          "p95_us": 1138.1,
+          "max_us": 1530.1,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-5000": {
+          "mean_us": 571.6907386363637,
+          "mean_ci_us": [
+            568.4890326704544,
+            575.321875
+          ],
+          "p95_us": 940.0,
+          "max_us": 1180.1,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-manual-invalidation-100000": {
+          "mean_us": 171.4312074829932,
+          "mean_ci_us": [
+            167.50784013605437,
+            177.04646258503402
+          ],
+          "p95_us": 373.5,
+          "max_us": 421.2,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504"
+          ]
+        },
+        "scale-one-move-100000": {
+          "mean_us": 173.53510380622834,
+          "mean_ci_us": [
+            171.88326989619378,
+            175.52275994809688
+          ],
+          "p95_us": 234.8,
+          "max_us": 486.9,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "1a28d67c402db13a29e59317000567a08c534a15c7d49a39925ad348f6a83599"
+          ]
+        }
+      }
+    },
+    {
+      "run": 1,
+      "route": "native-vulkan",
+      "cases": {
+        "scale-affine-clip-update-100000": {
+          "mean_us": 1656.7266666666665,
+          "mean_ci_us": [
+            1618.0785416666665,
+            1693.434375
+          ],
+          "p95_us": 2349.9,
+          "max_us": 2606.6,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "7debe5a77d7a567ae8c78c4dd804f55f390674e863d988d7f0a3d13b23db7f9f"
+          ]
+        },
+        "scale-backdrop-manual-invalidation-100000": {
+          "mean_us": 204.94400921658982,
+          "mean_ci_us": [
+            193.77138882488478,
+            219.94546082949313
+          ],
+          "p95_us": 244.1,
+          "max_us": 455.2,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100": {
+          "mean_us": 201.28016064257022,
+          "mean_ci_us": [
+            198.16594377510037,
+            205.1242168674699
+          ],
+          "p95_us": 390.0,
+          "max_us": 558.5,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-1000": {
+          "mean_us": 345.6595890410959,
+          "mean_ci_us": [
+            343.05002739726035,
+            348.5667217465753
+          ],
+          "p95_us": 649.3,
+          "max_us": 807.6,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100000": {
+          "mean_us": 435.606712962963,
+          "mean_ci_us": [
+            409.5848611111111,
+            466.15152777777774
+          ],
+          "p95_us": 462.1,
+          "max_us": 866.3,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-20000": {
+          "mean_us": 432.583023255814,
+          "mean_ci_us": [
+            413.62227228682167,
+            449.87569767441863
+          ],
+          "p95_us": 655.8,
+          "max_us": 994.2,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-5000": {
+          "mean_us": 395.72917322834644,
+          "mean_ci_us": [
+            382.62181200787404,
+            409.79153543307086
+          ],
+          "p95_us": 422.4,
+          "max_us": 877.6,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-manual-invalidation-100000": {
+          "mean_us": 132.37259067357513,
+          "mean_ci_us": [
+            129.70479274611398,
+            135.86465025906736
+          ],
+          "p95_us": 176.2,
+          "max_us": 339.1,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504"
+          ]
+        },
+        "scale-one-move-100000": {
+          "mean_us": 1482.77,
+          "mean_ci_us": [
+            1465.6858823529412,
+            1498.7164705882353
+          ],
+          "p95_us": 1545.5,
+          "max_us": 1914.2,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "1a28d67c402db13a29e59317000567a08c534a15c7d49a39925ad348f6a83599"
+          ]
+        }
+      }
+    },
+    {
+      "run": 2,
+      "route": "native-vulkan",
+      "cases": {
+        "scale-affine-clip-update-100000": {
+          "mean_us": 2347.7402777777775,
+          "mean_ci_us": [
+            2300.8369166666666,
+            2397.222534722222
+          ],
+          "p95_us": 3184.3,
+          "max_us": 3622.4,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "7debe5a77d7a567ae8c78c4dd804f55f390674e863d988d7f0a3d13b23db7f9f"
+          ]
+        },
+        "scale-backdrop-manual-invalidation-100000": {
+          "mean_us": 196.81589805825243,
+          "mean_ci_us": [
+            193.00432463592233,
+            201.2906171116505
+          ],
+          "p95_us": 242.1,
+          "max_us": 1868.4,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100": {
+          "mean_us": 197.43088582677166,
+          "mean_ci_us": [
+            196.09919291338585,
+            198.6384660433071
+          ],
+          "p95_us": 254.4,
+          "max_us": 538.6,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-1000": {
+          "mean_us": 356.10949275362316,
+          "mean_ci_us": [
+            353.37637681159424,
+            359.08229076086957
+          ],
+          "p95_us": 553.5,
+          "max_us": 667.4,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100000": {
+          "mean_us": 474.0299523809523,
+          "mean_ci_us": [
+            468.47123809523805,
+            480.85238095238094
+          ],
+          "p95_us": 714.1,
+          "max_us": 915.5,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-20000": {
+          "mean_us": 403.02596899224807,
+          "mean_ci_us": [
+            388.78945736434105,
+            422.0273003875969
+          ],
+          "p95_us": 675.2,
+          "max_us": 969.3,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-5000": {
+          "mean_us": 383.9686296296296,
+          "mean_ci_us": [
+            372.99151851851855,
+            397.79537962962956
+          ],
+          "p95_us": 562.2,
+          "max_us": 639.8,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-manual-invalidation-100000": {
+          "mean_us": 137.7429401408451,
+          "mean_ci_us": [
+            134.93283274647888,
+            141.64329313380284
+          ],
+          "p95_us": 191.5,
+          "max_us": 405.0,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504"
+          ]
+        },
+        "scale-one-move-100000": {
+          "mean_us": 1474.3560294117647,
+          "mean_ci_us": [
+            1449.357058823529,
+            1496.3976470588234
+          ],
+          "p95_us": 2511.9,
+          "max_us": 2993.0,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "1a28d67c402db13a29e59317000567a08c534a15c7d49a39925ad348f6a83599"
+          ]
+        }
+      }
+    },
+    {
+      "run": 2,
+      "route": "wgpu-vulkan",
+      "cases": {
+        "scale-affine-clip-update-100000": {
+          "mean_us": 284.825923566879,
+          "mean_ci_us": [
+            279.71003184713385,
+            290.86105095541393
+          ],
+          "p95_us": 489.2,
+          "max_us": 547.7,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "7debe5a77d7a567ae8c78c4dd804f55f390674e863d988d7f0a3d13b23db7f9f"
+          ]
+        },
+        "scale-backdrop-manual-invalidation-100000": {
+          "mean_us": 348.5397701149426,
+          "mean_ci_us": [
+            325.56263649425284,
+            382.01581465517245
+          ],
+          "p95_us": 501.3,
+          "max_us": 524.3,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100": {
+          "mean_us": 348.6576041666666,
+          "mean_ci_us": [
+            342.2998246527778,
+            356.38340277777775
+          ],
+          "p95_us": 606.8,
+          "max_us": 841.4,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-1000": {
+          "mean_us": 502.53464646464647,
+          "mean_ci_us": [
+            498.6268181818182,
+            506.7827777777778
+          ],
+          "p95_us": 742.0,
+          "max_us": 975.6,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100000": {
+          "mean_us": 1649.0898,
+          "mean_ci_us": [
+            1576.578,
+            1755.455615
+          ],
+          "p95_us": 2173.6,
+          "max_us": 3144.1,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-20000": {
+          "mean_us": 738.7363235294117,
+          "mean_ci_us": [
+            733.5020588235294,
+            744.9405404411764
+          ],
+          "p95_us": 1044.8,
+          "max_us": 1176.5,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-5000": {
+          "mean_us": 576.5998314606741,
+          "mean_ci_us": [
+            565.4342134831462,
+            590.6254789325843
+          ],
+          "p95_us": 906.7,
+          "max_us": 1147.1,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-manual-invalidation-100000": {
+          "mean_us": 168.0653557312253,
+          "mean_ci_us": [
+            165.80907114624506,
+            170.64413043478262
+          ],
+          "p95_us": 277.9,
+          "max_us": 705.9,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504"
+          ]
+        },
+        "scale-one-move-100000": {
+          "mean_us": 180.25611683848797,
+          "mean_ci_us": [
+            174.27388316151203,
+            187.5361258591065
+          ],
+          "p95_us": 306.0,
+          "max_us": 387.2,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "1a28d67c402db13a29e59317000567a08c534a15c7d49a39925ad348f6a83599"
+          ]
+        }
+      }
+    },
+    {
+      "run": 2,
+      "route": "native-dx12",
+      "cases": {
+        "scale-affine-clip-update-100000": {
+          "mean_us": 2247.62275,
+          "mean_ci_us": [
+            2204.55375,
+            2292.40875
+          ],
+          "p95_us": 3348.2,
+          "max_us": 3552.9,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "7debe5a77d7a567ae8c78c4dd804f55f390674e863d988d7f0a3d13b23db7f9f"
+          ]
+        },
+        "scale-backdrop-manual-invalidation-100000": {
+          "mean_us": 249.4911935483871,
+          "mean_ci_us": [
+            243.06027741935486,
+            256.1845548387097
+          ],
+          "p95_us": 304.9,
+          "max_us": 431.1,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100": {
+          "mean_us": 247.84497572815528,
+          "mean_ci_us": [
+            242.57016990291262,
+            255.46667839805826
+          ],
+          "p95_us": 330.4,
+          "max_us": 494.9,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-1000": {
+          "mean_us": 385.1896538461538,
+          "mean_ci_us": [
+            379.7167413461538,
+            390.878423076923
+          ],
+          "p95_us": 609.2,
+          "max_us": 948.7,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100000": {
+          "mean_us": 527.0617142857143,
+          "mean_ci_us": [
+            506.9291428571429,
+            563.0704625
+          ],
+          "p95_us": 670.7,
+          "max_us": 865.9,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-20000": {
+          "mean_us": 500.73280612244895,
+          "mean_ci_us": [
+            499.3044387755102,
+            502.1720918367347
+          ],
+          "p95_us": 731.2,
+          "max_us": 813.5,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-5000": {
+          "mean_us": 443.5310330578511,
+          "mean_ci_us": [
+            428.10207747933885,
+            460.75847107438017
+          ],
+          "p95_us": 623.0,
+          "max_us": 1107.0,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-manual-invalidation-100000": {
+          "mean_us": 150.63041284403664,
+          "mean_ci_us": [
+            147.64810397553515,
+            155.89048929663608
+          ],
+          "p95_us": 215.1,
+          "max_us": 474.5,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504"
+          ]
+        },
+        "scale-one-move-100000": {
+          "mean_us": 1498.0060294117648,
+          "mean_ci_us": [
+            1474.3567647058821,
+            1517.388529411765
+          ],
+          "p95_us": 2345.8,
+          "max_us": 2737.2,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "1a28d67c402db13a29e59317000567a08c534a15c7d49a39925ad348f6a83599"
+          ]
+        }
+      }
+    },
+    {
+      "run": 2,
+      "route": "wgpu-dx12",
+      "cases": {
+        "scale-affine-clip-update-100000": {
+          "mean_us": 436.6583157894736,
+          "mean_ci_us": [
+            418.73252631578947,
+            458.7347171052631
+          ],
+          "p95_us": 746.7,
+          "max_us": 942.0,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "7debe5a77d7a567ae8c78c4dd804f55f390674e863d988d7f0a3d13b23db7f9f"
+          ]
+        },
+        "scale-backdrop-manual-invalidation-100000": {
+          "mean_us": 507.764765625,
+          "mean_ci_us": [
+            465.1290625,
+            555.714140625
+          ],
+          "p95_us": 768.1,
+          "max_us": 1053.3,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100": {
+          "mean_us": 546.2569540229885,
+          "mean_ci_us": [
+            542.7575287356321,
+            549.710462643678
+          ],
+          "p95_us": 804.0,
+          "max_us": 818.2,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-1000": {
+          "mean_us": 697.3691216216216,
+          "mean_ci_us": [
+            688.3752027027026,
+            707.7847972972974
+          ],
+          "p95_us": 926.9,
+          "max_us": 1234.1,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100000": {
+          "mean_us": 1819.5904545454543,
+          "mean_ci_us": [
+            1736.2968181818178,
+            1933.2536363636361
+          ],
+          "p95_us": 2129.9,
+          "max_us": 2640.9,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-20000": {
+          "mean_us": 948.4957692307694,
+          "mean_ci_us": [
+            942.4022091346155,
+            955.8398221153845
+          ],
+          "p95_us": 1254.2,
+          "max_us": 1679.9,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-5000": {
+          "mean_us": 779.8033088235294,
+          "mean_ci_us": [
+            761.6320588235294,
+            797.0043382352941
+          ],
+          "p95_us": 1071.5,
+          "max_us": 1226.9,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-manual-invalidation-100000": {
+          "mean_us": 283.5949720670391,
+          "mean_ci_us": [
+            269.4478875698324,
+            298.7485530726257
+          ],
+          "p95_us": 359.9,
+          "max_us": 693.3,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504"
+          ]
+        },
+        "scale-one-move-100000": {
+          "mean_us": 329.64050420168064,
+          "mean_ci_us": [
+            324.30987394957975,
+            337.3131512605041
+          ],
+          "p95_us": 711.3,
+          "max_us": 779.4,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "1a28d67c402db13a29e59317000567a08c534a15c7d49a39925ad348f6a83599"
+          ]
+        }
+      }
+    },
+    {
+      "run": 3,
+      "route": "wgpu-dx12",
+      "cases": {
+        "scale-affine-clip-update-100000": {
+          "mean_us": 440.96541666666667,
+          "mean_ci_us": [
+            419.95020833333336,
+            465.9058333333333
+          ],
+          "p95_us": 647.1,
+          "max_us": 840.8,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "7debe5a77d7a567ae8c78c4dd804f55f390674e863d988d7f0a3d13b23db7f9f"
+          ]
+        },
+        "scale-backdrop-manual-invalidation-100000": {
+          "mean_us": 479.6089898989898,
+          "mean_ci_us": [
+            473.1721212121212,
+            486.7583345959596
+          ],
+          "p95_us": 754.6,
+          "max_us": 1063.0,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100": {
+          "mean_us": 541.7364367816092,
+          "mean_ci_us": [
+            538.0818390804596,
+            546.2056321839079
+          ],
+          "p95_us": 849.2,
+          "max_us": 976.7,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-1000": {
+          "mean_us": 711.0717808219179,
+          "mean_ci_us": [
+            700.0149315068494,
+            726.0342465753424
+          ],
+          "p95_us": 1068.9,
+          "max_us": 1156.8,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100000": {
+          "mean_us": 1566.6510606060606,
+          "mean_ci_us": [
+            1524.0862007575756,
+            1630.850303030303
+          ],
+          "p95_us": 1720.4,
+          "max_us": 1815.6,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-20000": {
+          "mean_us": 766.88890625,
+          "mean_ci_us": [
+            755.710671875,
+            782.7253671874998
+          ],
+          "p95_us": 1165.3,
+          "max_us": 1443.0,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-5000": {
+          "mean_us": 779.4670895522388,
+          "mean_ci_us": [
+            765.83975,
+            792.6433582089553
+          ],
+          "p95_us": 1152.8,
+          "max_us": 1321.6,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-manual-invalidation-100000": {
+          "mean_us": 264.712282051282,
+          "mean_ci_us": [
+            260.8282474358974,
+            271.4538455128205
+          ],
+          "p95_us": 335.5,
+          "max_us": 765.6,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504"
+          ]
+        },
+        "scale-one-move-100000": {
+          "mean_us": 328.9819090909091,
+          "mean_ci_us": [
+            318.7854988636363,
+            344.69377840909095
+          ],
+          "p95_us": 406.2,
+          "max_us": 756.9,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "1a28d67c402db13a29e59317000567a08c534a15c7d49a39925ad348f6a83599"
+          ]
+        }
+      }
+    },
+    {
+      "run": 3,
+      "route": "native-dx12",
+      "cases": {
+        "scale-affine-clip-update-100000": {
+          "mean_us": 2300.2950000000005,
+          "mean_ci_us": [
+            2263.2620000000006,
+            2340.27897159091
+          ],
+          "p95_us": 2811.8,
+          "max_us": 3417.8,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "7debe5a77d7a567ae8c78c4dd804f55f390674e863d988d7f0a3d13b23db7f9f"
+          ]
+        },
+        "scale-backdrop-manual-invalidation-100000": {
+          "mean_us": 269.2634482758621,
+          "mean_ci_us": [
+            258.8666551724138,
+            280.72904913793104
+          ],
+          "p95_us": 320.3,
+          "max_us": 488.6,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100": {
+          "mean_us": 277.46988950276244,
+          "mean_ci_us": [
+            272.1369599447514,
+            285.5833425414365
+          ],
+          "p95_us": 441.4,
+          "max_us": 709.7,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-1000": {
+          "mean_us": 409.1406611570248,
+          "mean_ci_us": [
+            406.95962809917353,
+            411.6840165289256
+          ],
+          "p95_us": 804.3,
+          "max_us": 1049.5,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100000": {
+          "mean_us": 527.8853164556963,
+          "mean_ci_us": [
+            524.0959493670886,
+            532.1612088607595
+          ],
+          "p95_us": 732.7,
+          "max_us": 779.7,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-20000": {
+          "mean_us": 522.291329787234,
+          "mean_ci_us": [
+            518.8095186170212,
+            526.0376063829788
+          ],
+          "p95_us": 799.8,
+          "max_us": 1105.7,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-5000": {
+          "mean_us": 493.612,
+          "mean_ci_us": [
+            485.96160625,
+            502.70140000000004
+          ],
+          "p95_us": 829.5,
+          "max_us": 843.7,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-manual-invalidation-100000": {
+          "mean_us": 218.58615196078435,
+          "mean_ci_us": [
+            208.88262438725488,
+            229.42382352941175
+          ],
+          "p95_us": 280.8,
+          "max_us": 560.9,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504"
+          ]
+        },
+        "scale-one-move-100000": {
+          "mean_us": 1595.4886363636363,
+          "mean_ci_us": [
+            1563.8728787878786,
+            1624.6444772727273
+          ],
+          "p95_us": 1775.9,
+          "max_us": 2166.7,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "1a28d67c402db13a29e59317000567a08c534a15c7d49a39925ad348f6a83599"
+          ]
+        }
+      }
+    },
+    {
+      "run": 3,
+      "route": "wgpu-vulkan",
+      "cases": {
+        "scale-affine-clip-update-100000": {
+          "mean_us": 342.19262773722625,
+          "mean_ci_us": [
+            339.53813868613133,
+            344.96408941605836
+          ],
+          "p95_us": 445.3,
+          "max_us": 630.5,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "7debe5a77d7a567ae8c78c4dd804f55f390674e863d988d7f0a3d13b23db7f9f"
+          ]
+        },
+        "scale-backdrop-manual-invalidation-100000": {
+          "mean_us": 401.51819767441856,
+          "mean_ci_us": [
+            383.1526162790697,
+            426.8707354651163
+          ],
+          "p95_us": 576.8,
+          "max_us": 848.8,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100": {
+          "mean_us": 405.2720703125,
+          "mean_ci_us": [
+            391.7637890625,
+            419.1134912109375
+          ],
+          "p95_us": 624.9,
+          "max_us": 684.2,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-1000": {
+          "mean_us": 574.8373595505616,
+          "mean_ci_us": [
+            567.8673539325841,
+            583.4119901685392
+          ],
+          "p95_us": 821.0,
+          "max_us": 2165.9,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100000": {
+          "mean_us": 1702.2283333333332,
+          "mean_ci_us": [
+            1648.2345833333334,
+            1782.07953125
+          ],
+          "p95_us": 2208.7,
+          "max_us": 2487.3,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-20000": {
+          "mean_us": 833.8158870967742,
+          "mean_ci_us": [
+            827.3079838709679,
+            840.1010745967743
+          ],
+          "p95_us": 1108.3,
+          "max_us": 1190.8,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-5000": {
+          "mean_us": 629.6531645569621,
+          "mean_ci_us": [
+            623.6583544303797,
+            635.0087974683543
+          ],
+          "p95_us": 1050.2,
+          "max_us": 1127.6,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-manual-invalidation-100000": {
+          "mean_us": 193.19444186046516,
+          "mean_ci_us": [
+            187.2682238372093,
+            200.3523720930233
+          ],
+          "p95_us": 251.3,
+          "max_us": 472.8,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504"
+          ]
+        },
+        "scale-one-move-100000": {
+          "mean_us": 173.3257543859649,
+          "mean_ci_us": [
+            172.30557807017541,
+            174.297
+          ],
+          "p95_us": 255.4,
+          "max_us": 411.6,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "1a28d67c402db13a29e59317000567a08c534a15c7d49a39925ad348f6a83599"
+          ]
+        }
+      }
+    },
+    {
+      "run": 3,
+      "route": "native-vulkan",
+      "cases": {
+        "scale-affine-clip-update-100000": {
+          "mean_us": 1752.7893478260867,
+          "mean_ci_us": [
+            1739.7673913043477,
+            1766.087858695652
+          ],
+          "p95_us": 2084.8,
+          "max_us": 2265.8,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "9ed82b55b06bb44d438cb3b168773da1d22bb5eb0aff1d5a2e4fd20e90054d68",
+            "7debe5a77d7a567ae8c78c4dd804f55f390674e863d988d7f0a3d13b23db7f9f"
+          ]
+        },
+        "scale-backdrop-manual-invalidation-100000": {
+          "mean_us": 243.82515723270438,
+          "mean_ci_us": [
+            236.45069182389938,
+            252.29454402515722
+          ],
+          "p95_us": 257.4,
+          "max_us": 467.8,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6",
+            "e5acede53a96195d8deb0f10f889a1b06ca0b16ed8e0dec6c1f782a4120823a6"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100": {
+          "mean_us": 217.11751054852323,
+          "mean_ci_us": [
+            214.6955274261603,
+            219.8786919831223
+          ],
+          "p95_us": 385.4,
+          "max_us": 449.7,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41",
+            "ab8f4151b0cd01b5eb790107ab6834e66e17fda802b9696e32acaa23989f4c41"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-1000": {
+          "mean_us": 388.6075,
+          "mean_ci_us": [
+            383.6889015151515,
+            394.28954545454553
+          ],
+          "p95_us": 636.1,
+          "max_us": 813.6,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-100000": {
+          "mean_us": 544.1650704225352,
+          "mean_ci_us": [
+            533.3407746478872,
+            558.7655985915493
+          ],
+          "p95_us": 771.8,
+          "max_us": 1085.3,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-20000": {
+          "mean_us": 565.9678350515464,
+          "mean_ci_us": [
+            530.2650489690722,
+            602.2636481958763
+          ],
+          "p95_us": 828.4,
+          "max_us": 921.1,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-cropped-filter-manual-invalidation-5000": {
+          "mean_us": 511.63495283018875,
+          "mean_ci_us": [
+            491.65099056603776,
+            534.4570825471698
+          ],
+          "p95_us": 700.1,
+          "max_us": 916.4,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac",
+            "73cd6b902a63296a3be49d92014c93bcca4a8633d6f83e5e96ac907f0c4746ac"
+          ]
+        },
+        "scale-manual-invalidation-100000": {
+          "mean_us": 141.93639344262294,
+          "mean_ci_us": [
+            138.66707650273224,
+            146.18284699453554
+          ],
+          "p95_us": 180.5,
+          "max_us": 319.9,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504"
+          ]
+        },
+        "scale-one-move-100000": {
+          "mean_us": 1498.1911764705885,
+          "mean_ci_us": [
+            1476.7166176470591,
+            1520.3556801470586
+          ],
+          "p95_us": 1648.0,
+          "max_us": 1716.7,
+          "latency_samples": 64,
+          "latency_kind": "completed-frame",
+          "pixels": [
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "394873cb2205b1176bc9348ea949dccbae47a9ea6d4e93364f7b51174d3d1504",
+            "1a28d67c402db13a29e59317000567a08c534a15c7d49a39925ad348f6a83599"
+          ]
+        }
+      }
+    }
+  ],
+  "binaries": {
+    "wgpu": "3b17e99278d7897ec9c2f55eb7ceee12861c90ad11dd5220c36f5f0ff2cb089e",
+    "dx12": "d2d7d1d0f00d375d399fa40eb87397811d363afe8a0fdc06eea5452d4d6ea9b0",
+    "vulkan": "9f2d1bc19eb0f0ccbf81546ae878cd34cbb1b282134243fac9bcd32ce6838f00"
+  },
+  "native_to_wgpu_ratio": {
+    "dx12": {
+      "scale-affine-clip-update-100000": 5.147326109973016,
+      "scale-backdrop-manual-invalidation-100000": 0.520197074706486,
+      "scale-cropped-filter-manual-invalidation-100": 0.512186130863151,
+      "scale-cropped-filter-manual-invalidation-1000": 0.5832866611752278,
+      "scale-cropped-filter-manual-invalidation-100000": 0.33642572206335464,
+      "scale-cropped-filter-manual-invalidation-20000": 0.6805265710906583,
+      "scale-cropped-filter-manual-invalidation-5000": 0.620856398065023,
+      "scale-manual-invalidation-100000": 0.7235432286578775,
+      "scale-one-move-100000": 4.553460199532777
+    },
+    "vulkan": {
+      "scale-affine-clip-update-100000": 5.954807261869107,
+      "scale-backdrop-manual-invalidation-100000": 0.5880075296687167,
+      "scale-cropped-filter-manual-invalidation-100": 0.573027225191712,
+      "scale-cropped-filter-manual-invalidation-1000": 0.6893879873398555,
+      "scale-cropped-filter-manual-invalidation-100000": 0.2874494477989933,
+      "scale-cropped-filter-manual-invalidation-20000": 0.5818462000130799,
+      "scale-cropped-filter-manual-invalidation-5000": 0.6863151038838561,
+      "scale-manual-invalidation-100000": 0.803488128930725,
+      "scale-one-move-100000": 8.544495998087402
+    }
+  },
+  "mean_parity": false,
+  "source_receipt": {
+    "path": "G:\\Code\\tileink\\target\\cropped-filter-final\\receipt.json",
+    "sha256": "72e98ce3959dafe8d8f755b7eb93dc3734eef1084ce0c52bba3d6a5ca00e5ead"
+  }
+}

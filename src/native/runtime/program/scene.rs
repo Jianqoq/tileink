@@ -84,6 +84,9 @@ impl PreparedScene<'_> {
 
 pub(crate) struct Scene {
     pub(crate) active_batches: Vec<u32>,
+    // Share the prepared spatial index without copying it each frame. A later
+    // preparation uses copy-on-write if an older recorded scene is still alive.
+    tile_draw_bins: Rc<crate::shared::gpu_plan::TileDrawBins>,
     draw_count: u32,
     plan: Rc<ExecPlan>,
     layer_count: u32,
@@ -366,7 +369,7 @@ impl SceneCache {
             &updates,
         )?;
         clip_dispatch.discard_upload_data();
-        self.staging.tile_draw_bins.finish_full_upload();
+        Rc::make_mut(&mut self.staging.tile_draw_bins).finish_full_upload();
         let chunks = self.buffers.chunks.scratch(
             batch,
             lengths.coarse_chunk_count,
@@ -398,6 +401,7 @@ impl SceneCache {
             active_batches,
             clip_dispatch,
             layer_count: u32::try_from(prepared.plan.layer_stack_data.len())?,
+            tile_draw_bins: Rc::clone(&self.staging.tile_draw_bins),
             draw_count: u32::try_from(canvas.draw_records.len())?,
             plan: prepared.plan,
             lengths,
@@ -432,6 +436,15 @@ impl SceneCache {
 mod upload_journal_tests;
 
 impl Scene {
+    pub(crate) fn filter_candidates(
+        &self,
+        bounds: crate::shared::bounds::Bounds,
+        plan: &ExecPlan,
+    ) -> Vec<u32> {
+        self.tile_draw_bins
+            .draws_in_bounds(bounds, &plan.draw_order)
+    }
+
     pub(crate) fn plan_handle(&self) -> Rc<ExecPlan> {
         self.plan.clone()
     }

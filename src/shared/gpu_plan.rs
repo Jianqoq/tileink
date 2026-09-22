@@ -1,4 +1,3 @@
-#[cfg(any(feature = "wgpu", test))]
 use std::collections::HashSet;
 use std::ops::Range;
 
@@ -421,11 +420,20 @@ impl TileDrawBins {
         }
     }
 
-    #[cfg(any(feature = "wgpu", test))]
-    /// Returns painter-ordered draws touching a pixel region without scanning the scene draw
-    /// table. Persistent bins already maintain the spatial reverse index; transient bins use the
-    /// same uploaded page/flat representation so local offscreen extraction has one code path.
+    /// Returns conservative painter-ordered candidates for a pixel region. Queries within the
+    /// indexed domain avoid scanning the scene draw table. Persistent and transient bins share
+    /// the same page/flat query path; exterior queries preserve all possible filter sources.
     pub(crate) fn draws_in_bounds(&self, bounds: Bounds, draw_order: &[u32]) -> Vec<u32> {
+        // Filters can move off-canvas source pixels into visible output. Tile
+        // membership covers only this indexed domain, so an exterior query must
+        // leave exact source clipping to the localizer instead of dropping draws.
+        let indexed = Bounds::canvas(
+            self.tiles_size.0 * crate::TILE_SIZE,
+            self.tiles_size.1 * crate::TILE_SIZE,
+        );
+        if bounds.intersect(indexed) != bounds {
+            return draw_order.to_vec();
+        }
         let bbox = PixelBounds {
             x0: bounds.x0,
             y0: bounds.y0,
@@ -2482,8 +2490,13 @@ mod tests {
             vec![0]
         );
         assert!(
-            bins.draws_in_bounds(Bounds::new(0, 32, 32, 64), &plan.draw_order)
+            bins.draws_in_bounds(Bounds::new(0, 16, 32, 32), &plan.draw_order)
                 .is_empty()
+        );
+        // The index cannot rule out source draws beyond its canvas domain.
+        assert_eq!(
+            bins.draws_in_bounds(Bounds::new(0, 32, 32, 64), &plan.draw_order),
+            *plan.draw_order
         );
     }
 

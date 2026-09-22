@@ -54,9 +54,11 @@ impl FilterPassAdapter for Execution<'_> {
 }
 impl FilterAdapter for Execution<'_> {
     type LocalState = LocalState;
-    fn filter_candidates(&self, _bounds: Bounds, plan: &ExecPlan) -> Vec<u32> {
-        // The shared localizer performs the exact bounds test and preserves draw order.
-        plan.draw_order.as_ref().clone()
+    fn filter_candidates(&self, bounds: Bounds, plan: &ExecPlan) -> Vec<u32> {
+        self.scene
+            .as_ref()
+            .expect("scanned filter parent")
+            .filter_candidates(bounds, plan)
     }
     fn begin_filter_scene(
         &mut self,
