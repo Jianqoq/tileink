@@ -14,6 +14,7 @@ pub use workload::{CASES, Workload};
 pub struct Gpu {
     renderer: tileink::WgpuRenderer,
     device: wgpu::Device,
+    queue: wgpu::Queue,
 }
 
 #[cfg(feature = "wgpu")]
@@ -25,6 +26,7 @@ impl Gpu {
         Self {
             renderer: tileink::WgpuRenderer::new(&device, &queue, 1280, 800, Color::TRANSPARENT),
             device,
+            queue,
         }
     }
     pub fn render(&mut self, workload: &mut Workload) {
@@ -118,3 +120,23 @@ impl Gpu {
         ]
     }
 }
+
+#[allow(dead_code)]
+#[path = "backend_immediate.rs"]
+mod immediate;
+
+// Only retained matrix cases override the default mode.
+#[allow(dead_code)]
+impl Gpu {
+    pub fn set_incremental_mode(&mut self, mode: tileink::IncrementalRenderMode) {
+        let mut config = self.renderer.incremental_render_config();
+        config.mode = mode;
+        self.renderer.set_incremental_render_config(config);
+    }
+}
+
+#[allow(dead_code)]
+#[path = "backend_pipelined.rs"]
+mod pipelined;
+#[allow(unused_imports)]
+pub use pipelined::Batch;

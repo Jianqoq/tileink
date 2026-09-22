@@ -32,15 +32,23 @@ pub struct Workload {
 }
 
 impl Workload {
+    pub fn from_scene(scene: RetainedScene) -> Self {
+        Self {
+            scene,
+            text: None,
+            name: "external",
+            phase: 0,
+            image_revision: 0,
+            clip: None,
+        }
+    }
+
     pub fn new(name: &'static str) -> Self {
         if let Some(clip) = clips::CASES.iter().find(|case| case.name == name).copied() {
             return Self {
-                scene: clip.scene(),
-                text: None,
                 name,
-                phase: 0,
-                image_revision: 0,
                 clip: Some(clip),
+                ..Self::from_scene(clip.scene())
             };
         }
         let root = RetainedNodeId::for_owner(1);
@@ -160,12 +168,10 @@ impl Workload {
     }
 
     pub fn size(&self) -> [u32; 2] {
-        let step = if self.name == "resize" {
-            self.phase.min(16 - self.phase)
-        } else {
-            0
-        };
-        [1280 - step * 8, 800 - step * 5]
+        // External fixtures include 64px deep hierarchies; the scene is the
+        // authority for output extent, including committed resize transactions.
+        let (width, height) = self.scene.physical_size();
+        [width, height]
     }
 
     pub fn advance(&mut self) {

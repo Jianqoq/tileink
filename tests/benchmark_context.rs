@@ -123,3 +123,6 @@ fn wgpu_benchmark_context_keeps_new_renderers_independent() {
     assert_eq!(session.measure(2, &mut mutate).unwrap().wall.len(), 2);
     assert_eq!(observed, (0..7).collect::<Vec<_>>());
 }
+
+#[path = "../examples/support/retained_dimensions.rs"]
+mod retained_dimensions;

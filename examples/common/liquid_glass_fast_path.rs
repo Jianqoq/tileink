@@ -6,7 +6,7 @@ use peniko::{
 };
 use tileink::{BlurSampling, Canvas, Filter, Radius, RectLiquidGlass, Region};
 
-use crate::common;
+use super as common;
 
 pub const WIDTH: u32 = 1080;
 pub const HEIGHT: u32 = 560;

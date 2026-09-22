@@ -358,3 +358,6 @@ mod tests {
         }
     }
 }
+
+#[path = "../examples/support/retained_dimensions.rs"]
+mod retained_dimensions;

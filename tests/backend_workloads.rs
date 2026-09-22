@@ -5,6 +5,21 @@
 mod workload;
 
 #[test]
+fn external_workload_reports_its_scene_extent_after_resize() {
+    let scene =
+        tileink::RetainedScene::new(64, 64, 1.0, tileink::RetainedNodeId::for_owner(1)).unwrap();
+    let mut workload = workload::Workload::from_scene(scene);
+    assert_eq!(workload.size(), [64, 64]);
+    workload
+        .scene
+        .transaction()
+        .resize(80, 48, 1.0)
+        .commit()
+        .unwrap();
+    assert_eq!(workload.size(), [80, 48]);
+}
+
+#[test]
 fn image_workload_has_384_distinct_contents() {
     let mut images = std::collections::HashSet::new();
     for index in 0..384 {

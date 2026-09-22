@@ -53,11 +53,12 @@ fn unchanged_plan_reuses_cached_plan_and_metadata_without_filter_uploads() {
 }
 
 #[test]
-fn structural_reuse_keeps_the_plan_when_the_fingerprint_changes() {
+fn structural_reuse_refreshes_values_when_the_fingerprint_changes() {
     let mut canvas = canvas();
     let mut state = ScenePreparation::default();
     let first = state.prepare_plan(&canvas, &mut None);
-    let reference = first.plan.clone();
+    let reference = canvas.compile_shared(ROOT_COMMAND_LIST_ID);
+    canvas.compiled_plan = Some(reference.clone());
     // The retained materializer can certify unchanged structure independently of its key.
     state.fingerprint = None;
     canvas.buffer_changes = Some(SceneBufferChanges {

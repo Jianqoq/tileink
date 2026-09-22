@@ -6,6 +6,10 @@ members = []
 name = "backend_comparison"
 harness = false
 
+[[bench]]
+name = "retained_backend_comparison"
+harness = false
+
 [package]
 name = "tileink"
 version = "0.1.2"
@@ -394,4 +398,12 @@ harness = false
 [[bench]]
 name = "dx12_staging_reuse"
 required-features = ["dx12"]
+harness = false
+
+[[bench]]
+name = "immediate_backend_comparison"
+harness = false
+
+[[bench]]
+name = "pipelined_backend_comparison"
 harness = false

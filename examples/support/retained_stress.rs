@@ -13,7 +13,7 @@ use tileink::{
     RetainedScene,
 };
 
-use super::retained_bench::{HEIGHT, WIDTH};
+use super::retained_dimensions::{HEIGHT, WIDTH};
 
 pub struct StressWorkload {
     count: usize,

@@ -116,3 +116,117 @@ fn completed_unchanged_owned_frames_need_no_submission() -> Result<(), Box<dyn s
     assert_eq!(renderer.incremental_render_stats().queue_submissions, 1);
     Ok(())
 }
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn retained_opacity_updates_match_fresh_render() -> Result<(), Box<dyn std::error::Error>> {
+    use crate::{RetainedLayerDescriptor, RetainedNodeId, RetainedParent, RetainedScene};
+    use peniko::kurbo::{Affine, Rect, Shape};
+    let context = context()?;
+    let mut renderer = NativeRenderer::with_context(&context, 16, 16)?;
+    let root = RetainedNodeId::for_owner(1);
+    let layer = RetainedNodeId::for_owner(2);
+    let descriptor = |opacity| RetainedLayerDescriptor::Opacity {
+        path: Rect::new(0.0, 0.0, 16.0, 16.0).to_path(0.1),
+        transform: Affine::IDENTITY,
+        tolerance: 0.1,
+        opacity,
+    };
+    let mut canvas = Canvas::new(16, 16, 1.0);
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 8.0, 8.0),
+        crate::Radius::ZERO,
+        peniko::Color::from_rgb8(30, 130, 220),
+    );
+    let mut scene = RetainedScene::new(16, 16, 1.0, root)?;
+    scene
+        .transaction()
+        .insert_layer(RetainedParent::content(root), None, layer, descriptor(0.75))
+        .insert_scene(
+            RetainedParent::content(layer),
+            None,
+            RetainedNodeId::for_owner(3),
+            Rc::new(canvas),
+            Affine::IDENTITY,
+        )
+        .commit()?;
+    renderer.render_retained(&scene)?.wait()?;
+    // Changing only the layer must invalidate its composited output, even when
+    // the child geometry and its cached content remain unchanged.
+    for opacity in [0.25, 0.75, 0.0, 1.0] {
+        scene
+            .transaction()
+            .update_layer(layer, descriptor(opacity))
+            .commit()?;
+        let actual = renderer.render_retained_to_image(&scene)?.readback()?;
+        let mut fresh = NativeRenderer::with_context(&context, 16, 16)?;
+        let expected = fresh.render_retained_to_image(&scene)?.readback()?;
+        assert_eq!(actual.pixels, expected.pixels, "layer opacity {opacity}");
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn many_opacity_layers_do_not_exhaust_descriptor_heaps() -> Result<(), Box<dyn std::error::Error>> {
+    use crate::{RetainedLayerDescriptor, RetainedNodeId, RetainedParent, RetainedScene};
+    use peniko::kurbo::{Affine, Rect, Shape};
+    let context = context()?;
+    let mut renderer = NativeRenderer::with_context(&context, 16, 16)?;
+    let root = RetainedNodeId::for_owner(1);
+    let mut scene = RetainedScene::new(16, 16, 1.0, root)?;
+    let mut canvas = Canvas::new(16, 16, 1.0);
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 8.0, 8.0),
+        crate::Radius::ZERO,
+        peniko::Color::WHITE,
+    );
+    let canvas = Rc::new(canvas);
+    let mut transaction = scene.transaction();
+    // More passes than a shader-visible sampler heap can hold must not impose
+    // an artificial scene-size limit. Every layer still has real GPU work.
+    for index in 0..5000 {
+        let layer = RetainedNodeId::for_owner(2 + index * 2);
+        transaction
+            .insert_layer(
+                RetainedParent::content(root),
+                None,
+                layer,
+                RetainedLayerDescriptor::Opacity {
+                    path: Rect::new(0.0, 0.0, 16.0, 16.0).to_path(0.1),
+                    transform: Affine::IDENTITY,
+                    tolerance: 0.1,
+                    opacity: 0.75,
+                },
+            )
+            .insert_scene(
+                RetainedParent::content(layer),
+                None,
+                RetainedNodeId::for_owner(3 + index * 2),
+                canvas.clone(),
+                Affine::IDENTITY,
+            );
+    }
+    transaction.commit()?;
+    let mut config = renderer.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    renderer.set_incremental_render_config(config);
+    // The second frame skips already initialized cached surfaces. Page selection
+    // must use actual pass indices, not the count of executed dispatches.
+    for frame in 0..2 {
+        if frame == 1 {
+            let mut transaction = scene.transaction();
+            for index in (0..5000).step_by(2) {
+                transaction.set_transform(
+                    RetainedNodeId::for_owner(3 + index * 2),
+                    Affine::translate((0.5, 0.5)),
+                );
+            }
+            transaction.commit()?;
+        }
+        let image = renderer.render_retained_to_image(&scene)?.readback()?;
+        assert_eq!(image.pixels[0], u32::MAX);
+        assert_eq!(image.pixels[15], 0);
+    }
+    Ok(())
+}

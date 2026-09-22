@@ -100,3 +100,6 @@ criterion_group! {
     targets = retained_dirty_ratio
 }
 criterion_main!(benches);
+
+#[path = "../examples/support/retained_dimensions.rs"]
+mod retained_dimensions;

@@ -50,11 +50,15 @@ impl ScenePreparation {
     ) -> PreparedPlan {
         let fingerprint = canvas.execution_plan_fingerprint();
         let changes = canvas.buffer_changes.as_ref();
-        let exact_reuse = cached_plan.is_some()
-            && (self.fingerprint == Some(fingerprint)
-                || changes.is_some_and(|changes| changes.plan_structure_reused));
+        // Stable structure preserves allocation/depth metadata, not parameter values.
+        // Native retained updates can replace the materializer's plan while the
+        // renderer still owns the previous Rc (for example an opacity-only edit).
+        let exact_reuse = cached_plan.is_some() && self.fingerprint == Some(fingerprint);
         let reused_metadata = cached_plan.is_some()
-            && (exact_reuse || changes.is_some_and(|changes| changes.plan_values_patched));
+            && (exact_reuse
+                || changes.is_some_and(|changes| {
+                    changes.plan_structure_reused || changes.plan_values_patched
+                }));
         let plan = profile_cpu("prepare.compile", || {
             if exact_reuse {
                 cached_plan.take().expect("cached execution plan")

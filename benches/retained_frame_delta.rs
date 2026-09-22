@@ -4,10 +4,8 @@ use std::hint::black_box;
 use tileink::RetainedMaterializerBenchmark;
 
 // Reuse the full retained benchmark's scene and mutation semantics without GPU setup.
-mod retained_bench {
-    pub const WIDTH: u32 = 1024;
-    pub const HEIGHT: u32 = 1024;
-}
+#[path = "../examples/support/retained_dimensions.rs"]
+mod retained_dimensions;
 #[allow(dead_code)]
 #[path = "../examples/support/retained_scale.rs"]
 mod retained_scale;

@@ -173,3 +173,7 @@ offscreen numbers.
 The paths above are under `target/backend-followup/` unless fully specified.
 Final Standards and Spec reviews found no unresolved code issues. Performance
 limitations and remaining coverage are explicitly retained above.
+
+## Broader four-route coverage
+
+The [expanded Windows matrices](expanded-backend-comparisons.md) add retained scale/stress, immediate and burst comparisons. They expose substantial remaining slow paths; the earlier 11-scene result must not be generalized to all workloads.

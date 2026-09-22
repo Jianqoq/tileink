@@ -107,9 +107,9 @@ impl Frame {
                 tables.pop(),
             )?;
             for command in batch.commands() {
-                let pass = match command {
+                let (pass_index, pass) = match command {
                     crate::native::runtime::compute::Command::Dispatch(index) => {
-                        &batch.passes()[*index]
+                        (*index, &batch.passes()[*index])
                     }
                     crate::native::runtime::compute::Command::CopyTexture(copy) => {
                         for (id, state) in [
@@ -151,7 +151,14 @@ impl Frame {
                         buffer::uav_barrier(&frame.list, resource);
                     }
                 }
-                tables.write(device, &frame.list, pass, batch.resources(), &gpu, pipeline);
+                tables.write(
+                    device,
+                    &frame.list,
+                    (pass_index, pass),
+                    batch.resources(),
+                    &gpu,
+                    pipeline,
+                );
                 if let Some(root) = pipeline.grid {
                     let grid = [pass.grid[0], pass.grid[1], pass.grid[2], 0];
                     frame

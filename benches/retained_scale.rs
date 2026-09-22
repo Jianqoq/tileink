@@ -429,3 +429,6 @@ criterion_group! {
     targets = retained_scale
 }
 criterion_main!(benches);
+
+#[path = "../examples/support/retained_dimensions.rs"]
+mod retained_dimensions;

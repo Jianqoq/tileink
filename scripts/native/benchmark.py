@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -16,10 +17,10 @@ ROUTES = (("wgpu-dx12", "wgpu", "dx12"), ("native-dx12", "dx12", "dx12"),
           ("wgpu-vulkan", "wgpu", "vulkan"), ("native-vulkan", "vulkan", "vulkan"))
 
 
-def build(root, output, feature):
+def build(root, output, feature, target="backend_comparison"):
     result = subprocess.run(
         ["cargo", "bench", "--no-default-features", "--features", feature,
-         "--bench", "backend_comparison", "--no-run", "--message-format=json"],
+         "--bench", target, "--no-run", "--message-format=json"],
         cwd=root, env=dict(os.environ, CARGO_TARGET_DIR=str(root / "target")),
         capture_output=True, text=True, encoding="utf-8")
     (output / f"{feature}-build.log").write_text(result.stdout + result.stderr, encoding="utf-8")
@@ -28,7 +29,7 @@ def build(root, output, feature):
     records = [json.loads(line) for line in result.stdout.splitlines() if line.startswith("{")]
     executable = next(row["executable"] for row in records
                       if row.get("reason") == "compiler-artifact"
-                      and row["target"]["name"] == "backend_comparison" and row.get("executable"))
+                      and row["target"]["name"] == target and row.get("executable"))
     destination = output / (feature + Path(executable).suffix)
     shutil.copy2(executable, destination)
     return destination
@@ -47,7 +48,7 @@ def collect(root, destination, baseline, cases=CASES):
             "mean_ci_us": [estimate["confidence_interval"][key] / 16000
                            for key in ("lower_bound", "upper_bound")],
             "latency_mean_us": statistics.mean(values) / 1000,
-            "p95_us": values[int(len(values) * .95) - 1] / 1000,
+            "p95_us": values[math.ceil(len(values) * .95) - 1] / 1000,
             "max_us": max(values) / 1000,
         }
     return stats

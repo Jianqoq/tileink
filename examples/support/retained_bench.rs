@@ -25,8 +25,7 @@ use tileink::{
     WgpuRenderer,
 };
 
-pub const WIDTH: u32 = 1024;
-pub const HEIGHT: u32 = 1024;
+pub use super::retained_dimensions::{HEIGHT, WIDTH};
 
 impl Measurements {
     fn record_frame(

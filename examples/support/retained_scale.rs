@@ -9,7 +9,7 @@ use tileink::{
     RetainedNodeId, RetainedParent, RetainedScene, Sdf, SdfRect,
 };
 
-use super::retained_bench::{HEIGHT, WIDTH};
+use super::retained_dimensions::{HEIGHT, WIDTH};
 
 #[derive(Clone, Copy, Debug)]
 pub enum Scenario {

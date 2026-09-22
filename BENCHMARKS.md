@@ -939,3 +939,7 @@ comparison](docs/native/m1-original-final.md). Resize traces likewise retain the
 actual production PMax and its frame; diagnostic stage timings must never replace
 
 that maximum or be presented as application swapchain measurements.
+
+## Expanded backend comparisons
+
+See [the 181 retained / 62 immediate / 44 burst four-route report](docs/native/expanded-backend-comparisons.md). Execution and exact-pixel coverage passed; broad performance parity has not been achieved.

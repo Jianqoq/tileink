@@ -175,3 +175,6 @@ fn main() {
         }
     }
 }
+
+#[path = "support/retained_dimensions.rs"]
+mod retained_dimensions;

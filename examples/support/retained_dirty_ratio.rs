@@ -6,7 +6,7 @@ use peniko::{
 };
 use tileink::{Canvas, Radius, RetainedNodeId, RetainedParent, RetainedScene};
 
-use super::retained_bench::{HEIGHT, WIDTH};
+use super::retained_dimensions::{HEIGHT, WIDTH};
 
 pub const BACKGROUND_NODES: usize = 4096;
 pub const RATIOS: [f64; 13] = [

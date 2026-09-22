@@ -60,3 +60,6 @@ criterion_group! {
     targets = coarse_binning
 }
 criterion_main!(benches);
+
+#[path = "../examples/support/retained_dimensions.rs"]
+mod retained_dimensions;

@@ -198,3 +198,6 @@ fn parse_config() -> Result<RunConfig, Box<dyn Error>> {
         phase,
     })
 }
+
+#[path = "support/retained_dimensions.rs"]
+mod retained_dimensions;

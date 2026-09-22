@@ -82,3 +82,6 @@ fn parse_config() -> Result<BenchConfig, Box<dyn Error>> {
     }
     Ok(config)
 }
+
+#[path = "support/retained_dimensions.rs"]
+mod retained_dimensions;
