@@ -3,7 +3,53 @@ use crate::{Radius, RetainedNodeId, canvas::SceneBufferChanges};
 use peniko::{Color, kurbo::Rect};
 
 #[test]
-fn full_scene_upload_consumes_tile_dirty_journals_across_retained_updates() -> Result<()> {
+fn sparse_tile_bin_uploads_only_changed_records_and_pages() {
+    use crate::shared::gpu_plan::TILE_DRAW_PAGE_WORDS;
+    let records: Vec<_> = (0..8)
+        .map(|start| TileDrawRecord { start, end: 1 })
+        .collect();
+    let indices: Vec<_> = (0..8 * TILE_DRAW_PAGE_WORDS)
+        .map(|word| word as u32)
+        .collect();
+    let updates = tile_bin_dirty_updates(&records, &indices, 64, 256, &[1, 2, 6], &[2, 3, 7]);
+    assert_eq!(updates.len(), 4);
+    assert_eq!(updates[0].0, 64 + size_of::<TileDrawRecord>());
+    assert_eq!(updates[0].1.len(), 2 * size_of::<TileDrawRecord>());
+    assert_eq!(updates[1].0, 64 + 6 * size_of::<TileDrawRecord>());
+    assert_eq!(updates[2].0, 256 + 2 * TILE_DRAW_PAGE_WORDS * 4);
+    assert_eq!(updates[2].1.len(), 2 * TILE_DRAW_PAGE_WORDS * 4);
+    assert_eq!(updates[3].0, 256 + 7 * TILE_DRAW_PAGE_WORDS * 4);
+    assert_eq!(
+        updates[0].1,
+        bytemuck::cast_slice::<TileDrawRecord, u8>(&records[1..3])
+    );
+    assert_eq!(
+        updates[2].1,
+        bytemuck::cast_slice::<u32, u8>(
+            &indices[2 * TILE_DRAW_PAGE_WORDS..4 * TILE_DRAW_PAGE_WORDS]
+        )
+    );
+    assert_eq!(
+        updates.iter().map(|(_, bytes)| bytes.len()).sum::<usize>(),
+        3 * size_of::<TileDrawRecord>() + 3 * TILE_DRAW_PAGE_WORDS * 4
+    );
+    assert!(tile_bin_dirty_updates(&records, &indices, 64, 256, &[], &[]).is_empty());
+}
+
+#[test]
+fn unavailable_native_storage_uses_complete_snapshot() -> Result<()> {
+    let mut cache = super::super::cached_buffer::CachedBuffer::default();
+    let mut batch = ComputeBatch::new();
+    let id = cache.patches_delta(&mut batch, 16, &[(4, &[1, 2, 3, 4])], &[])?;
+    assert_eq!(
+        batch.resources()[id.index()].bytes(),
+        &[0, 0, 0, 0, 1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0]
+    );
+    Ok(())
+}
+
+#[test]
+fn scene_upload_consumes_tile_dirty_journals_across_retained_updates() -> Result<()> {
     let mut cache = SceneCache::default();
     for frame in 0..256 {
         let mut canvas = Canvas::new(64, 16, 1.0);
@@ -22,8 +68,8 @@ fn full_scene_upload_consumes_tile_dirty_journals_across_retained_updates() -> R
         }
         let mut batch = ComputeBatch::new();
         cache.record(&mut batch, &canvas, None, None, 65_535)?;
-        // Native recording copies a complete tile snapshot. No incremental
-        // journal may remain, even if this batch is subsequently abandoned.
+        // A recorded update consumes its journal. An abandoned batch forces
+        // complete GPU initialization on the next recording.
         let (full, records, pages) = Rc::make_mut(&mut cache.staging.tile_draw_bins).take_dirty();
         assert!(
             !full && records.is_empty() && pages.is_empty(),

@@ -53,6 +53,30 @@ impl CachedBuffer {
         size: usize,
         updates: &[(usize, &[u8])],
     ) -> Result<ResourceId> {
+        self.patches_delta(batch, size, updates, updates)
+    }
+
+    /// Use the complete snapshot when storage is new or a previous batch was
+    /// abandoned; otherwise transfer only the changes relative to the last
+    /// accepted upload. Both sets must describe the same current CPU state.
+    pub fn patches_delta(
+        &mut self,
+        batch: &mut ComputeBatch,
+        size: usize,
+        full_updates: &[(usize, &[u8])],
+        dirty_updates: &[(usize, &[u8])],
+    ) -> Result<ResourceId> {
+        let native = self.reserve(batch, size.max(4))?;
+        let full = !native
+            || self
+                .buffer
+                .as_ref()
+                .is_none_or(|buffer| !buffer.state.initialized.get())
+            || self
+                .accepted
+                .as_ref()
+                .is_none_or(|accepted| !accepted.get());
+        let updates = if full { full_updates } else { dirty_updates };
         let mut previous_end = 0;
         for &(offset, bytes) in updates {
             let end = offset
@@ -68,16 +92,6 @@ impl CachedBuffer {
             }
             previous_end = end;
         }
-        let native = self.reserve(batch, size.max(4))?;
-        let full = !native
-            || self
-                .buffer
-                .as_ref()
-                .is_none_or(|buffer| !buffer.state.initialized.get())
-            || self
-                .accepted
-                .as_ref()
-                .is_none_or(|accepted| !accepted.get());
         let id = if full {
             let capacity = self
                 .buffer

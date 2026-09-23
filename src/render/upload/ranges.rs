@@ -78,7 +78,6 @@ pub(crate) fn patch_u32_ranges(
     }
 }
 
-#[cfg(any(feature = "wgpu", test))]
 pub(crate) fn contiguous_index_runs(
     indices: impl IntoIterator<Item = usize>,
 ) -> Vec<std::ops::Range<usize>> {

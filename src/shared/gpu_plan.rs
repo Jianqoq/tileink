@@ -966,7 +966,6 @@ impl TileDrawBins {
         self.compactions += 1;
     }
 
-    #[cfg(any(feature = "wgpu", feature = "bench-internals", test))]
     pub(crate) fn take_dirty(&mut self) -> (bool, Vec<usize>, Vec<u32>) {
         let full = std::mem::take(&mut self.full_upload);
         self.dirty_records.sort_unstable();
@@ -978,18 +977,6 @@ impl TileDrawBins {
             std::mem::take(&mut self.dirty_records),
             std::mem::take(&mut self.dirty_pages),
         )
-    }
-
-    /// Native uploads copy the complete snapshot on every recording. Consume the
-    /// journal without sorting unused incremental ranges; otherwise retained tile
-    /// membership edits accumulate dirty entries indefinitely. An abandoned batch
-    /// remains safe because the next recording also copies a complete snapshot.
-    #[cfg(not(feature = "wgpu"))]
-    pub(crate) fn finish_full_upload(&mut self) {
-        self.full_upload = false;
-        let records = std::mem::take(&mut self.dirty_records);
-        let pages = std::mem::take(&mut self.dirty_pages);
-        self.recycle_dirty(records, pages);
     }
 
     /// Returns upload-consumed dirty-list storage so retained updates reuse its capacity.

@@ -20,7 +20,9 @@ use crate::{
     shared::{
         execution::ExecPlan,
         gpu_coarse::*,
-        gpu_plan::{FINE_LOCAL_CLIP_DEPTH, FINE_LOCAL_GROUP_DEPTH, GpuBufferLengths},
+        gpu_plan::{
+            FINE_LOCAL_CLIP_DEPTH, FINE_LOCAL_GROUP_DEPTH, GpuBufferLengths, TILE_DRAW_PAGE_WORDS,
+        },
         image_resource::GpuImageResourceUpload,
     },
     text::PreparedTextData,
@@ -30,6 +32,7 @@ use std::{ops::Range, rc::Rc};
 #[derive(Default)]
 struct SceneBuffers {
     work: super::cached_buffer::CachedBuffer,
+    tile_bin_layout: Option<(usize, usize, usize, usize)>,
     chunks: super::cached_buffer::CachedBuffer,
     spills: super::cached_buffer::CachedBuffer,
     coarse_text: super::cached_buffer::CachedBuffer,
@@ -319,18 +322,15 @@ impl SceneCache {
             lengths,
             prepared.stack_depths.0,
         )?;
-        let mut updates = Vec::new();
+        let (bins_full, dirty_records, dirty_pages) =
+            Rc::make_mut(&mut self.staging.tile_draw_bins).take_dirty();
+        let mut prefix_updates = Vec::new();
         if !clip_dispatch.slots.is_empty() {
-            updates.push((0, bytemuck::cast_slice::<_, u8>(&clip_dispatch.slots)));
+            prefix_updates.push((0, bytemuck::cast_slice::<_, u8>(&clip_dispatch.slots)));
         }
         let records: &[u8] = bytemuck::cast_slice(self.staging.tile_draw_bins.upload_records());
-        if !records.is_empty() {
-            updates.push((record_base, records));
-        }
         let indices: &[u8] = bytemuck::cast_slice(self.staging.tile_draw_bins.upload_indices());
-        if !indices.is_empty() {
-            updates.push((index_base, indices));
-        }
+        let mut tail_updates = Vec::new();
         if !clip_dispatch.kinds.is_empty() {
             let offset = crate::shared::gpu_coarse::coarse_work_fine_tile_kind_word_offset(
                 lengths.tile_count,
@@ -339,7 +339,7 @@ impl SceneCache {
                 lengths.tile_draw_index_count,
                 lengths.tile_draw_chunk_count,
             ) * size_of::<u32>();
-            updates.push((
+            tail_updates.push((
                 offset,
                 bytemuck::cast_slice::<u32, u8>(&clip_dispatch.kinds),
             ));
@@ -354,22 +354,49 @@ impl SceneCache {
             ) * size_of::<u32>();
             let bytes: &[u8] = bytemuck::cast_slice(active.list());
             if !bytes.is_empty() {
-                updates.push((offset, bytes));
+                tail_updates.push((offset, bytes));
             }
         }
         if !clip_dispatch.data.is_empty() {
-            updates.push((
+            tail_updates.push((
                 work_words * size_of::<u32>(),
                 bytemuck::cast_slice::<u32, u8>(&clip_dispatch.data),
             ));
         }
-        let work = self.buffers.work.patches(
+        let mut full_bin_updates = Vec::new();
+        if !records.is_empty() {
+            full_bin_updates.push((record_base, records));
+        }
+        if !indices.is_empty() {
+            full_bin_updates.push((index_base, indices));
+        }
+        let mut full_updates = prefix_updates.clone();
+        full_updates.extend_from_slice(&full_bin_updates);
+        full_updates.extend_from_slice(&tail_updates);
+        let layout = (record_base, index_base, records.len(), indices.len());
+        let mut dirty_updates = prefix_updates;
+        if bins_full || self.buffers.tile_bin_layout != Some(layout) {
+            dirty_updates.extend_from_slice(&full_bin_updates);
+        } else {
+            dirty_updates.extend(tile_bin_dirty_updates(
+                self.staging.tile_draw_bins.upload_records(),
+                self.staging.tile_draw_bins.upload_indices(),
+                record_base,
+                index_base,
+                &dirty_records,
+                &dirty_pages,
+            ));
+        }
+        dirty_updates.extend_from_slice(&tail_updates);
+        let work = self.buffers.work.patches_delta(
             batch,
             (work_words + clip_dispatch.data.len()).max(1) * size_of::<u32>(),
-            &updates,
+            &full_updates,
+            &dirty_updates,
         )?;
+        self.buffers.tile_bin_layout = Some(layout);
         clip_dispatch.discard_upload_data();
-        Rc::make_mut(&mut self.staging.tile_draw_bins).finish_full_upload();
+        Rc::make_mut(&mut self.staging.tile_draw_bins).recycle_dirty(dirty_records, dirty_pages);
         let chunks = self.buffers.chunks.scratch(
             batch,
             lengths.coarse_chunk_count,
@@ -429,6 +456,30 @@ impl SceneCache {
             },
         })
     }
+}
+
+/// Convert sorted dirty tile IDs into bounded, coalesced regions of the page arena.
+/// The complete snapshot remains available when storage/layout changes or a batch fails.
+fn tile_bin_dirty_updates<'a>(
+    records: &'a [TileDrawRecord],
+    indices: &'a [u32],
+    record_base: usize,
+    index_base: usize,
+    dirty_records: &[usize],
+    dirty_pages: &[u32],
+) -> Vec<(usize, &'a [u8])> {
+    use crate::render::upload::ranges::contiguous_index_runs;
+    let mut updates = Vec::new();
+    for run in contiguous_index_runs(dirty_records.iter().copied()) {
+        let bytes = bytemuck::cast_slice(&records[run.clone()]);
+        updates.push((record_base + run.start * size_of::<TileDrawRecord>(), bytes));
+    }
+    for run in contiguous_index_runs(dirty_pages.iter().map(|&page| page as usize)) {
+        let words = run.start * TILE_DRAW_PAGE_WORDS..run.end * TILE_DRAW_PAGE_WORDS;
+        let bytes = bytemuck::cast_slice(&indices[words.clone()]);
+        updates.push((index_base + words.start * size_of::<u32>(), bytes));
+    }
+    updates
 }
 
 #[cfg(test)]
