@@ -40,6 +40,8 @@ pub fn load_svg_scene(
 pub fn svg_options() -> usvg::Options<'static> {
     let mut options = usvg::Options::default();
     load_svg_fonts(&mut options);
+    // SVGs without a usable font-family still need a face from the bundled font database.
+    options.font_family = "Noto Serif".to_owned();
     options
 }
 
@@ -72,7 +74,14 @@ fn load_svg_fonts(options: &mut usvg::Options<'_>) {
         .join("src")
         .join("svg")
         .join("fonts");
-    options.fontdb_mut().load_fonts_dir(fonts_dir);
+    let fontdb = options.fontdb_mut();
+    fontdb.load_fonts_dir(fonts_dir);
+    // Resolve generic SVG families to bundled faces; platform defaults may not be installed.
+    fontdb.set_serif_family("Noto Serif");
+    fontdb.set_sans_serif_family("Noto Sans");
+    fontdb.set_monospace_family("Noto Mono");
+    fontdb.set_cursive_family("Yellowtail");
+    fontdb.set_fantasy_family("Sedgwick Ave Display");
 }
 
 pub fn save_image(image: &Image, path: impl AsRef<Path>) -> Result<(), Box<dyn std::error::Error>> {
