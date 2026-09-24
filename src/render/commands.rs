@@ -21,13 +21,6 @@ pub(crate) enum CommandError<E> {
 #[derive(Debug)]
 pub(crate) struct BatchOutcome<S> {
     pub(crate) submissions: u32,
-    #[cfg_attr(
-        all(not(test), feature = "wgpu"),
-        expect(
-            dead_code,
-            reason = "M1 completion contract; WGPU owns submitted resource retirement"
-        )
-    )]
     pub(crate) last_submission: Option<S>,
 }
 
@@ -36,13 +29,6 @@ pub(crate) struct BatchFailure<E, S> {
     pub(crate) error: CommandError<E>,
     /// The last confirmed prefix only. An Unconfirmed submission error does not
     /// turn this older receipt into a completion token for the failed attempt.
-    #[cfg_attr(
-        all(not(test), feature = "wgpu"),
-        expect(
-            dead_code,
-            reason = "M1 completion contract; WGPU owns submitted resource retirement"
-        )
-    )]
     pub(crate) submitted: BatchOutcome<S>,
 }
 
@@ -69,11 +55,6 @@ impl<A: BatchAdapter> CommandBatch<A> {
             poisoned: false,
             label,
         }
-    }
-
-    #[cfg(feature = "wgpu")]
-    pub(crate) fn adapter(&self) -> &A {
-        &self.adapter
     }
 
     pub(crate) fn try_encoder(&mut self) -> Result<&mut A::Encoder, CommandError<A::Error>> {

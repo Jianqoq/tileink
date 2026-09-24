@@ -8,17 +8,17 @@ pub(crate) mod upload;
 pub(crate) mod backend;
 pub(crate) mod batches;
 pub(crate) mod binning;
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 pub(crate) mod commands;
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 pub(crate) mod dispatch;
 pub(crate) mod filter_resources;
 pub(crate) mod output;
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 pub(crate) mod resource_writes;
 pub(crate) mod retained;
 pub(crate) mod retained_surfaces;
-#[cfg(any(feature = "wgpu", tileink_native_runtime, test))]
+#[cfg(any(tileink_native_runtime, test))]
 pub(crate) mod target_capacity;
 pub(crate) mod vector_images;
 

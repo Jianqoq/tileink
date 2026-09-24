@@ -161,7 +161,7 @@ impl Recording {
         }
         self.vectors
             .retain_sources(self.upload.vectors().iter().map(|vector| &vector.canvas));
-        // Children own their scene namespace, just as in the wgpu renderer. Passing
+        // Children own their scene namespace. Passing
         // the parent's global store would recursively render unrelated vector images.
         // Different image keys can reference the same immutable child. Its cached
         // buffers may only be uploaded once per batch; reuse the rendered output.

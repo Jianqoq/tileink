@@ -248,7 +248,7 @@ impl CoarsePlan {
         self.len += 1;
         Ok(())
     }
-    #[cfg(any(feature = "wgpu", test))]
+    #[cfg(test)]
     /// Resolve every live pass eagerly, before an adapter borrows its encoder.
     /// Mapping the owned array keeps storage tied to this plan's capacity and
     /// cannot silently truncate dispatches when another stage is added.

@@ -12,13 +12,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-// Scan-buffer capture belongs to the wgpu renderer. Native-only builds retain
-// the public artifact types without compiling unused wgpu capture machinery.
-#[cfg(feature = "wgpu")]
-mod wgpu;
-#[cfg(feature = "wgpu")]
-pub(crate) use wgpu::{DebugScanBuffers, capture_render_debug};
-
 /// Optional render-time controls that keep normal rendering free of debug work.
 #[derive(Clone, Debug, Default)]
 pub struct RenderOptions {

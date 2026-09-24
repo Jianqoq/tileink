@@ -183,15 +183,11 @@ impl NativeContext {
         self.backend
     }
 
-    /// Check enabled native validation after completion. The known DX12 optimized-
-    /// clear advisory from coexisting wgpu rendering is reported but is nonfatal;
-    /// its error-severity form and all correctness warnings/errors still fail.
+    /// Check enabled native validation after completion. All DX12 warnings and errors fail.
     pub fn check_validation(&self) -> Result<(), NativeError> {
         #[cfg(tileink_native_runtime)]
         {
-            self.adapter
-                .assert_valid_with_wgpu_clears()
-                .map_err(NativeError::Validation)
+            self.adapter.assert_valid().map_err(NativeError::Validation)
         }
         #[cfg(not(tileink_native_runtime))]
         {

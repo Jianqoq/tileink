@@ -3,19 +3,12 @@
 //! This is the first implemented adapter boundary. Pipeline/resource operations
 //! remain in their current modules until they move through the same seam.
 
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 use super::upload::uniforms::UniformWrites;
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 use std::hash::Hash;
 
 #[derive(Debug)]
-#[cfg_attr(
-    all(not(test), feature = "wgpu", not(tileink_native_runtime)),
-    expect(
-        dead_code,
-        reason = "M1 shared submission contract; WGPU enqueue is infallible"
-    )
-)]
 pub(crate) enum SubmitError<E> {
     /// The attempted submission was not accepted; an older prefix may still run.
     Rejected(E),
@@ -24,7 +17,7 @@ pub(crate) enum SubmitError<E> {
     Unconfirmed(E),
 }
 
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 pub(crate) trait BatchAdapter {
     type Buffer: Clone + Eq + Hash;
     type Encoder;

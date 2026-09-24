@@ -4,8 +4,6 @@
 
 use std::{collections::HashSet, rc::Rc};
 
-#[cfg(feature = "wgpu")]
-use super::incremental::{TransientOutputDecision, TransientOutputState};
 use super::{
     damage_tiles::DamageTiles,
     incremental::{DamagePlan, IncrementalRenderConfig, IncrementalRenderStats, IncrementalState},
@@ -25,13 +23,9 @@ use crate::{
 
 /// Coordinates retained state while the selected GPU adapter executes the resulting work.
 pub(crate) struct RetainedRenderState<T> {
-    #[cfg(any(feature = "wgpu", test))]
+    #[cfg(test)]
     prepared_scene: Option<u64>,
-    #[cfg(feature = "wgpu")]
-    next_materialization: u64,
-    #[cfg(feature = "wgpu")]
-    persistent_materialization: Option<(u64, u64)>,
-    #[cfg(any(feature = "wgpu", test))]
+    #[cfg(test)]
     prepared_uses_text: bool,
     config: IncrementalRenderConfig,
     incremental: IncrementalState,
@@ -39,8 +33,6 @@ pub(crate) struct RetainedRenderState<T> {
     active_tiles: Option<DamageTiles>,
     history_valid: bool,
     history_owner: HistoryOwner,
-    #[cfg(feature = "wgpu")]
-    transient_output: TransientOutputState,
     surfaces: RetainedSurfaceCache<T>,
     rendering_frame: Option<RetainedFrame>,
     dirty_backdrop_nodes: HashSet<crate::RetainedNodeId>,
@@ -59,13 +51,9 @@ impl<T: SurfaceAllocation> Default for RetainedRenderState<T> {
 impl<T: SurfaceAllocation> RetainedRenderState<T> {
     pub(crate) fn new(config: IncrementalRenderConfig) -> Self {
         Self {
-            #[cfg(any(feature = "wgpu", test))]
+            #[cfg(test)]
             prepared_scene: None,
-            #[cfg(feature = "wgpu")]
-            next_materialization: 1,
-            #[cfg(feature = "wgpu")]
-            persistent_materialization: None,
-            #[cfg(any(feature = "wgpu", test))]
+            #[cfg(test)]
             prepared_uses_text: false,
             config,
             incremental: IncrementalState::default(),
@@ -73,8 +61,6 @@ impl<T: SurfaceAllocation> RetainedRenderState<T> {
             active_tiles: None,
             history_valid: false,
             history_owner: HistoryOwner::Internal,
-            #[cfg(feature = "wgpu")]
-            transient_output: TransientOutputState::default(),
             surfaces: RetainedSurfaceCache::new(config.retained_texture_budget_bytes),
             rendering_frame: None,
             dirty_backdrop_nodes: HashSet::new(),
@@ -91,14 +77,6 @@ impl<T: SurfaceAllocation> RetainedRenderState<T> {
         self.config = config.validate();
         self.surfaces
             .set_budget(self.config.retained_texture_budget_bytes);
-    }
-
-    #[cfg(feature = "wgpu")]
-    pub(crate) fn replace_mode(
-        &mut self,
-        mode: crate::render::incremental::IncrementalRenderMode,
-    ) -> crate::render::incremental::IncrementalRenderMode {
-        std::mem::replace(&mut self.config.mode, mode)
     }
 
     pub(crate) fn stats(&self) -> &IncrementalRenderStats {
@@ -127,7 +105,7 @@ impl<T: SurfaceAllocation> RetainedRenderState<T> {
         self.active_tiles = active;
     }
 
-    #[cfg(any(feature = "wgpu", test))]
+    #[cfg(test)]
     pub(crate) fn take_active_tiles(&mut self) -> Option<DamageTiles> {
         self.active_tiles.take()
     }
@@ -135,7 +113,7 @@ impl<T: SurfaceAllocation> RetainedRenderState<T> {
     pub(crate) fn invalidate(&mut self) {
         self.incremental.invalidate_renderer_state();
         self.history_valid = false;
-        #[cfg(any(feature = "wgpu", test))]
+        #[cfg(test)]
         {
             self.prepared_scene = None;
         }
@@ -145,22 +123,9 @@ impl<T: SurfaceAllocation> RetainedRenderState<T> {
         self.history_valid = false;
     }
 
-    #[cfg(any(feature = "wgpu", test))]
+    #[cfg(test)]
     pub(crate) fn invalidate_prepared_scene(&mut self) {
         self.prepared_scene = None;
-    }
-
-    #[cfg(feature = "wgpu")]
-    pub(crate) fn reset_transient_output(&mut self) {
-        self.transient_output.reset();
-    }
-
-    #[cfg(feature = "wgpu")]
-    pub(crate) fn decide_transient_output(
-        &mut self,
-        stats: &IncrementalRenderStats,
-    ) -> TransientOutputDecision {
-        self.transient_output.decide(stats, self.config)
     }
 
     pub(crate) fn set_history_owner(&mut self, owner: HistoryOwner) {
@@ -169,8 +134,6 @@ impl<T: SurfaceAllocation> RetainedRenderState<T> {
         }
         self.history_owner = owner;
         self.history_valid = false;
-        #[cfg(feature = "wgpu")]
-        self.transient_output.reset();
     }
 
     pub(crate) fn select_materialized(
@@ -180,17 +143,6 @@ impl<T: SurfaceAllocation> RetainedRenderState<T> {
         scene_id: u64,
         version: SceneVersion,
     ) -> SelectedScene<'static> {
-        #[cfg(feature = "wgpu")]
-        let materialization = if materialized_reused
-            && let Some((cached_scene, materialization)) = self.persistent_materialization
-            && cached_scene == scene_id
-        {
-            materialization
-        } else {
-            let materialization = self.allocate_materialization();
-            self.persistent_materialization = Some((scene_id, materialization));
-            materialization
-        };
         let frame = if let Some((cached_id, cached_version, frame)) = &self.persistent_frame
             && (*cached_id, *cached_version) == (scene_id, version)
         {
@@ -219,16 +171,7 @@ impl<T: SurfaceAllocation> RetainedRenderState<T> {
             scene,
             frame,
             materialized_reused,
-            #[cfg(feature = "wgpu")]
-            materialization,
         }
-    }
-
-    #[cfg(feature = "wgpu")]
-    fn allocate_materialization(&mut self) -> u64 {
-        let id = self.next_materialization;
-        self.next_materialization = self.next_materialization.wrapping_add(1).max(1);
-        id
     }
 
     pub(crate) fn begin_frame(
@@ -317,7 +260,7 @@ impl<T: SurfaceAllocation> RetainedRenderState<T> {
         self.dirty_backdrop_nodes.clear();
     }
 
-    #[cfg(any(feature = "wgpu", test))]
+    #[cfg(test)]
     pub(crate) fn scene_needs_prepare(
         &self,
         materialization: Option<u64>,
@@ -330,7 +273,7 @@ impl<T: SurfaceAllocation> RetainedRenderState<T> {
             || resources_dirty
     }
 
-    #[cfg(any(feature = "wgpu", test))]
+    #[cfg(test)]
     pub(crate) fn mark_scene_prepared(&mut self, materialization: Option<u64>, uses_text: bool) {
         self.prepared_scene = materialization;
         self.prepared_uses_text = uses_text;
@@ -433,8 +376,6 @@ pub(crate) enum SelectedScene<'a> {
         scene: Rc<Canvas>,
         frame: RetainedFrame,
         materialized_reused: bool,
-        #[cfg(feature = "wgpu")]
-        materialization: u64,
     },
 }
 
@@ -450,16 +391,6 @@ impl SelectedScene<'_> {
         match self {
             Self::Borrowed(_) => None,
             Self::Retained { frame, .. } => Some(frame.clone()),
-        }
-    }
-
-    #[cfg(feature = "wgpu")]
-    pub(crate) fn materialization(&self) -> Option<u64> {
-        match self {
-            Self::Borrowed(_) => None,
-            Self::Retained {
-                materialization, ..
-            } => Some(*materialization),
         }
     }
 

@@ -3,7 +3,7 @@ use std::rc::Rc;
 #[cfg(test)]
 use std::collections::HashMap;
 
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 use crate::{
     Canvas,
     shared::{gpu_constants::CUMSUM_CHUNK_SIZE, gpu_plan::GpuCumsumPlan},
@@ -53,7 +53,6 @@ pub struct IncrementalRenderConfig {
     /// Capture exact active tile IDs and regions in [`IncrementalRenderStats`].
     ///
     /// Disabled by default so ordinary rendering does not allocate diagnostic vectors per frame.
-    /// The WGPU profiler captures them automatically for profiled frames regardless of this flag.
     pub capture_active_tiles: bool,
     pub retained_texture_budget_bytes: u64,
 }
@@ -194,7 +193,7 @@ pub struct IncrementalRenderStats {
     pub arena_compactions: u64,
 }
 
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 /// Compact scan/cumsum work derived from the paths that can affect active tiles.
 ///
 /// Every selected path is scanned over its complete geometry and backdrop
@@ -213,7 +212,7 @@ pub(crate) struct ActiveScanPlan {
     pub(crate) cumsum: GpuCumsumPlan,
 }
 
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 impl ActiveScanPlan {
     pub(crate) fn new(
         canvas: &Canvas,
@@ -281,7 +280,7 @@ impl ActiveScanPlan {
     }
 }
 
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 fn append_cumsum_path(record: &crate::shared::path::PathRecord, plan: &mut GpuCumsumPlan) {
     let stride = record.tile_x1.saturating_sub(record.tile_x0);
     let height = record.tile_y1.saturating_sub(record.tile_y0);
@@ -313,7 +312,7 @@ pub(crate) struct DamagePlan {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 pub(crate) enum TransientOutputDecision {
     InternalHistory,
     Direct,
@@ -323,13 +322,13 @@ pub(crate) enum TransientOutputDecision {
 /// Tracks whether renderer-owned history is intentionally stale while full frames are sent
 /// straight to transient output textures.
 #[derive(Default)]
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 pub(crate) struct TransientOutputState {
     active: bool,
     low_damage_frames: u32,
 }
 
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 impl TransientOutputState {
     pub(crate) fn reset(&mut self) {
         *self = Self::default();

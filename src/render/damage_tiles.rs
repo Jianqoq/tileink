@@ -186,7 +186,7 @@ impl DamageTiles {
         })
     }
 
-    #[cfg(any(feature = "wgpu", test))]
+    #[cfg(test)]
     pub(crate) fn intersects_tile_rect(&self, x0: u32, y0: u32, x1: u32, y1: u32) -> bool {
         let rect = TileBbox {
             x0: x0.min(self.tiles_width),
@@ -211,7 +211,7 @@ impl DamageTiles {
             .sum()
     }
 
-    #[cfg(any(feature = "wgpu", test))]
+    #[cfg(test)]
     fn intersects_rect(&self, rect: TileBbox) -> bool {
         // Preserve the single-bit fast path for the common case where damage starts at the query
         // origin; the word scan below is valuable only after that immediate check misses.

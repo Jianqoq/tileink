@@ -1,4 +1,4 @@
-// Reuse the actual legacy inputs and mutations, independently of their wgpu timer.
+// Reuse the retained inputs and mutations independently of the timer.
 #[allow(dead_code)]
 #[path = "../../examples/support/retained_dirty_ratio.rs"]
 pub mod dirty;

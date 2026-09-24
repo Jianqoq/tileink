@@ -330,7 +330,7 @@ impl SvgBuilder {
         .push_tree(&mut canvas, tree)?;
 
         // Preserve the vector scene until the chosen executor can render it on
-        // its own device. SVG lowering must not create a hidden WGPU context.
+        // its own device. SVG lowering must not create a hidden GPU context.
         Ok(canvas)
     }
 

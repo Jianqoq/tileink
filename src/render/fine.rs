@@ -26,7 +26,7 @@ pub(crate) struct FineParams {
 pub(crate) struct FinePlan {
     config: FineConfig,
     grid: [u32; 3],
-    // Native raw-buffer validation needs the total; wgpu only consumes the config.
+    // Native raw-buffer validation needs the total.
     #[cfg(any(test, feature = "dx12", feature = "vulkan", feature = "metal"))]
     spill_words: usize,
 }

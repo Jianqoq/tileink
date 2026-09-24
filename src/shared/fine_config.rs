@@ -1,4 +1,4 @@
-// Common host uniform for wgpu and native fine rendering.
+// Host uniform for native fine rendering.
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub(crate) struct FineConfig {

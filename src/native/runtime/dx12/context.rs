@@ -5,7 +5,7 @@ use crate::native::runtime::renderer::recording::Limits;
 impl Dx12 {
     #[cfg(test)]
     pub fn new(identity: &str) -> Result<Self> {
-        // Isolated verification creates native debug devices before wgpu devices.
+        // Isolated verification creates native debug devices before rendering.
         // Subsequent calls are no-ops, including when foreign devices now exist.
         unsafe {
             debug::enable_validation()?;

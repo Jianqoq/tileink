@@ -92,30 +92,12 @@ fn message(
 }
 
 pub fn assert_valid(validation: &Validation) -> Result<()> {
-    validate(validation, false)
-}
-
-// Public contexts and whole-renderer parity tests opt in. wgpu's RTV initialization can emit
-// this optimization advisory through the shared DX12 device info queue. Keep
-// every message and all correctness warnings/errors; native validation is strict.
-pub fn assert_valid_with_wgpu_clears(validation: &Validation) -> Result<()> {
-    validate(validation, true)
-}
-
-fn validate(validation: &Validation, wgpu_clears: bool) -> Result<()> {
     let Some(queue) = &validation.queue else {
         return Ok(());
     };
     unsafe {
         for index in 0..queue.GetNumStoredMessages() {
-            let (id, severity, description) = message(queue, index)?;
-            if wgpu_clears
-                && id == D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE
-                && severity == D3D12_MESSAGE_SEVERITY_WARNING
-            {
-                eprintln!("wgpu DX12 optimized-clear advisory: {description}");
-                continue;
-            }
+            let (_, severity, description) = message(queue, index)?;
             if severity.0 <= D3D12_MESSAGE_SEVERITY_WARNING.0
                 && !validation.rejected_cache_messages.borrow().contains(&index)
             {

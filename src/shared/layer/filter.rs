@@ -21,7 +21,7 @@ pub const TURBULENCE_GRADIENT_LEN: usize =
 /// Fixed RGBA lookup table for SVG `feComponentTransfer`.
 ///
 /// Each channel owns 256 u32 entries in R, G, B, A order. Values are stored as
-/// 0..255 bytes so CPU and wgpu can share the same quantized semantics.
+/// 0..255 bytes so CPU and GPU paths share the same quantized semantics.
 pub type ComponentTransferTable = [u32; COMPONENT_TRANSFER_TABLE_LEN];
 
 #[derive(Clone, Debug)]

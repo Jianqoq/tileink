@@ -2,8 +2,6 @@
 pub(super) mod adapter;
 #[cfg(feature = "dx12")]
 mod dx12;
-#[cfg(all(test, feature = "wgpu", feature = "dx12", feature = "vulkan"))]
-mod gpu_tests;
 #[cfg(test)]
 #[path = "runtime/tests/isolation.rs"]
 mod isolation;

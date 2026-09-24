@@ -248,9 +248,9 @@ fn signal_failure_after_execute_retains_the_attempt_and_blocks_reuse() -> Result
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
-fn wgpu_clear_advisory_never_hides_correctness_errors() -> Result<()> {
+fn optimized_clear_warning_is_reported() -> Result<()> {
     if super::super::isolation::run(
-        "native::runtime::dx12::tests::wgpu_clear_advisory_never_hides_correctness_errors",
+        "native::runtime::dx12::tests::optimized_clear_warning_is_reported",
     )? {
         return Ok(());
     }
@@ -265,52 +265,13 @@ fn wgpu_clear_advisory_never_hides_correctness_errors() -> Result<()> {
                 D3D12_MESSAGE_CATEGORY_EXECUTION,
                 D3D12_MESSAGE_SEVERITY_WARNING,
                 D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE,
-                windows::core::s!("reference optimized-clear advisory"),
+                windows::core::s!("optimized-clear mismatch"),
             )?;
-        assert!(
-            assert_valid(&report).is_err(),
-            "ordinary validation stays strict"
-        );
-        super::assert_valid_with_wgpu_clears(&report)?;
-        assert_eq!(
-            report
-                .queue
-                .as_ref()
-                .expect("validation enabled")
-                .GetNumStoredMessages(),
-            1,
-            "keep original messages"
-        );
-        report
-            .queue
-            .as_ref()
-            .expect("validation enabled")
-            .AddMessage(
-                D3D12_MESSAGE_CATEGORY_EXECUTION,
-                D3D12_MESSAGE_SEVERITY_ERROR,
-                D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE,
-                windows::core::s!("even this ID is fatal at error severity"),
-            )?;
-        assert!(super::assert_valid_with_wgpu_clears(&report).is_err());
-        report
-            .queue
-            .as_ref()
-            .expect("validation enabled")
-            .ClearStoredMessages();
-        report
-            .queue
-            .as_ref()
-            .expect("validation enabled")
-            .AddMessage(
-                D3D12_MESSAGE_CATEGORY_EXECUTION,
-                D3D12_MESSAGE_SEVERITY_WARNING,
-                D3D12_MESSAGE_ID_UNKNOWN,
-                windows::core::s!("unrelated correctness warning"),
-            )?;
-        assert!(super::assert_valid_with_wgpu_clears(&report).is_err());
     }
+    assert!(assert_valid(&report).is_err());
     Ok(())
 }
+
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn staging_reuse_preserves_in_flight_and_resized_uploads() -> Result<()> {

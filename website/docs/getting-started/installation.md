@@ -1,46 +1,7 @@
 ---
-sidebar_position: 1
-title: 安装与本地运行
+title: 安装
 ---
 
 # 安装
 
-Tileink 当前从源码使用：
-
-```toml title="Cargo.toml"
-[dependencies]
-tileink = { path = "../tileink" }
-peniko = "0.6.1"
-wgpu = "30"
-pollster = "0.4"
-```
-
-Rust crate 使用 edition 2024。WGPU renderer 默认可用；`directwrite-reference` 与 `vello-compare` 是开发/对照用途的可选 feature。
-
-## 本地运行文档站
-
-文档站要求 Node.js 20 或更新版本。
-
-```powershell
-cd website
-npm install
-npm run start
-```
-
-默认在 `http://localhost:3000` 启动并热更新。生产构建：
-
-```powershell
-npm run typecheck
-npm run build
-npm run serve
-```
-
-静态输出位于 `website/build/`。
-
-## 验证 Rust 环境
-
-```powershell
-cargo test --release -- --test-threads=1
-cargo run --release --example wgpu_examples
-cargo run --release --example retained
-```
+在 Cargo.toml 添加 `tileink = { path = "../tileink" }` 和 `peniko = "0.6.1"`。Windows 默认选择 DX12；Windows/Linux 使用 Vulkan、macOS 使用 Metal 时，关闭默认 feature 并只启用一个后端：`cargo test --release --no-default-features --features vulkan -- --test-threads=1` 或 `--features metal`。文档站需要 Node.js 20 以上；在 `website/` 运行 `npm install` 与 `npm run build`。

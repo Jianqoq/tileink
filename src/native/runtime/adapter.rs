@@ -179,7 +179,6 @@ impl Adapter {
     pub fn new(backend: NativeBackend, identity: &str) -> Result<Self> {
         #[cfg(feature = "dx12")]
         if backend == NativeBackend::Dx12 {
-            // Verification enters native construction before its wgpu references.
             unsafe {
                 super::enable_dx12_validation()?;
             }
@@ -407,18 +406,6 @@ impl BatchAdapter for Adapter {
                     SubmitError::Rejected(error)
                 }
             })
-    }
-}
-
-impl Adapter {
-    pub fn assert_valid_with_wgpu_clears(&self) -> Result<()> {
-        #[cfg(feature = "dx12")]
-        {
-            let Device::Dx12(device) = &*self.0.borrow();
-            super::dx12::assert_valid_with_wgpu_clears(&device.validation_queue())
-        }
-        #[cfg(any(feature = "vulkan", feature = "metal"))]
-        self.assert_valid()
     }
 }
 

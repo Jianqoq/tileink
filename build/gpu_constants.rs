@@ -93,7 +93,7 @@ pub fn write_rust(out: &Path) -> io::Result<()> {
         }
     }
     // Texture table capacity now also sizes production native descriptors.
-    // Keep HLSLI authoritative for wgpu, native and validation consumers.
+    // Keep HLSLI authoritative for native and validation consumers.
     for (name, value) in read_hlsl("shared/texture_table_constants.hlsli")? {
         if host.insert(name, value).is_some() {
             return Err(io::Error::other("duplicate texture table host constant"));
@@ -117,19 +117,13 @@ pub fn write_rust(out: &Path) -> io::Result<()> {
 fn rust_constants(constants: &BTreeMap<String, u32>) -> String {
     let mut source = String::from("// Generated from maintained HLSLI constants. Do not edit.\n");
     for (name, value) in constants {
-        // Generate host declarations only for their consumers. Shader constants
-        // remain authoritative even when a backend has no Rust-side use.
-        match name.as_str() {
-            "TILE_KIND_INTERPRETER"
-            | "PATH_MASK_COORDINATE_SCALE"
-            | "TURBULENCE_COORDINATE_OFFSET"
-            | "TURBULENCE_MAX_EFFECTIVE_OCTAVES" => {
-                source.push_str("#[cfg(not(feature = \"wgpu\"))]\n")
-            }
-            "SHARED_BLUR_TILE_WIDTH" | "SHARED_BLUR_TILE_HEIGHT" => {
-                source.push_str("#[cfg(feature = \"wgpu\")]\n")
-            }
-            _ => {}
+        // Emit host declarations only for native consumers. Blur tile dimensions
+        // are shader-only values and must not become unused Rust globals.
+        if matches!(
+            name.as_str(),
+            "SHARED_BLUR_TILE_WIDTH" | "SHARED_BLUR_TILE_HEIGHT"
+        ) {
+            continue;
         }
         let visibility = if name == "TILE_SIZE" {
             "pub"
@@ -144,15 +138,6 @@ fn rust_constants(constants: &BTreeMap<String, u32>) -> String {
 /// Read a shader-owned constant header without exporting shader-only values to Rust.
 pub fn read_hlsl(source: &str) -> io::Result<BTreeMap<String, u32>> {
     parse(&read_source(source)?)
-}
-
-#[path = "gpu_constants/floats.rs"]
-#[cfg(any(feature = "wgpu", test))]
-pub mod floats;
-
-#[cfg(any(feature = "wgpu", test))]
-pub fn read_float_wgsl(source: &str) -> io::Result<String> {
-    floats::parse_wgsl(&read_source(source)?)
 }
 
 fn read_source(source: &str) -> io::Result<String> {

@@ -44,8 +44,7 @@ pub(crate) enum FrameError<E> {
     Adapter(E),
 }
 
-/// Shared submission policy. Native immediate recordings are one ordered batch;
-/// wgpu may submit a completed root prefix when its caller permits it.
+/// Shared submission policy for one batch or early root-prefix submissions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SubmissionPolicy {
     Single,

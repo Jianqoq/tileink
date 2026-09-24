@@ -1,4 +1,4 @@
-//! Shader parameter encodings shared by wgpu and native frame execution.
+//! Shader parameter encodings for native frame execution.
 //! One conversion path keeps both shader languages on the same filter semantics.
 
 use super::filter_config::FilterConfig;

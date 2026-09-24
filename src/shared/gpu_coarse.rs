@@ -44,34 +44,6 @@ pub(crate) struct TileDrawRecord {
     pub(crate) end: u32,
 }
 
-#[cfg(feature = "wgpu")]
-#[cfg(test)]
-#[repr(u32)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FineTileKind {
-    FullInterpreter = 0,
-    EmptyOrClear = 1,
-    ColorOnlyNoStack = 2,
-    PureSdfSolidNoStack = 3,
-    MixedAnalyticSolidNoStack = 4,
-    AnalyticWithStack = 5,
-}
-
-#[cfg(feature = "wgpu")]
-#[cfg(test)]
-impl FineTileKind {
-    pub(crate) fn from_word(word: u32) -> Self {
-        match word {
-            1 => Self::EmptyOrClear,
-            2 => Self::ColorOnlyNoStack,
-            3 => Self::PureSdfSolidNoStack,
-            4 => Self::MixedAnalyticSolidNoStack,
-            5 => Self::AnalyticWithStack,
-            _ => Self::FullInterpreter,
-        }
-    }
-}
-
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct LayerStackRecord {
@@ -148,7 +120,7 @@ pub(crate) fn coarse_work_emit_chunk_record_word_offset(
     ) + tile_count * TILE_EMIT_CHUNK_RECORD_WORDS
 }
 
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 pub(crate) fn coarse_work_word_len(
     tile_count: usize,
     ptcl_capacity: usize,

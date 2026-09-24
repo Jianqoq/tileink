@@ -321,8 +321,6 @@ mod compute_tables;
 
 mod compute_copy;
 
-pub use validation::assert_valid_with_wgpu_clears;
-
 #[cfg(test)]
 impl Dx12 {
     pub(crate) fn import_descriptor(&self) -> crate::native::interop::dx12::ContextDescriptor {

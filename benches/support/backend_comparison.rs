@@ -1,66 +1,8 @@
-#[cfg(feature = "wgpu")]
-use peniko::Color;
 pub use workload::clips::CASES as CLIP_CASES;
-
-#[cfg(feature = "wgpu")]
-#[path = "../../examples/common/benchmark_gpu.rs"]
-mod benchmark_gpu;
 
 #[path = "backend_workload.rs"]
 mod workload;
 pub use workload::{CASES, Workload};
-
-#[cfg(feature = "wgpu")]
-pub struct Gpu {
-    renderer: tileink::WgpuRenderer,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-}
-
-#[cfg(feature = "wgpu")]
-impl Gpu {
-    pub fn new() -> Self {
-        let api = std::env::var("TILEINK_BENCH_API").expect("set explicit wgpu API");
-        let (_, device, queue) =
-            benchmark_gpu::device(&api, false, false, wgpu::MemoryHints::Performance);
-        Self {
-            renderer: tileink::WgpuRenderer::new(&device, &queue, 1280, 800, Color::TRANSPARENT),
-            device,
-            queue,
-        }
-    }
-    pub fn render(&mut self, workload: &mut Workload) {
-        if let Some((fonts, text)) = &mut workload.text {
-            self.renderer
-                .render_retained_with_text(&workload.scene, fonts, text);
-        } else {
-            self.renderer.render_retained(&workload.scene);
-        }
-        self.device
-            .poll(wgpu::PollType::wait_indefinitely())
-            .unwrap();
-    }
-    pub fn image(&mut self, _: &mut Workload) -> tileink::Image {
-        self.renderer.image()
-    }
-    pub fn profile(&mut self, workload: &mut Workload) -> [u64; 2] {
-        let start = std::time::Instant::now();
-        if let Some((fonts, text)) = &mut workload.text {
-            self.renderer
-                .render_retained_with_text(&workload.scene, fonts, text);
-        } else {
-            self.renderer.render_retained(&workload.scene);
-        }
-        let submitted = start.elapsed();
-        self.device
-            .poll(wgpu::PollType::wait_indefinitely())
-            .unwrap();
-        [
-            submitted.as_nanos() as u64,
-            (start.elapsed() - submitted).as_nanos() as u64,
-        ]
-    }
-}
 
 #[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
 pub struct Gpu {

@@ -1,11 +1,11 @@
 //! CPU scopes belong to the shared executor and never require a GPU adapter.
 use super::RenderProfileEntry;
 use crate::shared::cpu_time::CpuInstant;
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 use std::time::Duration;
 use std::{cell::RefCell, rc::Rc};
 
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 #[derive(Debug, Default)]
 pub(crate) struct CpuProfile {
     pub entries: Vec<RenderProfileEntry>,
@@ -29,7 +29,7 @@ thread_local! {
     static ACTIVE: RefCell<Vec<ActiveSession>> = const { RefCell::new(Vec::new()) };
 }
 
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 /// Profiling stays allocation-free until requested. A stack restores the outer
 /// session after nested execution; generations reject scopes from an older frame.
 #[derive(Debug, Default)]
@@ -37,7 +37,7 @@ pub(crate) struct CpuProfiler {
     state: Option<Rc<RefCell<ProfileState>>>,
 }
 
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 impl CpuProfiler {
     pub(crate) fn start(&mut self) {
         self.deactivate();
@@ -100,7 +100,7 @@ impl CpuProfiler {
     }
 }
 
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 impl Drop for CpuProfiler {
     fn drop(&mut self) {
         self.deactivate();
@@ -145,7 +145,7 @@ pub(crate) fn start_cpu_scope(name: &'static str) -> Option<CpuProfileScope> {
     })
 }
 
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 pub(crate) fn record_unavailable_gpu_scope(name: &'static str) {
     if let Some(session) = active_session() {
         // Keep the attempted GPU event in its original position among CPU events.

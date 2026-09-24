@@ -1,21 +1,20 @@
 ---
-sidebar_position: 1
 title: Immediate example
 ---
 
-# Immediate Canvas example
+# Immediate example
 
 ```rust
 use peniko::{Color, kurbo::Rect};
-use tileink::{Canvas, Radius, WgpuRenderer};
+use tileink::{Canvas, NativeBackend, NativeRenderer, Radius};
 
-let mut canvas = Canvas::new(800, 480, 1.0);
-canvas.push_rect(Rect::new(0.0, 0.0, 800.0, 480.0), Radius::ZERO, Color::from_rgb8(16, 22, 38));
-let card = canvas.push_rect(Rect::new(90.0, 90.0, 360.0, 280.0), Radius::all(28.0), Color::from_rgb8(98, 82, 238));
-canvas.set_draw_color(card, Color::from_rgb8(80, 190, 220));
-let mut renderer = WgpuRenderer::new_default_device(800, 480, Color::TRANSPARENT);
-renderer.render(&canvas);
-renderer.image().save("immediate.png")?;
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut canvas = Canvas::new(640, 360, 1.0);
+    canvas.push_rect(Rect::new(48.0, 48.0, 280.0, 180.0), Radius::all(24.0), Color::from_rgb8(91, 83, 255));
+    let mut renderer = NativeRenderer::new(NativeBackend::Dx12, 640, 360)?;
+    renderer.render_to_image(&canvas)?.readback()?.save("out.png")?;
+    Ok(())
+}
 ```
 
-See `examples/native_window/` for direct AppKit/Win32 window creation, resize and native GPU presentation.
+For direct host presentation, see `examples/native_window/`.

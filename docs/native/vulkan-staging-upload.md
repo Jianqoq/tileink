@@ -2,7 +2,7 @@
 
 ## Completed compute resource reuse
 
-The backend comparison also exposed repeated device-local buffer, command pool,
+Profiling also exposed repeated device-local buffer, command pool,
 descriptor pool and fence allocation. `vulkan/frame_cache.rs` retains these owners
 after a successful fence wait and readback attempt. Each new recording takes exclusive
 ownership of a free slot; unretired and unknown-completion submissions cannot enter
@@ -26,8 +26,7 @@ cost after command and storage pooling. Compute command buffers declare
 
 Focused GPU regressions cover overlapping submissions, out-of-order retirement,
 empty batches, growth, alternating descriptor requirements, exact readbacks and
-failed/unknown submission quarantine. See [backend comparison](backend-performance.md)
-for the end-to-end measurement procedure.
+failed/unknown submission quarantine.
 
 Native Vulkan previously concatenated the packed uniforms, all resource payloads and dispatch
 grids into a growing frame-sized Vec, then copied that Vec into coherent staging memory. Replay

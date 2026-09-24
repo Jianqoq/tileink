@@ -254,7 +254,7 @@ impl GpuImageResourceUpload {
         self.atlas_page_size
     }
 
-    #[cfg(any(feature = "wgpu", test))]
+    #[cfg(test)]
     pub(crate) fn atlas_page_count(&self) -> u32 {
         self.atlas_pages.len() as u32
     }
@@ -297,26 +297,15 @@ pub(crate) struct GpuImageResourceUpload {
 pub(crate) struct GpuVectorImageUpload {
     pub(crate) canvas: Rc<crate::Canvas>,
     pub(crate) placement: ImageResourcePlacement,
-    #[cfg(any(feature = "wgpu", test))]
+    #[cfg(test)]
     pub(crate) dirty: bool,
 }
 
-// Native batches retain upload pixels through submission; wgpu consumes the
-// upload directly and keeps its existing owned packing storage.
-#[cfg(feature = "wgpu")]
-pub(crate) type ImagePixels = Vec<u32>;
-#[cfg(not(feature = "wgpu"))]
+// Native submissions retain upload pixels until GPU completion.
 pub(crate) type ImagePixels = Rc<Vec<u32>>;
 
 fn image_pixels(pixels: Vec<u32>) -> ImagePixels {
-    #[cfg(feature = "wgpu")]
-    {
-        pixels
-    }
-    #[cfg(not(feature = "wgpu"))]
-    {
-        Rc::new(pixels)
-    }
+    Rc::new(pixels)
 }
 
 #[derive(Clone)]
@@ -324,7 +313,7 @@ pub(crate) struct GpuImageResourceAtlasPageUpload {
     pub(crate) index: u32,
     pub(crate) size: u32,
     pub(crate) pixels: ImagePixels,
-    #[cfg(any(feature = "wgpu", test))]
+    #[cfg(test)]
     pub(crate) dirty: bool,
     signature: ImageResourcePageSignature,
 }
@@ -335,7 +324,7 @@ pub(crate) struct GpuImageResourceTextureUpload {
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) pixels: ImagePixels,
-    #[cfg(any(feature = "wgpu", test))]
+    #[cfg(test)]
     pub(crate) dirty: bool,
     signature: ImageEntrySignature,
 }
@@ -470,7 +459,7 @@ impl<'a> ImageResourceUploadBuilder<'a> {
                 index: 0,
                 size: 1,
                 pixels: image_pixels(vec![0]),
-                #[cfg(any(feature = "wgpu", test))]
+                #[cfg(test)]
                 dirty: previous.is_none_or(|prev| prev.atlas_pages.is_empty()),
                 signature: ImageResourcePageSignature::default(),
             });
@@ -513,7 +502,7 @@ impl<'a> ImageResourceUploadBuilder<'a> {
                     index: page_index as u32,
                     size: self.page_size,
                     pixels,
-                    #[cfg(any(feature = "wgpu", test))]
+                    #[cfg(test)]
                     dirty,
                     signature: page.signature,
                 });
@@ -558,7 +547,7 @@ impl<'a> ImageResourceUploadBuilder<'a> {
                 width: entry.image.width(),
                 height: entry.image.height(),
                 pixels,
-                #[cfg(any(feature = "wgpu", test))]
+                #[cfg(test)]
                 dirty,
                 signature: entry.signature,
             });
@@ -572,7 +561,7 @@ impl<'a> ImageResourceUploadBuilder<'a> {
                     return None;
                 };
                 let placement = *placements.get(&entry.id)?;
-                #[cfg(any(feature = "wgpu", test))]
+                #[cfg(test)]
                 let dirty = match placement {
                     ImageResourcePlacement::Atlas(rect) => page_uploads[rect.page as usize].dirty,
                     ImageResourcePlacement::Texture(rect) => textures[rect.index as usize].dirty,
@@ -580,7 +569,7 @@ impl<'a> ImageResourceUploadBuilder<'a> {
                 Some(GpuVectorImageUpload {
                     canvas: Rc::clone(canvas),
                     placement,
-                    #[cfg(any(feature = "wgpu", test))]
+                    #[cfg(test)]
                     dirty,
                 })
             })

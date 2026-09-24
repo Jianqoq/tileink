@@ -28,7 +28,7 @@ impl Canvas {
     ///
     /// This keeps rounded rectangles on the SDF path instead of flattening them
     /// to path segments, matching the SDF shadow/stroke APIs and preserving
-    /// subpixel edge ownership in the wgpu renderer. SDF primitives
+    /// subpixel edge ownership. SDF primitives
     /// have inherent coverage; use path APIs when fill-rule semantics matter.
     pub fn push_rect(&mut self, rect: Rect, radius: Radius, brush: impl Into<Brush>) -> DrawId {
         let draw = self.push_sdf_draw(
@@ -68,7 +68,7 @@ impl Canvas {
 
     /// Adds a renderer-owned image resource scaled into `rect` with explicit extend and sampling.
     ///
-    /// The scene only stores `key`; the wgpu renderer resolves the image through
+    /// The scene only stores `key`; the renderer resolves the image through
     /// its resource table at render time.
     pub fn push_image_key(
         &mut self,

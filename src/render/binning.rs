@@ -1,10 +1,10 @@
 //! Shared coarse-kernel selection; GPU adapters only query capabilities and encode work.
 
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 use crate::shared::gpu_plan::CoarseBinningStats;
 use crate::shared::gpu_plan::{COARSE_BIN_TILES, GpuBufferLengths};
 
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 use crate::shared::gpu_constants::COARSE_WORKGROUP_SIZE;
 
 /// Selects the lower-cost coarse kernel from dispatch and candidate-loop work.
@@ -15,7 +15,7 @@ use crate::shared::gpu_constants::COARSE_WORKGROUP_SIZE;
 /// avoid launching hundreds of mostly idle workgroups while fine rasterization remains compact.
 /// Conversely, dense lanes scan candidates serially, so the longest tile list in every bin must
 /// be included instead of comparing dispatch counts alone.
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 pub(crate) fn coarse_binning_costs(
     lengths: GpuBufferLengths,
     stats: CoarseBinningStats,
@@ -34,7 +34,7 @@ pub(crate) fn coarse_binning_costs(
     )
 }
 
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 pub(crate) fn prefer_dense_binning(lengths: GpuBufferLengths, stats: CoarseBinningStats) -> bool {
     if stats.active_tiles == 0 {
         return false;

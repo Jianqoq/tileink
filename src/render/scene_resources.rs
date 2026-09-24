@@ -56,7 +56,7 @@ impl<T> SceneResourcePool<T> {
         self.available.append(&mut self.pending);
     }
 
-    #[cfg(any(test, all(feature = "wgpu", feature = "bench-internals")))]
+    #[cfg(test)]
     pub(crate) fn clear(&mut self) {
         self.available.clear();
         self.pending.clear();

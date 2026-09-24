@@ -1,4 +1,4 @@
-//! Native GPU scene assembly from the same CPU plans used by wgpu.
+//! Native GPU scene assembly from CPU plans.
 use super::super::{
     Result,
     compute::{ComputeBatch, ResourceId},

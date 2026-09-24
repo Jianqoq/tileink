@@ -1,7 +1,5 @@
 //! Deferred vector-image identity and exact GPU copy planning.
 
-#[cfg(feature = "wgpu")]
-use super::resource_writes::ReadyResource;
 use crate::{Canvas, shared::image_resource::ImageResourcePlacement};
 use rustc_hash::FxHashMap;
 use std::rc::{Rc, Weak};
@@ -74,8 +72,6 @@ pub(crate) struct CachedVectorImage<T> {
     _source: Weak<Canvas>,
     retained_epoch: u64,
     pub(crate) value: T,
-    #[cfg(feature = "wgpu")]
-    pub(crate) ready: ReadyResource,
 }
 
 pub(crate) struct VectorImageCache<T> {
@@ -104,8 +100,6 @@ impl<T> VectorImageCache<T> {
                 _source: Rc::downgrade(source),
                 retained_epoch: self.retained_epoch,
                 value: create(),
-                #[cfg(feature = "wgpu")]
-                ready: ReadyResource::pending(),
             })
     }
 

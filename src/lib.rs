@@ -5,19 +5,11 @@ mod retained_scene;
 mod shared;
 mod svg;
 mod text;
-#[cfg(feature = "wgpu")]
-mod wgpu;
 
 pub use shared::gpu_constants::TILE_SIZE;
 pub const TILE_SCALE: f32 = 1.0 / TILE_SIZE as f32;
 pub const BLOCK_SIZE: u32 = 16 * 16;
 
-#[cfg(feature = "wgpu")]
-pub use crate::wgpu::{
-    Renderer, Renderer as WgpuRenderer, RendererOptions, RendererOptions as WgpuRendererOptions,
-    WgpuRenderProfile, WgpuRenderProfileEntry, WgpuRenderProfileEventSummary,
-    WgpuRenderProfileReport, WgpuTextureRenderError,
-};
 pub use canvas::{Canvas, DrawId, RetainedNodeId};
 pub(crate) use canvas::{NodeGeneration, PersistentLayerKey};
 pub use cosmic_text::{
@@ -115,13 +107,6 @@ pub use native::{
     NativeShaderArtifact, NativeSubmission, NativeTexture,
     SHADER_ARTIFACTS as NATIVE_SHADER_ARTIFACTS,
 };
-
-#[cfg(all(feature = "wgpu", feature = "bench-internals"))]
-#[doc(hidden)]
-pub use wgpu::{ImageResourceUploadBenchmark, PreparedImageResourceUpload};
-
-#[cfg(all(feature = "wgpu", feature = "bench-internals"))]
-pub use wgpu::FilterCompilationBenchmark;
 
 #[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
 pub use native::interop as native_interop;

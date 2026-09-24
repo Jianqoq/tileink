@@ -1,13 +1,9 @@
 use crate::shared::image::rgba8_pack;
 
-#[cfg(feature = "wgpu")]
-pub(crate) const MASK_OPAQUE: u8 = 255;
-
 /// Parameters for contrast-dependent text coverage compensation.
 ///
-/// The default values mirror the GPU constants. WGPU text rendering accepts this
-/// as runtime data so the quality harness can search parameter candidates
-/// without rebuilding shaders for every trial.
+/// The default values mirror the GPU constants. Runtime parameters let the
+/// quality harness search candidates without rebuilding shaders.
 #[derive(Clone, Copy, Debug)]
 pub struct TextCoverageParams {
     pub dark_on_light_coverage_strength: f32,
@@ -184,30 +180,5 @@ pub(crate) fn premul_f32_to_u32(c: [f32; 4]) -> u32 {
         (c[1] * 255.0 + 0.5) as u8,
         (c[2] * 255.0 + 0.5) as u8,
         (c[3] * 255.0 + 0.5) as u8,
-    ])
-}
-
-#[cfg(feature = "wgpu")]
-pub(crate) fn src_over_premul_u8(dst: u32, src: u32) -> u32 {
-    let sa = (src >> 24) as u8;
-    if sa == 0 {
-        return dst;
-    }
-    if sa == MASK_OPAQUE {
-        return src;
-    }
-    let inv = 255 - sa;
-    let dr = (dst & 0xff) as u8;
-    let dg = ((dst >> 8) & 0xff) as u8;
-    let db = ((dst >> 16) & 0xff) as u8;
-    let da = ((dst >> 24) & 0xff) as u8;
-    let sr = (src & 0xff) as u8;
-    let sg = ((src >> 8) & 0xff) as u8;
-    let sb = ((src >> 16) & 0xff) as u8;
-    rgba8_pack([
-        sr + mul_div255(dr, inv),
-        sg + mul_div255(dg, inv),
-        sb + mul_div255(db, inv),
-        sa + mul_div255(da, inv),
     ])
 }

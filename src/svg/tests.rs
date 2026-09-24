@@ -1,10 +1,6 @@
 use super::*;
 use peniko::{Color, kurbo::Rect};
 
-#[cfg(feature = "wgpu")]
-#[path = "tests/wgpu.rs"]
-mod wgpu;
-
 fn parse(svg: &str) -> usvg::Tree {
     usvg::Tree::from_str(svg, &usvg::Options::default()).unwrap()
 }

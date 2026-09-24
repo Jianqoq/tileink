@@ -2,10 +2,8 @@
 // a different subset of the shared scene/render utilities.
 #![allow(dead_code)]
 
-pub mod capture;
 pub mod fonts;
 pub mod liquid_glass_fast_path;
-pub mod rendering;
 
 use std::{
     fs,
@@ -18,40 +16,8 @@ use peniko::{
 };
 use tileink::{Canvas, FillRule, Image, Radius, Region, SvgOptions};
 
-#[cfg(feature = "wgpu")]
-use std::{cell::RefCell, collections::HashMap};
-#[cfg(feature = "wgpu")]
-use tileink::WgpuRenderer;
-
 pub const EXAMPLE_WIDTH: u32 = 1920;
 pub const EXAMPLE_HEIGHT: u32 = 1080;
-
-#[cfg(feature = "wgpu")]
-thread_local! {
-    static WGPU_RENDERERS: RefCell<HashMap<(WgpuMode, u32, u32), WgpuRenderer>> = RefCell::new(HashMap::new());
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-enum WgpuMode {
-    Native,
-    Portable,
-}
-
-pub fn example_output(name: &str) -> PathBuf {
-    wgpu_example_output(name)
-}
-
-pub fn wgpu_example_output(name: &str) -> PathBuf {
-    backend_output(wgpu_backend_name(), name)
-}
-
-fn backend_output(backend: &str, name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("examples")
-        .join(backend)
-        .join("out")
-        .join(format!("{name}.png"))
-}
 
 pub fn example_asset(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -64,9 +30,6 @@ pub fn load_svg_scene(
     target_width: u32,
 ) -> Result<(Canvas, u32, u32), Box<dyn std::error::Error>> {
     let input = input.as_ref();
-    if let Some(tree) = capture::svg_tree(input) {
-        return svg_tree_to_scene(&tree?, target_width);
-    }
     let data = fs::read(input)?;
     let mut options = svg_options();
     options.resources_dir = input.parent().map(Path::to_path_buf);
@@ -124,205 +87,6 @@ pub fn save_example_image(
     save_image(image, path)
 }
 
-pub fn render_to_png(
-    name: &str,
-    scene: &Canvas,
-    width: u32,
-    height: u32,
-    clear: Color,
-) -> Result<(), Box<dyn std::error::Error>> {
-    render_to_png_wgpu(name, scene, width, height, clear)
-}
-
-pub fn render_to_png_wgpu(
-    name: &str,
-    scene: &Canvas,
-    width: u32,
-    height: u32,
-    clear: Color,
-) -> Result<(), Box<dyn std::error::Error>> {
-    render_to_png_wgpu_with(name, width, height, clear, |renderer| {
-        renderer.render(scene)
-    })
-}
-
-pub fn render_to_png_wgpu_with(
-    name: &str,
-    width: u32,
-    height: u32,
-    clear: Color,
-    mut render: impl FnMut(&mut dyn rendering::SceneRenderer) -> Result<(), Box<dyn std::error::Error>>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(result) = capture::render(name, width, height, clear, &mut render) {
-        return result;
-    }
-    #[cfg(not(feature = "wgpu"))]
-    return Err("native examples require an explicit capture context".into());
-    #[cfg(feature = "wgpu")]
-    {
-        if wgpu_compare_portable_mode() {
-            return render_to_png_wgpu_compare_portable(name, width, height, clear, render);
-        }
-
-        let out = wgpu_example_output(name);
-        WGPU_RENDERERS.with(|renderers| -> Result<(), Box<dyn std::error::Error>> {
-            let mut renderers = renderers.borrow_mut();
-            let renderer = renderers
-                .entry((wgpu_mode(), width, height))
-                .or_insert_with(|| new_wgpu_renderer_for_mode(width, height, clear, wgpu_mode()));
-            renderer.set_clear_color(clear);
-            render(renderer)?;
-            save_example_image(&renderer.image(), &out)
-        })?;
-        println!("Wrote {}", out.display());
-        Ok(())
-    }
-}
-
-#[cfg(feature = "wgpu")]
-pub fn new_wgpu_renderer(width: u32, height: u32, clear: Color) -> WgpuRenderer {
-    new_wgpu_renderer_for_mode(width, height, clear, wgpu_mode())
-}
-
-#[cfg(feature = "wgpu")]
-fn render_to_png_wgpu_compare_portable(
-    name: &str,
-    width: u32,
-    height: u32,
-    clear: Color,
-    mut render: impl FnMut(&mut dyn rendering::SceneRenderer) -> Result<(), Box<dyn std::error::Error>>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    // Native is the example artifact; portable renders in memory to catch WebGPU regressions
-    // without producing a second set of PNGs.
-    let native_out = backend_output("wgpu", name);
-    WGPU_RENDERERS.with(|renderers| -> Result<(), Box<dyn std::error::Error>> {
-        let mut renderers = renderers.borrow_mut();
-        let native = renderers
-            .entry((WgpuMode::Native, width, height))
-            .or_insert_with(|| new_wgpu_renderer_for_mode(width, height, clear, WgpuMode::Native));
-        native.set_clear_color(clear);
-        render(native)?;
-        let native_image = native.image();
-        save_example_image(&native_image, &native_out)?;
-        let native_image = native_image.clone();
-        println!("Wrote {}", native_out.display());
-
-        let portable = renderers
-            .entry((WgpuMode::Portable, width, height))
-            .or_insert_with(|| {
-                new_wgpu_renderer_for_mode(width, height, clear, WgpuMode::Portable)
-            });
-        portable.set_clear_color(clear);
-        render(portable)?;
-        let portable_image = portable.image();
-        assert_images_equal(name, &native_image, &portable_image)?;
-        println!("[wgpu-portable] matched {}", native_out.display());
-        Ok(())
-    })
-}
-
-#[cfg(feature = "wgpu")]
-fn new_wgpu_renderer_for_mode(
-    width: u32,
-    height: u32,
-    clear: Color,
-    mode: WgpuMode,
-) -> WgpuRenderer {
-    if let Some(renderer) = capture::new_renderer(width, height, clear) {
-        return renderer;
-    }
-    if mode == WgpuMode::Native {
-        return WgpuRenderer::new_default_device(width, height, clear);
-    }
-
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::HighPerformance,
-        compatible_surface: None,
-        force_fallback_adapter: false,
-        apply_limit_buckets: false,
-    }))
-    .expect("request portable wgpu adapter");
-    let required_features = adapter.features() & wgpu::Features::TIMESTAMP_QUERY;
-    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        label: Some("tileink portable example device"),
-        required_features,
-        required_limits: adapter.limits(),
-        memory_hints: wgpu::MemoryHints::MemoryUsage,
-        trace: wgpu::Trace::Off,
-        experimental_features: wgpu::ExperimentalFeatures::disabled(),
-    }))
-    .expect("request portable wgpu device");
-    WgpuRenderer::new(&device, &queue, width, height, clear)
-}
-
-pub fn wgpu_backend_name() -> &'static str {
-    match wgpu_mode() {
-        WgpuMode::Native => "wgpu",
-        WgpuMode::Portable => "wgpu_portable",
-    }
-}
-
-fn wgpu_mode() -> WgpuMode {
-    if matches!(
-        std::env::var("TILEINK_WGPU_MODE").as_deref(),
-        Ok("portable")
-    ) || matches!(
-        std::env::var("TILEINK_WGPU_PORTABLE").as_deref(),
-        Ok("1") | Ok("true") | Ok("TRUE")
-    ) {
-        WgpuMode::Portable
-    } else {
-        WgpuMode::Native
-    }
-}
-
-fn wgpu_compare_portable_mode() -> bool {
-    matches!(
-        std::env::var("TILEINK_WGPU_COMPARE_PORTABLE").as_deref(),
-        Ok("1") | Ok("true") | Ok("TRUE")
-    )
-}
-
-fn assert_images_equal(
-    name: &str,
-    native: &Image,
-    portable: &Image,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if native.width != portable.width || native.height != portable.height {
-        return Err(format!(
-            "{name}: WGPU native size {}x{} differs from portable size {}x{}",
-            native.width, native.height, portable.width, portable.height
-        )
-        .into());
-    }
-    if native.pixels == portable.pixels {
-        return Ok(());
-    }
-
-    let mut first = None;
-    let mut diff_count = 0usize;
-    for (ix, (native_px, portable_px)) in native.pixels.iter().zip(&portable.pixels).enumerate() {
-        if native_px == portable_px {
-            continue;
-        }
-        diff_count += 1;
-        if first.is_none() {
-            first = Some((ix, native_px.to_le_bytes(), portable_px.to_le_bytes()));
-        }
-    }
-    let (ix, native_px, portable_px) = first.expect("diff count is non-zero");
-    Err(format!(
-        "{name}: WGPU portable differs from native at ({}, {}), native={:?}, portable={:?}, differing_pixels={}",
-        ix as u32 % native.width,
-        ix as u32 / native.width,
-        native_px,
-        portable_px,
-        diff_count
-    )
-    .into())
-}
-
 pub fn rect_path(rect: Rect, radius: Radius) -> BezPath {
     if radius.top_left == 0.0
         && radius.top_right == 0.0
@@ -377,5 +141,5 @@ pub fn canvas_region(width: u32, height: u32) -> Region {
 
 /// Use immutable captured font inputs when running explicit backend references.
 pub fn new_font_system() -> tileink::TextFontSystem {
-    capture::font_system().unwrap_or_else(tileink::TextFontSystem::new)
+    tileink::TextFontSystem::new()
 }

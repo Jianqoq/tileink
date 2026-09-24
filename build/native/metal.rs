@@ -15,7 +15,7 @@ pub struct MetalCompiler {
     sdk: PathBuf,
 }
 
-// Match wgpu-Metal's MTLCompileOptions math defaults and preserveInvariance.
+// Set Metal math defaults and preserveInvariance for shader parity.
 // These are semantic inputs: the SDF cross-process suite detects half-alpha
 // changes when offline compilation uses a different arithmetic policy.
 pub const FLAGS: &[&str] = &[

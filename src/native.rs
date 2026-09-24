@@ -50,7 +50,7 @@ pub enum BackendUnavailableReason {
     AdapterNotImplemented,
 }
 
-/// A forced native choice never silently selects WGPU or another native API.
+/// A forced native choice never silently selects another native API.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BackendUnavailable {
     pub backend: NativeBackend,

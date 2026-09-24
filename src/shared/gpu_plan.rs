@@ -43,7 +43,7 @@ pub(crate) const FINE_LOCAL_GROUP_DEPTH: usize =
 /// Canvas-derived fixed capacities for GPU buffers.
 ///
 /// GPU compute stages cannot grow vectors while dispatching. This plan keeps
-/// allocation sizes explicit and shared by native wgpu upload paths
+/// allocation sizes explicit for native upload paths
 /// so both backends launch against the same buffer contract.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct GpuBufferLengths {
@@ -321,7 +321,7 @@ pub(crate) struct TileDrawBins {
     affected_dense_bins: DenseIndexSet,
 }
 
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 /// Candidate-loop work executed by the two native coarse kernels.
 ///
 /// Compact kernels process one 256-draw page per workgroup round. Dense kernels assign one lane
@@ -336,7 +336,7 @@ pub(crate) struct CoarseBinningStats {
 }
 
 impl TileDrawBins {
-    #[cfg(any(feature = "wgpu", test))]
+    #[cfg(test)]
     pub(crate) fn coarse_binning_stats(&self, tiles: &[u32]) -> CoarseBinningStats {
         CoarseBinningStats {
             active_tiles: tiles.len() as u32,
@@ -993,7 +993,7 @@ impl TileDrawBins {
         }
     }
 
-    #[cfg(any(feature = "wgpu", test))]
+    #[cfg(test)]
     pub(crate) fn active_page_count(&self) -> usize {
         self.active_pages
     }
@@ -1018,7 +1018,7 @@ impl TileDrawBins {
         self.upload_indices().len()
     }
 
-    #[cfg(any(feature = "wgpu", test))]
+    #[cfg(test)]
     pub(crate) fn compactions(&self) -> u64 {
         self.compactions
     }
@@ -1500,30 +1500,6 @@ pub(crate) struct GpuCanvasConfig {
     pub clear_color: u32,
 }
 
-impl GpuCanvasConfig {
-    #[cfg(feature = "wgpu")]
-    pub(crate) fn new(canvas: &Canvas, lengths: GpuBufferLengths, clear_color: u32) -> Self {
-        Self {
-            width: canvas.physical_width(),
-            height: canvas.physical_height(),
-            tiles_width: canvas.width_in_tiles(),
-            tiles_height: canvas.height_in_tiles(),
-            line_count: lengths.line_count as u32,
-            path_count: lengths.path_count as u32,
-            draw_count: lengths.draw_count as u32,
-            backdrop_record_count: lengths.backdrop_record_count as u32,
-            backdrop_len: lengths.backdrop_len as u32,
-            segment_capacity: lengths.segment_capacity as u32,
-            scan_chunk_count: lengths.scan_chunk_count as u32,
-            cumsum_chunk_count: lengths.cumsum_chunk_count as u32,
-            cumsum_row_count: lengths.cumsum_row_count as u32,
-            coarse_chunk_count: lengths.coarse_chunk_count as u32,
-            coarse_ptcl_capacity: lengths.coarse_ptcl_capacity as u32,
-            clear_color,
-        }
-    }
-}
-
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Pod, Zeroable, PartialEq, Eq)]
 pub(crate) struct GpuScanChunk {
@@ -1540,7 +1516,6 @@ pub(crate) struct GpuScanChunkRange {
     pub end: u32,
 }
 
-#[cfg(test)]
 #[cfg(test)]
 pub(crate) fn build_scan_chunks(canvas: &Canvas) -> (Vec<GpuScanChunk>, Vec<GpuScanChunkRange>) {
     let lengths = GpuBufferLengths::from_scene(canvas);
@@ -2006,7 +1981,6 @@ fn merge_range(target: &mut Vec<Range<usize>>, mut range: Range<usize>) {
     target.sort_unstable_by_key(|range| range.start);
 }
 
-#[cfg(test)]
 #[cfg(test)]
 pub(crate) fn build_cumsum_plan(canvas: &Canvas) -> GpuCumsumPlan {
     let lengths = GpuBufferLengths::from_scene(canvas);

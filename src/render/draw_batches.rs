@@ -46,14 +46,14 @@ pub(crate) trait DrawBatchAdapter {
     fn fine(&mut self, target: RenderTargetId) -> Result<(), Self::Error>;
 }
 
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 #[derive(Clone, Copy)]
 pub(crate) enum RootBatchMode {
     Direct,
     Portable { partial: bool },
 }
 
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 #[derive(Clone, Copy)]
 #[repr(usize)]
 pub(crate) enum PingPongSide {
@@ -61,7 +61,7 @@ pub(crate) enum PingPongSide {
     Destination,
 }
 
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 impl PingPongSide {
     pub(crate) fn other(self) -> Self {
         match self {
@@ -71,7 +71,7 @@ impl PingPongSide {
     }
 }
 
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 /// These targets are full-sized root intermediates. Scratch draws retain their
 /// separate local-copy/halo semantics and must not use this root-only protocol.
 pub(crate) trait RootBatchAdapter: DrawBatchAdapter {
@@ -119,7 +119,7 @@ pub(crate) fn execute_draw_batch<A: DrawBatchAdapter>(
     })
 }
 
-#[cfg(any(feature = "wgpu", test))]
+#[cfg(test)]
 pub(crate) fn execute_direct_root_batches<A: RootBatchAdapter>(
     adapter: &mut A,
     canvas: &Canvas,

@@ -2,8 +2,6 @@
 //! tile bins and retained capacity from this same preparation state.
 use super::{glyph_capacity::GlyphCapacityCache, paint::PaintUploadState, text::TextUpload};
 use crate::shared::execution::{ExecPlan, LayerStackEntry};
-#[cfg(feature = "wgpu")]
-use crate::shared::gpu_plan::{CoarseBinningStats, GpuScanChunkRange};
 use crate::{
     Canvas,
     shared::{
@@ -49,28 +47,8 @@ impl SceneUploadStaging {
         false
     }
 
-    #[cfg(feature = "wgpu")]
-    pub(crate) fn coarse_binning_stats(&self, tiles: &[u32]) -> CoarseBinningStats {
-        self.tile_draw_bins.coarse_binning_stats(tiles)
-    }
-
-    #[cfg(feature = "wgpu")]
-    pub(crate) fn scan_ranges(&self) -> &[GpuScanChunkRange] {
-        self.path_plans.scan_ranges()
-    }
-
     pub(crate) fn active_batch_ids(&mut self, tiles: &[u32], draw_batch_ids: &[u32]) -> Vec<u32> {
         Rc::make_mut(&mut self.tile_draw_bins).active_batch_ids(tiles, draw_batch_ids)
-    }
-
-    #[cfg(feature = "wgpu")]
-    pub(crate) fn draws_in_bounds(
-        &self,
-        bounds: crate::shared::bounds::Bounds,
-        plan: &ExecPlan,
-    ) -> Vec<u32> {
-        self.tile_draw_bins
-            .draws_in_bounds(bounds, &plan.draw_order)
     }
 
     pub(crate) fn build_lengths(

@@ -18,7 +18,7 @@ description = "Tile-based GPU-compute 2D renderer with immediate and transaction
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Jianqoq/tileink"
 readme = "README.md"
-keywords = ["graphics", "renderer", "vector-graphics", "wgpu"]
+keywords = ["graphics", "renderer", "vector-graphics"]
 categories = ["graphics", "rendering"]
 # The registry artifact is a buildable library, not a mirror of repository-only examples,
 # benchmarks, website files, test fixtures, generated renders, or fonts.
@@ -26,7 +26,6 @@ include = [
     "/src/**/*.rs",
     "!/src/**/tests.rs",
     "!/src/**/tests/**",
-    "/src/wgpu/shaders/**/*.wgsl",
     "/src/shaders/**/*.hlsl",
     "/src/shaders/**/*.hlsli",
     "/src/shaders/**/*.metal",
@@ -36,7 +35,6 @@ include = [
     "/Cargo.toml",
     "/Cargo.lock",
     "/README.md",
-    "/WGPU_BACKEND.md",
     "/CHANGELOG.md",
     "/LICENSE-MIT",
     "/LICENSE-APACHE",
@@ -47,8 +45,6 @@ serde_json = { version = "1", optional = true }
 sha2 = { version = "0.11.0", optional = true }
 peniko = "0.6.1"
 bytemuck = "1.25.2"
-wgpu = { version = "30.0.1", optional = true }
-pollster = { version = "1.0.1", optional = true }
 usvg = "0.48.1"
 rayon = "1.12.0"
 rustc-hash = "2.1.3"
@@ -56,8 +52,6 @@ png = "0.18.1"
 image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "webp"] }
 cosmic-text = "0.19.0"
 swash = "0.2.10"
-vello = { version = "0.10.0", optional = true }
-windows-numerics = { version = "0.3.1", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62.2", optional = true, features = [
@@ -79,28 +73,14 @@ web-sys = { version = "0.3", features = ["Window", "Performance"] }
 
 [build-dependencies]
 serde_json = "1"
-naga = { version = "30.0.1", optional = true, features = ["hlsl-out", "wgsl-in"] }
 sha2 = "0.11.0"
 
 [features]
-default = ["wgpu"]
-wgpu = ["dep:wgpu", "dep:pollster", "dep:naga", "dep:windows"]
+default = ["dx12"]
 dx12 = ["dep:serde_json", "dep:sha2", "dep:windows", "windows/Win32_Graphics_Dxgi", "windows/Win32_Graphics_Dxgi_Common", "windows/Win32_System_Threading", "windows/Win32_Security"]
 vulkan = ["dep:serde_json", "dep:sha2", "dep:ash"]
 metal = ["dep:serde_json", "dep:sha2", "dep:objc2", "dep:objc2-metal", "dep:objc2-foundation", "dep:dispatch2"]
 bench-internals = []
-directwrite-reference = [
-    "wgpu",
-    "windows/Win32_Foundation",
-    "windows/Win32_Graphics_Direct2D",
-    "windows/Win32_Graphics_Direct2D_Common",
-    "windows/Win32_Graphics_DirectWrite",
-    "windows/Win32_Graphics_Dxgi_Common",
-    "windows/Win32_Graphics_Imaging",
-    "windows/Win32_System_Com",
-    "dep:windows-numerics",
-]
-vello-compare = ["wgpu", "dep:vello"]
 
 [dev-dependencies]
 tempfile = "3.23"
@@ -133,26 +113,6 @@ harness = false
 [[bench]]
 name = "vulkan_frame_upload"
 required-features = ["vulkan"]
-harness = false
-
-[[bench]]
-name = "retained_scale"
-required-features = ["wgpu"]
-harness = false
-
-[[bench]]
-name = "retained_dirty_ratio"
-required-features = ["wgpu"]
-harness = false
-
-[[bench]]
-name = "retained_stress"
-required-features = ["wgpu"]
-harness = false
-
-[[bench]]
-name = "coarse_binning"
-required-features = ["wgpu"]
 harness = false
 
 [[bench]]
@@ -206,11 +166,6 @@ harness = false
 required-features = ["bench-internals"]
 
 [[bench]]
-name = "range_scatter"
-required-features = ["wgpu"]
-harness = false
-
-[[bench]]
 name = "text_clip"
 harness = false
 
@@ -228,154 +183,23 @@ name = "checkerboard"
 harness = false
 
 [[bench]]
-name = "root_batches"
-required-features = ["wgpu"]
-harness = false
-
-[[bench]]
-name = "dx12_precompiled_startup"
-required-features = ["wgpu"]
-harness = false
-
-[[bench]]
 name = "canvas_append"
 harness = false
-
-[[example]]
-name = "wgpu_examples"
-required-features = ["wgpu"]
-path = "examples/wgpu/all.rs"
 
 [[example]]
 name = "compare_png_pixels"
 path = "examples/compare_png_pixels/main.rs"
 test = true
 
-[[example]]
-name = "svg_fixture_render"
-required-features = ["wgpu"]
-path = "examples/svg_fixture_render.rs"
-
-[[example]]
-name = "svg_tiger_bench"
-required-features = ["wgpu"]
-path = "examples/svg_tiger_bench.rs"
-
-[[example]]
-name = "image_key_bench"
-required-features = ["wgpu"]
-path = "examples/image_key_bench.rs"
-
-[[example]]
-name = "retained_scale_bench"
-required-features = ["wgpu"]
-path = "examples/retained_scale_bench.rs"
-
-[[example]]
-name = "retained_dirty_ratio_bench"
-required-features = ["wgpu"]
-path = "examples/retained_dirty_ratio_bench.rs"
-
-[[example]]
-name = "blur_pairing_bench"
-required-features = ["wgpu"]
-path = "examples/blur_pairing_bench.rs"
-
-[[example]]
-name = "svg_tiger_vello_compare"
-path = "examples/svg_tiger_vello_compare.rs"
-required-features = ["wgpu", "vello-compare"]
-
-[[example]]
-name = "vello_compare"
-path = "examples/vello_compare.rs"
-required-features = ["wgpu", "vello-compare"]
-
-[[example]]
-name = "wgpu_batch"
-required-features = ["wgpu"]
-path = "examples/wgpu_batch.rs"
-
-[[example]]
-name = "wgpu_backend_parity"
-required-features = ["wgpu"]
-path = "examples/wgpu_backend_parity/main.rs"
-test = true
-
-[[bench]]
-name = "pattern_sampling"
-required-features = ["wgpu"]
-harness = false
-
-
-[[bench]]
-name = "dx12_texture_order"
-required-features = ["wgpu"]
-harness = false
-
-[[bench]]
-name = "numeric_raster"
-required-features = ["wgpu"]
-harness = false
-
-[[bench]]
-name = "retained_portable_history"
-required-features = ["wgpu"]
-harness = false
-
-[[bench]]
-name = "retained_resize"
-required-features = ["wgpu"]
-harness = false
-
-[[example]]
-name = "retained"
-required-features = ["wgpu"]
-
-[[example]]
-name = "wgpu_resize_profile"
-required-features = ["wgpu"]
-
-[[test]]
-name = "benchmark_context"
-required-features = ["wgpu"]
-
-[[test]]
-name = "dx12_texture_order"
-required-features = ["wgpu"]
-
 [[bench]]
 name = "uniform_writes"
 harness = false
 required-features = ["bench-internals"]
 
-[[example]]
-name = "retained_stage_presence"
-required-features = ["wgpu"]
-
-[[bench]]
-name = "image_resource_uploads"
-required-features = ["wgpu", "bench-internals"]
-harness = false
-
-[[bench]]
-name = "filter_sampling"
-required-features = ["wgpu"]
-harness = false
-
-[[bench]]
-name = "filter_compilation"
-required-features = ["wgpu", "bench-internals"]
-harness = false
-
 [[bench]]
 name = "scoped_damage"
 harness = false
 required-features = ["bench-internals"]
-
-[[example]]
-name = "scoped_benchmark_pixels"
-required-features = ["wgpu", "bench-internals"]
 
 [[bench]]
 name = "retained_frame_delta"
