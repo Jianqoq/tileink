@@ -158,7 +158,16 @@ impl SvgBuilder {
 
         let mut pushed_layers = 0;
         if let Some(clip) = group.clip_path() {
-            pushed_layers += self.push_clip_path_layers(canvas, clip, group_transform)?;
+            // usvg inserts a viewport-clip wrapper for <use> of a <symbol>. Its group absolute
+            // transform is the parent's, while its untransformed child carries the <use>
+            // transform. Apply the clip in the same coordinate space as that child.
+            let clip_transform = match group.children() {
+                [Node::Group(child)] if child.transform() == usvg::Transform::default() => {
+                    self.base_transform * transform_to_affine(child.abs_transform())
+                }
+                _ => group_transform,
+            };
+            pushed_layers += self.push_clip_path_layers(canvas, clip, clip_transform)?;
         }
 
         let layer_path = || {
@@ -420,14 +429,16 @@ impl SvgBuilder {
             stroke.opacity().get(),
             path_transform,
         )?;
-        let has_zero_length_dash = stroke.linecap() != usvg::LineCap::Butt
-            && stroke
-                .dasharray()
-                .is_some_and(|dashes| dashes.contains(&0.0));
-        if stroke.linejoin() == usvg::LineJoin::MiterClip || has_zero_length_dash {
+        let needs_svg_stroker = stroke.linejoin() == usvg::LineJoin::MiterClip
+            || (stroke.linecap() != usvg::LineCap::Butt
+                && (stroke
+                    .dasharray()
+                    .is_some_and(|dashes| dashes.contains(&0.0))
+                    || has_zero_length_subpath(path.data())));
+        if needs_svg_stroker {
             // Kurbo omits zero-length dashes, even though SVG round and square caps must paint
-            // them. It also lacks miter-clip joins. Dash before expanding the SVG stroke outline:
-            // tiny-skia's Path::stroke itself does not apply the Stroke's dash pattern.
+            // them and fully degenerate subpaths. It also lacks miter-clip joins. Dash before
+            // expanding the SVG stroke outline: tiny-skia's Path::stroke itself ignores dashes.
             let style = stroke.to_tiny_skia();
             let scale = resolution_scale(transform);
             let dashed = style
@@ -1833,6 +1844,39 @@ fn gradient_stops(stops: &[usvg::Stop], opacity: f32) -> Vec<ColorStop> {
             ))
         })
         .collect()
+}
+
+fn has_zero_length_subpath(path: &usvg::tiny_skia_path::Path) -> bool {
+    let mut start = None;
+    let mut has_draw_command = false;
+    let mut stays_at_start = true;
+    for segment in path.segments() {
+        match segment {
+            PathSegment::MoveTo(point) => {
+                if has_draw_command && stays_at_start {
+                    return true;
+                }
+                start = Some(point);
+                has_draw_command = false;
+                stays_at_start = true;
+            }
+            PathSegment::LineTo(point) => {
+                has_draw_command = true;
+                stays_at_start &= start == Some(point);
+            }
+            PathSegment::QuadTo(control, point) => {
+                has_draw_command = true;
+                stays_at_start &= start == Some(control) && start == Some(point);
+            }
+            PathSegment::CubicTo(first, second, point) => {
+                has_draw_command = true;
+                stays_at_start &=
+                    start == Some(first) && start == Some(second) && start == Some(point);
+            }
+            PathSegment::Close => has_draw_command = true,
+        }
+    }
+    has_draw_command && stays_at_start
 }
 
 fn stroke_to_kurbo(stroke: &usvg::Stroke) -> Stroke {

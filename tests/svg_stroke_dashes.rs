@@ -67,3 +67,26 @@ fn miter_clip_stroke_keeps_dash_gaps() -> Result<(), Box<dyn std::error::Error>>
     );
     Ok(())
 }
+
+#[test]
+#[ignore = "requires a native GPU; run explicitly with --ignored"]
+fn zero_length_subpaths_respect_line_caps() -> Result<(), Box<dyn std::error::Error>> {
+    let context = NativeContext::new(backend(), &NativeContextOptions::default())?;
+    for (cap, expected) in [
+        ("round", [0, 128, 0, 255]),
+        ("square", [0, 128, 0, 255]),
+        ("butt", [0, 0, 0, 0]),
+    ] {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src/svg/tests/painting/stroke-linecap")
+            .join(format!("zero-length-path-with-{cap}.svg"));
+        let (scene, width, height) = common::load_svg_scene(path, 300)?;
+        let mut renderer = NativeRenderer::with_context(&context, width, height)?;
+        let image = renderer.render_to_image(&scene)?.readback()?;
+        for (x, y) in [(150, 105), (105, 150), (195, 150), (150, 195)] {
+            let actual = image.pixels[(y * width + x) as usize].to_le_bytes();
+            assert_eq!(actual, expected, "{cap} zero-length path at ({x}, {y})");
+        }
+    }
+    Ok(())
+}
