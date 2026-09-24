@@ -2,7 +2,7 @@ use super::*;
 use crate::{NativeBackend, NativeContext, NativeContextOptions};
 use peniko::kurbo::Point;
 
-fn context() -> Result<NativeContext> {
+pub(super) fn context() -> Result<NativeContext> {
     #[cfg(feature = "dx12")]
     let backend = NativeBackend::Dx12;
     #[cfg(feature = "vulkan")]
@@ -18,7 +18,7 @@ fn context() -> Result<NativeContext> {
     )?)
 }
 
-fn render(
+pub(super) fn render(
     context: &NativeContext,
     size: [u32; 2],
     input: Vec<u8>,
@@ -107,22 +107,29 @@ fn progressive_gpu_matches_clear_and_uniform_plateaus_and_gaussian_reference() -
 #[ignore = "requires pinned TILEINK_NATIVE_GPU"]
 fn progressive_gpu_preserves_premultiplication_and_handles_tiny_odd_images() -> Result<()> {
     let context = context()?;
-    for size in [[1u32, 1], [1, 19], [23, 1], [35, 27]] {
-        let input: Vec<u8> = (0..size[0] * size[1])
-            .flat_map(|i| {
-                let a = if i.is_multiple_of(3) { 173 } else { 0 };
-                [a, 0, 0, a]
-            })
-            .collect();
-        for sigma in [0.0, 0.25, 1.0, 4.0, 64.0] {
-            let blur = ProgressiveBlur::new(Point::new(24.0, 20.0), Point::new(2.0, 1.0), sigma);
-            let output = render(&context, size, input.clone(), blur)?;
-            if sigma == 0.0 {
-                assert_eq!(output, input);
-            }
-            for p in output.chunks_exact(4) {
-                assert_eq!(p[0], p[3]);
-                assert_eq!(&p[1..3], &[0, 0]);
+    for quality in [
+        ProgressiveBlurQuality::Balanced,
+        ProgressiveBlurQuality::High,
+    ] {
+        for size in [[1u32, 1], [1, 19], [23, 1], [35, 27]] {
+            let input: Vec<u8> = (0..size[0] * size[1])
+                .flat_map(|i| {
+                    let a = if i.is_multiple_of(3) { 173 } else { 0 };
+                    [a, 0, 0, a]
+                })
+                .collect();
+            for sigma in [0.0, f32::MIN_POSITIVE, 0.125, 0.25, 1.0, 4.0, 64.0, 65536.0] {
+                let blur =
+                    ProgressiveBlur::new(Point::new(24.0, 20.0), Point::new(2.0, 1.0), sigma)
+                        .with_quality(quality);
+                let output = render(&context, size, input.clone(), blur)?;
+                if sigma == 0.0 {
+                    assert_eq!(output, input);
+                }
+                for p in output.chunks_exact(4) {
+                    assert_eq!(p[0], p[3]);
+                    assert_eq!(&p[1..3], &[0, 0]);
+                }
             }
         }
     }

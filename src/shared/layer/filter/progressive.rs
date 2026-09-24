@@ -7,7 +7,7 @@ use peniko::kurbo::{Point, Vec2};
 /// projected position follows smoothstep. Reversing the endpoints reverses the
 /// effect. Coincident endpoints mean a uniform maximum blur.
 ///
-/// The GPU uses a calibrated binomial scale pyramid and variance interpolation,
+/// The GPU uses a calibrated Gaussian scale pyramid and variance interpolation,
 /// not an exact Gaussian and not a crossfade with one maximally blurred image.
 /// Filtering uses premultiplied RGBA in the enclosing filter's working space,
 /// with transparent samples outside its source domain.
@@ -18,6 +18,19 @@ pub struct ProgressiveBlur {
     /// Nonnegative standard deviation. The device-space limit is 65536 pixels.
     /// Nonfinite/negative values and nonfinite endpoints fail render validation.
     pub max_std_dev: f32,
+    /// Accuracy/cost policy, independent of the requested blur strength.
+    pub quality: ProgressiveBlurQuality,
+}
+
+/// Sampling policy for progressive blur. Both policies preserve fine detail by
+/// evaluating subpixel sigma directly and delaying pyramid downsampling.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ProgressiveBlurQuality {
+    /// Two levels per octave, with Gaussian support of at least three sigma.
+    #[default]
+    Balanced,
+    /// Three levels per octave, later downsampling and four-sigma pyramid kernels.
+    High,
 }
 
 impl ProgressiveBlur {
@@ -26,7 +39,13 @@ impl ProgressiveBlur {
             start,
             end,
             max_std_dev,
+            quality: ProgressiveBlurQuality::Balanced,
         }
+    }
+
+    pub const fn with_quality(mut self, quality: ProgressiveBlurQuality) -> Self {
+        self.quality = quality;
+        self
     }
 
     pub(crate) fn translated(self, offset: Vec2) -> Self {
@@ -42,6 +61,7 @@ impl ProgressiveBlur {
             start: Point::new(self.start.x * scale, self.start.y * scale),
             end: Point::new(self.end.x * scale, self.end.y * scale),
             max_std_dev: self.max_std_dev * scale as f32,
+            ..self
         }
     }
 
@@ -77,7 +97,7 @@ impl ProgressiveBlur {
         }
         // Cover the support of the upper bracketing pyramid level, including
         // reconstruction. A Gaussian's usual 3*sigma halo is insufficient here.
-        (8.0 * self.max_std_dev + 4.0).ceil() as i32
+        (20.0 * self.max_std_dev + 8.0).ceil() as i32
     }
 }
 
@@ -122,5 +142,19 @@ mod tests {
             ProgressiveBlur::new(Point::ZERO, Point::ZERO, 0.0).sample_outset(),
             0
         );
+    }
+
+    #[test]
+    fn quality_is_independent_of_strength_and_survives_coordinate_changes() {
+        let blur = ProgressiveBlur::new(Point::ZERO, Point::new(4.0, 8.0), 2.0);
+        assert_eq!(blur.quality, ProgressiveBlurQuality::Balanced);
+        let high = blur.with_quality(ProgressiveBlurQuality::High);
+        assert_eq!(blur.projection(), high.projection());
+        assert_eq!(high.scaled(2.0).quality, ProgressiveBlurQuality::High);
+        assert_eq!(
+            high.translated(Vec2::new(2.0, 4.0)).quality,
+            ProgressiveBlurQuality::High
+        );
+        assert_eq!(high.max_std_dev, blur.max_std_dev);
     }
 }

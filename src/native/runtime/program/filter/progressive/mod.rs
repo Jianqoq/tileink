@@ -1,57 +1,20 @@
 //! Progressive UI blur: fixed-work binomial reductions plus one scale-selection pass.
 //! All levels keep their own logical extent; pooled padding is never sampled.
 
-use crate::ProgressiveBlur;
+use crate::{ProgressiveBlur, ProgressiveBlurQuality};
+mod pyramid;
 use crate::native::runtime::compute::{
     ComputeBatch, Resource, ResourceId, SamplerFilter, TextureCopy,
 };
 use crate::shared::bounds::Bounds;
 use crate::shared::progressive_blur_config::ProgressiveBlurConfig;
+use pyramid::levels;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const TABLE_SIZE: usize = 64;
 // SAFETY: repr(C), scalar arrays, no implicit padding, all bit patterns valid.
 unsafe impl bytemuck::Zeroable for ProgressiveBlurConfig {}
 unsafe impl bytemuck::Pod for ProgressiveBlurConfig {}
-
-#[derive(Clone, Copy, Debug)]
-struct Level {
-    size: [u32; 2],
-    scale: f32,
-    variance: f32,
-}
-
-fn levels(size: [u32; 2], sigma: f32) -> Vec<Level> {
-    let mut result = vec![Level {
-        size,
-        scale: 1.0,
-        variance: 0.0,
-    }];
-    if sigma == 0.0 {
-        return result;
-    }
-    result.push(Level {
-        size,
-        scale: 1.0,
-        variance: 0.5,
-    });
-    let mut raw_variance = 0.5;
-    while result.last().unwrap().variance < sigma * sigma {
-        let previous = *result.last().unwrap();
-        // [1,3,3,1]/8 has variance 3/4 in its input pixel units.
-        raw_variance += 0.75 * previous.scale * previous.scale;
-        let scale = previous.scale * 2.0;
-        // Mean variance of bilinear reconstruction over the integer output grid.
-        // Decimation centers lie at half-integer positions in the original grid.
-        let reconstruction_variance = (2.0 * scale * scale + 1.0) / 12.0;
-        result.push(Level {
-            size: previous.size.map(|n| n.div_ceil(2)),
-            scale,
-            variance: raw_variance + reconstruction_variance,
-        });
-    }
-    result
-}
 
 fn allocate(batch: &mut ComputeBatch, size: [u32; 2]) -> Result<ResourceId> {
     if let Some(image) = batch.reusable_overwritten_surface(size)? {
@@ -109,7 +72,7 @@ pub(crate) fn encode(
         return Ok(());
     }
     let extent = [bounds.width(), bounds.height()];
-    let levels = levels(extent, blur.max_std_dev);
+    let levels = levels(extent, blur.max_std_dev, blur.quality);
     if levels.len() > TABLE_SIZE {
         return Err("progressive blur level count overflow".into());
     }
@@ -124,21 +87,42 @@ pub(crate) fn encode(
         extent: [extent[0], extent[1], 1],
     })?;
     images.push(original);
+    // One scratch image is overwritten between horizontal/vertical pairs.
+    // Explicit source extents exclude spare capacity on every later pass.
+    let scratch = if levels.len() > 1 {
+        Some(allocate(batch, extent)?)
+    } else {
+        None
+    };
     for (i, level) in levels.iter().enumerate().skip(1) {
         let image = allocate(batch, level.size)?;
-        let previous = levels[i - 1];
-        let config = ProgressiveBlurConfig {
-            output: [0, 0, level.size[0], level.size[1]],
-            source: [0, 0, previous.size[0], previous.size[1]],
-            step: if i == 1 { 1 } else { 2 },
-            ..Default::default()
-        };
-        dispatch(
-            batch,
-            "progressive_blur_reduce",
-            config,
-            &[(1, images[i - 1]), (3, image), (13, sampler)],
-        )?;
+        let previous = &levels[i - 1];
+        let kernel = batch.buffer(bytemuck::cast_slice(&level.kernel).to_vec())?;
+        let intermediate = [level.size[0], previous.size[1]];
+        for (axis, source, target, source_size, output_size) in [
+            (
+                0,
+                images[i - 1],
+                scratch.unwrap(),
+                previous.size,
+                intermediate,
+            ),
+            (1, scratch.unwrap(), image, intermediate, level.size),
+        ] {
+            dispatch(
+                batch,
+                "progressive_blur_reduce",
+                ProgressiveBlurConfig {
+                    output: [0, 0, output_size[0], output_size[1]],
+                    source: [0, 0, source_size[0], source_size[1]],
+                    step: level.step,
+                    axis,
+                    count: level.kernel.len() as u32,
+                    ..Default::default()
+                },
+                &[(1, source), (2, kernel), (3, target), (13, sampler)],
+            )?;
+        }
         images.push(image);
     }
     let metadata: Vec<[f32; 4]> = levels
@@ -156,7 +140,7 @@ pub(crate) fn encode(
             source: [bounds.x0 as u32, bounds.y0 as u32, extent[0], extent[1]],
             gradient,
             max_std_dev: blur.max_std_dev,
-            level_count: levels.len() as u32,
+            count: levels.len() as u32,
             ..Default::default()
         },
         &[(2, metadata), (3, target), (13, sampler), (30, table)],
@@ -165,5 +149,7 @@ pub(crate) fn encode(
 
 #[cfg(test)]
 mod gpu_tests;
+#[cfg(test)]
+mod quality_tests;
 #[cfg(test)]
 mod tests;

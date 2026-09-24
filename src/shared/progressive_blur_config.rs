@@ -6,7 +6,8 @@ pub struct ProgressiveBlurConfig {
     pub source: [u32; 4],
     pub gradient: [f32; 4],
     pub max_std_dev: f32,
-    pub level_count: u32,
+    /// Number of entries in the read buffer (kernel taps or pyramid levels).
+    pub count: u32,
     pub step: u32,
-    pub pad: u32,
+    pub axis: u32,
 }

@@ -33,3 +33,20 @@ exceed 65536 pixels.
 
 Run `cargo run --release --example progressive_blur` to generate
 `target/progressive-blur.png`.
+
+## Quality control
+
+`new` defaults to `ProgressiveBlurQuality::Balanced`. Select higher accuracy with:
+
+```rust
+let blur = ProgressiveBlur::new(start, end, 24.0)
+    .with_quality(tileink::ProgressiveBlurQuality::High);
+```
+
+Quality is independent of strength. Both policies retain full resolution for
+fine levels and evaluate the near-clear Gaussian directly. `High` uses denser
+levels, later downsampling and wider kernel support, costing more time and
+texture space. Keep the policy fixed while animating strength.
+
+Run `cargo run --release --example progressive_blur -- target/progressive-blur-high.png high`
+to generate the high-quality example.

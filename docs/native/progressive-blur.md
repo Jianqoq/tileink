@@ -15,25 +15,42 @@ For a pixel center `p`, `t = clamp(dot(p - start, end - start) / |end - start|²
 and `sigma = max_std_dev * t² * (3 - 2*t)`. This describes an isotropic variable
 Gaussian reference, approximated by the following discrete scale space:
 
+The default `ProgressiveBlurQuality::Balanced` and optional `High` policy control
+sampling accuracy independently of strength:
+
+```rust
+let blur = ProgressiveBlur::new(start, end, max_std_dev)
+    .with_quality(ProgressiveBlurQuality::High);
+```
+
 1. Copy the bounded source into an immutable, tightly sized texture.
-2. Create a full-resolution `[1,2,1]/4` separable binomial level (variance 0.5).
-3. Repeatedly reduce each dimension by two using `[1,3,3,1]/8`, centered at
-   `2*p + 0.5`. Ceil extents retain odd dimensions and one-pixel axes.
-4. Select the two levels bracketing the desired variance, reconstruct them, and
-   interpolate by variance in one output pass. Pixels at sigma zero are untouched.
+2. For device sigma <= 1, evaluate the requested normalized 7x7 Gaussian directly
+   from the original. Sixteen bilinear fetches combine its adjacent positive taps.
+   Sigma below 1/8 pixel is an RGBA8 identity (the omitted tails are negligible).
+   This avoids the near-clear ghost edge caused by blending sharp and blurred images.
+3. Build Gaussian levels at sigma 1 and successive powers of `2^(1/n)`, where
+   `n=2` for Balanced and `n=3` for High. These are continuous variance brackets,
+   not discrete strength steps. Incremental horizontal/vertical convolution shares
+   a scratch image. Kernels are computed once per level on the CPU; paired taps
+   use hardware bilinear filtering. Balanced uses at least 3-sigma support; High
+   uses at least 4-sigma support.
+4. Only halve resolution when target sigma at the new resolution is at least
+   1.5 texels (Balanced) or 2 texels (High). Fine levels therefore stay at full
+   resolution. Odd dimensions round up, including one-pixel axes.
+5. Reconstruct and interpolate adjacent levels by variance in one output pass.
+   Exactly clear pixels are untouched. Higher sigma retains the reduced pyramid
+   instead of evaluating a large per-pixel kernel.
 
-The binomial kernels use four hardware bilinear samples. Samples crossing the
-logical source boundary use explicit transparent reconstruction; allocation
-capacity and sampler clamp behavior never define the logical domain.
+Calibration measures the discrete incremental kernel variance and adds the mean
+bilinear reconstruction variance `(2*s*s+1)/12` for scale `s>=2`. Phase-aware
+half-pixel kernels keep reduction centers aligned with reconstruction. Samples
+outside the logical domain are transparent, never sampler-clamped pooled texels.
 
-Level calibration accounts for accumulated reduction variance and the mean
-bilinear reconstruction variance over the original integer pixel grid. For scale
-`s >= 2`, the latter is `(2*s² + 1)/12`. The first effective variances are
-`0, 0.5, 2, 7, 27, ...`. This is a multiscale Gaussian approximation, not an exact
-variable-kernel Gaussian and not a clear/max-blur opacity crossfade. Its working
-space matches the enclosing filter pipeline, using premultiplied RGBA8 throughout.
-Small-radius kernels, finite source edges, reconstruction phase and RGBA8
-quantization all contribute to approximation error.
+This fixes the premature-downsampling cause of shallow edge blockiness; it is
+not a temporary overlay or opacity workaround. The scale space remains an
+approximation to variable Gaussian convolution. Finite source edges, mean
+reconstruction calibration, level interpolation and premultiplied RGBA8
+quantization still contribute error. The working color space is unchanged.
 
 ## Integration and resource ownership
 
@@ -44,12 +61,13 @@ DX12/Vulkan; a matching Metal implementation uses the same uniform layout.
 The source is immutable until the final resolve, preventing read/write aliasing.
 Pyramid leases skip clearing because copy/reduction overwrites every logical texel
 before sampling; bounds checks exclude uninitialized spare capacity.
-For a large image the copied source and fine level each occupy N texels, and
-reduced levels approach N/3 additional texels (odd dimensions add rounding).
+Fine levels cost multiple full-resolution images; High stores more levels than
+Balanced. One full-size horizontal scratch image is reused across all levels.
+The table remains bounded to 64 entries through the maximum device sigma.
 
 The support halo includes the upper bracketing level and reconstruction; a
-Gaussian-only `3*sigma` bound is insufficient. The conservative bound is
-`ceil(8*max_std_dev + 4)`. Source coordinates are translated when filtering on
+Gaussian-only `3*sigma` bound is insufficient for accumulated finite kernels. The conservative bound is
+`ceil(20*max_std_dev + 8)`. Source coordinates are translated when filtering on
 localized offscreen surfaces and when appending/moving canvas content.
 
 Dirty retained filters rebuild their whole stable domain, preserving the
@@ -69,12 +87,21 @@ cargo test --release --test progressive_blur_gpu -- --ignored --test-threads=1
 cargo run --release --example progressive_blur
 ```
 
-The independent Gaussian reference uses vertical stripes to evaluate a precise
-one-dimensional Gaussian gather at each output pixel, away from boundaries. Its
-acceptance threshold is RMS below 12/255 for the documented 0–8 sigma ramp. This
-is a focused quality check, not a universal image-error guarantee. Other tests
-cover clear/uniform plateaus, premultiplied alpha, reverse/diagonal directions,
-tiny/odd extents, DPI, localized surfaces, and retained dirty/clean frames.
+Quality regression tests compare an independent double-precision Gaussian
+against translated step edges and diagonal detail, and sweep strength across
+level boundaries. The previous image-wide RMS test could hide visible local
+artifacts. On DX12/RTX 4090 the old step-edge maximum error was 13.36/255 and
+integer-translation change was 17/255. With paired Gaussian sampling:
+
+| Policy | Step-edge max error | Translation change | Diagonal max error |
+| --- | --- | --- | --- |
+| Balanced | 2.53/255 | 1/255 | 3.83/255 |
+| High | 1.93/255 | 1/255 | 2.33/255 |
+
+These are fixture measurements, not universal bounds on arbitrary images.
+Tests also cover near-zero and maximum sigma, premultiplied alpha, clear/uniform
+plateaus, reverse/diagonal gradients, tiny/odd images, sufficient source halos,
+DPI/local coordinates, pooled capacity, and retained dirty/clean frames.
 
 The Criterion scenario measures warmed end-to-end submission plus completion,
 without readback. It includes scene rendering, backdrop copies, blur, compositing,
@@ -85,19 +112,32 @@ $env:TILEINK_BENCH_GPU = '<physical adapter identity>'
 cargo bench --bench progressive_blur -- --save-baseline progressive
 ```
 
-The benchmark covers 512×256 at sigma 8/32 and 1920×1080 at sigma 32/128.
-Compare on the same GPU, backend, driver and power state. Kernel optimization is
-validated against the initial explicit-tap version using Criterion baselines.
+The benchmark covers both quality policies at 512x256 sigma 8/32 and 1920x1080
+sigma 2/32/128. Sigma 2 concentrates work in the shallow range. Compare on the
+same GPU/backend/driver. The quality implementation's unpaired-tap baseline is
+`progressive-quality-scalar`; the optimized version pairs adjacent taps without
+changing the Gaussian kernel. The older binomial implementation is a different
+quality/cost tradeoff, not a like-for-like performance baseline.
 
-Measured on Windows/DX12, NVIDIA RTX 4090, physical identity `fe3e010000000000`
-on 2026-09-24 (30 samples, one-second warmup, two-second measurement):
+Measured on Windows/DX12, RTX 4090 (`fe3e010000000000`), 2026-09-24;
+30 samples, 1-second warmup, 2-second measurement. Times are Criterion means
+for end-to-end submission and completion, not GPU timestamps:
 
-| Scene | Optimized 95% interval | Criterion change vs explicit taps |
+| Scene / max sigma | Balanced | High |
 | --- | --- | --- |
-| 512x256, sigma 8 | 179.67-185.58 us | -32.52% |
-| 512x256, sigma 32 | 189.52-190.97 us | -26.30% |
-| 1920x1080, sigma 32 | 367.74-377.76 us | -16.86% |
-| 1920x1080, sigma 128 | 377.97-380.27 us | -23.14% |
+| 1920x1080 / 2 | 508 us | 561 us |
+| 512x256 / 8 | 264 us | 307 us |
+| 512x256 / 32 | 319 us | 386 us |
+| 1920x1080 / 32 | 668 us | 845 us |
+| 1920x1080 / 128 | 730 us | 942 us |
 
-Criterion reported improvement in all four cases. These are machine-specific
-end-to-end observations, not latency promises for other GPUs.
+Criterion reported improvement in all ten cases against the same-quality
+unpaired implementation (9.8–27.1% lower time). The old lower-quality binomial
+version measured 370 us at 1080p/sigma32 and 378 us at sigma128 in this session.
+Thus the improved default deliberately costs about 1.8–1.9x at those settings;
+High costs about 2.3–2.5x. Quality improvement is not a free performance win.
+These observations are machine-specific, not a latency promise.
+
+Validation: full release CPU suite, focused DX12 and Vulkan GPU tests, strict
+clippy on both backends, all examples built, and full SVG fixture rendering plus
+pixel comparison. Metal has matching source/ABI but needs validation on macOS.

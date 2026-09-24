@@ -26,3 +26,16 @@ canvas.pop_layer();
 参数必须有限，标准差不得为负；设备像素下的标准差上限为 65536。
 
 运行 `cargo run --release --example progressive_blur`，可生成 `target/progressive-blur.png` 示例。
+
+## 质量控制
+
+`new` 默认使用 `ProgressiveBlurQuality::Balanced`。需要更平滑的浅模糊细节时，使用：
+
+```rust
+let blur = ProgressiveBlur::new(start, end, 24.0)
+    .with_quality(tileink::ProgressiveBlurQuality::High);
+```
+
+质量与模糊强度独立：两个档位都对小半径保留原分辨率，并准确计算接近清晰处的小高斯核；`High` 使用更密的模糊层、更晚的降采样和更宽的核范围，需要更多时间和纹理空间。调整强度时无需切换质量档位。
+
+运行 `cargo run --release --example progressive_blur -- target/progressive-blur-high.png high` 可生成高质量示例。

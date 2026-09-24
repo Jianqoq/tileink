@@ -6,8 +6,8 @@ use peniko::{
 use std::rc::Rc;
 use tileink::{
     Canvas, Filter, NativeBackend, NativeContext, NativeContextOptions, NativeRenderer,
-    ProgressiveBlur, Radius, Region, RetainedLayerDescriptor, RetainedNodeId, RetainedParent,
-    RetainedScene,
+    ProgressiveBlur, ProgressiveBlurQuality, Radius, Region, RetainedLayerDescriptor,
+    RetainedNodeId, RetainedParent, RetainedScene,
 };
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -134,11 +134,14 @@ fn progressive_scale_and_offscreen_origin_preserve_gradient_coordinates() -> Res
             80.0 / logical_scale,
         );
         canvas.push_filter_layer(
-            Filter::ProgressiveBlur(ProgressiveBlur::new(
-                Point::new(0.0, 20.0 / logical_scale),
-                Point::new(0.0, 64.0 / logical_scale),
-                4.0 / logical_scale as f32,
-            )),
+            Filter::ProgressiveBlur(
+                ProgressiveBlur::new(
+                    Point::new(0.0, 20.0 / logical_scale),
+                    Point::new(0.0, 64.0 / logical_scale),
+                    4.0 / logical_scale as f32,
+                )
+                .with_quality(ProgressiveBlurQuality::High),
+            ),
             Region::rect(rect, Radius::ZERO),
         );
         canvas
@@ -180,11 +183,14 @@ fn progressive_reused_pyramid_ignores_spare_capacity() -> Result<()> {
             )
             .unwrap();
         canvas.push_backdrop_layer(
-            Filter::ProgressiveBlur(ProgressiveBlur::new(
-                Point::new(0.0, 0.0),
-                Point::new(f64::from(width), f64::from(height)),
-                sigma,
-            )),
+            Filter::ProgressiveBlur(
+                ProgressiveBlur::new(
+                    Point::new(0.0, 0.0),
+                    Point::new(f64::from(width), f64::from(height)),
+                    sigma,
+                )
+                .with_quality(ProgressiveBlurQuality::High),
+            ),
             Region::rect(rect, Radius::ZERO),
         );
         canvas.pop_layer();

@@ -643,4 +643,4 @@ mod tests;
 mod dependency;
 mod progressive;
 pub(crate) use dependency::{FilterDependency, filter_dependency, filter_input_bounds};
-pub use progressive::ProgressiveBlur;
+pub use progressive::{ProgressiveBlur, ProgressiveBlurQuality};

@@ -4,9 +4,9 @@ struct ProgressiveBlurConfig {
     uint4 source;
     float4 gradient;
     float max_std_dev;
-    uint level_count;
+    uint count;
     uint step;
-    uint pad;
+    uint axis;
 };
 ConstantBuffer<ProgressiveBlurConfig> config : register(b0);
 Texture2D<float4> source_texture : register(t1);
@@ -39,12 +39,16 @@ float4 sample_source(float2 p) {
 [numthreads(8, 8, 1)]
 void progressive_blur_reduce(uint3 id : SV_DispatchThreadID) {
     if (any(id.xy >= config.output.zw)) return;
-    // Four bilinear taps exactly factor the 3x3 or 4x4 binomial weights.
-    float2 center = float2(id.xy) * float(config.step) + (config.step == 1 ? 0.0 : 0.5);
-    float offset = config.step == 1 ? 0.5 : 0.75;
-    target_texture[id.xy] = 0.25 * (
-        sample_source(center + float2(-offset, -offset)) + sample_source(center + float2(offset, -offset))
-        + sample_source(center + float2(-offset, offset)) + sample_source(center + float2(offset, offset)));
+    float2 center = float2(id.xy);
+    center[config.axis] *= config.step;
+    float4 color = 0;
+    for (uint i = 0; i < config.count; ++i) {
+        float2 tap = asfloat(level_metadata.Load2(i * 8));
+        float2 p = center;
+        p[config.axis] += tap.x;
+        color += tap.y * sample_source(p);
+    }
+    target_texture[id.xy] = color;
 }
 
 float4 read_level(uint index, int2 p, uint2 size) {
@@ -67,6 +71,30 @@ float4 sample_level(uint index, float2 p, float4 metadata) {
         lerp(read_level(index, base + int2(0, 1), size), read_level(index, base + int2(1, 1), size), f.x), f.y);
 }
 
+// The near-clear range uses the requested kernel directly, avoiding a
+// sharp-image/blurred-image mixture. Seven taps cover sigma <= 1 to < 0.1% tail.
+float4 shallow_blur(float2 p, float sigma, float4 metadata) {
+    float weights[7];
+    float total = 0;
+    [unroll] for (int i = 0; i < 7; ++i) {
+        float d = float(i - 3);
+        weights[i] = exp(-0.5 * d * d / (sigma * sigma));
+        total += weights[i];
+    }
+    float offsets[4], combined[4];
+    for (int i = 0; i < 4; ++i) {
+        int first = i * 2;
+        float second = first + 1 < 7 ? weights[first + 1] : 0;
+        combined[i] = weights[first] + second;
+        offsets[i] = float(first - 3) + (combined[i] > 0 ? second / combined[i] : 0);
+    }
+    float4 color = 0;
+    for (int y = 0; y < 4; ++y)
+        for (int x = 0; x < 4; ++x)
+            color += combined[x] * combined[y] * sample_level(0, p + float2(offsets[x], offsets[y]), metadata);
+    return color / (total * total);
+}
+
 [numthreads(8, 8, 1)]
 void progressive_blur_resolve(uint3 id : SV_DispatchThreadID) {
     if (any(id.xy >= config.output.zw)) return;
@@ -75,15 +103,21 @@ void progressive_blur_resolve(uint3 id : SV_DispatchThreadID) {
         : saturate(dot(float2(xy) + 0.5 - config.gradient.xy, config.gradient.zw));
     float sigma = config.max_std_dev * t * t * (3.0 - 2.0 * t);
     if (sigma == 0) return; // Preserve exactly clear pixels, including their alpha.
+    float2 p = float2(xy - config.source.xy) + 0.5;
+    // Below 1/8 pixel the Gaussian tails cannot affect an RGBA8 result.
+    if (sigma < 0.125) return;
+    if (sigma <= 1.0) {
+        target_texture[xy] = shallow_blur(p, sigma, asfloat(level_metadata.Load4(0)));
+        return;
+    }
     float variance = sigma * sigma;
     uint upper = 1;
     float4 high = asfloat(level_metadata.Load4(upper * 16));
-    while (upper + 1 < config.level_count && high.w < variance) {
+    while (upper + 1 < config.count && high.w < variance) {
         ++upper;
         high = asfloat(level_metadata.Load4(upper * 16));
     }
     float4 low = asfloat(level_metadata.Load4((upper - 1) * 16));
     float weight = saturate((variance - low.w) / (high.w - low.w));
-    float2 p = float2(xy - config.source.xy) + 0.5;
     target_texture[xy] = lerp(sample_level(upper - 1, p, low), sample_level(upper, p, high), weight);
 }

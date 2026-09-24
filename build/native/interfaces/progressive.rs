@@ -27,9 +27,9 @@ pub(super) fn get() -> Interface {
             field!(source, U32, 4),
             field!(gradient, F32, 4),
             field!(max_std_dev, F32, 1),
-            field!(level_count, U32, 1),
+            field!(count, U32, 1),
             field!(step, U32, 1),
-            field!(pad, U32, 1),
+            field!(axis, U32, 1),
         ],
     };
     let mut table = buffer(30, Kind::TextureTable);
@@ -52,6 +52,7 @@ pub(super) fn get() -> Interface {
                 &[
                     "config",
                     "source_texture",
+                    "level_metadata",
                     "target_texture",
                     "image_sampler",
                 ],

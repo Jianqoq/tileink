@@ -4,7 +4,7 @@ use peniko::{
 };
 use tileink::{
     Canvas, Filter, NativeBackend, NativeContext, NativeContextOptions, NativeRenderer,
-    ProgressiveBlur, Radius, Region,
+    ProgressiveBlur, ProgressiveBlurQuality, Radius, Region,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -14,6 +14,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let backend = NativeBackend::Vulkan;
     #[cfg(feature = "metal")]
     let backend = NativeBackend::Metal;
+    let quality = match std::env::args().nth(2).as_deref() {
+        None | Some("balanced") => ProgressiveBlurQuality::Balanced,
+        Some("high") => ProgressiveBlurQuality::High,
+        _ => return Err("quality must be balanced or high".into()),
+    };
     let context = NativeContext::new(backend, &NativeContextOptions::default())?;
     let mut renderer = NativeRenderer::with_context(&context, 960, 600)?;
     let mut canvas = Canvas::new(960, 600, 1.0);
@@ -42,11 +47,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     canvas.push_backdrop_layer(
-        Filter::ProgressiveBlur(ProgressiveBlur::new(
-            Point::new(0.0, 140.0),
-            Point::new(0.0, 460.0),
-            24.0,
-        )),
+        Filter::ProgressiveBlur(
+            ProgressiveBlur::new(Point::new(0.0, 140.0), Point::new(0.0, 460.0), 24.0)
+                .with_quality(quality),
+        ),
         Region::rect(Rect::new(0.0, 0.0, 960.0, 600.0), Radius::ZERO),
     );
     canvas.pop_layer();
