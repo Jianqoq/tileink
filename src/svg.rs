@@ -420,13 +420,26 @@ impl SvgBuilder {
             stroke.opacity().get(),
             path_transform,
         )?;
-        if stroke.linejoin() == usvg::LineJoin::MiterClip {
-            // kurbo does not expose SVG 2 miter-clip joins. Build the SVG stroke outline with
-            // tiny-skia/usvg semantics, then render that outline through the normal path pipeline.
-            if let Some(outline) = path
-                .data()
-                .stroke(&stroke.to_tiny_skia(), resolution_scale(transform))
-            {
+        let has_zero_length_dash = stroke.linecap() != usvg::LineCap::Butt
+            && stroke
+                .dasharray()
+                .is_some_and(|dashes| dashes.contains(&0.0));
+        if stroke.linejoin() == usvg::LineJoin::MiterClip || has_zero_length_dash {
+            // Kurbo omits zero-length dashes, even though SVG round and square caps must paint
+            // them. It also lacks miter-clip joins. Dash before expanding the SVG stroke outline:
+            // tiny-skia's Path::stroke itself does not apply the Stroke's dash pattern.
+            let style = stroke.to_tiny_skia();
+            let scale = resolution_scale(transform);
+            let dashed = style
+                .dash
+                .as_ref()
+                .map(|dash| path.data().dash(dash, scale));
+            let outline = match dashed {
+                Some(Some(dashed)) => dashed.stroke(&style, scale),
+                Some(None) => None,
+                None => path.data().stroke(&style, scale),
+            };
+            if let Some(outline) = outline {
                 canvas.push_path(
                     tiny_path_to_bez(&outline),
                     brush,
