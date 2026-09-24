@@ -648,7 +648,9 @@ impl SvgBuilder {
                     self.paint_server_inverse_transform(source.transform(), path_transform)?;
                 Ok(brush)
             }
-            Paint::Pattern(pattern) => self.pattern_to_brush(canvas, pattern, opacity),
+            Paint::Pattern(pattern) => {
+                self.pattern_to_brush(canvas, pattern, opacity, path_transform)
+            }
         }
     }
 
@@ -671,6 +673,7 @@ impl SvgBuilder {
         canvas: &mut Canvas,
         pattern: &usvg::Pattern,
         opacity: f32,
+        path_transform: Affine,
     ) -> Result<Brush, SvgError> {
         if self.pattern_depth >= MAX_PATTERN_DEPTH {
             return Err(SvgError::unsupported("recursive pattern paint"));
@@ -681,27 +684,28 @@ impl SvgBuilder {
         let height = rect.height();
         let tile_width = width.ceil().max(1.0) as u32;
         let tile_height = height.ceil().max(1.0) as u32;
-        // Render pattern content once in tile pixel space, then reuse the same
-        // world-to-tile transform for brush sampling so fractional tile sizes
-        // keep the SVG repeat period instead of snapping to integer user units.
-        let tile_transform =
-            Affine::scale_non_uniform(
-                f64::from(tile_width) / f64::from(width),
-                f64::from(tile_height) / f64::from(height),
-            ) * Affine::translate((-f64::from(rect.left()), -f64::from(rect.top())));
+        // Pattern content is local to the tile. The pattern's x/y offset moves
+        // tile sampling, not the content drawn into the tile.
+        let tile_scale = Affine::scale_non_uniform(
+            f64::from(tile_width) / f64::from(width),
+            f64::from(tile_height) / f64::from(height),
+        );
 
         let mut tile_scene = Canvas::new(tile_width, tile_height, 1.0);
         SvgBuilder {
             options: self.options,
-            base_transform: tile_transform,
+            base_transform: tile_scale * pattern_content_correction(pattern.root()),
             pattern_depth: self.pattern_depth + 1,
             image_depth: self.image_depth,
         }
         .push_group(&mut tile_scene, pattern.root())?;
 
-        let Some(pattern_inverse) = pattern.transform().invert() else {
-            return Err(SvgError::unsupported("non-invertible patternTransform"));
-        };
+        // The pattern geometry is in the path's user space, while shaders sample
+        // the brush in canvas pixels. Account for both SVG and path transforms.
+        let world_to_pattern = inverse_affine(
+            self.base_transform * path_transform * transform_to_affine(pattern.transform()),
+            "patternTransform",
+        )?;
         let Some(image_key) = canvas.register_scene_image(tile_scene) else {
             return Err(SvgError::unsupported("empty pattern image"));
         };
@@ -711,8 +715,9 @@ impl SvgBuilder {
                 Affine::scale_non_uniform(
                     1.0 / f64::from(tile_width),
                     1.0 / f64::from(tile_height),
-                ) * tile_transform
-                    * transform_to_affine(pattern_inverse),
+                ) * tile_scale
+                    * Affine::translate((-f64::from(rect.left()), -f64::from(rect.top())))
+                    * world_to_pattern,
             ),
             Extend::Repeat,
             PatternSampling::Nearest,
@@ -794,6 +799,29 @@ impl SvgBuilder {
             return Err(SvgError::unsupported("empty feImage"));
         };
         Ok(Brush::Pattern(pattern))
+    }
+}
+
+fn pattern_content_correction(root: &usvg::Group) -> Affine {
+    let [Node::Group(wrapper)] = root.children() else {
+        return Affine::IDENTITY;
+    };
+    let transform = transform_to_affine(wrapper.transform());
+    if transform == Affine::IDENTITY {
+        return transform;
+    }
+
+    // usvg may add a viewBox wrapper after resolving objectBoundingBox units.
+    // Its descendant absolute transforms then still refer to the old root.
+    let descendants_are_unrebased = wrapper.children().iter().any(|child| match child {
+        Node::Path(path) => path.abs_transform() == usvg::Transform::default(),
+        Node::Group(group) => group.abs_transform() == group.transform(),
+        _ => false,
+    });
+    if descendants_are_unrebased {
+        transform
+    } else {
+        Affine::IDENTITY
     }
 }
 

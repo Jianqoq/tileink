@@ -84,6 +84,7 @@ impl<A: FilterAdapter> FilterExecutor<'_, A> {
                     bounds,
                     matrix,
                     kernel_offset,
+                    linear_rgb,
                 }) && self.adapter.encode(FilterKernel::CopyRegionToTarget {
                     source: temp,
                     target,

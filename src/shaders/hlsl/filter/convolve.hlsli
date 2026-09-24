@@ -2,6 +2,7 @@
 #define TILEINK_FILTER_CONVOLVE_HLSLI
 #include "config.hlsli"
 #include "../shared/pixel.hlsli"
+#include "color_space.hlsli"
 #include "../shared/integer.hlsli"
 
 // Signed remainder maps directly into the primitive region, even for kernels
@@ -55,39 +56,44 @@ uint filter_convolve_pixel(ConstantBuffer<FilterConfig> config, Texture2D<float4
             } else if (all(position>=lower) && all(position<upper)) {
                 pixel=unorm_to_rgba8(source.Load(int3(position,0)));
             }
+            if(config.linear_rgb==1u) pixel=filter_premul_srgb_to_linear(pixel);
             uint alpha=pixel>>24u;
-            float4 value=float4(straight_channel(pixel&255u,alpha),straight_channel((pixel>>8u)&255u,alpha),
-                straight_channel((pixel>>16u)&255u,alpha),float(alpha));
+            float4 value=rgba8_to_unorm(pixel);
+            // preserveAlpha convolves straight colors; the default convolves
+            // premultiplied colors together with alpha.
+            if(config.kernel_preserve_alpha==1u) value.rgb=alpha==0u?0.0:value.rgb/value.a;
+            value.a=float(alpha);
             sum=mad(value,weight,sum);
         }
     }
     // Keep alpha in its stored byte domain. Normalizing each tap and rescaling
     // after bias crosses half-byte boundaries differently between shader targets.
     float reciprocal=1.0/config.amount;
-    float alpha;
-    float3 straight;
+    float alpha_quotient;
+    float3 color_quotient;
     if (divisor_magnitude<0x00800000u) {
         // Decode subnormal divisors before GPU flush-to-zero can erase them.
         // Scaling both sides by 2^24 puts every nonzero divisor in normal range.
         float scaled_divisor=float(divisor_magnitude)*asfloat(0x01000000u);
         if ((asuint(config.amount)&0x80000000u)!=0u) scaled_divisor=-scaled_divisor;
-        straight=clamp(float3(convolve_scale_24(sum.r),convolve_scale_24(sum.g),convolve_scale_24(sum.b))/scaled_divisor+config.rect_x0,0.0,1.0);
-        alpha=clamp(convolve_scale_24(sum.a)/(scaled_divisor*255.0)+config.rect_x0,0.0,1.0)*255.0;
+        color_quotient=float3(convolve_scale_24(sum.r),convolve_scale_24(sum.g),convolve_scale_24(sum.b))/scaled_divisor;
+        alpha_quotient=convolve_scale_24(sum.a)/(scaled_divisor*255.0);
     } else if (divisor_magnitude>0x7e800000u) {
         float inverse=1.0/convolve_unscale_24(config.amount);
         float3 reduced=float3(convolve_unscale_24(sum.r),convolve_unscale_24(sum.g),convolve_unscale_24(sum.b));
-        straight=clamp(mad(reduced,inverse,config.rect_x0),0.0,1.0);
-        alpha=clamp(mad(convolve_unscale_24(sum.a),inverse,config.rect_x0*255.0),0.0,255.0);
-    } else if (abs(config.rect_x0)>asfloat(0x7f7fffffu)/255.0) {
-        // Do not overflow bias*255 before adding a potentially opposing quotient.
-        straight=clamp(sum.rgb/config.amount+config.rect_x0,0.0,1.0);
-        alpha=clamp((sum.a/255.0)/config.amount+config.rect_x0,0.0,1.0)*255.0;
+        color_quotient=reduced*inverse;
+        alpha_quotient=convolve_unscale_24(sum.a)*inverse*(1.0/255.0);
     } else {
-        straight=clamp(mad(sum.rgb,reciprocal,config.rect_x0),0.0,1.0);
-        alpha=clamp(mad(sum.a,reciprocal,config.rect_x0*255.0),0.0,255.0);
+        color_quotient=sum.rgb*reciprocal;
+        alpha_quotient=(sum.a*reciprocal)*(1.0/255.0);
     }
-    if (config.kernel_preserve_alpha==1u) alpha=float(center>>24u);
-    uint3 rgb=uint3(mad(straight,alpha,0.5));
-    return rgba8_pack(rgb.r,rgb.g,rgb.b,uint(alpha+0.5));
+    float unbounded_alpha=config.kernel_preserve_alpha==1u?float(center>>24u)*CHANNEL_SCALE:alpha_quotient+config.rect_x0;
+    float alpha=saturate(unbounded_alpha);
+    // SVG applies bias using the unbounded result alpha, then clamps the
+    // premultiplied color to the bounded output alpha.
+    float3 color=color_quotient+config.rect_x0*unbounded_alpha;
+    color=config.kernel_preserve_alpha==1u?saturate(color)*alpha:clamp(color,0.0,alpha);
+    uint result=pack_premul_rgba8(color.r,color.g,color.b,alpha);
+    return config.linear_rgb==1u?filter_premul_linear_to_srgb(result):result;
 }
 #endif

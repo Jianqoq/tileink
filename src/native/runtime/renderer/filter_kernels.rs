@@ -168,10 +168,12 @@ impl FilterEncoding<'_, '_> {
                 input2,
                 target,
                 operator,
+                linear_rgb,
                 ..
             } => {
                 c.filter_kind = encode_composite_operator(operator);
                 c.matrix_bias = composite_arithmetic(operator);
+                c.linear_rgb = u32::from(linear_rgb);
                 inputs::encode(
                     e.batch,
                     inputs::InputFilter::Composite {
@@ -280,9 +282,11 @@ impl FilterEncoding<'_, '_> {
                 target,
                 matrix,
                 kernel_offset,
+                linear_rgb,
                 ..
             } => {
                 configure_convolve(&mut c, matrix, kernel_offset);
+                c.linear_rgb = u32::from(linear_rgb);
                 convolve::encode(
                     e.batch,
                     c,

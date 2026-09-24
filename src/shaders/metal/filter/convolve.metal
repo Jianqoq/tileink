@@ -2,6 +2,7 @@
 using namespace metal;
 #include "region.metal"
 #include "../shared/pixel.metal"
+#include "color_space.metal"
 // Rescale through exponent bits so subnormal divisors survive flush-to-zero;
 // inverse rescaling also prevents large normal divisors losing their reciprocal.
 float exponent_scale(float value,bool up) {
@@ -24,30 +25,34 @@ kernel void filter_convolve_matrix_region(constant FilterConfig& config [[buffer
         int2 position=int2(xy)+int2(x,y)-int2(config.kernel_target_x,config.kernel_target_y);
         if(config.kernel_edge_mode==1) position=clamp(position,lower,upper-1);
         else if(config.kernel_edge_mode==2) position=int2(wrap_convolve(position.x,lower.x,size.x),wrap_convolve(position.y,lower.y,size.y));
-        uint4 pixel=all(position>=lower) && all(position<upper)?byte_channels(pack_pixel(source.read(uint2(position)))):uint4(0);
-        float4 value=float4(pixel.a?float3(pixel.rgb)/float(pixel.a):float3(0),float(pixel.a));
+        uint pixel=all(position>=lower) && all(position<upper)?pack_pixel(source.read(uint2(position))):0;
+        if(config.linear_rgb==1) pixel=filter_premul_srgb_to_linear(pixel);
+        float4 value=unpack_pixel(pixel);
+        if(config.kernel_preserve_alpha==1) value.rgb=value.a==0.0f?float3(0):value.rgb/value.a;
+        value.a=float(pixel>>24);
         sum=fma(value,weights[index],sum);
     }
-    float3 straight;float alpha,bias=config.rect_x0;
+    float3 color_quotient;float alpha_quotient,bias=config.rect_x0;
     if(divisor_bits<0x00800000u) {
         float divisor=float(divisor_bits)*as_type<float>(0x01000000u);
         if(as_type<uint>(config.amount)>>31) divisor=-divisor;
         float3 numerator(exponent_scale(sum.r,true),exponent_scale(sum.g,true),exponent_scale(sum.b,true));
-        straight=clamp(numerator/divisor+bias,0.0f,1.0f);
-        alpha=clamp(exponent_scale(sum.a,true)/(divisor*255.0f)+bias,0.0f,1.0f)*255.0f;
+        color_quotient=numerator/divisor;
+        alpha_quotient=exponent_scale(sum.a,true)/(divisor*255.0f);
     } else if(divisor_bits>0x7e800000u) {
         float inverse=1.0f/exponent_scale(config.amount,false);
         float3 numerator(exponent_scale(sum.r,false),exponent_scale(sum.g,false),exponent_scale(sum.b,false));
-        straight=clamp(fma(numerator,inverse,bias),0.0f,1.0f);
-        alpha=clamp(fma(exponent_scale(sum.a,false),inverse,bias*255.0f),0.0f,255.0f);
-    } else if(abs(bias)>as_type<float>(0x7f7fffffu)/255.0f) {
-        straight=clamp(sum.rgb/config.amount+bias,0.0f,1.0f);
-        alpha=clamp((sum.a/255.0f)/config.amount+bias,0.0f,1.0f)*255.0f;
+        color_quotient=numerator*inverse;
+        alpha_quotient=exponent_scale(sum.a,false)*inverse*(1.0f/255.0f);
     } else {
         float inverse=1.0f/config.amount;
-        straight=clamp(fma(sum.rgb,inverse,bias),0.0f,1.0f);
-        alpha=clamp(fma(sum.a,inverse,bias*255.0f),0.0f,255.0f);
+        color_quotient=sum.rgb*inverse;
+        alpha_quotient=(sum.a*inverse)*(1.0f/255.0f);
     }
-    if(config.kernel_preserve_alpha==1) alpha=float(center>>24);
-    target.write(unpack_pixel(pack_bytes(uint4(uint3(fma(straight,alpha,0.5f)),uint(alpha+0.5f)))),xy);
+    float unbounded_alpha=config.kernel_preserve_alpha==1?float(center>>24)*(1.0f/255.0f):alpha_quotient+bias;
+    float alpha=clamp(unbounded_alpha,0.0f,1.0f);
+    float3 color=color_quotient+bias*unbounded_alpha;
+    color=config.kernel_preserve_alpha==1?clamp(color,0.0f,1.0f)*alpha:clamp(color,0.0f,alpha);
+    uint result=pack_pixel(float4(color,alpha));
+    target.write(unpack_pixel(config.linear_rgb==1?filter_premul_linear_to_srgb(result):result),xy);
 }

@@ -170,6 +170,7 @@ impl<A: FilterAdapter> FilterExecutor<'_, A> {
                     target: output,
                     bounds: region,
                     operator: *operator,
+                    linear_rgb: primitive.linear_rgb,
                 }) {
                     Some(output)
                 } else {

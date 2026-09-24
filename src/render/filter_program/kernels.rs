@@ -62,6 +62,7 @@ pub(crate) enum FilterKernel<'a> {
         target: RenderTargetId,
         bounds: Bounds,
         operator: filter_model::CompositeOperator,
+        linear_rgb: bool,
     },
     DisplacementMapFilterInputs {
         input1: RenderTargetId,
@@ -105,6 +106,7 @@ pub(crate) enum FilterKernel<'a> {
         bounds: Bounds,
         matrix: &'a filter_model::ConvolveMatrix,
         kernel_offset: u32,
+        linear_rgb: bool,
     },
     DiffuseLightingToTarget {
         source: RenderTargetId,
