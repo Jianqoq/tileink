@@ -1,7 +1,7 @@
 use std::{collections::HashMap, error::Error, fmt};
 
 use peniko::{
-    Color, ColorStop, Compose, Extend, Gradient, Mix,
+    Color, ColorStop, Compose, Extend, Gradient, InterpolationAlphaSpace, Mix,
     kurbo::{Affine, BezPath, Cap, Join, Rect, Shape, Stroke},
 };
 use usvg::{Node, Paint, PaintOrder, SpreadMethod, tiny_skia_path::PathSegment};
@@ -113,22 +113,31 @@ impl SvgBuilder {
         }
     }
 
+    fn with_base_transform(&self, base_transform: Affine) -> Self {
+        Self {
+            base_transform,
+            options: self.options,
+            pattern_depth: self.pattern_depth,
+            image_depth: self.image_depth,
+        }
+    }
+
     fn push_tree(&self, canvas: &mut Canvas, tree: &usvg::Tree) -> Result<(), SvgError> {
         self.push_group(canvas, tree.root())
     }
 
     fn push_group(&self, canvas: &mut Canvas, group: &usvg::Group) -> Result<(), SvgError> {
+        let group_transform = self.base_transform * transform_to_affine(group.abs_transform());
         let filter_layers = if group.filters().is_empty() {
             Vec::new()
         } else {
-            let region_transform = self.base_transform * transform_to_affine(group.abs_transform());
-            let content_transform = region_transform
+            let content_transform = group_transform
                 * inverse_affine(transform_to_affine(group.transform()), "filter transform")?;
             svg_filter_layers(
                 self,
                 canvas,
                 group.filters(),
-                region_transform,
+                group_transform,
                 content_transform,
                 canvas.logical_width,
                 canvas.logical_height,
@@ -142,13 +151,14 @@ impl SvgBuilder {
                     canvas.logical_height,
                     canvas.scale_factor,
                     mask,
+                    group_transform,
                 )
             })
             .transpose()?;
 
         let mut pushed_layers = 0;
         if let Some(clip) = group.clip_path() {
-            pushed_layers += self.push_clip_path_layers(canvas, clip)?;
+            pushed_layers += self.push_clip_path_layers(canvas, clip, group_transform)?;
         }
 
         let layer_path = || {
@@ -207,24 +217,31 @@ impl SvgBuilder {
         height: u32,
         scale_factor: f32,
         mask: &usvg::Mask,
+        transform: Affine,
     ) -> Result<(Canvas, LayerMask), SvgError> {
         let mut mask_scene = Canvas::new(width, height, scale_factor);
+        let builder = self.with_base_transform(transform);
         if let Some(parent) = mask.mask() {
             let (parent_scene, parent_mask) =
-                self.svg_mask_layer(width, height, scale_factor, parent)?;
+                self.svg_mask_layer(width, height, scale_factor, parent, transform)?;
             mask_scene.push_mask_layer(parent_scene, parent_mask);
-            self.push_group(&mut mask_scene, mask.root())?;
+            builder.push_group(&mut mask_scene, mask.root())?;
             mask_scene.pop_layer();
         } else {
-            self.push_group(&mut mask_scene, mask.root())?;
+            builder.push_group(&mut mask_scene, mask.root())?;
         }
+        let rect = nonzero_rect_to_kurbo(mask.rect());
+        let [_, b, c, _, _, _] = transform.as_coeffs();
+        // A rotated mask region is a parallelogram, not its axis-aligned bounding box.
+        let region = if b == 0.0 && c == 0.0 {
+            Region::rect(transform.transform_rect_bbox(rect), Radius::ZERO)
+        } else {
+            Region::path(rect_path(rect), transform, self.options.tolerance)
+        };
         Ok((
             mask_scene,
             LayerMask {
-                region: transform_region(
-                    Region::rect(nonzero_rect_to_kurbo(mask.rect()), Radius::ZERO),
-                    self.base_transform,
-                ),
+                region,
                 kind: match mask.kind() {
                     usvg::MaskType::Alpha => MaskKind::Alpha,
                     usvg::MaskType::Luminance => MaskKind::Luminance,
@@ -437,10 +454,11 @@ impl SvgBuilder {
         &self,
         canvas: &mut Canvas,
         clip: &usvg::ClipPath,
+        reference_transform: Affine,
     ) -> Result<usize, SvgError> {
         let mut pushed = 0;
         if let Some(parent) = clip.clip_path() {
-            pushed += self.push_clip_path_layers(canvas, parent)?;
+            pushed += self.push_clip_path_layers(canvas, parent, reference_transform)?;
         }
 
         match self.clip_path_lowering(clip) {
@@ -457,7 +475,7 @@ impl SvgBuilder {
             ),
             ClipPathLowering::Fused { path, rule } => canvas.push_clip_layer(
                 path,
-                self.base_transform * transform_to_affine(clip.transform()),
+                reference_transform * transform_to_affine(clip.transform()),
                 rule,
                 self.options.tolerance,
             ),
@@ -467,6 +485,7 @@ impl SvgBuilder {
                     canvas.logical_height,
                     canvas.scale_factor,
                     clip,
+                    reference_transform,
                 )?;
                 canvas.push_mask_layer(mask_scene, mask);
             }
@@ -480,12 +499,13 @@ impl SvgBuilder {
         height: u32,
         scale_factor: f32,
         clip: &usvg::ClipPath,
+        reference_transform: Affine,
     ) -> Result<(Canvas, LayerMask), SvgError> {
         let mut mask_scene = Canvas::new(width, height, scale_factor);
         self.push_clip_path_mask_group(
             &mut mask_scene,
             clip.root(),
-            self.base_transform * transform_to_affine(clip.transform()),
+            reference_transform * transform_to_affine(clip.transform()),
         )?;
         Ok((
             mask_scene,
@@ -510,13 +530,7 @@ impl SvgBuilder {
         let transform = transform * transform_to_affine(group.transform());
         let mut pushed_layers = 0;
         if let Some(clip) = group.clip_path() {
-            pushed_layers += SvgBuilder {
-                options: self.options,
-                base_transform: transform,
-                pattern_depth: self.pattern_depth,
-                image_depth: self.image_depth,
-            }
-            .push_clip_path_layers(canvas, clip)?;
+            pushed_layers += self.push_clip_path_layers(canvas, clip, transform)?;
         }
 
         for child in group.children() {
@@ -612,6 +626,7 @@ impl SvgBuilder {
         opacity: f32,
         path_transform: Affine,
     ) -> Result<Brush, SvgError> {
+        // SVG gradients interpolate stop colors independently of stop opacity.
         match paint {
             Paint::Color(color) => Ok(color_opacity_to_brush(*color, opacity)),
             Paint::LinearGradient(source) => {
@@ -621,6 +636,7 @@ impl SvgBuilder {
                     (source.x2() as f64, source.y2() as f64),
                 )
                 .with_extend(spread_method(source.spread_method()))
+                .with_interpolation_alpha_space(InterpolationAlphaSpace::Unpremultiplied)
                 .with_stops(stops.as_slice());
                 let mut brush = Brush::from_gradient(&gradient);
                 let Brush::Linear(linear) = &mut brush else {
@@ -639,6 +655,7 @@ impl SvgBuilder {
                     source.r().get(),
                 )
                 .with_extend(spread_method(source.spread_method()))
+                .with_interpolation_alpha_space(InterpolationAlphaSpace::Unpremultiplied)
                 .with_stops(stops.as_slice());
                 let mut brush = Brush::from_gradient(&gradient);
                 let Brush::Radial(radial) = &mut brush else {
