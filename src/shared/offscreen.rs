@@ -683,6 +683,9 @@ fn translate_mask_to_local(mask: &Mask, local: LocalSpace) -> Mask {
 
 fn translate_filter_to_local(filter: &Filter, local: LocalSpace) -> Filter {
     match filter {
+        Filter::ProgressiveBlur(blur) => Filter::ProgressiveBlur(blur.translated(
+            peniko::kurbo::Vec2::new(-f64::from(local.surface.x0), -f64::from(local.surface.y0)),
+        )),
         Filter::Chain {
             filters,
             fixed_region,

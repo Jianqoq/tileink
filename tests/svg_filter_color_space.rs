@@ -1,6 +1,6 @@
 #![cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
 
-#[allow(dead_code, unused_imports)]
+#[allow(unused_imports)]
 #[path = "../examples/common/mod.rs"]
 mod common;
 

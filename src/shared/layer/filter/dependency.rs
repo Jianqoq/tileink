@@ -67,6 +67,9 @@ pub(crate) fn filter_input_bounds(filter: &Filter, region: &Region) -> Bounds {
 
 pub(crate) fn filter_dependency(filter: &Filter) -> FilterDependency {
     match filter {
+        // Rebuild a dirty pyramid in its stable source domain. Cropping a partial
+        // rebuild changes decimation phase and can produce seams in retained output.
+        Filter::ProgressiveBlur(_) => FilterDependency::WholeRegion,
         Filter::Chain { filters, .. } => filters
             .iter()
             .map(filter_dependency)

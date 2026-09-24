@@ -20,6 +20,7 @@ pub const FAMILIES: &[(&str, &str)] = &[
     ("filter-convolve", "filter/convolve.hlsl"),
     ("filter-resample", "filter/resample.hlsl"),
     ("filter-blur", "filter/blur.hlsl"),
+    ("filter-progressive", "filter/progressive.hlsl"),
     ("filter-lighting", "filter/lighting.hlsl"),
     ("filter-rectangle", "filter/rectangle.hlsl"),
     ("filter-path-mask", "filter/path_mask.hlsl"),

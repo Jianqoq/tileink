@@ -28,6 +28,8 @@ fn native_build_embeds_each_expected_nonempty_program() {
         "filter_downsample_region",
         "filter_upsample_region",
         "filter_blur_region",
+        "progressive_blur_reduce",
+        "progressive_blur_resolve",
         "filter_lighting_region",
         "filter_rect_mask_region",
         "filter_path_mask_region",

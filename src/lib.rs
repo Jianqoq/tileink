@@ -53,8 +53,8 @@ pub use shared::{
         filter::{
             BlurDownsampleFilter, BlurSampling, BlurUpsampleFilter, CompositeOperator,
             ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, Filter, FilterInput,
-            FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator, RectLiquidGlass,
-            SpecularLighting,
+            FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator, ProgressiveBlur,
+            RectLiquidGlass, SpecularLighting,
         },
         mask::{Mask, MaskKind},
         region::Region,

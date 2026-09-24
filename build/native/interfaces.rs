@@ -5,6 +5,8 @@ mod coarse;
 mod filter;
 #[path = "interfaces/fine.rs"]
 mod fine;
+#[path = "interfaces/progressive.rs"]
+mod progressive;
 #[path = "interfaces/scan.rs"]
 mod scan;
 #[path = "interfaces/texture.rs"]
@@ -133,6 +135,7 @@ pub fn get(family: &str) -> io::Result<Interface> {
         "pixel-math" | "geometry-math" | "fill-coverage" | "blend-math" => {
             validation::get(family, &constants)
         }
+        "filter-progressive" => progressive::get(),
         "filter-basic" => filter::basic(&constants),
         "filter-inputs" => filter::inputs(&constants),
         "filter-morphology" => filter::morphology(&constants),

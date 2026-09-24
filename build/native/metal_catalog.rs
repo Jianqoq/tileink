@@ -47,6 +47,7 @@ pub fn generate(
         ("filter-layer", "filter/layer.metal"),
         ("filter-rectangle", "filter/rectangle.metal"),
         ("filter-blur", "filter/blur.metal"),
+        ("filter-progressive", "filter/progressive.metal"),
         ("filter-blur-shared", "filter/blur_shared.metal"),
         ("filter-resample", "filter/resample.metal"),
         ("filter-displacement", "filter/displacement.metal"),

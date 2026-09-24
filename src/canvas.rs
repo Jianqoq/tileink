@@ -389,6 +389,9 @@ impl SceneOffset {
 
     fn filter(self, filter: Filter) -> Filter {
         match filter {
+            Filter::ProgressiveBlur(blur) => {
+                Filter::ProgressiveBlur(blur.translated(peniko::kurbo::Vec2::new(self.dx, self.dy)))
+            }
             Filter::Chain {
                 filters,
                 fixed_region,

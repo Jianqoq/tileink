@@ -10,6 +10,11 @@ impl<A: FilterAdapter> FilterExecutor<'_, A> {
         filter_cursors: &mut FilterCursors,
     ) -> bool {
         match filter {
+            Filter::ProgressiveBlur(blur) => self.adapter.encode(FilterKernel::ProgressiveBlur {
+                target,
+                bounds,
+                blur: *blur,
+            }),
             Filter::Graph { primitives, .. } => {
                 self.apply_filter_graph(target, bounds, primitives, filter_cursors)
             }

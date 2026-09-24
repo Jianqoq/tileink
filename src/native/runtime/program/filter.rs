@@ -130,6 +130,8 @@ pub mod resample;
 
 #[path = "filter/blur.rs"]
 pub mod blur;
+#[path = "filter/progressive/mod.rs"]
+pub(crate) mod progressive;
 
 #[path = "filter/lighting.rs"]
 pub mod lighting;

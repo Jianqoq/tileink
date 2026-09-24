@@ -260,6 +260,7 @@ impl Canvas {
                     .collect(),
                 fixed_region,
             },
+            Filter::ProgressiveBlur(blur) => Filter::ProgressiveBlur(blur.scaled(f64::from(scale))),
             Filter::RectLiquidGlass(mut glass) => {
                 glass.blur_radius = ((glass.blur_radius as f32) * scale).round().max(1.0) as u32;
                 glass.refraction_thickness *= scale;

@@ -152,6 +152,22 @@ impl ComputeBatch {
         self.reusable_surface_inner(size, 0, true)
     }
 
+    /// Lease storage for a pass that overwrites its entire logical image before
+    /// any reads. The caller must guard samples against logical bounds: spare
+    /// pooled capacity retains unspecified old pixels. Progressive pyramid copy
+    /// and reduction passes satisfy this contract, so clearing them wastes a
+    /// dispatch and full-capacity memory bandwidth on every level.
+    pub(crate) fn reusable_overwritten_surface(
+        &mut self,
+        size: [u32; 2],
+    ) -> Result<Option<ResourceId>> {
+        let Some(pool) = &self.surface_pool else {
+            return Ok(None);
+        };
+        let texture = pool.borrow_mut().acquire(size, true)?;
+        self.import_texture(&texture).map(Some)
+    }
+
     fn reusable_surface_inner(
         &mut self,
         size: [u32; 2],

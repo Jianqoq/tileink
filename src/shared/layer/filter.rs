@@ -26,6 +26,8 @@ pub type ComponentTransferTable = [u32; COMPONENT_TRANSFER_TABLE_LEN];
 
 #[derive(Clone, Debug)]
 pub enum Filter {
+    /// Smooth spatial blur using a multiscale GPU approximation.
+    ProgressiveBlur(ProgressiveBlur),
     Chain {
         filters: Vec<Filter>,
         fixed_region: bool,
@@ -523,6 +525,7 @@ pub(crate) fn filter_outset(filter: &Filter) -> i32 {
         }
         Filter::Graph { .. } => 0,
         Filter::RectLiquidGlass(glass) => glass.sample_outset(),
+        Filter::ProgressiveBlur(blur) => blur.sample_outset(),
         Filter::Blur {
             std_dev_x,
             std_dev_y,
@@ -638,4 +641,6 @@ pub enum LightSource {
 mod tests;
 
 mod dependency;
+mod progressive;
 pub(crate) use dependency::{FilterDependency, filter_dependency, filter_input_bounds};
+pub use progressive::ProgressiveBlur;

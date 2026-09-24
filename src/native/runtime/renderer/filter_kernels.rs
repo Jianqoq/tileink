@@ -15,7 +15,8 @@ impl FilterEncoding<'_, '_> {
             ClearRenderTarget { .. } => Bounds::canvas(e.targets.size().0, e.targets.size().1),
             BlurRegionPartialToTarget { output_bounds, .. } => *output_bounds,
             DownsampleRegion { low_bounds, .. } => *low_bounds,
-            ClearRenderRegion { bounds, .. }
+            ProgressiveBlur { bounds, .. }
+            | ClearRenderRegion { bounds, .. }
             | FloodRegionToTarget { bounds, .. }
             | BuildDropShadowMaskToTarget { bounds, .. }
             | SourceAlphaToTarget { bounds, .. }
@@ -47,6 +48,17 @@ impl FilterEncoding<'_, '_> {
         let tiles = self.work.as_deref();
         let image = |target| e.targets.get(target).map(Surface::image);
         match kernel {
+            ProgressiveBlur {
+                target,
+                bounds,
+                blur,
+            } => filter::progressive::encode(
+                e.batch,
+                image(target)?,
+                [c.width, c.height],
+                bounds,
+                blur,
+            ),
             ClearRenderTarget { target, color } | ClearRenderRegion { target, color, .. } => {
                 c.clear_color = color;
                 filter::encode(e.batch, BasicFilter::Clear, c, tiles, None, image(target)?)

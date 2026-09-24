@@ -12,6 +12,11 @@ pub(crate) enum ColorFilterKind {
 }
 #[derive(Debug)]
 pub(crate) enum FilterKernel<'a> {
+    ProgressiveBlur {
+        target: RenderTargetId,
+        bounds: Bounds,
+        blur: filter_model::ProgressiveBlur,
+    },
     ClearRenderTarget {
         target: RenderTargetId,
         color: u32,
