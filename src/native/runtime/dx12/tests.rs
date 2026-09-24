@@ -460,3 +460,45 @@ fn staging_reuse_preserves_in_flight_and_resized_uploads() -> Result<()> {
     assert!(device.submit_compute(&batch(128, 131)?).is_err());
     Ok(())
 }
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn completed_unused_buffers_survive_alternating_frame_sizes() -> Result<()> {
+    if super::super::isolation::run(
+        "native::runtime::dx12::tests::completed_unused_buffers_survive_alternating_frame_sizes",
+    )? {
+        return Ok(());
+    }
+    let mut device = Dx12::new(&std::env::var("TILEINK_NATIVE_GPU")?)?;
+    let batch = |sizes: &[usize]| -> Result<_> {
+        let mut batch = super::super::compute::ComputeBatch::new();
+        for &size in sizes {
+            let id = batch.buffer(vec![17; size])?;
+            batch.readback(id)?;
+        }
+        Ok(batch)
+    };
+    let a = device.submit_compute(&batch(&[4096, 128])?)?;
+    let super::work::Work::Compute(frame) = device.gpu.pending.get(&a).unwrap() else {
+        panic!("expected compute frame");
+    };
+    let large_upload = frame.uploads[0].resource.as_raw();
+    let large_storage = frame.storage[0].resource.as_raw();
+    assert_eq!(
+        device.readback_batch(&a)?,
+        vec![vec![17; 4096], vec![17; 128]]
+    );
+
+    let b = device.submit_compute(&batch(&[128])?)?;
+    assert_eq!(device.readback_batch(&b)?, vec![vec![17; 128]]);
+    let empty = device.submit_compute(&super::super::compute::ComputeBatch::new())?;
+    assert!(device.readback_batch(&empty)?.is_empty());
+    let c = device.submit_compute(&batch(&[4096])?)?;
+    let super::work::Work::Compute(frame) = device.gpu.pending.get(&c).unwrap() else {
+        panic!("expected compute frame");
+    };
+    assert_eq!(frame.uploads[0].resource.as_raw(), large_upload);
+    assert_eq!(frame.storage[0].resource.as_raw(), large_storage);
+    assert_eq!(device.readback_batch(&c)?, vec![vec![17; 4096]]);
+    Ok(())
+}

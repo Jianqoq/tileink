@@ -22,15 +22,41 @@ impl From<ID3D12Resource> for Buffer {
 #[derive(Clone, Default)]
 pub(super) struct Pool {
     pub(super) frames: Vec<Vec<Buffer>>,
+    idle: Vec<Buffer>,
+    peak_frame_capacity: u64,
 }
 
 impl Pool {
     pub fn acquire(&mut self) -> Available {
-        self.frames.pop().unwrap_or_default().into()
+        let mut resources = self.frames.pop().unwrap_or_default();
+        resources.append(&mut self.idle);
+        resources.into()
+    }
+
+    pub fn release_unused(&mut self, available: Available) {
+        // Completed buffers skipped by a smaller frame remain available for a
+        // later size instead of being destroyed and reallocated on every resize.
+        self.idle.extend(available.0);
+        let budget = self.peak_frame_capacity.saturating_mul(3);
+        let mut total: u64 = self.idle.iter().map(|buffer| buffer.capacity).sum();
+        while self.idle.len() > 256 || total > budget {
+            let (index, capacity) = self
+                .idle
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, buffer)| buffer.capacity)
+                .map(|(index, buffer)| (index, buffer.capacity))
+                .expect("idle pool exceeds budget");
+            total -= capacity;
+            self.idle.swap_remove(index);
+        }
     }
 
     pub fn retire(&mut self, resources: Vec<Buffer>) {
         if !resources.is_empty() {
+            self.peak_frame_capacity = self
+                .peak_frame_capacity
+                .max(resources.iter().map(|buffer| buffer.capacity).sum());
             self.frames.push(resources);
         }
     }

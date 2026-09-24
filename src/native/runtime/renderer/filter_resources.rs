@@ -13,6 +13,7 @@ use crate::shared::{
     },
 };
 
+#[derive(Default)]
 pub(super) struct FilterResources {
     pub(super) transfers: Option<transfer::TransferTables>,
     pub(super) convolves: Option<convolve::Kernels>,

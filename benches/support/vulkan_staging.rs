@@ -65,7 +65,7 @@ pub fn benchmark(c: &mut Criterion) {
     group.warm_up_time(Duration::from_secs(1));
     group.measurement_time(Duration::from_secs(3));
     for reuse in [false, true] {
-        let mut cached = None;
+        let mut cached = Vec::new();
         group.bench_function(if reuse { "reuse" } else { "allocate" }, |b| {
             b.iter(|| {
                 // Cross a capacity boundary and shrink, as Replay dimensions change.
@@ -78,7 +78,7 @@ pub fn benchmark(c: &mut Criterion) {
                             staging::Staging::prepare(&device, &memory, &plan, &mut cached)
                                 .unwrap();
                         black_box(&storage);
-                        cached = Some(storage);
+                        cached.push(storage);
                     } else {
                         let storage = compute_memory::Arena::new(
                             &device,

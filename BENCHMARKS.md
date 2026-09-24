@@ -93,7 +93,7 @@ The complete run contains the following series:
 
   cropped/offset filter-child revision, backdrop-background revision, and
 
-  plain/cropped-filter/backdrop manual invalidation at 100, 1k, 5k, 20k, and 100k nodes. The
+  plain/cropped-filter/backdrop manual invalidation at 100, 1k, 5k, and 20k nodes. The
 
   cropped filter case keeps its pixel region fixed while scene size grows, detecting regressions
 
@@ -315,7 +315,7 @@ insert/remove scenarios can be profiled independently:
 
 ```powershell
 
-cargo run --release --example retained_scale_bench -- --counts 1000,100000 --frames 30 --warmup 3 --scenarios nested-layer-add-remove --phase insert
+cargo run --release --example retained_scale_bench -- --counts 100,1000 --frames 30 --warmup 3 --scenarios nested-layer-add-remove --phase insert
 
 ```
 

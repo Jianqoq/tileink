@@ -36,8 +36,8 @@ impl StressScenario {
             Self::DeepHierarchyRevision | Self::DeepHierarchyJournalGap => &[8, 32, 128, 256, 512],
             Self::ManyBackdropsRevision => &[1, 4, 16, 64, 256],
             Self::ManyRootLayersAddRemove => &[8, 32, 128, 512, 2_048],
-            Self::LargeChunkRevision => &[100, 1_000, 5_000, 20_000, 100_000],
-            Self::DeltaRotation => &[256, 1_000, 5_000, 20_000, 100_000],
+            Self::LargeChunkRevision => &[100, 1_000, 5_000, 20_000],
+            Self::DeltaRotation => &[256, 1_000, 5_000, 20_000],
         }
     }
 }

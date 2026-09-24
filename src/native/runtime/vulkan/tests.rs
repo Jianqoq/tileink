@@ -119,7 +119,10 @@ fn staging_reuse_preserves_in_flight_and_resized_uploads() -> Result<()> {
     )? {
         return Ok(());
     }
-    let mut device = Vulkan::new(&std::env::var("TILEINK_NATIVE_GPU")?)?;
+    let mut device = Vulkan::with_options(&crate::native::NativeContextOptions {
+        physical_adapter: Some(std::env::var("TILEINK_NATIVE_GPU")?),
+        validation: false,
+    })?;
     let messages = device.validation_messages();
     let batch = |size, value| -> Result<_> {
         let mut batch = super::super::compute::ComputeBatch::new();
@@ -137,22 +140,26 @@ fn staging_reuse_preserves_in_flight_and_resized_uploads() -> Result<()> {
     let b = device.submit_compute(&batch(4096, 29)?)?;
     let first = handle(&device, &a);
     assert_ne!(first, handle(&device, &b));
-    assert!(device.frame_cache.staging.is_none());
+    assert!(device.frame_cache.staging.is_empty());
     assert_eq!(device.readback_batch(&a)?, vec![vec![17; 4096]]);
     let c = device.submit_compute(&batch(2048, 53)?)?;
     assert_eq!(first, handle(&device, &c));
     assert_eq!(device.readback_batch(&c)?, vec![vec![53; 2048]]);
     assert_eq!(device.readback_batch(&b)?, vec![vec![29; 4096]]);
+    // Both completed burst slots must remain reusable. Discarding one here
+    // forces a fresh Vulkan allocation on every later two-frame burst.
+    assert_eq!(device.frame_cache.staging.len(), 2);
     for (size, value) in [(8192, 71), (128, 91), (16384, 113)] {
         let ticket = device.submit_compute(&batch(size, value)?)?;
         assert_eq!(device.readback_batch(&ticket)?, vec![vec![value; size]]);
     }
     let empty = device.submit_compute(&super::super::compute::ComputeBatch::new())?;
     assert!(device.readback_batch(&empty)?.is_empty());
-    assert!(device.frame_cache.staging.is_some());
+    assert!(!device.frame_cache.staging.is_empty());
+    let completed_slots = device.frame_cache.staging.len();
     device.injected_submit_error = Some(vk::Result::ERROR_OUT_OF_DEVICE_MEMORY);
     assert!(device.submit_compute(&batch(128, 127)?).is_err());
-    assert!(device.frame_cache.staging.is_none());
+    assert_eq!(device.frame_cache.staging.len(), completed_slots - 1);
     assert_eq!(device.pending_count(), 0);
     let retry = device.submit_compute(&batch(128, 131)?)?;
     assert_eq!(device.readback_batch(&retry)?, vec![vec![131; 128]]);

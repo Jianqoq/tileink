@@ -138,9 +138,24 @@ impl NativeRenderer {
             let materializer = self.persistent_scene.as_mut().unwrap();
             let unchanged = materializer.version() == scene.version();
             let changes = scene.changes_since(materializer.version());
+            let plan_may_change = !unchanged
+                && changes
+                    .as_ref()
+                    .is_none_or(|changes| changes.topology_changed || changes.surface_changed);
+            if plan_may_change {
+                // The recording cache otherwise keeps a second Rc to the previous plan.
+                // A single layer edit would then copy the entire plan in materializer.update.
+                self.recording.release_retained_plan();
+            }
             let changed = materializer.update(scene, changes);
+            let canvas = materializer.canvas();
+            if plan_may_change {
+                // Restore the patched plan after the materializer has unique ownership.
+                // Preparation can then retain its stack-depth metadata for unchanged structure.
+                self.recording.install_retained_plan(&canvas);
+            }
             let selected = self.recording.retained.select_materialized(
-                materializer.canvas(),
+                canvas,
                 unchanged || !changed,
                 scene.id(),
                 scene.version(),

@@ -151,6 +151,16 @@ fn retained_opacity_updates_match_fresh_render() -> Result<(), Box<dyn std::erro
         )
         .commit()?;
     renderer.render_retained(&scene)?.wait()?;
+    let original_plan = Rc::as_ptr(
+        renderer
+            .persistent_scene
+            .as_ref()
+            .unwrap()
+            .canvas()
+            .compiled_plan
+            .as_ref()
+            .unwrap(),
+    );
     // Changing only the layer must invalidate its composited output, even when
     // the child geometry and its cached content remain unchanged.
     for opacity in [0.25, 0.75, 0.0, 1.0] {
@@ -159,6 +169,20 @@ fn retained_opacity_updates_match_fresh_render() -> Result<(), Box<dyn std::erro
             .update_layer(layer, descriptor(opacity))
             .commit()?;
         let actual = renderer.render_retained_to_image(&scene)?.readback()?;
+        let updated_plan = Rc::as_ptr(
+            renderer
+                .persistent_scene
+                .as_ref()
+                .unwrap()
+                .canvas()
+                .compiled_plan
+                .as_ref()
+                .unwrap(),
+        );
+        assert_eq!(
+            updated_plan, original_plan,
+            "opacity updates must patch the plan in place"
+        );
         let mut fresh = NativeRenderer::with_context(&context, 16, 16)?;
         let expected = fresh.render_retained_to_image(&scene)?.readback()?;
         assert_eq!(actual.pixels, expected.pixels, "layer opacity {opacity}");
@@ -277,6 +301,40 @@ fn raster_invalidation_preserves_pixels_across_content_updates()
         let actual = renderer.render_retained_to_image(&scene)?.readback()?;
         let mut fresh = NativeRenderer::with_context(&context, 32, 32)?;
         let expected = fresh.render_retained_to_image(&scene)?.readback()?;
+        assert_eq!(actual.pixels, expected.pixels, "frame {frame}");
+    }
+    Ok(())
+}
+
+#[test]
+#[cfg(any(feature = "dx12", feature = "vulkan"))]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn dense_clip_slots_survive_reuse_mutation_and_plain_frame()
+-> Result<(), Box<dyn std::error::Error>> {
+    use peniko::kurbo::Rect;
+    let context = context()?;
+    let mut renderer = NativeRenderer::with_context(&context, 64, 64)?;
+    for (frame, (clip_width, color)) in [
+        (Some(48.0), peniko::Color::from_rgb8(220, 30, 40)),
+        (Some(48.0), peniko::Color::from_rgb8(220, 30, 40)),
+        (Some(32.0), peniko::Color::from_rgb8(30, 40, 220)),
+        (None, peniko::Color::from_rgb8(30, 220, 40)),
+        (Some(48.0), peniko::Color::from_rgb8(220, 30, 40)),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut canvas = Canvas::new(64, 64, 1.0);
+        if let Some(width) = clip_width {
+            canvas.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, width, 64.0), crate::Radius::ZERO);
+        }
+        canvas.push_rect(Rect::new(0.0, 0.0, 64.0, 64.0), crate::Radius::ZERO, color);
+        if clip_width.is_some() {
+            canvas.pop_layer();
+        }
+        let actual = renderer.render_to_image(&canvas)?.readback()?;
+        let mut fresh = NativeRenderer::with_context(&context, 64, 64)?;
+        let expected = fresh.render_to_image(&canvas)?.readback()?;
         assert_eq!(actual.pixels, expected.pixels, "frame {frame}");
     }
     Ok(())

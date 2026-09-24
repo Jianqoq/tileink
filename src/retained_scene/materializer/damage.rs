@@ -72,10 +72,18 @@ impl PersistentSceneMaterializer {
         scene: &RetainedScene,
         id: RetainedNodeId,
     ) -> Option<Bounds> {
+        self.fixed_translation_bounds_for_node(scene, scene.nodes.get(&id)?)
+    }
+
+    fn fixed_translation_bounds_for_node(
+        &self,
+        scene: &RetainedScene,
+        node: &SceneNode,
+    ) -> Option<Bounds> {
         let NodeKind::Scene {
             translation_damage: Some(rect),
             ..
-        } = &scene.nodes.get(&id)?.kind
+        } = &node.kind
         else {
             return None;
         };
@@ -400,7 +408,7 @@ impl PersistentSceneMaterializer {
                 self.rebuild_frame_override(scene);
                 return;
             };
-            let fixed_bounds = self.fixed_translation_bounds(scene, id);
+            let fixed_bounds = self.fixed_translation_bounds_for_node(scene, node);
             // A bounded translation already supplies the conservative output and spatial domain.
             // Keep the last exact raw bound cached: walking every command in every translated
             // child only to discard the result in `retained_output_bounds` made chart p95 scale
@@ -475,11 +483,8 @@ impl PersistentSceneMaterializer {
         for patch in &patches {
             if patch.old.map(|node| node.bounds) != patch.new.map(|node| node.bounds) {
                 let id = patch.new.unwrap().id;
-                self.set_node_bounds_spatial(
-                    id,
-                    patch.new.map(|node| node.bounds),
-                    self.fixed_translation_bounds(scene, id),
-                );
+                // The patch already carries this node's fixed translation domain.
+                self.set_node_bounds_spatial(id, patch.new.map(|node| node.bounds), patch.damage);
             }
         }
         frame.version = Some(scene.version.get());

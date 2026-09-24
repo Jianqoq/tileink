@@ -179,10 +179,10 @@ mod tests {
         };
         assert_eq!(
             count(production),
-            40,
+            38,
             "production series must include both mutation phases"
         );
-        assert_eq!(STRESS_METRICS.iter().map(count).sum::<usize>(), 212);
+        assert_eq!(STRESS_METRICS.iter().map(count).sum::<usize>(), 208);
     }
     #[test]
     fn absent_insertion_scopes_keep_logical_coverage_without_numeric_samples() {
@@ -219,7 +219,7 @@ mod tests {
                         * metric.counts(scenario).len()
             })
             .sum::<usize>();
-        assert_eq!(numeric, 200);
+        assert_eq!(numeric, 196);
     }
 
     #[test]

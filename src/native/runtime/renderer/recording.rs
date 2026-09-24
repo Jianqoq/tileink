@@ -100,6 +100,14 @@ pub(crate) struct Recording {
 }
 
 impl Recording {
+    pub(crate) fn release_retained_plan(&mut self) {
+        self.scene.release_retained_plan();
+    }
+
+    pub(crate) fn install_retained_plan(&mut self, canvas: &Canvas) {
+        self.scene.install_retained_plan(canvas);
+    }
+
     pub(crate) fn set_text_environment(&mut self, context: Option<&TextContext>) {
         let environment =
             context.map(|context| (context.raster_options(), context.cache_generation()));

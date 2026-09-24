@@ -601,6 +601,9 @@ fn content_revision_reuses_chunk_canvas_storage() {
     let mut materializer = PersistentSceneMaterializer::new(&scene);
     let chunk_storage = std::ptr::from_ref(&materializer.chunks[&child]);
     let storage = std::ptr::from_ref(&materializer.chunks[&child].canvas);
+    let plan = materializer.chunks[&child]
+        .canvas
+        .execution_plan_fingerprint();
 
     scene
         .transaction()
@@ -616,6 +619,15 @@ fn content_revision_reuses_chunk_canvas_storage() {
         std::ptr::from_ref(&materializer.chunks[&child].canvas),
         storage
     );
+    assert_eq!(
+        materializer.chunks[&child]
+            .canvas
+            .execution_plan_fingerprint(),
+        plan
+    );
+    assert!(materializer.chunks[&child].backdrop_dependencies.is_empty());
+    assert!(!materializer.nonlocal_dependencies.contains(&child));
+    assert!(!materializer.surface_dependent_plans.contains(&child));
     assert_eq!(materializer.chunks[&child].generation, 1);
 }
 
@@ -1379,6 +1391,64 @@ fn scene_content_replacement_refreshes_embedded_backdrop_index() {
     assert!(materializer.dependency_free);
     assert!(!materializer.nonlocal_dependencies.contains(&child));
     assert!(!materializer.surface_dependent_plans.contains(&child));
+}
+
+#[test]
+fn same_plan_content_revision_keeps_embedded_backdrop_index() {
+    let root = RetainedNodeId::for_owner(60_010);
+    let child = RetainedNodeId::for_owner(60_011);
+    let backdrop_with_color = |color| {
+        let mut canvas = Canvas::new(16, 16, 1.0);
+        canvas.push_backdrop_layer(
+            Filter::Opacity(0.5),
+            Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::ZERO),
+        );
+        canvas.pop_layer();
+        canvas.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::ZERO, color);
+        Rc::new(canvas)
+    };
+    let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            child,
+            backdrop_with_color(Color::WHITE),
+            Affine::translate((8.0, 12.0)),
+        )
+        .commit()
+        .unwrap();
+    let mut materializer = PersistentSceneMaterializer::new(&scene);
+    let plan = materializer.chunks[&child]
+        .canvas
+        .execution_plan_fingerprint();
+
+    scene
+        .transaction()
+        .replace_scene(child, backdrop_with_color(Color::BLACK))
+        .commit()
+        .unwrap();
+    assert!(update_materializer(&mut materializer, &scene));
+    assert_eq!(
+        materializer.chunks[&child]
+            .canvas
+            .execution_plan_fingerprint(),
+        plan
+    );
+    let rebuilt = PersistentSceneMaterializer::new(&scene);
+    assert_eq!(
+        materializer.nonlocal_dependencies,
+        rebuilt.nonlocal_dependencies
+    );
+    assert_eq!(
+        materializer.surface_dependent_plans,
+        rebuilt.surface_dependent_plans
+    );
+    assert_eq!(
+        materializer.chunks[&child].backdrop_dependencies[0].output,
+        rebuilt.chunks[&child].backdrop_dependencies[0].output,
+    );
 }
 
 #[test]

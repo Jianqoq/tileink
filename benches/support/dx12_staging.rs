@@ -56,9 +56,10 @@ pub fn benchmark(c: &mut Criterion) {
                 for size in [15, 17, 16] {
                     let contents = black_box(&bytes[..size * 1024 * 1024]);
                     if reuse {
-                        let resource =
-                            staging::prepare(&device, contents, &mut cached.acquire()).unwrap();
+                        let mut available = cached.acquire();
+                        let resource = staging::prepare(&device, contents, &mut available).unwrap();
                         black_box(&resource);
+                        cached.release_unused(available);
                         cached.retire(vec![resource]);
                     } else {
                         let resource = buffer::create(
@@ -96,6 +97,7 @@ pub fn benchmark(c: &mut Criterion) {
                                 .unwrap(),
                         );
                     }
+                    pool.release_unused(available);
                     pending.push(uploads);
                 }
                 black_box(&pending);
@@ -138,6 +140,7 @@ pub fn benchmark(c: &mut Criterion) {
                 }
                 black_box(&next);
                 if reuse {
+                    cached.release_unused(previous);
                     cached.retire(next);
                 }
             });

@@ -10,7 +10,6 @@ use crate::{
     shared::{
         draw_record::DrawRecord,
         execution::{ExecPlan, LayerStackEntry},
-        gpu_coarse::LayerStackRecord,
         gpu_coarse::{
             coarse_work_tile_draw_index_word_offset, coarse_work_tile_draw_record_word_offset,
         },
@@ -398,11 +397,7 @@ impl WgpuSceneBuffers {
         layer_stack: &[LayerStackEntry],
         staging: &mut SceneUploadStaging,
     ) -> usize {
-        staging.layer_stack.clear();
-        staging.layer_stack.reserve(layer_stack.len());
-        staging
-            .layer_stack
-            .extend(layer_stack.iter().copied().map(LayerStackRecord::from));
+        staging.refresh_layer_stack(layer_stack, None);
         self.plan_layer_stack.upload_cached(
             device,
             queue,
@@ -419,13 +414,13 @@ impl WgpuSceneBuffers {
         ranges: &[std::ops::Range<usize>],
         staging: &mut SceneUploadStaging,
     ) -> usize {
-        if staging.layer_stack.len() != layer_stack.len() {
-            return self.upload_plan_layer_stack(device, queue, layer_stack, staging);
-        }
-        for range in ranges {
-            for index in range.clone() {
-                staging.layer_stack[index] = LayerStackRecord::from(layer_stack[index]);
-            }
+        if staging.refresh_layer_stack(layer_stack, Some(ranges)) {
+            return self.plan_layer_stack.upload_cached(
+                device,
+                queue,
+                "tileink wgpu canvas plan layer stack",
+                &staging.layer_stack,
+            );
         }
         self.plan_layer_stack.upload_ranges(
             device,

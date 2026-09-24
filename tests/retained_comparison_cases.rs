@@ -2,12 +2,16 @@
 mod cases;
 
 #[test]
-fn inventory_includes_every_legacy_scale_ratio_and_stress_size() {
+fn inventory_uses_the_selected_scale_ratios_and_stress_sizes() {
     let all = cases::Case::all();
-    assert_eq!(all.len(), 25 * 5 + 26 + 30);
+    assert_eq!(all.len(), 25 * cases::COUNTS.len() + 26 + 28);
     let names: std::collections::HashSet<_> = all.iter().map(|case| case.name()).collect();
     assert_eq!(names.len(), all.len());
-    assert_eq!(all.iter().filter(|case| case.rotating()).count(), 5);
+    assert!(names.iter().all(|name| !name.contains("100000")));
+    assert_eq!(
+        all.iter().filter(|case| case.rotating()).count(),
+        cases::COUNTS.len()
+    );
 }
 
 #[test]

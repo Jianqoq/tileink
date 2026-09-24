@@ -54,6 +54,30 @@ impl Gpu {
             .unwrap();
     }
 
+    pub fn profile_immediate(&mut self, canvas: &tileink::Canvas, target: &Target) -> [u64; 2] {
+        let start = std::time::Instant::now();
+        #[cfg(feature = "wgpu")]
+        self.renderer
+            .render_to_wgpu_texture(canvas, &target.texture)
+            .unwrap();
+        #[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
+        let submission = self
+            .renderer
+            .render_to_texture(canvas, &target.texture)
+            .unwrap();
+        let submitted = start.elapsed();
+        #[cfg(feature = "wgpu")]
+        self.device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .unwrap();
+        #[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
+        submission.wait().unwrap();
+        [
+            submitted.as_nanos() as u64,
+            (start.elapsed() - submitted).as_nanos() as u64,
+        ]
+    }
+
     pub fn image_target(&self, target: &Target) -> tileink::Image {
         #[cfg(feature = "wgpu")]
         {

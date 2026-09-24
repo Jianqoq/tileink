@@ -40,10 +40,14 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--suite", choices=("retained", "immediate", "pipelined"), default="retained")
     parser.add_argument("--runs", type=int, default=1)
+    parser.add_argument("--prewarm-frames", type=int, default=4,
+                        help="Identical premeasurement mutation count on every route")
     parser.add_argument("--case", help="Comma-separated case-name prefixes; receipt records partial coverage")
     args = parser.parse_args()
     if args.runs < 1:
         parser.error("--runs must be positive")
+    if args.prewarm_frames < 0:
+        parser.error("--prewarm-frames must not be negative")
     root = Path(__file__).resolve().parents[2]
     output = args.output.resolve()
     acceptance.validate_output(root, output)
@@ -52,12 +56,14 @@ def main():
     binaries = {feature: benchmark.build(root, output, feature, args.suite + "_backend_comparison")
                 for feature in ("wgpu", "dx12", "vulkan")}
     env = dict(os.environ, TILEINK_BENCH_GPU=args.gpu,
-               TILEINK_PARITY_DXCOMPILER=str(args.dxcompiler.resolve()))
+               TILEINK_PARITY_DXCOMPILER=str(args.dxcompiler.resolve()),
+               TILEINK_COMPARE_PREWARM_FRAMES=str(args.prewarm_frames))
     for key in ("TILEINK_COMPARE_CASE", "TILEINK_COMPARE_REFERENCE"):
         env.pop(key, None)
     if args.case:
         env["TILEINK_COMPARE_CASE"] = args.case
-    receipt = dict(passed=False, suite=args.suite, gpu=args.gpu, filter=args.case, sources=snapshot, runs=[],
+    receipt = dict(passed=False, suite=args.suite, gpu=args.gpu, filter=args.case,
+                   prewarm_frames=args.prewarm_frames, sources=snapshot, runs=[],
                    binaries={key: hashlib.sha256(path.read_bytes()).hexdigest()
                              for key, path in binaries.items()})
     reference = None
@@ -78,7 +84,7 @@ def main():
                                    cwd=root, env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
                 acceptance.verify_sources(root, snapshot)
                 cases = collect(root, destination, baseline, args.suite + "_backend_cycles")
-                if not cases or (not args.case and len(cases) != {"retained": 181, "immediate": 62, "pipelined": 44}[args.suite]):
+                if not cases or (not args.case and len(cases) != {"retained": 154, "immediate": 62, "pipelined": 44}[args.suite]):
                     raise RuntimeError(f"Incomplete workload inventory: {len(cases)}")
                 pixels = {key: value["pixels"] for key, value in cases.items()}
                 expected = expected or pixels

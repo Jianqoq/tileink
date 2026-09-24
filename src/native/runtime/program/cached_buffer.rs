@@ -6,12 +6,22 @@ use crate::native::runtime::{
 };
 use std::{cell::Cell, ops::Range, rc::Rc};
 
+// Vulkan copy regions and DX12 scatter dispatches have fixed GPU work per
+// patch. A dense journal is cheaper as one contiguous transfer even if it
+// includes some unchanged bytes.
+const COPY_REGION_OVERHEAD_BYTES: usize = 128;
+
 #[derive(Default)]
 pub(crate) struct CachedBuffer {
     buffer: Option<Buffer>,
     len: usize,
     accepted: Option<Rc<Cell<bool>>>,
+    cached_upload: Vec<u8>,
 }
+
+#[cfg(all(test, any(feature = "dx12", feature = "vulkan")))]
+#[path = "cached_buffer_tests.rs"]
+mod tests;
 impl CachedBuffer {
     /// GPU work is initialized once. The caller's scan/coarse/fine passes must
     /// overwrite every value they consume; previous frame outputs are not cleared
@@ -132,16 +142,30 @@ impl CachedBuffer {
         let buffer = self.buffer.as_ref().unwrap();
         // CPU preparation may have advanced before recording/submit failed. Only
         // accepted uploads allow the next dirty delta to depend on prior contents.
-        let full = !buffer.state.initialized.get()
-            || self
+        let reusable = buffer.state.initialized.get()
+            && self
                 .accepted
                 .as_ref()
-                .is_none_or(|accepted| !accepted.get())
-            || dirty.is_none();
-        let id = if full {
+                .is_some_and(|accepted| accepted.get());
+        let unchanged = reusable && dirty.is_none() && bytes == self.cached_upload;
+        let id = if unchanged {
+            batch.import_buffer(buffer, &[])?
+        } else if !reusable || dirty.is_none() {
             let mut complete = vec![0; buffer.state.size];
             complete[..bytes.len()].copy_from_slice(bytes);
             batch.import_buffer(buffer, &[(0, &complete)])?
+        } else if dirty.is_some_and(|ranges| {
+            !bytes.is_empty()
+                && ranges.iter().fold(0usize, |cost, range| {
+                    cost.saturating_add(
+                        range
+                            .len()
+                            .saturating_mul(size_of::<T>())
+                            .saturating_add(COPY_REGION_OVERHEAD_BYTES),
+                    )
+                }) >= bytes.len()
+        }) {
+            batch.import_buffer(buffer, &[(0, bytes)])?
         } else {
             let ranges = crate::render::upload::ranges::changed_ranges(dirty, self.len, data.len());
             let updates: Vec<_> = ranges
@@ -159,6 +183,12 @@ impl CachedBuffer {
         };
         self.accepted = Some(upload.accepted.clone());
         self.len = data.len();
+        if !unchanged {
+            self.cached_upload.clear();
+            if dirty.is_none() {
+                self.cached_upload.extend_from_slice(bytes);
+            }
+        }
         Ok(id)
     }
 }

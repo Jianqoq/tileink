@@ -1213,11 +1213,13 @@ impl PersistentSceneMaterializer {
                             plan_dirty: moved || old_plan != new_plan,
                             transform_only: !moved,
                         },
+                        None,
                         false,
                     );
                 }
 
                 let old_plan = chunk.plan_fingerprint;
+                let old_nonlocal = !chunk.backdrop_dependencies.is_empty();
                 let old_lengths = SceneChunkLengths::from_canvas(&chunk.canvas);
                 Self::remove_chunk_resources(resource_refs, canvas, &chunk.canvas.scene_images);
                 Self::encode_node_into(scene, node, chunk.canvas.edit());
@@ -1271,21 +1273,41 @@ impl PersistentSceneMaterializer {
                     chunk.local_draw_order = metadata.local_draw_order;
                 }
                 chunk.plan_fingerprint = new_plan;
-                chunk.backdrop_dependencies = backdrop_dependencies(&chunk.canvas);
+                // An unchanged command topology cannot introduce a Backdrop. Existing
+                // Backdrops still refresh their bounds when their content changes.
+                if old_plan != new_plan || old_nonlocal {
+                    chunk.backdrop_dependencies = backdrop_dependencies(&chunk.canvas);
+                }
+                let new_nonlocal = !chunk.backdrop_dependencies.is_empty();
                 Self::add_chunk_resources(resource_refs, canvas, &chunk.canvas.scene_images);
                 Self::remap_chunk_data(arenas, chunk, true);
+                // Geometry can change within an existing dependency domain, but membership
+                // changes only when backdrop presence or command topology changes. Avoid
+                // two hash-index updates for every ordinary content revision.
                 (
                     NodeRebuild {
                         plan_dirty: moved || old_plan != new_plan,
                         transform_only: false,
                     },
-                    true,
+                    (old_nonlocal != new_nonlocal).then_some(new_nonlocal),
+                    old_plan != new_plan,
                 )
             })
         };
-        if let Some((updated, dependencies_changed)) = updated {
-            if dependencies_changed {
-                self.refresh_chunk_dependencies(id);
+        if let Some((updated, nonlocal_changed, plan_changed)) = updated {
+            if let Some(nonlocal) = nonlocal_changed {
+                if nonlocal {
+                    self.nonlocal_dependencies.insert(id);
+                } else {
+                    self.nonlocal_dependencies.remove(&id);
+                }
+            }
+            if plan_changed {
+                if chunk_has_surface_dependent_plan(&self.chunks[&id].canvas) {
+                    self.surface_dependent_plans.insert(id);
+                } else {
+                    self.surface_dependent_plans.remove(&id);
+                }
             }
             return updated;
         }

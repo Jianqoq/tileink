@@ -4,6 +4,70 @@ use crate::native::runtime::compute::ComputeBatch;
 use peniko::kurbo::{Affine, Rect, Shape};
 
 #[test]
+fn opacity_only_stacks_need_no_clip_dispatch() -> super::super::Result<()> {
+    let mut canvas = Canvas::new(64, 64, 1.0);
+    let rect = Rect::new(0.0, 0.0, 64.0, 64.0);
+    for _ in 0..128 {
+        canvas.push_opacity_layer(rect.to_path(0.1), Affine::IDENTITY, 0.1, 0.5);
+        canvas.push_rect(rect, crate::Radius::ZERO, peniko::Color::BLACK);
+        canvas.pop_layer();
+    }
+    let mut cache = SceneCache::default();
+    let scene = cache.record(&mut ComputeBatch::new(), &canvas, None, None, 65535)?;
+    assert_eq!(
+        crate::shared::gpu_plan::plan_stack_depths(scene.plan()).0,
+        0
+    );
+    assert!(scene.clip_dispatch.ranges.is_empty());
+    assert!(scene.clip_dispatch.data.is_empty());
+    assert!(!scene.clip_dispatch.preallocated);
+    Ok(())
+}
+
+#[test]
+#[cfg(any(feature = "dx12", feature = "vulkan"))]
+fn broad_clip_only_schedules_tiles_with_child_draws() -> super::super::Result<()> {
+    let mut canvas = Canvas::new(512, 512, 1.0);
+    canvas.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 512.0, 512.0), crate::Radius::ZERO);
+    for rect in [
+        Rect::new(17.0, 17.0, 31.0, 31.0),
+        Rect::new(481.0, 481.0, 495.0, 495.0),
+    ] {
+        canvas.push_rect(rect, crate::Radius::ZERO, peniko::Color::BLACK);
+    }
+    canvas.pop_layer();
+    let mut cache = SceneCache::default();
+    let scene = cache.record(&mut ComputeBatch::new(), &canvas, None, None, 65535)?;
+    let dispatch = ClipDispatch::new(
+        &canvas,
+        scene.plan(),
+        None,
+        cache.staging.tile_draw_bins.upload_records(),
+        scene.lengths,
+        1,
+    )?;
+    assert_eq!(dispatch.data, [33, 990]);
+    let content = [(17, 17, 31, 31), (481, 481, 495, 495)];
+    assert_eq!(
+        tiles(
+            &canvas,
+            scene.plan(),
+            0..1,
+            Some(&[0, 1, 2, 3, 33, 990]),
+            Some(&content)
+        ),
+        None
+    );
+    // Retained damage may expose old content outside the current
+    // child draw bounds when a node is reparented into this clip.
+    assert_eq!(
+        tiles(&canvas, scene.plan(), 0..1, Some(&[0]), Some(&content)),
+        Some(vec![0])
+    );
+    Ok(())
+}
+
+#[test]
 fn small_clip_limits_dispatch_and_intersects_damage() {
     let mut canvas = Canvas::new(1280, 800, 1.0);
     canvas.push_clip_sdf_rect_layer(Rect::new(17.0, 17.0, 31.0, 31.0), crate::Radius::ZERO);
@@ -15,13 +79,59 @@ fn small_clip_limits_dispatch_and_intersects_damage() {
     canvas.pop_layer();
     let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
     let expected = 1280 / TILE_SIZE + 1;
-    assert_eq!(tiles(&canvas, &plan, 0..1, None), Some(vec![expected]));
     assert_eq!(
-        tiles(&canvas, &plan, 0..1, Some(&[0, expected])),
+        tiles(&canvas, &plan, 0..1, None, None),
         Some(vec![expected])
     );
-    assert_eq!(tiles(&canvas, &plan, 0..1, Some(&[0])), Some(vec![]));
-    assert_eq!(tiles(&canvas, &plan, 0..0, None), None);
+    assert_eq!(
+        tiles(&canvas, &plan, 0..1, Some(&[0, expected]), None),
+        Some(vec![expected])
+    );
+    assert_eq!(tiles(&canvas, &plan, 0..1, Some(&[0]), None), Some(vec![]));
+    // A retained clip's batch can be empty while later draws still
+    // consume its mask after a scene reparent.
+    assert_eq!(
+        tiles(&canvas, &plan, 0..1, None, Some(&[])),
+        Some(vec![expected])
+    );
+    assert_eq!(tiles(&canvas, &plan, 0..0, None, None), None);
+}
+
+#[test]
+fn broad_clip_keeps_dense_binning() {
+    let mut canvas = Canvas::new(512, 512, 1.0);
+    canvas.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 384.0, 512.0), crate::Radius::ZERO);
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 512.0, 512.0),
+        crate::Radius::ZERO,
+        peniko::Color::BLACK,
+    );
+    canvas.pop_layer();
+    let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+    assert_eq!(tiles(&canvas, &plan, 0..1, None, None), None);
+}
+
+#[test]
+#[cfg(any(feature = "dx12", feature = "vulkan"))]
+fn broad_pure_clip_uses_one_preallocated_dense_emit() -> super::super::Result<()> {
+    let mut canvas = Canvas::new(512, 512, 1.0);
+    canvas.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 384.0, 512.0), crate::Radius::ZERO);
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 512.0, 512.0),
+        crate::Radius::ZERO,
+        peniko::Color::BLACK,
+    );
+    canvas.pop_layer();
+    let mut cache = SceneCache::default();
+    let mut batch = ComputeBatch::new();
+    let scene = cache.record(&mut batch, &canvas, None, None, 65535)?;
+    assert!(scene.clip_dispatch.ranges.is_empty());
+    assert!(scene.clip_dispatch.preallocated);
+    let before = batch.passes().len();
+    scene.encode_coarse(&mut batch, 0..1, 0..1, true, 65535)?;
+    assert_eq!(batch.passes().len() - before, 1);
+    assert_eq!(batch.passes()[before].shader.entry, "coarse_emit_bins");
+    Ok(())
 }
 
 #[test]
@@ -104,7 +214,7 @@ fn nested_disjoint_clips_have_no_tiles() {
         peniko::Color::BLACK,
     );
     let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
-    assert_eq!(tiles(&canvas, &plan, 0..2, None), Some(Vec::new()));
+    assert_eq!(tiles(&canvas, &plan, 0..2, None, None), Some(Vec::new()));
 }
 
 #[test]

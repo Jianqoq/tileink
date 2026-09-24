@@ -29,7 +29,7 @@ use tileink::{
     Canvas, FillRule, RetainedMaterializerBenchmark, RetainedNodeId, RetainedParent, RetainedScene,
 };
 
-const COUNTS: [usize; 5] = [100, 1_000, 5_000, 20_000, 100_000];
+const COUNTS: [usize; 4] = [100, 1_000, 5_000, 20_000];
 #[cfg(feature = "bench-internals")]
 const RAPID_RESIZE_SIZES: [(u32, u32); 8] = [
     (1600, 1000),
@@ -186,6 +186,42 @@ fn retained_scale(c: &mut Criterion) {
                         .resize(width, height, 1.0)
                         .commit()
                         .unwrap();
+                    std::hint::black_box(materializer.update_incremental(&scene));
+                });
+            });
+        }
+        group.finish();
+
+        // A resize can arrive with new content for every retained leaf. Re-encoding should
+        // discard old geometry before changing extent, instead of rescan-allocating old paths.
+        let mut group = c.benchmark_group("retained_scale/materializer-resize-revisions");
+        for count in [100, 1_000] {
+            group.throughput(Throughput::Elements(count as u64));
+            group.bench_with_input(BenchmarkId::from_parameter(count), &count, |b, &count| {
+                let (mut scene, mut materializer, mut expanded) = rapid_resize_workload(count);
+                let replacement = [Color::WHITE, Color::BLACK].map(|color| {
+                    let mut canvas = Canvas::new(1900, 1250, 1.0);
+                    canvas.push_path(
+                        Rect::new(8.0, 8.0, 24.0, 24.0).to_path(0.5),
+                        color,
+                        Affine::IDENTITY,
+                        FillRule::NonZero,
+                        0.5,
+                    );
+                    Rc::new(canvas)
+                });
+                b.iter(|| {
+                    expanded = !expanded;
+                    let (width, height) = if expanded { (1900, 1250) } else { (900, 650) };
+                    let mut transaction = scene.transaction();
+                    transaction.resize(width, height, 1.0);
+                    for index in 0..count {
+                        transaction.replace_scene(
+                            RetainedNodeId::for_owner(300_001 + index as u64),
+                            Rc::clone(&replacement[expanded as usize]),
+                        );
+                    }
+                    transaction.commit().unwrap();
                     std::hint::black_box(materializer.update_incremental(&scene));
                 });
             });

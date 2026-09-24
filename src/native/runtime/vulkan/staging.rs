@@ -12,9 +12,18 @@ impl Staging {
         device: &ash::Device,
         memory: &vk::PhysicalDeviceMemoryProperties,
         upload: &Upload<'_>,
-        cached: &mut Option<Self>,
+        cached: &mut Vec<Self>,
     ) -> super::Result<Self> {
-        let storage = match cached.take() {
+        let reusable = cached
+            .iter()
+            .enumerate()
+            .filter(|(_, staging)| staging.capacity >= upload.len())
+            .min_by_key(|(_, staging)| staging.capacity)
+            .map(|(index, _)| index);
+        let storage = match reusable
+            .map(|index| cached.swap_remove(index))
+            .or_else(|| cached.pop())
+        {
             Some(storage) if storage.capacity >= upload.len() => storage,
             _ => {
                 let capacity = upload

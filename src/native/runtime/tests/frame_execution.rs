@@ -1,4 +1,30 @@
 use super::FrameOptions;
+
+#[test]
+fn direct_root_plan_has_no_offscreen_filter_resources() {
+    use peniko::kurbo::{Rect, Shape};
+    let rect = Rect::new(0.0, 0.0, 32.0, 32.0);
+    let mut direct = crate::Canvas::new(32, 32, 1.0);
+    direct.push_opacity_layer(rect.to_path(0.1), peniko::kurbo::Affine::IDENTITY, 0.1, 0.5);
+    direct.push_rect(rect, crate::Radius::ZERO, peniko::Color::BLACK);
+    direct.pop_layer();
+    let plan = direct.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+    assert!(!super::needs_offscreen_resources(&plan));
+
+    let mut filtered = crate::Canvas::new(32, 32, 1.0);
+    filtered.push_filter_layer(
+        crate::Filter::Blur {
+            std_dev_x: 2.0,
+            std_dev_y: 2.0,
+            sampling: Default::default(),
+        },
+        crate::Region::rect(rect, crate::Radius::ZERO),
+    );
+    filtered.push_rect(rect, crate::Radius::ZERO, peniko::Color::BLACK);
+    filtered.pop_layer();
+    let plan = filtered.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+    assert!(super::needs_offscreen_resources(&plan));
+}
 use crate::render::output::RenderTargetId;
 use crate::{
     Canvas,

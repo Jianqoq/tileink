@@ -280,7 +280,7 @@ impl Vulkan {
         // rejection, timeout or unknown completion (device-loss quarantine).
         if let work::Work::Compute(frame) = work {
             if let Some(staging) = frame.upload {
-                self.frame_cache.staging = Some(staging);
+                self.frame_cache.staging.push(staging);
             }
             if let Some(arena) = frame.gpu {
                 self.frame_cache.retire_storage(arena);

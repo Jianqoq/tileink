@@ -58,6 +58,32 @@ inactive tile records untouched. Normal, chunked-emit, and profiling paths retai
 count → prefix → emit dependencies, painter order, and particle/glyph formats. Dense/compact
 cost estimates account for the shared chain's workgroup count.
 
+Native DX12/Vulkan can reserve disjoint particle ranges for every tile in a
+complete, text-free, pure-clip plan. Each dense coarse batch then emits directly
+into those ranges without repeating count and prefix dispatches; sparse batches
+continue to emit through selected tile lists. Plans with text or other layer
+operations retain the normal allocation chain. Unchanged tile headers are not
+uploaded on later frames, and the snapshot is invalidated when the layout
+changes or this path ends. This removes redundant allocation and transfer at
+their source while preserving particle order and exact pixels.
+
+Preparation already caches the plan's maximum clip depth. At depth zero, native
+recording skips the clip-stack walk. Retained layer-stack staging converts only
+changed ranges, with a full rebuild when length or structure changes; wgpu and
+native use the same rule. A direct-root plan has no offscreen operations, so it
+also needs no filter tables, filter brushes, or mask paths. Plans with filters,
+masks, or backdrops retain their resource preparation. These changes remove
+unrelated scans without changing direct drawing or offscreen composition.
+
+DX12 upload and storage buffers enter the available pool only after their submission fence completes.
+Completed buffers that a smaller frame does not use stay in a bounded idle pool for later sizes; an empty
+submission does not clear them. This fixes repeated destruction and reallocation of D3D12 resources
+during alternating resizes while preventing reuse before GPU completion.
+DX12 compute passes merge resource states in one scratch table indexed by resource ID,
+reusing its capacity across passes and sorting only resources touched by the current
+pass. CBV/SRV aliases retain the union of read states, while repeated texture-table
+slots neither enter the sort repeatedly nor allocate tree nodes.
+
 ## Direct fine dispatch
 
 Fine always dispatches one workgroup per tile through a single compute entry point. Removing
@@ -221,6 +247,21 @@ until chunk reconstruction refreshes it. Clearing membership early can omit a
 Backdrop input update on a later partial frame and produce incorrect pixels.
 Permanent tests compare indexes with a fresh materializer and compare complete
 RGBA from Auto and independent ForceFull rendering across post-move frames.
+
+After a node's contents are re-encoded, nonlocal index membership changes only
+when its backdrop dependencies switch between empty and nonempty; dependency
+geometry is still refreshed in the chunk. The surface-dependent index is
+reclassified only when the execution-plan fingerprint changes, because an
+unchanged fingerprint preserves command topology and layer kinds. This avoids
+repeated hash-index updates for bulk ordinary revisions while preserving
+filter, mask, and backdrop domain transitions.
+When the old chunk has no Backdrop and the plan fingerprint is unchanged,
+materialization also skips the command-tree walk that would collect an empty
+dependency list. Chunks with existing Backdrops still refresh their bounds on
+every content update.
+Bulk revision frame patches reuse the node already fetched and the fixed
+damage domain stored in each patch instead of looking up the scene node again.
+The spatial domain for bounded translations remains unchanged.
 
 
 Root Backdrop painter order uses the same invalidation conditions. Ordinary

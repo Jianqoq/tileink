@@ -85,13 +85,7 @@ pub(crate) fn encode_cached(
     }
     let chunk_grid = grid(chunk_count, maximum_dimension)?;
     let cumsum = plans.cumsum_plan();
-    let cumsum = CumsumPlan::new(
-        cumsum.chunk_backdrop_offsets.clone(),
-        cumsum.chunk_lens.clone(),
-        cumsum.row_chunk_starts.clone(),
-        cumsum.row_chunk_ends.clone(),
-        lengths.backdrop_len,
-    )?;
+    let cumsum = CumsumPlan::from_shared(cumsum, lengths.backdrop_len)?;
     // Preflight every byte extent before any potentially large allocation.
     for (count, stride) in [
         (lengths.line_count, size_of::<Line>()),

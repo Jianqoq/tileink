@@ -280,7 +280,28 @@ pub(crate) use layout::validate_work_layout;
 impl CoarsePlan {
     /// Caller initialized disjoint particle ranges and interpreter kinds for every tile.
     /// The scene has no glyphs or non-clip passes that could invalidate those ranges.
-    pub(crate) fn use_preallocated_tiles(&mut self) {
+    pub(crate) fn use_preallocated_tiles(
+        &mut self,
+        lengths: GpuBufferLengths,
+        limit: u32,
+    ) -> Result<(), &'static str> {
+        if self.config.incremental == 0 {
+            let emit = self.passes().iter().any(|pass| {
+                matches!(
+                    pass.program,
+                    CoarseProgram::EmitBins | CoarseProgram::EmitChunks
+                )
+            });
+            self.len = 0;
+            if emit {
+                self.push(
+                    CoarseProgram::EmitBins,
+                    super::binning::coarse_bin_count(lengths),
+                    limit,
+                )?;
+            }
+            return Ok(());
+        }
         let emit = self
             .passes()
             .iter()
@@ -307,5 +328,6 @@ impl CoarsePlan {
             };
             self.len = 1;
         }
+        Ok(())
     }
 }

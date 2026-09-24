@@ -9,8 +9,10 @@ impl PersistentSceneMaterializer {
     }
 
     pub(crate) fn encode_node_into(scene: &RetainedScene, node: &SceneNode, canvas: &mut Canvas) {
-        canvas.resize_surface(scene.width, scene.height);
+        // Re-encoding discards the old records. Resize after clearing them so a responsive
+        // scene revision does not rebuild backdrop/segment allocations that are thrown away.
         canvas.reset();
+        canvas.set_surface_extent(scene.width, scene.height);
         match &node.kind {
             NodeKind::Scene {
                 canvas: child,

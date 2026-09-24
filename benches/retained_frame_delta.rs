@@ -14,12 +14,13 @@ fn retained_frame_delta(c: &mut Criterion) {
     use retained_scale::{Scenario, Workload};
     let mut group = c.benchmark_group("retained_frame_delta");
     group.throughput(Throughput::Elements(2));
-    for (name, scenario) in [
-        ("one-affine/100", Scenario::OneAffine),
-        ("manual-invalidation/100", Scenario::ManualInvalidation),
+    for (name, scenario, count) in [
+        ("one-affine/100", Scenario::OneAffine, 100),
+        ("manual-invalidation/100", Scenario::ManualInvalidation, 100),
+        ("all-revisions/20000", Scenario::AllRevisions, 20_000),
     ] {
         group.bench_function(name, |b| {
-            let workload = Workload::new(100, scenario);
+            let workload = Workload::new(count, scenario);
             let mut scene = workload.build_scene();
             let mut materializer = RetainedMaterializerBenchmark::new(&scene);
             for frame in 0..3 {

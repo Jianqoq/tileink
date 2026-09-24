@@ -73,11 +73,19 @@ fn compare(c: &mut Criterion) {
                 break;
             }
         }
+        let profile = std::env::var_os("TILEINK_COMPARE_PROFILE").map(|_| {
+            (0..32)
+                .map(|index| {
+                    let (canvas, target) = frames[index % frames.len()];
+                    gpu.profile_immediate(canvas, target)
+                })
+                .collect::<Vec<_>>()
+        });
         std::fs::write(
             output.join(format!("{}.json", case.name)),
             serde_json::to_vec_pretty(
                 &serde_json::json!({"name":case.name, "frames_per_iteration":frames.len(),
-                "latency_ns":latency, "pixels":pixels}),
+                "latency_ns":latency, "profile_submit_wait_ns":profile, "pixels":pixels}),
             )
             .unwrap(),
         )

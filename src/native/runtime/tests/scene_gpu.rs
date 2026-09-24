@@ -78,8 +78,8 @@ fn scene_work_allocations_are_persistent_and_reused() -> Result<()> {
                 unreachable!()
             };
             assert!(
-                upload.copies.iter().all(|copy| copy[1] != 0),
-                "coarse GPU output must not be overwritten by CPU uploads"
+                upload.bytes.is_empty(),
+                "unchanged tile bins must not be reuploaded"
             );
         }
         previous = allocations;
@@ -92,5 +92,22 @@ fn scene_work_allocations_are_persistent_and_reused() -> Result<()> {
         }
         contents = Some(result);
     }
+    canvas.push_rect(
+        peniko::kurbo::Rect::new(12.0, 4.0, 63.0, 30.0),
+        crate::Radius::ZERO,
+        peniko::Color::from_rgb8(40, 80, 220),
+    );
+    let mut batch = ComputeBatch::with_surfaces(pool);
+    let scene = cache.record(&mut batch, &canvas, None, None, 65535)?;
+    let Resource::PersistentBuffer(upload) = &batch.resources()[scene.work.index()] else {
+        unreachable!()
+    };
+    assert!(
+        !upload.bytes.is_empty(),
+        "changed tile bins must be uploaded"
+    );
+    batch.readback(scene.work)?;
+    let changed = context.adapter.submit_compute(&batch).unwrap().readback()?;
+    assert_ne!(&changed[0], &contents.unwrap()[0]);
     Ok(())
 }

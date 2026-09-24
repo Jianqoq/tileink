@@ -134,6 +134,12 @@ impl Resources {
                 this.storage.push(resource);
                 this.staging.push(upload);
             }
+            if has_uploads {
+                staging.release_unused(cached);
+            }
+            if has_storage {
+                storage.release_unused(cached_storage);
+            }
             Ok(this)
         }
     }

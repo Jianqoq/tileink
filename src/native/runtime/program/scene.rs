@@ -32,7 +32,9 @@ use std::{ops::Range, rc::Rc};
 #[derive(Default)]
 struct SceneBuffers {
     work: super::cached_buffer::CachedBuffer,
+    clip_slot_snapshot: Option<Vec<u8>>,
     tile_bin_layout: Option<(usize, usize, usize, usize)>,
+    tile_bin_snapshot: Option<(Vec<u8>, Vec<u8>)>,
     chunks: super::cached_buffer::CachedBuffer,
     spills: super::cached_buffer::CachedBuffer,
     coarse_text: super::cached_buffer::CachedBuffer,
@@ -117,6 +119,14 @@ pub(crate) struct SceneImages {
 }
 
 impl SceneCache {
+    pub(crate) fn release_retained_plan(&mut self) {
+        self.plan = None;
+    }
+
+    pub(crate) fn install_retained_plan(&mut self, canvas: &Canvas) {
+        self.plan = canvas.compiled_plan.clone();
+    }
+
     pub(crate) fn prepare<'a>(&'a mut self, canvas: &'a Canvas) -> PreparedScene<'a> {
         // Preparation updates the fingerprint even when it compiles a new plan.
         // Move the old plan out first: cancellation or recording failure must not
@@ -251,24 +261,19 @@ impl SceneCache {
             &self.staging.text.fine_blob,
             Some(&self.staging.text.dirty_fine),
         )?;
-        self.staging.layer_stack.clear();
-        self.staging.layer_stack.extend(
-            prepared
-                .plan
-                .layer_stack_data
-                .iter()
-                .copied()
-                .map(LayerStackRecord::from),
-        );
         let layer_ranges = canvas
             .buffer_changes
             .as_ref()
             .filter(|_| prepared.reused_metadata)
             .map(|changes| changes.plan_layer_stack.as_slice());
-        let layers = self
-            .buffers
-            .layers
-            .upload(batch, &self.staging.layer_stack, layer_ranges)?;
+        let full_layers = self
+            .staging
+            .refresh_layer_stack(&prepared.plan.layer_stack_data, layer_ranges);
+        let layers = self.buffers.layers.upload(
+            batch,
+            &self.staging.layer_stack,
+            if full_layers { None } else { layer_ranges },
+        )?;
         let batch_ranges = canvas.buffer_changes.as_ref().map(|changes| {
             crate::render::upload::ranges::merge_sorted_dirty_ranges(
                 &changes.draws,
@@ -324,9 +329,14 @@ impl SceneCache {
         )?;
         let (bins_full, dirty_records, dirty_pages) =
             Rc::make_mut(&mut self.staging.tile_draw_bins).take_dirty();
+        if !clip_dispatch.preallocated {
+            self.buffers.clip_slot_snapshot = None;
+        }
+        let slot_bytes = bytemuck::cast_slice::<_, u8>(&clip_dispatch.slots);
+        let slots_changed = self.buffers.clip_slot_snapshot.as_deref() != Some(slot_bytes);
         let mut prefix_updates = Vec::new();
         if !clip_dispatch.slots.is_empty() {
-            prefix_updates.push((0, bytemuck::cast_slice::<_, u8>(&clip_dispatch.slots)));
+            prefix_updates.push((0, slot_bytes));
         }
         let records: &[u8] = bytemuck::cast_slice(self.staging.tile_draw_bins.upload_records());
         let indices: &[u8] = bytemuck::cast_slice(self.staging.tile_draw_bins.upload_indices());
@@ -374,8 +384,23 @@ impl SceneCache {
         full_updates.extend_from_slice(&full_bin_updates);
         full_updates.extend_from_slice(&tail_updates);
         let layout = (record_base, index_base, records.len(), indices.len());
-        let mut dirty_updates = prefix_updates;
-        if bins_full || self.buffers.tile_bin_layout != Some(layout) {
+        // The bin records and indices are read-only inputs to coarse/fine. An
+        // immediate Canvas rebuilds the same bins each frame, but copying its
+        // multi-megabyte list to the work buffer again is unnecessary.
+        let full_bin_upload = self.buffers.tile_bin_layout != Some(layout)
+            || bins_full
+                && (cfg!(feature = "metal")
+                    || !self.buffers.tile_bin_snapshot.as_ref().is_some_and(
+                        |(old_records, old_indices)| {
+                            old_records == records && old_indices == indices
+                        },
+                    ));
+        let mut dirty_updates = if slots_changed {
+            prefix_updates
+        } else {
+            Vec::new()
+        };
+        if full_bin_upload {
             dirty_updates.extend_from_slice(&full_bin_updates);
         } else {
             dirty_updates.extend(tile_bin_dirty_updates(
@@ -394,6 +419,21 @@ impl SceneCache {
             &full_updates,
             &dirty_updates,
         )?;
+        if clip_dispatch.preallocated && slots_changed {
+            self.buffers.clip_slot_snapshot = Some(slot_bytes.to_vec());
+        }
+        if cfg!(any(feature = "dx12", feature = "vulkan")) && full_bin_upload {
+            let snapshot = self
+                .buffers
+                .tile_bin_snapshot
+                .get_or_insert_with(Default::default);
+            snapshot.0.clear();
+            snapshot.0.extend_from_slice(records);
+            snapshot.1.clear();
+            snapshot.1.extend_from_slice(indices);
+        } else if !dirty_records.is_empty() || !dirty_pages.is_empty() {
+            self.buffers.tile_bin_snapshot = None;
+        }
         self.buffers.tile_bin_layout = Some(layout);
         clip_dispatch.discard_upload_data();
         Rc::make_mut(&mut self.staging.tile_draw_bins).recycle_dirty(dirty_records, dirty_pages);
@@ -539,10 +579,7 @@ impl Scene {
             plan.config.active_tile_list_base = selection.start;
         }
         if self.clip_dispatch.preallocated {
-            if selection.is_none() {
-                return Err("fixed clip slots require a prepared clip stack".into());
-            }
-            plan.use_preallocated_tiles();
+            plan.use_preallocated_tiles(self.lengths, limit)?;
         }
         let mut fine_plan = FinePlan::new(
             self.lengths,

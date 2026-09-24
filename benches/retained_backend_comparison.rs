@@ -38,6 +38,9 @@ fn capture(
 
 fn compare(c: &mut Criterion) {
     let output = std::path::PathBuf::from(std::env::var_os("TILEINK_COMPARE_OUTPUT").unwrap());
+    let prewarm_frames = std::env::var("TILEINK_COMPARE_PREWARM_FRAMES")
+        .map(|value| value.parse::<usize>().expect("invalid prewarm frame count"))
+        .unwrap_or(4);
     std::fs::create_dir_all(&output).unwrap();
     let mut gpu = backend::Gpu::new();
     let mut group = c.benchmark_group("retained_backend_cycles");
@@ -65,7 +68,7 @@ fn compare(c: &mut Criterion) {
         }
         let frames = if case.rotating() { 255 } else { 2 };
         group.throughput(criterion::Throughput::Elements(frames));
-        for _ in 0..4 {
+        for _ in 0..prewarm_frames {
             step(&mut gpu, &workload, &mut scene, &mut frame);
         }
         group.bench_function(&name, |b| {
@@ -118,6 +121,15 @@ fn compare(c: &mut Criterion) {
                 break;
             }
         }
+        let profile = std::env::var_os("TILEINK_COMPARE_PROFILE").map(|_| {
+            (0..32)
+                .map(|_| {
+                    workload.mutate(&mut scene.scene, frame);
+                    frame += 1;
+                    gpu.profile(&mut scene)
+                })
+                .collect::<Vec<_>>()
+        });
         if case.rotating() {
             pixels.push(capture(&mut gpu, &mut scene, &output, &name, 510));
         }
@@ -125,7 +137,7 @@ fn compare(c: &mut Criterion) {
             output.join(format!("{name}.json")),
             serde_json::to_vec_pretty(
                 &serde_json::json!({"name":name,"frames_per_iteration":frames,
-                "latency_ns":latency,"pixels":pixels}),
+                "latency_ns":latency,"profile_submit_wait_ns":profile,"pixels":pixels}),
             )
             .unwrap(),
         )

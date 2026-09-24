@@ -1,13 +1,17 @@
 //! Conservative clip-local dispatch lists. Coverage remains in coarse/fine.
 use crate::shared::execution::{ExecPlan, LayerStackEntry};
 use crate::{Canvas, TILE_SIZE};
-use std::ops::Range;
+use std::{collections::HashMap, ops::Range};
+
+type PixelRect = (i32, i32, i32, i32);
+type ContentBounds = HashMap<(usize, usize), Vec<PixelRect>>;
 
 pub(super) fn tiles(
     canvas: &Canvas,
     plan: &ExecPlan,
     stack: Range<usize>,
     active: Option<&[u32]>,
+    content_bounds: Option<&[PixelRect]>,
 ) -> Option<Vec<u32>> {
     let width = canvas.physical_width();
     let height = canvas.physical_height();
@@ -30,33 +34,67 @@ pub(super) fn tiles(
     if bounds.0 >= bounds.2 || bounds.1 >= bounds.3 {
         return Some(Vec::new());
     }
-    let (x0, y0) = (bounds.0 as u32 / TILE_SIZE, bounds.1 as u32 / TILE_SIZE);
-    let (x1, y1) = (
-        (bounds.2 as u32).div_ceil(TILE_SIZE),
-        (bounds.3 as u32).div_ceil(TILE_SIZE),
-    );
     let stride = width.div_ceil(TILE_SIZE);
-    let count = (x1 - x0) * (y1 - y0);
     let original = active.map_or(stride * height.div_ceil(TILE_SIZE), |tiles| {
         tiles.len() as u32
     });
-    if active.is_none() && count >= original {
-        return None;
+    let sparse_limit = original.div_ceil(3);
+    let whole_clip = [bounds];
+    // Retained damage can include content removed or reparented since the last
+    // frame. An empty clip batch can still provide a mask for later draws.
+    // Child bounds only constrain a complete repaint with known content.
+    let content = match content_bounds {
+        Some(bounds) if active.is_none() && !bounds.is_empty() => bounds,
+        _ => &whole_clip,
+    };
+    let mut tile_rects = Vec::new();
+    let mut candidate_tiles = 0u32;
+    for &(x0, y0, x1, y1) in content {
+        let rect = (
+            bounds.0.max(x0),
+            bounds.1.max(y0),
+            bounds.2.min(x1),
+            bounds.3.min(y1),
+        );
+        if rect.0 < rect.2 && rect.1 < rect.3 {
+            let tile_rect = (
+                rect.0 as u32 / TILE_SIZE,
+                rect.1 as u32 / TILE_SIZE,
+                (rect.2 as u32).div_ceil(TILE_SIZE),
+                (rect.3 as u32).div_ceil(TILE_SIZE),
+            );
+            // A dense batch is cheaper through the original GPU path. Counting
+            // overlaps twice is conservative and lets us stop before allocation.
+            candidate_tiles = candidate_tiles.saturating_add(
+                (tile_rect.2 - tile_rect.0).saturating_mul(tile_rect.3 - tile_rect.1),
+            );
+            if active.is_none() && candidate_tiles > sparse_limit {
+                return None;
+            }
+            tile_rects.push(tile_rect);
+        }
     }
-    Some(if let Some(active) = active {
+    let selected: Vec<u32> = if let Some(active) = active {
         active
             .iter()
             .copied()
             .filter(|tile| {
                 let (x, y) = (tile % stride, tile / stride);
-                x >= x0 && x < x1 && y >= y0 && y < y1
+                tile_rects
+                    .iter()
+                    .any(|&(x0, y0, x1, y1)| x >= x0 && x < x1 && y >= y0 && y < y1)
             })
             .collect()
     } else {
-        (y0..y1)
-            .flat_map(|y| (x0..x1).map(move |x| y * stride + x))
-            .collect()
-    })
+        let mut selected = Vec::new();
+        for (x0, y0, x1, y1) in tile_rects {
+            selected.extend((y0..y1).flat_map(|y| (x0..x1).map(move |x| y * stride + x)));
+        }
+        selected.sort_unstable();
+        selected.dedup();
+        selected
+    };
+    (selected.len() <= sparse_limit as usize).then_some(selected)
 }
 
 pub(super) struct ClipDispatch {
@@ -91,30 +129,63 @@ impl ClipDispatch {
             slots: Vec::new(),
             kinds: Vec::new(),
         };
-        fn collect(ops: &[ExecOp], ranges: &mut Vec<Range<usize>>) {
+        fn collect(
+            ops: &[ExecOp],
+            canvas: &Canvas,
+            ranges: &mut Vec<Range<usize>>,
+            content_bounds: &mut ContentBounds,
+            include_content: bool,
+        ) {
             for op in ops {
                 match op {
-                    ExecOp::DrawBatch { layer_stack, .. } => ranges.push(layer_stack.clone()),
-                    ExecOp::OffscreenLayer { children, .. } => collect(children, ranges),
+                    ExecOp::DrawBatch {
+                        layer_stack, draws, ..
+                    } => {
+                        ranges.push(layer_stack.clone());
+                        if include_content {
+                            let bounds = content_bounds
+                                .entry((layer_stack.start, layer_stack.end))
+                                .or_default();
+                            for &draw in draws.iter() {
+                                let b = canvas.draw_records[draw].pixel_bounds;
+                                if b.x0 < b.x1 && b.y0 < b.y1 {
+                                    bounds.push((b.x0, b.y0, b.x1, b.y1));
+                                }
+                            }
+                        }
+                    }
+                    ExecOp::OffscreenLayer { children, .. } => {
+                        collect(children, canvas, ranges, content_bounds, include_content)
+                    }
                     ExecOp::OffscreenMaskLayer { content, mask, .. } => {
-                        collect(content, ranges);
-                        collect(mask, ranges);
+                        collect(content, canvas, ranges, content_bounds, include_content);
+                        collect(mask, canvas, ranges, content_bounds, include_content);
                     }
                     _ => {}
                 }
             }
         }
-        if cfg!(feature = "metal") || plan.layer_stack_data.is_empty() {
+        // The prepared plan already knows its maximum active clip depth. A
+        // clip-free retained frame must not rescan every layer stack.
+        if cfg!(feature = "metal") || clip_depth == 0 {
             return Ok(result);
         }
         let mut ranges = Vec::new();
-        collect(&plan.ops, &mut ranges);
+        let mut content = std::collections::HashMap::new();
+        collect(
+            &plan.ops,
+            canvas,
+            &mut ranges,
+            &mut content,
+            active.is_none(),
+        );
         for range in &ranges {
             let key = (u32::try_from(range.start)?, u32::try_from(range.end)?);
             if result.ranges.contains_key(&key) {
                 continue;
             }
-            if let Some(tiles) = tiles(canvas, plan, range.clone(), active) {
+            let child_bounds = content.get(&(range.start, range.end)).map(Vec::as_slice);
+            if let Some(tiles) = tiles(canvas, plan, range.clone(), active, child_bounds) {
                 let start = u32::try_from(
                     base.checked_add(result.data.len())
                         .ok_or("clip tile offset overflow")?,
@@ -128,7 +199,7 @@ impl ClipDispatch {
             }
         }
         // Only a complete pure-clip schedule can share immutable tile headers:
-        // a regular coarse pass would overwrite them for subsequent clip batches.
+        // every coarse pass must emit into the same preallocated slots.
         // Metal retains its existing schedule until its emitter is validated on Mac.
         let fixed = cfg!(any(feature = "dx12", feature = "vulkan"))
             && !lengths.text_enabled
@@ -138,10 +209,7 @@ impl ClipDispatch {
                     op,
                     ExecOp::DrawBatch { .. } | ExecOp::BeginClip | ExecOp::EndClip
                 )
-            })
-            && ranges
-                .iter()
-                .all(|r| result.ranges.contains_key(&(r.start as u32, r.end as u32)));
+            });
         if fixed {
             result.preallocated = true;
             let mut cursor = 0u32;

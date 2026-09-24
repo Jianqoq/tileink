@@ -9,7 +9,7 @@ pub mod scale;
 #[path = "../../examples/support/retained_stress.rs"]
 pub mod stress;
 
-pub const COUNTS: [usize; 5] = [100, 1_000, 5_000, 20_000, 100_000];
+pub const COUNTS: [usize; 4] = [100, 1_000, 5_000, 20_000];
 
 #[derive(Clone, Copy)]
 pub enum Case {

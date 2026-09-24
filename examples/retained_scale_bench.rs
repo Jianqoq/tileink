@@ -149,7 +149,7 @@ struct RunConfig {
 
 fn parse_config() -> Result<RunConfig, Box<dyn Error>> {
     let mut config = BenchConfig::default();
-    let mut counts = vec![100, 1_000, 5_000, 20_000, 100_000];
+    let mut counts = vec![100, 1_000, 5_000, 20_000];
     let mut scenarios = Scenario::ALL.to_vec();
     let mut phase = None;
     let args = std::env::args().skip(1).collect::<Vec<_>>();

@@ -47,6 +47,26 @@ Dense coarse 按 tile 顺序分配；compact 增量 coarse 按 active tile 列�
 不变。正常、chunked emit 和 profiling 路径遵循相同的 count → prefix → emit 依赖；绘制
 顺序与粒子/glyph 数据格式不变。dense/compact 成本估算同步计入共享链的实际 workgroup 数。
 
+原生 DX12/Vulkan 对完整、无文本、纯 clip 的执行计划可提前为每个 tile 保留互不重叠的
+particle 范围。随后每个 dense coarse 批次直接 emit 到这些范围，省去重复的 count 和 prefix
+派发；稀疏批次继续使用选中 tile 的 emit 路径。任何非纯 clip 或含文本的计划仍使用普通
+分配链。未变化的 tile header 在后续帧不重复上传；布局变化或退出该路径时快照失效。
+这是针对重复分配和上传的根因优化，不改变粒子顺序或像素语义。
+
+准备阶段已缓存执行计划的最大 clip 深度：深度为零时，原生路径不再遍历所有 layer stack
+查找 clip。保留场景的 layer stack 暂存只转换变更范围，长度或结构变化时才完整重建；
+wgpu 与原生路径共用这条规则。纯直接根批次没有离屏操作，因此不创建 filter 表、brush
+或 mask path；含 filter、mask、backdrop 的计划继续准备这些资源。这些是消除无关扫描的
+根因优化，不改变直接绘制或离屏合成的结果。
+
+DX12 上传和存储缓冲区只会在所属提交的 fence 确认完成后进入可用池。录制下一帧时，
+尺寸不匹配而未使用的已完成缓冲区会保留在闲置池中，供后续尺寸复用；空提交不会清空它们。
+闲置池按峰值单帧容量和条目数限制大小。这样修复了交替 resize 时每帧销毁闲置 D3D12
+资源并重新分配的根因，同时仍禁止在 GPU 使用期间复用缓冲区。
+DX12 每个 compute pass 的资源状态合并使用一份按资源 ID 索引的暂存表，跨 pass
+复用容量；仅排序本次实际访问的资源。CBV 与 SRV 别名仍合并所有只读状态，
+重复纹理表槽位不会重复进入排序或分配树节点。
+
 ## Fine
 
 Fine shader 每 workgroup 处理 tile pixels，组合 path coverage、SDF、text coverage、brush sampling、clip/opacity/blend stack。WGPU native 纹理路径可直接写 storage texture；portable 纹理路径使用兼容的中间表示与 texture copy。
@@ -263,6 +283,15 @@ Layer 重挂载可以保持 generation 并复用 chunk，因此 live Scene/Layer
 和 surface-dependent 索引成员必须保留到 chunk 重建刷新时。提前清除会让下一帧
 部分更新漏掉 Backdrop 输入，造成错误像素。永久测试同时对照新建 materializer
 的索引，以及移动后连续帧的 Auto/独立 ForceFull 全量 RGBA。
+
+节点内容重编码后，非局部依赖索引只在 Backdrop 依赖由空变非空或反向变化时更新；
+依赖几何仍每次刷新在 chunk 内。surface-dependent 索引只在执行计划指纹变化时
+重新分类，因为相同指纹表示命令拓扑和 layer 类型未变。这样大量普通内容 revision
+不会反复修改两个哈希索引，同时保留 filter、mask、backdrop 进入或离开依赖域的语义。
+同样，当旧 chunk 没有 Backdrop 且执行计划指纹未变时，不再遍历命令树收集空依赖；
+已有 Backdrop 的 chunk 仍在每次内容更新时重算依赖范围。
+批量节点 revision 的 frame patch 复用已取出的节点和 patch 内固定损伤范围，
+不再为每个节点重复查询 scene 节点表；有界平移的空间索引范围保持不变。
 
 
 根级 Backdrop 的绘制顺序也按上述失效条件缓存。普通更新继续遍历依赖并传播

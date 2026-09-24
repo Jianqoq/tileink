@@ -122,8 +122,16 @@ impl<'a> Execution<'a> {
                 active: retained.active_tiles(),
             },
         )?;
-        let filters = filter_resources::FilterResources::record(batch, scene.plan(), None, images)?;
-        let paths = prepare_paths(batch, scene.plan())?;
+        // Only offscreen operations can own filter tables or mask paths. The
+        // direct-root index is absent whenever an offscreen operation exists.
+        let (filters, paths) = if needs_offscreen_resources(scene.plan()) {
+            (
+                filter_resources::FilterResources::record(batch, scene.plan(), None, images)?,
+                prepare_paths(batch, scene.plan())?,
+            )
+        } else {
+            (filter_resources::FilterResources::default(), None)
+        };
         Ok(Self {
             filter_scenes,
             batch,
@@ -197,6 +205,10 @@ impl DrawBatchAdapter for Execution<'_> {
 #[cfg(test)]
 #[path = "tests/frame_execution.rs"]
 mod tests;
+
+fn needs_offscreen_resources(plan: &crate::shared::execution::ExecPlan) -> bool {
+    plan.direct_root_batch_ops.is_none()
+}
 
 fn prepare_paths(
     batch: &mut ComputeBatch,

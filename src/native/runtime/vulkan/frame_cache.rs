@@ -6,7 +6,7 @@ pub(super) use commands::Commands;
 #[derive(Default)]
 pub(super) struct Cache {
     pub(super) samplers: super::compute_sampler::Cache,
-    pub staging: Option<Staging>,
+    pub staging: Vec<Staging>,
     storage: Vec<Arena>,
     pub(super) commands: Vec<Commands>,
 }

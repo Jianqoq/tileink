@@ -106,6 +106,8 @@ impl Frame {
                 batch.passes(),
                 tables.pop(),
             )?;
+            let mut required_states =
+                super::compute_bindings::RequiredStates::new(batch.resources().len());
             for command in batch.commands() {
                 let (pass_index, pass) = match command {
                     crate::native::runtime::compute::Command::Dispatch(index) => {
@@ -137,8 +139,8 @@ impl Frame {
                 frame._pipelines.push(pipeline.clone());
                 frame.list.SetComputeRootSignature(&pipeline.signature);
                 frame.list.SetPipelineState(&pipeline.state);
-                for (id, state) in super::compute_bindings::required_states(pass, batch.resources())
-                {
+                required_states.collect(pass, batch.resources());
+                for (id, state) in required_states.iter() {
                     // Upload heaps stay in GENERIC_READ; packed constants are immutable.
                     if gpu.uniform_offset(id).is_some() {
                         continue;

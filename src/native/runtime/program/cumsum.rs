@@ -5,12 +5,13 @@ use crate::native::runtime::{
     compute::{ComputeBatch, ResourceId},
 };
 use crate::shared::gpu_constants::CUMSUM_CHUNK_SIZE;
+use std::borrow::Cow;
 
-pub struct CumsumPlan {
-    offsets: Vec<u32>,
-    lengths: Vec<u32>,
-    starts: Vec<u32>,
-    ends: Vec<u32>,
+pub struct CumsumPlan<'a> {
+    offsets: Cow<'a, [u32]>,
+    lengths: Cow<'a, [u32]>,
+    starts: Cow<'a, [u32]>,
+    ends: Cow<'a, [u32]>,
     backdrop_words: usize,
     needs_offsets: bool,
 }
@@ -18,12 +19,66 @@ pub struct CumsumOutput {
     pub totals: ResourceId,
     pub offsets: ResourceId,
 }
-impl CumsumPlan {
+
+fn validate_row_ownership(
+    rows: impl IntoIterator<Item = (u32, u32)>,
+    lengths: &[u32],
+) -> Result<()> {
+    let mut next = 0;
+    for (start, end) in rows {
+        if start < next
+            || lengths[next as usize..start as usize]
+                .iter()
+                .any(|&len| len != 0)
+        {
+            return Err("cumsum rows overlap or omit live chunks".into());
+        }
+        next = end;
+    }
+    if lengths[next as usize..].iter().any(|&len| len != 0) {
+        return Err("cumsum chunks missing row ownership".into());
+    }
+    Ok(())
+}
+impl CumsumPlan<'static> {
     pub fn new(
         offsets: Vec<u32>,
         lengths: Vec<u32>,
         starts: Vec<u32>,
         ends: Vec<u32>,
+        backdrop_words: usize,
+    ) -> Result<Self> {
+        Self::with_data(
+            Cow::Owned(offsets),
+            Cow::Owned(lengths),
+            Cow::Owned(starts),
+            Cow::Owned(ends),
+            backdrop_words,
+        )
+    }
+}
+
+impl<'a> CumsumPlan<'a> {
+    /// The persistent scene owns these arrays for the entire batch. Borrowing them removes
+    /// four per-frame copies while running the same bounds and ownership validation as `new`.
+    pub(crate) fn from_shared(
+        plan: &'a crate::shared::gpu_plan::GpuCumsumPlan,
+        backdrop_words: usize,
+    ) -> Result<Self> {
+        Self::with_data(
+            Cow::Borrowed(&plan.chunk_backdrop_offsets),
+            Cow::Borrowed(&plan.chunk_lens),
+            Cow::Borrowed(&plan.row_chunk_starts),
+            Cow::Borrowed(&plan.row_chunk_ends),
+            backdrop_words,
+        )
+    }
+
+    fn with_data(
+        offsets: Cow<'a, [u32]>,
+        lengths: Cow<'a, [u32]>,
+        starts: Cow<'a, [u32]>,
+        ends: Cow<'a, [u32]>,
         backdrop_words: usize,
     ) -> Result<Self> {
         if offsets.len() != lengths.len()
@@ -34,48 +89,59 @@ impl CumsumPlan {
         {
             return Err("invalid cumsum metadata dimensions".into());
         }
-        let mut spans = Vec::new();
-        for (&offset, &len) in offsets.iter().zip(&lengths) {
+        let mut previous_end = 0u64;
+        let mut ordered_spans = true;
+        for (&offset, &len) in offsets.iter().zip(lengths.iter()) {
             if len > CUMSUM_CHUNK_SIZE || offset as u64 + len as u64 > backdrop_words as u64 {
                 return Err("cumsum chunk out of bounds".into());
             }
             if len != 0 {
-                spans.push((offset as u64, offset as u64 + len as u64));
+                ordered_spans &= offset as u64 >= previous_end;
+                previous_end = offset as u64 + len as u64;
             }
         }
-        spans.sort_unstable();
-        if spans.windows(2).any(|w| w[0].1 > w[1].0) {
-            return Err("overlapping cumsum backdrop writes".into());
+        // Arena order is usually already backdrop order. Sort only for a valid but
+        // out-of-order caller; the common path still checks every extent.
+        if !ordered_spans {
+            let mut spans = offsets
+                .iter()
+                .zip(lengths.iter())
+                .filter(|(_, len)| **len != 0)
+                .map(|(&offset, &len)| (offset as u64, offset as u64 + len as u64))
+                .collect::<Vec<_>>();
+            spans.sort_unstable();
+            if spans.windows(2).any(|w| w[0].1 > w[1].0) {
+                return Err("overlapping cumsum backdrop writes".into());
+            }
         }
-        let mut rows = Vec::new();
-        for (&start, &end) in starts.iter().zip(&ends) {
+        let mut previous_start = 0u32;
+        let mut ordered_rows = true;
+        for (&start, &end) in starts.iter().zip(ends.iter()) {
             if start > end || end as usize > offsets.len() {
                 return Err("invalid cumsum row chunk range".into());
             }
             if start != end {
-                rows.push((start, end));
+                ordered_rows &= start >= previous_start;
+                previous_start = start;
             }
         }
-        rows.sort_unstable();
-        let mut next = 0;
-        for (start, end) in rows {
-            if start < next
-                || lengths[next as usize..start as usize]
-                    .iter()
-                    .any(|&len| len != 0)
-            {
-                return Err("cumsum rows overlap or omit live chunks".into());
-            }
-            next = end;
-        }
-        if lengths[next as usize..].iter().any(|&len| len != 0) {
-            return Err("cumsum chunks missing row ownership".into());
+        let rows = starts
+            .iter()
+            .zip(ends.iter())
+            .filter(|(start, end)| start != end)
+            .map(|(&start, &end)| (start, end));
+        if ordered_rows {
+            validate_row_ownership(rows, &lengths)?;
+        } else {
+            let mut sorted_rows = rows.collect::<Vec<_>>();
+            sorted_rows.sort_unstable();
+            validate_row_ownership(sorted_rows, &lengths)?;
         }
         // Shared scene arenas retain empty rows/chunks. Table cardinality cannot
         // establish the single-chunk fast path when those holes are present.
         let needs_offsets = starts
             .iter()
-            .zip(&ends)
+            .zip(ends.iter())
             .any(|(&start, &end)| end - start > 1);
         Ok(Self {
             offsets,
