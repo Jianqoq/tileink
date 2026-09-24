@@ -84,6 +84,7 @@ fn primitive(kind: FilterPrimitiveKind) -> FilterPrimitive {
         input: FilterInput::SourceGraphic,
         input2: None,
         region: crate::shared::bounds::Bounds::canvas(17, 19),
+        linear_rgb: false,
         kind,
     }
 }

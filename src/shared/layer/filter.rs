@@ -106,6 +106,8 @@ pub struct FilterPrimitive {
     pub input: FilterInput,
     pub input2: Option<FilterInput>,
     pub region: Bounds,
+    /// SVG primitives default to linear RGB; graph surfaces remain stored as sRGB.
+    pub linear_rgb: bool,
     pub kind: FilterPrimitiveKind,
 }
 

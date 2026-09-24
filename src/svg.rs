@@ -1089,6 +1089,8 @@ impl<'a> SvgFilterGraphBuilder<'a> {
                 input,
                 input2,
                 region,
+                linear_rgb: primitive.color_interpolation()
+                    == usvg::filter::ColorInterpolation::LinearRGB,
                 kind,
             },
             source_region,

@@ -703,6 +703,7 @@ fn translate_filter_to_local(filter: &Filter, local: LocalSpace) -> Filter {
                     input: primitive.input,
                     input2: primitive.input2,
                     region: local.bounds(primitive.region),
+                    linear_rgb: primitive.linear_rgb,
                     kind: translate_primitive_kind_to_local(&primitive.kind, local),
                 })
                 .collect(),

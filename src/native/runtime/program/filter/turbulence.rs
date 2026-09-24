@@ -93,7 +93,7 @@ fn validate(c: FilterConfig, count: u32) -> Result<()> {
         || values.iter().any(|v| !v.is_finite())
         || c.turbulence_kind > 1
         || c.turbulence_stitch_tiles > 1
-        || c.turbulence_linear_rgb > 1
+        || c.linear_rgb > 1
         || c.turbulence_base_frequency_x < 0.0
         || c.turbulence_base_frequency_y < 0.0
     {

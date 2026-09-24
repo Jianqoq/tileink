@@ -254,6 +254,7 @@ impl Canvas {
                         input: primitive.input,
                         input2: primitive.input2,
                         region: self.physical_bounds(primitive.region),
+                        linear_rgb: primitive.linear_rgb,
                         kind: self.physical_filter_primitive_kind(primitive.kind),
                     })
                     .collect(),

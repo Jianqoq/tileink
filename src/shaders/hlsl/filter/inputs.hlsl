@@ -1,5 +1,6 @@
 #include "region.hlsli"
 #include "composite.hlsli"
+#include "color_space.hlsli"
 #include "../shared/blend.hlsli"
 #include "../shared/pixel.hlsli"
 
@@ -18,7 +19,12 @@ void filter_blend_region(uint3 gid:SV_DispatchThreadID) {
     if (!filter_position(config,active_tiles,gid,xy)) return;
     uint source=unorm_to_rgba8(source_texture.Load(int3(xy,0)));
     uint backdrop=unorm_to_rgba8(aux_texture.Load(int3(xy,0)));
-    target_texture[xy]=rgba8_to_unorm(blend_premul_u8(backdrop,source,config.blend_mode));
+    if(config.linear_rgb==1u) {
+        source=filter_premul_srgb_to_linear(source);
+        backdrop=filter_premul_srgb_to_linear(backdrop);
+    }
+    uint result=blend_premul_u8(backdrop,source,config.blend_mode);
+    target_texture[xy]=rgba8_to_unorm(config.linear_rgb==1u?filter_premul_linear_to_srgb(result):result);
 }
 
 [numthreads(FILTER_WORKGROUP_SIZE,1,1)]

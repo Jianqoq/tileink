@@ -103,8 +103,14 @@ impl<A: FilterAdapter> FilterExecutor<'_, A> {
                     source: input,
                     target: temp,
                     bounds,
-                }) || !self.apply_filter(temp, bounds, filter, None, filter_cursors)
-                {
+                }) || !self.apply_filter(
+                    temp,
+                    bounds,
+                    filter,
+                    None,
+                    primitive.linear_rgb,
+                    filter_cursors,
+                ) {
                     self.adapter.release_scratch(temp);
                     return None;
                 }
@@ -134,6 +140,7 @@ impl<A: FilterAdapter> FilterExecutor<'_, A> {
                     target: output,
                     bounds: region,
                     mode: *mode,
+                    linear_rgb: primitive.linear_rgb,
                 }) {
                     Some(output)
                 } else {

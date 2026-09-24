@@ -78,7 +78,7 @@ struct FilterConfig {
     uint turbulence_num_octaves;
     uint turbulence_stitch_tiles;
     uint turbulence_kind;
-    uint turbulence_linear_rgb;
+    uint linear_rgb;
     uint turbulence_pad0;
     uint turbulence_pad1;
     float turbulence_transform_x;

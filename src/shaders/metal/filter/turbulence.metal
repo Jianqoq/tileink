@@ -32,7 +32,7 @@ uint turbulence_pixel(constant FilterConfig& c,const device uint* selectors,cons
     }
     if(c.turbulence_kind==1) accumulated=accumulated*0.5f+0.5f;
     accumulated=clamp(accumulated,0.0f,1.0f);
-    if(c.turbulence_linear_rgb==1) accumulated.rgb=float3(noise_srgb(accumulated.r),noise_srgb(accumulated.g),noise_srgb(accumulated.b));
+    if(c.linear_rgb==1) accumulated.rgb=float3(noise_srgb(accumulated.r),noise_srgb(accumulated.g),noise_srgb(accumulated.b));
     return pack_pixel(float4(accumulated.rgb*accumulated.a,accumulated.a));
 }
 kernel void filter_turbulence_region(constant FilterConfig& config [[buffer(0)]],texture2d<float,access::write> target [[texture(3)]],

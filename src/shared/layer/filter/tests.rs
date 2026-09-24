@@ -35,6 +35,7 @@ fn fixed_chains_and_graphs_preserve_erosion_input_dependencies() {
             input: FilterInput::SourceGraphic,
             input2: None,
             region: Bounds::canvas(32, 32),
+            linear_rgb: false,
             kind: FilterPrimitiveKind::Filter(Box::new(chain)),
         }],
     };
@@ -154,6 +155,7 @@ fn fixed_chains_and_graphs_keep_a_nested_wrap_domain() {
             input: FilterInput::SourceGraphic,
             input2: None,
             region: Bounds::new(-16, 0, 48, 32),
+            linear_rgb: false,
             kind: FilterPrimitiveKind::Filter(Box::new(chain.clone())),
         }],
     };

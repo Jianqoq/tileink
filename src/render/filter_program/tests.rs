@@ -75,6 +75,7 @@ fn run(recorder: &mut Recorder, filter: &Filter) -> bool {
         bounds(),
         filter,
         None,
+        false,
         &mut FilterCursors::default(),
     )
 }
@@ -92,6 +93,7 @@ fn primitive(
         input,
         input2: None,
         region: bounds(),
+        linear_rgb: false,
         kind,
     }
 }

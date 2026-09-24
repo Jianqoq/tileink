@@ -169,7 +169,7 @@ pub(crate) fn configure_turbulence(
     config.turbulence_num_octaves = turbulence.num_octaves;
     config.turbulence_stitch_tiles = u32::from(turbulence.stitch_tiles);
     config.turbulence_kind = encode_turbulence_kind(turbulence.kind);
-    config.turbulence_linear_rgb = u32::from(turbulence.linear_rgb);
+    config.linear_rgb = u32::from(turbulence.linear_rgb);
     config.turbulence_transform_x = turbulence.transform_x;
     config.turbulence_transform_y = turbulence.transform_y;
     config.turbulence_scale_x = turbulence.scale_x;

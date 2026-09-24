@@ -20,7 +20,7 @@ uint turbulence_pack(float4 value,uint kind,uint linear_rgb) {
 uint turbulence_pixel(ConstantBuffer<FilterConfig> config,ByteAddressBuffer selectors,ByteAddressBuffer gradients,float2 position) {
     float2 scale=float2(config.turbulence_scale_x,config.turbulence_scale_y);
     if(any(abs(scale)<=TURBULENCE_SCALE_EPSILON)) return 0u;
-    if(config.turbulence_num_octaves==0u || (config.turbulence_base_frequency_x==0.0 && config.turbulence_base_frequency_y==0.0)) return turbulence_pack(0.0,config.turbulence_kind,config.turbulence_linear_rgb);
+    if(config.turbulence_num_octaves==0u || (config.turbulence_base_frequency_x==0.0 && config.turbulence_base_frequency_y==0.0)) return turbulence_pack(0.0,config.turbulence_kind,config.linear_rgb);
     float2 sample_base=(position-float2(config.turbulence_transform_x,config.turbulence_transform_y))/scale;
 
     float2 frequency=float2(config.turbulence_base_frequency_x,config.turbulence_base_frequency_y);
@@ -46,6 +46,6 @@ uint turbulence_pixel(ConstantBuffer<FilterConfig> config,ByteAddressBuffer sele
         frequency*=2.0;
         if(stitch) {extent*=2;wrap=2*wrap-int(TURBULENCE_COORDINATE_OFFSET);}
     }
-    return turbulence_pack(value,config.turbulence_kind,config.turbulence_linear_rgb);
+    return turbulence_pack(value,config.turbulence_kind,config.linear_rgb);
 }
 #endif

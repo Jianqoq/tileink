@@ -100,7 +100,7 @@ pub(super) fn config() -> Resource {
             field!(turbulence_num_octaves, U32, 1),
             field!(turbulence_stitch_tiles, U32, 1),
             field!(turbulence_kind, U32, 1),
-            field!(turbulence_linear_rgb, U32, 1),
+            field!(linear_rgb, U32, 1),
             field!(turbulence_pad0, U32, 1),
             field!(turbulence_pad1, U32, 1),
             field!(turbulence_transform_x, F32, 1),

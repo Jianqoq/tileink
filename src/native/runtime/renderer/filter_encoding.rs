@@ -31,7 +31,7 @@ impl Execution<'_> {
             error: None,
         };
         let success = FilterExecutor::new(&mut encoding)
-            .apply_filter(target, bounds, filter, region, cursors);
+            .apply_filter(target, bounds, filter, region, false, cursors);
         if let Some(error) = encoding.error {
             return Err(error);
         }

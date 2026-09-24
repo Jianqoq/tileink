@@ -6,15 +6,16 @@ impl<A: FilterAdapter> FilterExecutor<'_, A> {
         bounds: Bounds,
         filter: &Filter,
         region: Option<&crate::shared::layer::region::Region>,
+        linear_rgb: bool,
         filter_cursors: &mut FilterCursors,
     ) -> bool {
         match filter {
             Filter::Graph { primitives, .. } => {
                 self.apply_filter_graph(target, bounds, primitives, filter_cursors)
             }
-            Filter::Chain { filters, .. } => filters
-                .iter()
-                .all(|filter| self.apply_filter(target, bounds, filter, region, filter_cursors)),
+            Filter::Chain { filters, .. } => filters.iter().all(|filter| {
+                self.apply_filter(target, bounds, filter, region, linear_rgb, filter_cursors)
+            }),
             Filter::RectLiquidGlass(glass) => {
                 let Some(glass_region) = rect_liquid_glass_region(region, bounds) else {
                     return false;
@@ -64,6 +65,7 @@ impl<A: FilterAdapter> FilterExecutor<'_, A> {
                         target,
                         bounds,
                         table_index,
+                        linear_rgb,
                     })
             }
             Filter::ConvolveMatrix(matrix) => {

@@ -2,6 +2,7 @@
 using namespace metal;
 #include "region.metal"
 #include "../shared/pixel.metal"
+#include "color_space.metal"
 #include "../shared/blend/channels.metal"
 #include "../shared/blend/compose.metal"
 
@@ -10,7 +11,10 @@ kernel void filter_blend_region(constant FilterConfig& config [[buffer(0)]],
     texture2d<float,access::read> source [[texture(1)]],texture2d<float,access::read> backdrop [[texture(2)]],
     texture2d<float,access::write> target [[texture(3)]],const device uint* tiles [[buffer(8)]],uint3 id [[thread_position_in_grid]]) {
     uint2 xy;if(!filter_position(config,tiles,id,xy)) return;
-    target.write(unpack_pixel(blend_pixel(pack_pixel(backdrop.read(xy)),pack_pixel(source.read(xy)),config.blend_mode)),xy);
+    uint s=pack_pixel(source.read(xy)),d=pack_pixel(backdrop.read(xy));
+    if(config.linear_rgb==1) {s=filter_premul_srgb_to_linear(s);d=filter_premul_srgb_to_linear(d);}
+    uint result=blend_pixel(d,s,config.blend_mode);
+    target.write(unpack_pixel(config.linear_rgb==1?filter_premul_linear_to_srgb(result):result),xy);
 }
 kernel void filter_composite_inputs_region(constant FilterConfig& config [[buffer(0)]],
     texture2d<float,access::read> source [[texture(1)]],texture2d<float,access::read> backdrop [[texture(2)]],

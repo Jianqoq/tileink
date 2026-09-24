@@ -82,7 +82,8 @@ pub struct FilterConfig {
     pub turbulence_num_octaves: u32,
     pub turbulence_stitch_tiles: u32,
     pub turbulence_kind: u32,
-    pub turbulence_linear_rgb: u32,
+    /// Color-space selector for SVG filter primitives (0=sRGB, 1=linear RGB).
+    pub linear_rgb: u32,
     pub turbulence_pad0: u32,
     pub turbulence_pad1: u32,
     pub turbulence_transform_x: f32,
@@ -200,7 +201,7 @@ impl Default for FilterConfig {
             turbulence_num_octaves: 0,
             turbulence_stitch_tiles: 0,
             turbulence_kind: 0,
-            turbulence_linear_rgb: 0,
+            linear_rgb: 0,
             turbulence_pad0: 0,
             turbulence_pad1: 0,
             turbulence_transform_x: 0.0,

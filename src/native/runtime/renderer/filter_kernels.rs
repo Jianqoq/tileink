@@ -135,9 +135,11 @@ impl FilterEncoding<'_, '_> {
                 input2,
                 target,
                 mode,
+                linear_rgb,
                 ..
             } => {
                 c.blend_mode = mode as u32 | ((peniko::Compose::SrcOver as u32) << 8);
+                c.linear_rgb = u32::from(linear_rgb);
                 inputs::encode(
                     e.batch,
                     inputs::InputFilter::Blend {
@@ -246,9 +248,11 @@ impl FilterEncoding<'_, '_> {
             ApplyComponentTransferToTarget {
                 target,
                 table_index,
+                linear_rgb,
                 ..
             } => {
                 c.table_index = table_index;
+                c.linear_rgb = u32::from(linear_rgb);
                 transfer::encode(
                     e.batch,
                     c,

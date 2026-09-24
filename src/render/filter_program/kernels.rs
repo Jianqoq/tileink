@@ -49,6 +49,7 @@ pub(crate) enum FilterKernel<'a> {
         target: RenderTargetId,
         bounds: Bounds,
         mode: Mix,
+        linear_rgb: bool,
     },
     CompositeFilterInputs {
         input1: RenderTargetId,
@@ -91,6 +92,7 @@ pub(crate) enum FilterKernel<'a> {
         target: RenderTargetId,
         bounds: Bounds,
         table_index: u32,
+        linear_rgb: bool,
     },
     ConvolveMatrixToTarget {
         source: RenderTargetId,
