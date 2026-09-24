@@ -56,8 +56,9 @@ pub(crate) fn light_source_params(light_source: LightSource) -> [f32; 9] {
             points_at_y,
             points_at_z,
             specular_exponent,
-            limiting_cone_angle.unwrap_or(-1.0),
-            0.0,
+            // Store presence separately so a negative angle is not mistaken for a missing cone.
+            limiting_cone_angle.unwrap_or(0.0),
+            f32::from(limiting_cone_angle.is_some()),
         ],
     }
 }

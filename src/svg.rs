@@ -1022,7 +1022,10 @@ impl<'a> SvgFilterGraphBuilder<'a> {
             usvg::filter::Kind::DiffuseLighting(lighting) => (
                 self.input(lighting.input(), "feDiffuseLighting")?,
                 None,
-                FilterPrimitiveKind::Filter(Box::new(diffuse_lighting_to_filter(lighting))),
+                FilterPrimitiveKind::Filter(Box::new(diffuse_lighting_to_filter(
+                    lighting,
+                    self.region_transform,
+                ))),
             ),
             usvg::filter::Kind::DisplacementMap(displacement) => (
                 self.input(displacement.input1(), "feDisplacementMap")?,
@@ -1088,7 +1091,10 @@ impl<'a> SvgFilterGraphBuilder<'a> {
             usvg::filter::Kind::SpecularLighting(lighting) => (
                 self.input(lighting.input(), "feSpecularLighting")?,
                 None,
-                FilterPrimitiveKind::Filter(Box::new(specular_lighting_to_filter(lighting))),
+                FilterPrimitiveKind::Filter(Box::new(specular_lighting_to_filter(
+                    lighting,
+                    self.region_transform,
+                ))),
             ),
             usvg::filter::Kind::Tile(tile) => {
                 let input = self.input(tile.input(), "feTile")?;
@@ -1311,22 +1317,28 @@ fn convolve_edge_mode(edge_mode: usvg::filter::EdgeMode) -> ConvolveEdgeMode {
     }
 }
 
-fn diffuse_lighting_to_filter(lighting: &usvg::filter::DiffuseLighting) -> Filter {
+fn diffuse_lighting_to_filter(
+    lighting: &usvg::filter::DiffuseLighting,
+    transform: Affine,
+) -> Filter {
     Filter::DiffuseLighting(DiffuseLighting {
         surface_scale: lighting.surface_scale(),
         diffuse_constant: lighting.diffuse_constant(),
         lighting_color: color_to_rgb(lighting.lighting_color()),
-        light_source: light_source(lighting.light_source()),
+        light_source: light_source(lighting.light_source(), transform),
     })
 }
 
-fn specular_lighting_to_filter(lighting: &usvg::filter::SpecularLighting) -> Filter {
+fn specular_lighting_to_filter(
+    lighting: &usvg::filter::SpecularLighting,
+    transform: Affine,
+) -> Filter {
     Filter::SpecularLighting(SpecularLighting {
         surface_scale: lighting.surface_scale(),
         specular_constant: lighting.specular_constant(),
         specular_exponent: lighting.specular_exponent(),
         lighting_color: color_to_rgb(lighting.lighting_color()),
-        light_source: light_source(lighting.light_source()),
+        light_source: light_source(lighting.light_source(), transform),
     })
 }
 
@@ -1388,27 +1400,42 @@ fn turbulence_kind(kind: usvg::filter::TurbulenceKind) -> TurbulenceKind {
     }
 }
 
-fn light_source(source: usvg::filter::LightSource) -> LightSource {
+fn light_source(source: usvg::filter::LightSource, transform: Affine) -> LightSource {
+    // SVG light positions use primitive coordinates, while the lighting kernel uses canvas pixels.
+    let point = |x: f32, y: f32| {
+        let point = transform * peniko::kurbo::Point::new(x as f64, y as f64);
+        (point.x as f32, point.y as f32)
+    };
+    let [a, b, c, d, _, _] = transform.as_coeffs();
+    // Extend the 2D transform to the height axis without letting rotation or skew change depth.
+    let z_scale = (a * d - b * c).abs().sqrt() as f32;
     match source {
         usvg::filter::LightSource::DistantLight(light) => LightSource::Distant {
             azimuth: light.azimuth,
             elevation: light.elevation,
         },
-        usvg::filter::LightSource::PointLight(light) => LightSource::Point {
-            x: light.x,
-            y: light.y,
-            z: light.z,
-        },
-        usvg::filter::LightSource::SpotLight(light) => LightSource::Spot {
-            x: light.x,
-            y: light.y,
-            z: light.z,
-            points_at_x: light.points_at_x,
-            points_at_y: light.points_at_y,
-            points_at_z: light.points_at_z,
-            specular_exponent: light.specular_exponent.get(),
-            limiting_cone_angle: light.limiting_cone_angle,
-        },
+        usvg::filter::LightSource::PointLight(light) => {
+            let (x, y) = point(light.x, light.y);
+            LightSource::Point {
+                x,
+                y,
+                z: light.z * z_scale,
+            }
+        }
+        usvg::filter::LightSource::SpotLight(light) => {
+            let (x, y) = point(light.x, light.y);
+            let (points_at_x, points_at_y) = point(light.points_at_x, light.points_at_y);
+            LightSource::Spot {
+                x,
+                y,
+                z: light.z * z_scale,
+                points_at_x,
+                points_at_y,
+                points_at_z: light.points_at_z * z_scale,
+                specular_exponent: light.specular_exponent.get(),
+                limiting_cone_angle: light.limiting_cone_angle,
+            }
+        }
     }
 }
 

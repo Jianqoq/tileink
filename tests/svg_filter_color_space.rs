@@ -134,6 +134,50 @@ fn svg_convolve_bias_matches_reference_pixels() -> Result<(), Box<dyn std::error
 
 #[test]
 #[ignore = "requires a native GPU; run explicitly with --ignored"]
+fn svg_point_light_tracks_viewbox_and_shape_transforms() -> Result<(), Box<dyn std::error::Error>> {
+    // SVG light positions are in the filtered element's user space; lighting runs in canvas pixels.
+    let context = NativeContext::new(backend(), &NativeContextOptions::default())?;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/svg/tests/filters/fePointLight");
+    for (name, samples) in [
+        ("custom-attributes.svg", [(150, 210, 255), (100, 140, 41)]),
+        ("complex-transform.svg", [(173, 205, 255), (100, 100, 18)]),
+    ] {
+        let (scene, width, height) = common::load_svg_scene(root.join(name), 300)?;
+        let mut renderer = NativeRenderer::with_context(&context, width, height)?;
+        let image = renderer.render_to_image(&scene)?.readback()?;
+        for (x, y, expected) in samples {
+            let actual = image.pixels[(y * width + x) as usize].to_le_bytes();
+            assert!(
+                actual[0].abs_diff(expected) <= 2,
+                "{name} ({x},{y}): expected {expected}, got {actual:?}"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires a native GPU; run explicitly with --ignored"]
+fn svg_negative_spot_cone_angle_still_limits_light() -> Result<(), Box<dyn std::error::Error>> {
+    // A signed cone angle has the same cosine cutoff; it must not mean "no cone".
+    let context = NativeContext::new(backend(), &NativeContextOptions::default())?;
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/svg/tests/filters/feSpotLight/limitingConeAngle=-30.svg");
+    let (scene, width, height) = common::load_svg_scene(path, 300)?;
+    let mut renderer = NativeRenderer::with_context(&context, width, height)?;
+    let image = renderer.render_to_image(&scene)?.readback()?;
+    for (x, y, expected) in [(200, 150, 0), (80, 150, 115)] {
+        let actual = image.pixels[(y * width + x) as usize].to_le_bytes();
+        assert!(
+            actual[0].abs_diff(expected) <= 2,
+            "({x},{y}): expected {expected}, got {actual:?}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires a native GPU; run explicitly with --ignored"]
 fn svg_pattern_tracks_viewbox_scale() -> Result<(), Box<dyn std::error::Error>> {
     let context = NativeContext::new(backend(), &NativeContextOptions::default())?;
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))

@@ -37,7 +37,7 @@ uint lighting_pixel(constant FilterConfig& c,texture2d<float,access::read> sourc
             float length=sqrt(light_dot(c,spot,spot));if(length<=0.000001f) return dark;
             spot/=length;
             float focus=-light_dot(c,light,spot);
-            if(focus<0 || (c.light_p7>=0 && focus<cos(c.light_p7*0.017453292f))) return dark;
+            if(focus<0 || (c.light_p8!=0 && focus<cos(c.light_p7*0.017453292f))) return dark;
             attenuation=light_power(focus,c.light_p6);
         }
     }

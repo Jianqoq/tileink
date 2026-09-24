@@ -67,7 +67,7 @@ uint filter_lighting_pixel(ConstantBuffer<FilterConfig> config,Texture2D<float4>
             spot/=spot_len;
             float focus=-lighting_dot3(config,light,spot);
             if (focus<0.0) return no_light;
-            if (config.light_p7>=0.0 && focus<cos(config.light_p7*LIGHTING_DEGREES_TO_RADIANS)) return no_light;
+            if (config.light_p8!=0.0 && focus<cos(config.light_p7*LIGHTING_DEGREES_TO_RADIANS)) return no_light;
             attenuation=lighting_power(focus,config.light_p6);
         }
     }
