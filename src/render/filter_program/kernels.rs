@@ -93,6 +93,7 @@ pub(crate) enum FilterKernel<'a> {
         target: RenderTargetId,
         bounds: Bounds,
         matrix: [f32; 20],
+        linear_rgb: bool,
     },
     ApplyComponentTransferToTarget {
         target: RenderTargetId,
@@ -168,6 +169,7 @@ pub(crate) enum FilterKernel<'a> {
         bounds: Bounds,
         kind: ColorFilterKind,
         amount: f32,
+        linear_rgb: bool,
     },
     DownsampleRegion {
         source: RenderTargetId,

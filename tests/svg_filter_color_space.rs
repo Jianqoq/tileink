@@ -115,6 +115,50 @@ fn svg_filter_color_interpolation_matches_reference_pixels()
 
 #[test]
 #[ignore = "requires a native GPU; run explicitly with --ignored"]
+fn svg_color_matrix_uses_linear_rgb_and_unassociated_channels()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Reference PNGs are straight RGBA; readback stores premultiplied RGBA.
+    let cases = [
+        ("invalid-type.svg", 100, [251, 232, 251, 255]),
+        ("without-a-type.svg", 100, [251, 232, 251, 255]),
+        (
+            "type=matrix-with-non-normalized-values.svg",
+            100,
+            [20, 0, 7, 20],
+        ),
+        (
+            "type=matrix-with-non-normalized-values.svg",
+            133,
+            [11, 0, 0, 11],
+        ),
+        ("type=luminanceToAlpha.svg", 100, [0, 0, 0, 37]),
+        ("type=matrix.svg", 100, [7, 7, 7, 20]),
+        ("type=matrix.svg", 133, [0, 0, 0, 11]),
+        ("type=saturate.svg", 100, [85, 114, 85, 255]),
+        ("type=hueRotate.svg", 100, [53, 114, 139, 255]),
+        (
+            "type=saturate-with-negative-coefficient.svg",
+            100,
+            [106, 106, 106, 255],
+        ),
+    ];
+    let context = NativeContext::new(backend(), &NativeContextOptions::default())?;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/svg/tests/filters/feColorMatrix");
+    for (name, x, expected) in cases {
+        let (scene, width, height) = common::load_svg_scene(root.join(name), 300)?;
+        let mut renderer = NativeRenderer::with_context(&context, width, height)?;
+        let image = renderer.render_to_image(&scene)?.readback()?;
+        let actual = image.pixels[(100 * width + x) as usize].to_le_bytes();
+        assert!(
+            actual.iter().zip(expected).all(|(a, b)| a.abs_diff(b) <= 2),
+            "{name} ({x},100): expected {expected:?}, got {actual:?}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires a native GPU; run explicitly with --ignored"]
 fn svg_convolve_bias_matches_reference_pixels() -> Result<(), Box<dyn std::error::Error>> {
     let context = NativeContext::new(backend(), &NativeContextOptions::default())?;
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))

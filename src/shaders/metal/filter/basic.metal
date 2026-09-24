@@ -3,6 +3,7 @@ using namespace metal;
 #include "region.metal"
 #include "../shared/pixel.metal"
 #include "color.metal"
+#include "color_space.metal"
 
 kernel void filter_clear_region(constant FilterConfig& config [[buffer(0)]],
     texture2d<float,access::write> target [[texture(3)]],const device uint* tiles [[buffer(8)]],uint3 id [[thread_position_in_grid]]) {
@@ -58,9 +59,17 @@ kernel void filter_svg_mask_coverage_region(constant FilterConfig& config [[buff
 
 kernel void filter_color_region(constant FilterConfig& config [[buffer(0)]],
     texture2d<float,access::read_write> target [[texture(3)]],const device uint* tiles [[buffer(8)]],uint3 id [[thread_position_in_grid]]) {
-    uint2 xy;if(filter_position(config,tiles,id,xy)) target.write(unpack_pixel(color_filter(pack_pixel(target.read(xy)),config.filter_kind,config.amount)),xy);
+    uint2 xy;if(!filter_position(config,tiles,id,xy)) return;
+    uint pixel=pack_pixel(target.read(xy));
+    if(config.linear_rgb==1) pixel=filter_premul_srgb_to_linear(pixel);
+    uint result=color_filter(pixel,config.filter_kind,config.amount);
+    target.write(unpack_pixel(config.linear_rgb==1?filter_premul_linear_to_srgb(result):result),xy);
 }
 kernel void filter_color_matrix_region(constant FilterConfig& config [[buffer(0)]],
     texture2d<float,access::read_write> target [[texture(3)]],const device uint* tiles [[buffer(8)]],uint3 id [[thread_position_in_grid]]) {
-    uint2 xy;if(filter_position(config,tiles,id,xy)) target.write(unpack_pixel(matrix_filter(config,pack_pixel(target.read(xy)))),xy);
+    uint2 xy;if(!filter_position(config,tiles,id,xy)) return;
+    uint pixel=pack_pixel(target.read(xy));
+    if(config.linear_rgb==1) pixel=filter_premul_srgb_to_linear(pixel);
+    uint result=matrix_filter(config,pixel);
+    target.write(unpack_pixel(config.linear_rgb==1?filter_premul_linear_to_srgb(result):result),xy);
 }

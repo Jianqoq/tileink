@@ -1,6 +1,7 @@
 #include "region.hlsli"
 #include "constants.hlsli"
 #include "color.hlsli"
+#include "color_space.hlsli"
 #include "../shared/pixel.hlsli"
 #include "../shared/blend.hlsli"
 
@@ -95,7 +96,9 @@ void filter_color_region(uint3 gid:SV_DispatchThreadID) {
     uint2 xy;
     if (!filter_position(config, active_tiles, gid, xy)) return;
     uint pixel=unorm_to_rgba8(target_texture[xy]);
-    target_texture[xy]=rgba8_to_unorm(filter_color_pixel(pixel,config.filter_kind,config.amount));
+    if (config.linear_rgb==1u) pixel=filter_premul_srgb_to_linear(pixel);
+    uint result=filter_color_pixel(pixel,config.filter_kind,config.amount);
+    target_texture[xy]=rgba8_to_unorm(config.linear_rgb==1u?filter_premul_linear_to_srgb(result):result);
 }
 
 [numthreads(FILTER_WORKGROUP_SIZE,1,1)]
@@ -103,5 +106,7 @@ void filter_color_matrix_region(uint3 gid:SV_DispatchThreadID) {
     uint2 xy;
     if (!filter_position(config, active_tiles, gid, xy)) return;
     uint pixel=unorm_to_rgba8(target_texture[xy]);
-    target_texture[xy]=rgba8_to_unorm(filter_color_matrix_pixel(config,pixel));
+    if (config.linear_rgb==1u) pixel=filter_premul_srgb_to_linear(pixel);
+    uint result=filter_color_matrix_pixel(config,pixel);
+    target_texture[xy]=rgba8_to_unorm(config.linear_rgb==1u?filter_premul_linear_to_srgb(result):result);
 }

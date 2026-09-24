@@ -61,6 +61,7 @@ impl<A: FilterAdapter> FilterExecutor<'_, A> {
                     target,
                     bounds,
                     matrix: *matrix,
+                    linear_rgb,
                 })
             }
             Filter::ComponentTransfer(_) => {
@@ -222,6 +223,8 @@ impl<A: FilterAdapter> FilterExecutor<'_, A> {
                     bounds,
                     kind: filter_kind,
                     amount,
+                    // Opacity only changes alpha; a color-space round trip would add RGB error.
+                    linear_rgb: linear_rgb && !matches!(filter_kind, ColorFilterKind::Opacity),
                 })
             }
         }

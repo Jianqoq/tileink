@@ -43,7 +43,8 @@ uint matrix_filter(constant FilterConfig& config,uint pixel) {
     float3 channels=float3(stored.rgb),straight=0;
     if(stored.a==255) straight=channels;
     else if(alpha>0) straight=channels*(255.0f/alpha);
-    float output_alpha=clamp(matrix_dot(config.matrix_a,float4(straight,alpha))+config.matrix_bias.w*255.0f,0.0f,255.0f);
+    // Quantize output alpha before premultiplication so low-alpha RGB does not gain a byte.
+    float output_alpha=floor(clamp(matrix_dot(config.matrix_a,float4(straight,alpha))+config.matrix_bias.w*255.0f,0.0f,255.0f)+0.5f);
     float3 result;
     if(alpha>0) {
         float4 input=float4(channels,alpha*alpha*(1.0f/255.0f));

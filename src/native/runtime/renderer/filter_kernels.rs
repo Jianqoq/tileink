@@ -248,8 +248,14 @@ impl FilterEncoding<'_, '_> {
                     image(target)?,
                 )
             }
-            ApplyColorMatrixToTarget { target, matrix, .. } => {
+            ApplyColorMatrixToTarget {
+                target,
+                matrix,
+                linear_rgb,
+                ..
+            } => {
                 configure_color_matrix(&mut c, matrix);
+                c.linear_rgb = u32::from(linear_rgb);
                 filter::encode(
                     e.batch,
                     BasicFilter::ColorMatrix,
@@ -423,9 +429,11 @@ impl FilterEncoding<'_, '_> {
                 target,
                 kind,
                 amount,
+                linear_rgb,
                 ..
             } => {
                 c.amount = amount;
+                c.linear_rgb = u32::from(linear_rgb);
                 c.filter_kind = match kind {
                     ColorFilterKind::Brightness => FILTER_BRIGHTNESS,
                     ColorFilterKind::Contrast => FILTER_CONTRAST,

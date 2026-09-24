@@ -55,7 +55,8 @@ uint filter_color_matrix_pixel(ConstantBuffer<FilterConfig> config, uint pixel) 
     // Branch before division: selecting a scale still permits reciprocal reassociation.
     if ((pixel>>24u)==255u) straight=channels;
     else if (alpha>0) straight=channels*(255.0/alpha);
-    float output_alpha=clamp(filter_dot4(config.matrix_a,float4(straight,alpha))+config.matrix_bias.w*255.0,0.0,255.0);
+    // Quantize output alpha before premultiplication so low-alpha RGB does not gain a byte.
+    float output_alpha=floor(clamp(filter_dot4(config.matrix_a,float4(straight,alpha))+config.matrix_bias.w*255.0,0.0,255.0)+0.5);
     float3 result;
     if (alpha>0) {
         float4 scaled=float4(channels,alpha*alpha*CHANNEL_SCALE);
