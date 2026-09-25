@@ -21,7 +21,7 @@ use crate::shared::{
 };
 use peniko::kurbo::Point;
 
-pub(crate) const ENCODED_SDF_WORDS: usize = 17;
+pub(crate) const ENCODED_SDF_WORDS: usize = crate::shared::gpu_constants::SDF_RECORD_WORDS as usize;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct EncodedSdf {

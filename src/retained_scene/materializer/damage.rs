@@ -2,6 +2,26 @@ use super::helpers::*;
 use super::*;
 
 impl PersistentSceneMaterializer {
+    /// Painter order changes only with the dependency set or hierarchy. Keeping
+    /// this index avoids allocating paths and sorting every unchanged backdrop
+    /// on ordinary revisions; propagation still visits every dependency.
+    pub(super) fn rebuild_backdrop_order(&mut self, scene: &RetainedScene) {
+        self.backdrop_order.clear();
+        if self.scoped_backdrop || self.nonlocal_dependencies.is_empty() {
+            return;
+        }
+        #[cfg(test)]
+        self.backdrop_order_sorts
+            .set(self.backdrop_order_sorts.get() + 1);
+        self.backdrop_order.extend(
+            self.nonlocal_dependencies
+                .iter()
+                .map(|&id| (id, painter_path(scene, id))),
+        );
+        self.backdrop_order
+            .sort_unstable_by(|left, right| left.1.as_ref().cmp(right.1.as_ref()));
+    }
+
     pub(crate) fn influenced_bounds(
         &self,
         scene: &RetainedScene,
@@ -29,22 +49,11 @@ impl PersistentSceneMaterializer {
                     RetainedLayerDescriptor::Filter {
                         filter: value,
                         sample_region,
-                    } => {
-                        let dependency = filter::region_bounds(sample_region)
-                            .outset(filter::filter_dependency_outset(value));
-                        let changed = bounds.intersect(dependency);
-                        if changed.is_empty() {
-                            Bounds::new(0, 0, 0, 0)
-                        } else {
-                            changed
-                                .outset(filter::filter_outset(value))
-                                .intersect(filter::unclipped_filtered_region_bounds(
-                                    value,
-                                    sample_region,
-                                ))
-                                .intersect(canvas_bounds)
-                        }
-                    }
+                    } => filter::filter_dependency(value).affected_output(
+                        bounds,
+                        filter::filter_input_bounds(value, sample_region),
+                        filter::unclipped_filtered_region_bounds(value, sample_region),
+                    ),
                     RetainedLayerDescriptor::Mask(mask) => {
                         bounds.intersect(filter::region_bounds(&mask.region))
                     }
@@ -53,7 +62,9 @@ impl PersistentSceneMaterializer {
             }
             id = parent.node;
         }
-        bounds
+        // Intermediate outputs may lie outside the root and be read by an
+        // outer filter. Only the complete ancestor influence is root-clipped.
+        bounds.intersect(canvas_bounds)
     }
 
     pub(crate) fn fixed_translation_bounds(
@@ -61,10 +72,18 @@ impl PersistentSceneMaterializer {
         scene: &RetainedScene,
         id: RetainedNodeId,
     ) -> Option<Bounds> {
+        self.fixed_translation_bounds_for_node(scene, scene.nodes.get(&id)?)
+    }
+
+    fn fixed_translation_bounds_for_node(
+        &self,
+        scene: &RetainedScene,
+        node: &SceneNode,
+    ) -> Option<Bounds> {
         let NodeKind::Scene {
             translation_damage: Some(rect),
             ..
-        } = &scene.nodes.get(&id)?.kind
+        } = &node.kind
         else {
             return None;
         };
@@ -123,21 +142,8 @@ impl PersistentSceneMaterializer {
         }
         ordered_sources.sort_unstable_by(|left, right| left.0.as_ref().cmp(right.0.as_ref()));
         let mut source_cursor = 0;
-        let mut backdrops = self
-            .nonlocal_dependencies
-            .iter()
-            .copied()
-            .map(|id| {
-                let painter = self
-                    .painter_bases
-                    .get(&id)
-                    .cloned()
-                    .unwrap_or_else(|| painter_path(scene, id));
-                (id, painter)
-            })
-            .collect::<Vec<_>>();
-        backdrops.sort_unstable_by(|left, right| left.1.as_ref().cmp(right.1.as_ref()));
-        for (backdrop, backdrop_painter) in backdrops {
+        for (backdrop, backdrop_painter) in &self.backdrop_order {
+            let backdrop = *backdrop;
             let Some(chunk) = self.chunks.get(&backdrop) else {
                 continue;
             };
@@ -163,11 +169,11 @@ impl PersistentSceneMaterializer {
                 let sampled =
                     self.indexed_damage_intersection(&damage_tiles, dependency.dependency);
                 if !sampled.is_empty() {
-                    affected_output = affected_output.union(
-                        sampled
-                            .outset(dependency.output_outset)
-                            .intersect(dependency.output),
-                    );
+                    affected_output = affected_output.union(dependency.read.affected_output(
+                        sampled,
+                        dependency.dependency,
+                        dependency.output,
+                    ));
                 }
             }
             if !affected_output.is_empty() {
@@ -295,7 +301,7 @@ impl PersistentSceneMaterializer {
             return false;
         }
 
-        let index = retained_patch_index(&patches);
+        let index = retained_patch_index(&patches, frame.delta.as_ref().map(|delta| &delta.index));
         let (previous, depth) = prune_shadowed_delta(frame.delta.clone(), &index);
         let source_damage = patches
             .iter()
@@ -312,11 +318,12 @@ impl PersistentSceneMaterializer {
                     .map(|bounds| (None, bounds)),
             )
             .collect::<Vec<_>>();
-        let (backdrop_damage, dirty_backdrops) = if self.nonlocal_dependencies.is_empty() {
-            (Vec::new(), Vec::new())
-        } else {
-            self.incremental_backdrop_damage(scene, &source_damage)
-        };
+        let (backdrop_damage, dirty_backdrops) =
+            if self.nonlocal_dependencies.is_empty() || self.scoped_backdrop {
+                (Vec::new(), Vec::new())
+            } else {
+                self.incremental_backdrop_damage(scene, &source_damage)
+            };
         for patch in &patches {
             let new = patch.new.unwrap();
             if patch.old.unwrap().bounds != new.bounds {
@@ -332,13 +339,19 @@ impl PersistentSceneMaterializer {
         let mut delta = RetainedFrameDelta {
             from_version: self.version.get(),
             to_version: scene.version.get(),
-            patches: patches.into(),
+            patches: reuse_empty_slice(patches, frame.delta.as_ref().map(|delta| &delta.patches)),
             previous,
             depth,
-            damage: backdrop_damage.into(),
-            dirty_backdrops: dirty_backdrops.into(),
-            backdrop_damage_complete: true,
-            index: Rc::new(index),
+            damage: reuse_empty_slice(
+                backdrop_damage,
+                frame.delta.as_ref().map(|delta| &delta.damage),
+            ),
+            dirty_backdrops: reuse_empty_slice(
+                dirty_backdrops,
+                frame.delta.as_ref().map(|delta| &delta.dirty_backdrops),
+            ),
+            backdrop_damage_complete: !self.scoped_backdrop,
+            index,
         };
         if depth > 255 {
             if !Self::compact_content_state_pages(&mut frame, &delta) {
@@ -395,7 +408,7 @@ impl PersistentSceneMaterializer {
                 self.rebuild_frame_override(scene);
                 return;
             };
-            let fixed_bounds = self.fixed_translation_bounds(scene, id);
+            let fixed_bounds = self.fixed_translation_bounds_for_node(scene, node);
             // A bounded translation already supplies the conservative output and spatial domain.
             // Keep the last exact raw bound cached: walking every command in every translated
             // child only to discard the result in `retained_output_bounds` made chart p95 scale
@@ -406,7 +419,13 @@ impl PersistentSceneMaterializer {
                     fixed,
                 )
             } else {
-                let raw = chunk.canvas.visual_bounds();
+                // Layer chunks encode only the layer shell. Its empty child list is not
+                // the layer's output domain; using visual_bounds erased opacity/clip
+                // output on parameter updates. Keep the same domain as frame construction.
+                let raw = match node.kind {
+                    NodeKind::Layer(_) => chunk_layer_influence_bounds(chunk),
+                    _ => chunk.canvas.visual_bounds(),
+                };
                 (
                     raw,
                     self.retained_output_bounds(scene, id, self.influenced_bounds(scene, id, raw)),
@@ -436,51 +455,55 @@ impl PersistentSceneMaterializer {
             });
             self.set_raw_node_bounds_spatial(id, Some(raw_bounds), fixed_bounds);
         }
-        let index = retained_patch_index(&patches);
+        let index = retained_patch_index(&patches, frame.delta.as_ref().map(|delta| &delta.index));
         let (previous, depth) = prune_shadowed_delta(frame.delta.clone(), &index);
-        let (backdrop_damage, dirty_backdrops) = if self.nonlocal_dependencies.is_empty() {
-            (Vec::new(), Vec::new())
-        } else {
-            let source_damage = patches
-                .iter()
-                .map(|patch| {
-                    let node = patch.new.or(patch.old).unwrap();
-                    let bounds = patch
-                        .damage_bounds()
-                        .expect("retained patch has a node or explicit damage");
-                    (Some(node.id), bounds)
-                })
-                .chain(
-                    self.canvas
-                        .invalidated_bounds
-                        .iter()
-                        .copied()
-                        .map(|bounds| (None, bounds)),
-                )
-                .collect::<Vec<_>>();
-            self.incremental_backdrop_damage(scene, &source_damage)
-        };
+        let (backdrop_damage, dirty_backdrops) =
+            if self.nonlocal_dependencies.is_empty() || self.scoped_backdrop {
+                (Vec::new(), Vec::new())
+            } else {
+                let source_damage = patches
+                    .iter()
+                    .map(|patch| {
+                        let node = patch.new.or(patch.old).unwrap();
+                        let bounds = patch
+                            .damage_bounds()
+                            .expect("retained patch has a node or explicit damage");
+                        (Some(node.id), bounds)
+                    })
+                    .chain(
+                        self.canvas
+                            .invalidated_bounds
+                            .iter()
+                            .copied()
+                            .map(|bounds| (None, bounds)),
+                    )
+                    .collect::<Vec<_>>();
+                self.incremental_backdrop_damage(scene, &source_damage)
+            };
         for patch in &patches {
             if patch.old.map(|node| node.bounds) != patch.new.map(|node| node.bounds) {
                 let id = patch.new.unwrap().id;
-                self.set_node_bounds_spatial(
-                    id,
-                    patch.new.map(|node| node.bounds),
-                    self.fixed_translation_bounds(scene, id),
-                );
+                // The patch already carries this node's fixed translation domain.
+                self.set_node_bounds_spatial(id, patch.new.map(|node| node.bounds), patch.damage);
             }
         }
         frame.version = Some(scene.version.get());
         let mut delta = RetainedFrameDelta {
             from_version: self.version.get(),
             to_version: scene.version.get(),
-            patches: patches.into(),
+            patches: reuse_empty_slice(patches, frame.delta.as_ref().map(|delta| &delta.patches)),
             previous,
             depth,
-            damage: backdrop_damage.into(),
-            dirty_backdrops: dirty_backdrops.into(),
-            backdrop_damage_complete: true,
-            index: Rc::new(index),
+            damage: reuse_empty_slice(
+                backdrop_damage,
+                frame.delta.as_ref().map(|delta| &delta.damage),
+            ),
+            dirty_backdrops: reuse_empty_slice(
+                dirty_backdrops,
+                frame.delta.as_ref().map(|delta| &delta.dirty_backdrops),
+            ),
+            backdrop_damage_complete: !self.scoped_backdrop,
+            index,
         };
         if depth > 255 {
             if !Self::compact_content_state_pages(&mut frame, &delta) {
@@ -584,18 +607,28 @@ impl PersistentSceneMaterializer {
             })
             .collect::<Vec<_>>();
         if !patches.is_empty() {
-            let index = retained_patch_index(&patches);
+            let index =
+                retained_patch_index(&patches, frame.delta.as_ref().map(|delta| &delta.index));
             let (previous, depth) = prune_shadowed_delta(frame.delta.clone(), &index);
             let mut delta = RetainedFrameDelta {
                 from_version: self.version.get(),
                 to_version: scene.version.get(),
-                patches: patches.into(),
+                patches: reuse_empty_slice(
+                    patches,
+                    frame.delta.as_ref().map(|delta| &delta.patches),
+                ),
                 previous,
                 depth,
-                damage: Rc::new([]),
-                dirty_backdrops: Rc::new([]),
+                damage: reuse_empty_slice(
+                    Vec::new(),
+                    frame.delta.as_ref().map(|delta| &delta.damage),
+                ),
+                dirty_backdrops: reuse_empty_slice(
+                    Vec::new(),
+                    frame.delta.as_ref().map(|delta| &delta.dirty_backdrops),
+                ),
                 backdrop_damage_complete: false,
-                index: Rc::new(index),
+                index,
             };
             if depth > 255 {
                 if !Self::compact_content_state_pages(&mut frame, &delta) {
@@ -665,10 +698,12 @@ impl PersistentSceneMaterializer {
             let Some(node) = scene.nodes.get(&id) else {
                 continue;
             };
-            let chunk = &self.chunks[&id];
             let old = frame.node_state(id);
+            // A reorder can change structural groups, which never own draw chunks.
+            // Resolve chunks only for drawable node kinds; a missing drawable stays an invariant error.
             let (bounds, kind) = match &node.kind {
                 NodeKind::Scene { .. } => {
+                    let chunk = &self.chunks[&id];
                     let natural = self.influenced_bounds(scene, id, chunk.canvas.visual_bounds());
                     (
                         self.retained_output_bounds(scene, id, natural),
@@ -676,6 +711,7 @@ impl PersistentSceneMaterializer {
                     )
                 }
                 NodeKind::Layer(_) => {
+                    let chunk = &self.chunks[&id];
                     let mut bounds =
                         self.influenced_bounds(scene, id, chunk_layer_influence_bounds(chunk));
                     let mut leaves = Vec::new();
@@ -711,7 +747,7 @@ impl PersistentSceneMaterializer {
                 .expect("retained patch has at least one state or explicit damage");
             (node.id, bounds)
         }));
-        let index = retained_patch_index(&patches);
+        let index = retained_patch_index(&patches, frame.delta.as_ref().map(|delta| &delta.index));
         let (previous, depth) = prune_shadowed_delta(frame.delta.clone(), &index);
         if depth > 255 {
             return false;
@@ -744,13 +780,19 @@ impl PersistentSceneMaterializer {
         frame.delta = Some(Rc::new(RetainedFrameDelta {
             from_version: self.version.get(),
             to_version: scene.version.get(),
-            patches: patches.into(),
+            patches: reuse_empty_slice(patches, frame.delta.as_ref().map(|delta| &delta.patches)),
             previous,
             depth,
-            damage: explicit_damage.into(),
-            dirty_backdrops: Rc::new([]),
+            damage: reuse_empty_slice(
+                explicit_damage,
+                frame.delta.as_ref().map(|delta| &delta.damage),
+            ),
+            dirty_backdrops: reuse_empty_slice(
+                Vec::new(),
+                frame.delta.as_ref().map(|delta| &delta.dirty_backdrops),
+            ),
             backdrop_damage_complete: false,
-            index: Rc::new(index),
+            index,
         }));
         let canvas = Rc::make_mut(&mut self.canvas);
         frame.invalidated_bounds = canvas.invalidated_bounds.clone();
@@ -770,7 +812,7 @@ impl PersistentSceneMaterializer {
             scene.root,
             BoundsInfluence {
                 outset: 0,
-                clip: canvas_bounds,
+                clip: Some(canvas_bounds),
             },
             &mut influences,
         );
@@ -800,6 +842,7 @@ impl PersistentSceneMaterializer {
             .enumerate()
             .map(|(index, node)| (node.id, index))
             .collect();
+        let scoped_damage = self.scoped_backdrop;
         let canvas = Rc::make_mut(&mut self.canvas);
         canvas.persistent_frame = Some(crate::canvas::RetainedFrame {
             root: scene.root,
@@ -814,6 +857,10 @@ impl PersistentSceneMaterializer {
             incremental_complete: true,
             version: Some(scene.version.get()),
             delta: None,
+            damage_history: crate::canvas::damage_history::DamageHistory::initial(
+                scoped_damage,
+                scene.version.get(),
+            ),
             dependency_free: self.dependency_free,
             requires_damage_propagation: !self.nonlocal_dependencies.is_empty(),
         });
@@ -914,8 +961,6 @@ impl PersistentSceneMaterializer {
         id: RetainedNodeId,
         layer: &RetainedLayerDescriptor,
     ) -> BoundsInfluence {
-        let canvas_bounds =
-            Bounds::canvas(self.canvas.physical_width(), self.canvas.physical_height());
         match layer {
             RetainedLayerDescriptor::ClipPath { .. }
             | RetainedLayerDescriptor::ClipSdf { .. }
@@ -923,41 +968,32 @@ impl PersistentSceneMaterializer {
             | RetainedLayerDescriptor::Opacity { .. }
             | RetainedLayerDescriptor::Blend { .. } => BoundsInfluence {
                 outset: 0,
-                clip: self.chunks[&id]
-                    .canvas
-                    .draw_records
-                    .first()
-                    .map_or(canvas_bounds, |draw| {
-                        let clip = draw.pixel_bounds;
-                        Bounds::new(clip.x0, clip.y0, clip.x1, clip.y1)
-                    }),
+                clip: self.chunks[&id].canvas.draw_records.first().map(|draw| {
+                    let clip = draw.pixel_bounds;
+                    Bounds::new(clip.x0, clip.y0, clip.x1, clip.y1)
+                }),
             },
             RetainedLayerDescriptor::Filter {
                 filter: value,
                 sample_region,
             } => {
-                let outset = filter::filter_outset(value);
+                let input = filter::filter_input_bounds(value, sample_region);
+                let output = filter::unclipped_filtered_region_bounds(value, sample_region);
+                let outset = filter::filter_dependency(value).damage_outset(input.union(output));
                 BoundsInfluence {
                     outset,
-                    // This is a conservative summary for disjoint input and dependency bounds;
-                    // it may redraw an extra boundary tile but can never omit affected pixels.
-                    clip: filter::region_bounds(sample_region)
-                        .outset(filter::filter_dependency_outset(value))
-                        .outset(outset)
-                        .intersect(filter::unclipped_filtered_region_bounds(
-                            value,
-                            sample_region,
-                        ))
-                        .intersect(canvas_bounds),
+                    // A conservative finite summary preserves read influence through
+                    // nested clips; filter output geometry itself is unchanged.
+                    clip: Some(input.outset(outset).intersect(output)),
                 }
             }
             RetainedLayerDescriptor::Mask(mask) => BoundsInfluence {
                 outset: 0,
-                clip: filter::region_bounds(&mask.region),
+                clip: Some(filter::region_bounds(&mask.region)),
             },
             RetainedLayerDescriptor::Backdrop { .. } => BoundsInfluence {
                 outset: 0,
-                clip: canvas_bounds,
+                clip: None,
             },
         }
     }
@@ -1278,3 +1314,21 @@ impl PersistentSceneMaterializer {
         id
     }
 }
+
+#[cfg(test)]
+mod filter_dependency_tests;
+
+#[cfg(test)]
+mod backdrop_tests;
+
+#[cfg(test)]
+mod scoped_history_tests;
+
+#[cfg(test)]
+mod isolation_tests;
+
+#[cfg(test)]
+mod order_tests;
+
+#[cfg(test)]
+mod delta_storage_tests;

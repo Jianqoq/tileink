@@ -1,18 +1,17 @@
 use std::{collections::HashMap, error::Error, fmt};
 
 use peniko::{
-    Color, ColorStop, Compose, Extend, Gradient, Mix,
+    Color, ColorStop, Compose, Extend, Gradient, InterpolationAlphaSpace, Mix,
     kurbo::{Affine, BezPath, Cap, Join, Rect, Shape, Stroke},
 };
 use usvg::{Node, Paint, PaintOrder, SpreadMethod, tiny_skia_path::PathSegment};
 
 use crate::{
-    Brush, Canvas, FillRule, Filter, Radius, Region, WgpuRenderer,
+    Brush, Canvas, FillRule, Filter, Radius, Region,
     shared::{
         bounds::Bounds,
         brush::{PatternBrush, PatternSampling},
-        image::Image as RasterImage,
-        image_resource::ImageResourceId,
+        image_resource::{ImageResourceId, ImageSource},
         layer::filter::{
             COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE, ColorChannel,
             ComponentTransferTable, CompositeOperator, ConvolveEdgeMode, ConvolveMatrix,
@@ -114,22 +113,31 @@ impl SvgBuilder {
         }
     }
 
+    fn with_base_transform(&self, base_transform: Affine) -> Self {
+        Self {
+            base_transform,
+            options: self.options,
+            pattern_depth: self.pattern_depth,
+            image_depth: self.image_depth,
+        }
+    }
+
     fn push_tree(&self, canvas: &mut Canvas, tree: &usvg::Tree) -> Result<(), SvgError> {
         self.push_group(canvas, tree.root())
     }
 
     fn push_group(&self, canvas: &mut Canvas, group: &usvg::Group) -> Result<(), SvgError> {
+        let group_transform = self.base_transform * transform_to_affine(group.abs_transform());
         let filter_layers = if group.filters().is_empty() {
             Vec::new()
         } else {
-            let region_transform = self.base_transform * transform_to_affine(group.abs_transform());
-            let content_transform = region_transform
+            let content_transform = group_transform
                 * inverse_affine(transform_to_affine(group.transform()), "filter transform")?;
             svg_filter_layers(
                 self,
                 canvas,
                 group.filters(),
-                region_transform,
+                group_transform,
                 content_transform,
                 canvas.logical_width,
                 canvas.logical_height,
@@ -143,13 +151,23 @@ impl SvgBuilder {
                     canvas.logical_height,
                     canvas.scale_factor,
                     mask,
+                    group_transform,
                 )
             })
             .transpose()?;
 
         let mut pushed_layers = 0;
         if let Some(clip) = group.clip_path() {
-            pushed_layers += self.push_clip_path_layers(canvas, clip)?;
+            // usvg inserts a viewport-clip wrapper for <use> of a <symbol>. Its group absolute
+            // transform is the parent's, while its untransformed child carries the <use>
+            // transform. Apply the clip in the same coordinate space as that child.
+            let clip_transform = match group.children() {
+                [Node::Group(child)] if child.transform() == usvg::Transform::default() => {
+                    self.base_transform * transform_to_affine(child.abs_transform())
+                }
+                _ => group_transform,
+            };
+            pushed_layers += self.push_clip_path_layers(canvas, clip, clip_transform)?;
         }
 
         let layer_path = || {
@@ -208,24 +226,31 @@ impl SvgBuilder {
         height: u32,
         scale_factor: f32,
         mask: &usvg::Mask,
+        transform: Affine,
     ) -> Result<(Canvas, LayerMask), SvgError> {
         let mut mask_scene = Canvas::new(width, height, scale_factor);
+        let builder = self.with_base_transform(transform);
         if let Some(parent) = mask.mask() {
             let (parent_scene, parent_mask) =
-                self.svg_mask_layer(width, height, scale_factor, parent)?;
+                self.svg_mask_layer(width, height, scale_factor, parent, transform)?;
             mask_scene.push_mask_layer(parent_scene, parent_mask);
-            self.push_group(&mut mask_scene, mask.root())?;
+            builder.push_group(&mut mask_scene, mask.root())?;
             mask_scene.pop_layer();
         } else {
-            self.push_group(&mut mask_scene, mask.root())?;
+            builder.push_group(&mut mask_scene, mask.root())?;
         }
+        let rect = nonzero_rect_to_kurbo(mask.rect());
+        let [_, b, c, _, _, _] = transform.as_coeffs();
+        // A rotated mask region is a parallelogram, not its axis-aligned bounding box.
+        let region = if b == 0.0 && c == 0.0 {
+            Region::rect(transform.transform_rect_bbox(rect), Radius::ZERO)
+        } else {
+            Region::path(rect_path(rect), transform, self.options.tolerance)
+        };
         Ok((
             mask_scene,
             LayerMask {
-                region: transform_region(
-                    Region::rect(nonzero_rect_to_kurbo(mask.rect()), Radius::ZERO),
-                    self.base_transform,
-                ),
+                region,
                 kind: match mask.kind() {
                     usvg::MaskType::Alpha => MaskKind::Alpha,
                     usvg::MaskType::Luminance => MaskKind::Luminance,
@@ -251,24 +276,24 @@ impl SvgBuilder {
         let transform = self.base_transform * transform_to_affine(image.abs_transform());
         let size = image.size();
         let world_to_local = inverse_affine(transform, "image transform")?;
-        let raster = match image.kind() {
-            usvg::ImageKind::PNG(data) => decode_png_image(data)?,
+        let source: ImageSource = match image.kind() {
+            usvg::ImageKind::PNG(data) => decode_png_image(data)?.into(),
             usvg::ImageKind::JPEG(data) => {
-                decode_encoded_image(data, ::image::ImageFormat::Jpeg, "jpeg image")?
+                decode_encoded_image(data, ::image::ImageFormat::Jpeg, "jpeg image")?.into()
             }
             usvg::ImageKind::GIF(data) => {
-                decode_encoded_image(data, ::image::ImageFormat::Gif, "gif image")?
+                decode_encoded_image(data, ::image::ImageFormat::Gif, "gif image")?.into()
             }
             usvg::ImageKind::WEBP(data) => {
-                decode_encoded_image(data, ::image::ImageFormat::WebP, "webp image")?
+                decode_encoded_image(data, ::image::ImageFormat::WebP, "webp image")?.into()
             }
             usvg::ImageKind::SVG(tree) => {
                 let (width, height) = svg_image_raster_size(transform, size);
-                self.svg_image_to_raster(tree, width, height)?
+                self.svg_image_to_canvas(tree, width, height)?.into()
             }
         };
 
-        let Some(image_key) = canvas.register_scene_image(raster) else {
+        let Some(image_key) = canvas.register_scene_image(source) else {
             return Ok(());
         };
         let Some(pattern) = PatternBrush::new_resource(
@@ -301,12 +326,12 @@ impl SvgBuilder {
         Ok(())
     }
 
-    fn svg_image_to_raster(
+    fn svg_image_to_canvas(
         &self,
         tree: &usvg::Tree,
         width: u32,
         height: u32,
-    ) -> Result<RasterImage, SvgError> {
+    ) -> Result<Canvas, SvgError> {
         if self.image_depth >= MAX_IMAGE_DEPTH {
             return Err(SvgError::unsupported("recursive svg image"));
         }
@@ -330,9 +355,9 @@ impl SvgBuilder {
         }
         .push_tree(&mut canvas, tree)?;
 
-        let mut renderer = WgpuRenderer::new_default_device(width, height, Color::TRANSPARENT);
-        renderer.render(&canvas);
-        Ok(renderer.image().clone())
+        // Preserve the vector scene until the chosen executor can render it on
+        // its own device. SVG lowering must not create a hidden GPU context.
+        Ok(canvas)
     }
 
     fn push_path(&self, canvas: &mut Canvas, path: &usvg::Path) -> Result<(), SvgError> {
@@ -404,13 +429,28 @@ impl SvgBuilder {
             stroke.opacity().get(),
             path_transform,
         )?;
-        if stroke.linejoin() == usvg::LineJoin::MiterClip {
-            // kurbo does not expose SVG 2 miter-clip joins. Build the SVG stroke outline with
-            // tiny-skia/usvg semantics, then render that outline through the normal path pipeline.
-            if let Some(outline) = path
-                .data()
-                .stroke(&stroke.to_tiny_skia(), resolution_scale(transform))
-            {
+        let needs_svg_stroker = stroke.linejoin() == usvg::LineJoin::MiterClip
+            || (stroke.linecap() != usvg::LineCap::Butt
+                && (stroke
+                    .dasharray()
+                    .is_some_and(|dashes| dashes.contains(&0.0))
+                    || has_zero_length_subpath(path.data())));
+        if needs_svg_stroker {
+            // Kurbo omits zero-length dashes, even though SVG round and square caps must paint
+            // them and fully degenerate subpaths. It also lacks miter-clip joins. Dash before
+            // expanding the SVG stroke outline: tiny-skia's Path::stroke itself ignores dashes.
+            let style = stroke.to_tiny_skia();
+            let scale = resolution_scale(transform);
+            let dashed = style
+                .dash
+                .as_ref()
+                .map(|dash| path.data().dash(dash, scale));
+            let outline = match dashed {
+                Some(Some(dashed)) => dashed.stroke(&style, scale),
+                Some(None) => None,
+                None => path.data().stroke(&style, scale),
+            };
+            if let Some(outline) = outline {
                 canvas.push_path(
                     tiny_path_to_bez(&outline),
                     brush,
@@ -438,10 +478,11 @@ impl SvgBuilder {
         &self,
         canvas: &mut Canvas,
         clip: &usvg::ClipPath,
+        reference_transform: Affine,
     ) -> Result<usize, SvgError> {
         let mut pushed = 0;
         if let Some(parent) = clip.clip_path() {
-            pushed += self.push_clip_path_layers(canvas, parent)?;
+            pushed += self.push_clip_path_layers(canvas, parent, reference_transform)?;
         }
 
         match self.clip_path_lowering(clip) {
@@ -458,7 +499,7 @@ impl SvgBuilder {
             ),
             ClipPathLowering::Fused { path, rule } => canvas.push_clip_layer(
                 path,
-                self.base_transform * transform_to_affine(clip.transform()),
+                reference_transform * transform_to_affine(clip.transform()),
                 rule,
                 self.options.tolerance,
             ),
@@ -468,6 +509,7 @@ impl SvgBuilder {
                     canvas.logical_height,
                     canvas.scale_factor,
                     clip,
+                    reference_transform,
                 )?;
                 canvas.push_mask_layer(mask_scene, mask);
             }
@@ -481,12 +523,13 @@ impl SvgBuilder {
         height: u32,
         scale_factor: f32,
         clip: &usvg::ClipPath,
+        reference_transform: Affine,
     ) -> Result<(Canvas, LayerMask), SvgError> {
         let mut mask_scene = Canvas::new(width, height, scale_factor);
         self.push_clip_path_mask_group(
             &mut mask_scene,
             clip.root(),
-            self.base_transform * transform_to_affine(clip.transform()),
+            reference_transform * transform_to_affine(clip.transform()),
         )?;
         Ok((
             mask_scene,
@@ -511,13 +554,7 @@ impl SvgBuilder {
         let transform = transform * transform_to_affine(group.transform());
         let mut pushed_layers = 0;
         if let Some(clip) = group.clip_path() {
-            pushed_layers += SvgBuilder {
-                options: self.options,
-                base_transform: transform,
-                pattern_depth: self.pattern_depth,
-                image_depth: self.image_depth,
-            }
-            .push_clip_path_layers(canvas, clip)?;
+            pushed_layers += self.push_clip_path_layers(canvas, clip, transform)?;
         }
 
         for child in group.children() {
@@ -613,6 +650,7 @@ impl SvgBuilder {
         opacity: f32,
         path_transform: Affine,
     ) -> Result<Brush, SvgError> {
+        // SVG gradients interpolate stop colors independently of stop opacity.
         match paint {
             Paint::Color(color) => Ok(color_opacity_to_brush(*color, opacity)),
             Paint::LinearGradient(source) => {
@@ -622,6 +660,7 @@ impl SvgBuilder {
                     (source.x2() as f64, source.y2() as f64),
                 )
                 .with_extend(spread_method(source.spread_method()))
+                .with_interpolation_alpha_space(InterpolationAlphaSpace::Unpremultiplied)
                 .with_stops(stops.as_slice());
                 let mut brush = Brush::from_gradient(&gradient);
                 let Brush::Linear(linear) = &mut brush else {
@@ -640,6 +679,7 @@ impl SvgBuilder {
                     source.r().get(),
                 )
                 .with_extend(spread_method(source.spread_method()))
+                .with_interpolation_alpha_space(InterpolationAlphaSpace::Unpremultiplied)
                 .with_stops(stops.as_slice());
                 let mut brush = Brush::from_gradient(&gradient);
                 let Brush::Radial(radial) = &mut brush else {
@@ -649,7 +689,9 @@ impl SvgBuilder {
                     self.paint_server_inverse_transform(source.transform(), path_transform)?;
                 Ok(brush)
             }
-            Paint::Pattern(pattern) => self.pattern_to_brush(canvas, pattern, opacity),
+            Paint::Pattern(pattern) => {
+                self.pattern_to_brush(canvas, pattern, opacity, path_transform)
+            }
         }
     }
 
@@ -672,6 +714,7 @@ impl SvgBuilder {
         canvas: &mut Canvas,
         pattern: &usvg::Pattern,
         opacity: f32,
+        path_transform: Affine,
     ) -> Result<Brush, SvgError> {
         if self.pattern_depth >= MAX_PATTERN_DEPTH {
             return Err(SvgError::unsupported("recursive pattern paint"));
@@ -682,32 +725,29 @@ impl SvgBuilder {
         let height = rect.height();
         let tile_width = width.ceil().max(1.0) as u32;
         let tile_height = height.ceil().max(1.0) as u32;
-        // Render pattern content once in tile pixel space, then reuse the same
-        // world-to-tile transform for brush sampling so fractional tile sizes
-        // keep the SVG repeat period instead of snapping to integer user units.
-        let tile_transform =
-            Affine::scale_non_uniform(
-                f64::from(tile_width) / f64::from(width),
-                f64::from(tile_height) / f64::from(height),
-            ) * Affine::translate((-f64::from(rect.left()), -f64::from(rect.top())));
+        // Pattern content is local to the tile. The pattern's x/y offset moves
+        // tile sampling, not the content drawn into the tile.
+        let tile_scale = Affine::scale_non_uniform(
+            f64::from(tile_width) / f64::from(width),
+            f64::from(tile_height) / f64::from(height),
+        );
 
         let mut tile_scene = Canvas::new(tile_width, tile_height, 1.0);
         SvgBuilder {
             options: self.options,
-            base_transform: tile_transform,
+            base_transform: tile_scale * pattern_content_correction(pattern.root()),
             pattern_depth: self.pattern_depth + 1,
             image_depth: self.image_depth,
         }
         .push_group(&mut tile_scene, pattern.root())?;
 
-        let mut renderer =
-            WgpuRenderer::new_default_device(tile_width, tile_height, Color::TRANSPARENT);
-        renderer.render(&tile_scene);
-
-        let Some(pattern_inverse) = pattern.transform().invert() else {
-            return Err(SvgError::unsupported("non-invertible patternTransform"));
-        };
-        let Some(image_key) = canvas.register_scene_image(renderer.image().clone()) else {
+        // The pattern geometry is in the path's user space, while shaders sample
+        // the brush in canvas pixels. Account for both SVG and path transforms.
+        let world_to_pattern = inverse_affine(
+            self.base_transform * path_transform * transform_to_affine(pattern.transform()),
+            "patternTransform",
+        )?;
+        let Some(image_key) = canvas.register_scene_image(tile_scene) else {
             return Err(SvgError::unsupported("empty pattern image"));
         };
         let Some(pattern) = PatternBrush::new_resource(
@@ -716,8 +756,9 @@ impl SvgBuilder {
                 Affine::scale_non_uniform(
                     1.0 / f64::from(tile_width),
                     1.0 / f64::from(tile_height),
-                ) * tile_transform
-                    * transform_to_affine(pattern_inverse),
+                ) * tile_scale
+                    * Affine::translate((-f64::from(rect.left()), -f64::from(rect.top())))
+                    * world_to_pattern,
             ),
             Extend::Repeat,
             PatternSampling::Nearest,
@@ -780,9 +821,7 @@ impl SvgBuilder {
             .push_group(&mut filter_canvas, image.root())?;
         }
 
-        let mut renderer = WgpuRenderer::new_default_device(width, height, Color::TRANSPARENT);
-        renderer.render(&filter_canvas);
-        let Some(image_key) = canvas.register_scene_image(renderer.image().clone()) else {
+        let Some(image_key) = canvas.register_scene_image(filter_canvas) else {
             return Err(SvgError::unsupported("empty feImage"));
         };
         let Some(pattern) = PatternBrush::new_resource(
@@ -801,6 +840,29 @@ impl SvgBuilder {
             return Err(SvgError::unsupported("empty feImage"));
         };
         Ok(Brush::Pattern(pattern))
+    }
+}
+
+fn pattern_content_correction(root: &usvg::Group) -> Affine {
+    let [Node::Group(wrapper)] = root.children() else {
+        return Affine::IDENTITY;
+    };
+    let transform = transform_to_affine(wrapper.transform());
+    if transform == Affine::IDENTITY {
+        return transform;
+    }
+
+    // usvg may add a viewBox wrapper after resolving objectBoundingBox units.
+    // Its descendant absolute transforms then still refer to the old root.
+    let descendants_are_unrebased = wrapper.children().iter().any(|child| match child {
+        Node::Path(path) => path.abs_transform() == usvg::Transform::default(),
+        Node::Group(group) => group.abs_transform() == group.transform(),
+        _ => false,
+    });
+    if descendants_are_unrebased {
+        transform
+    } else {
+        Affine::IDENTITY
     }
 }
 
@@ -1001,7 +1063,10 @@ impl<'a> SvgFilterGraphBuilder<'a> {
             usvg::filter::Kind::DiffuseLighting(lighting) => (
                 self.input(lighting.input(), "feDiffuseLighting")?,
                 None,
-                FilterPrimitiveKind::Filter(Box::new(diffuse_lighting_to_filter(lighting))),
+                FilterPrimitiveKind::Filter(Box::new(diffuse_lighting_to_filter(
+                    lighting,
+                    self.region_transform,
+                ))),
             ),
             usvg::filter::Kind::DisplacementMap(displacement) => (
                 self.input(displacement.input1(), "feDisplacementMap")?,
@@ -1067,7 +1132,10 @@ impl<'a> SvgFilterGraphBuilder<'a> {
             usvg::filter::Kind::SpecularLighting(lighting) => (
                 self.input(lighting.input(), "feSpecularLighting")?,
                 None,
-                FilterPrimitiveKind::Filter(Box::new(specular_lighting_to_filter(lighting))),
+                FilterPrimitiveKind::Filter(Box::new(specular_lighting_to_filter(
+                    lighting,
+                    self.region_transform,
+                ))),
             ),
             usvg::filter::Kind::Tile(tile) => {
                 let input = self.input(tile.input(), "feTile")?;
@@ -1096,6 +1164,8 @@ impl<'a> SvgFilterGraphBuilder<'a> {
                 input,
                 input2,
                 region,
+                linear_rgb: primitive.color_interpolation()
+                    == usvg::filter::ColorInterpolation::LinearRGB,
                 kind,
             },
             source_region,
@@ -1288,22 +1358,28 @@ fn convolve_edge_mode(edge_mode: usvg::filter::EdgeMode) -> ConvolveEdgeMode {
     }
 }
 
-fn diffuse_lighting_to_filter(lighting: &usvg::filter::DiffuseLighting) -> Filter {
+fn diffuse_lighting_to_filter(
+    lighting: &usvg::filter::DiffuseLighting,
+    transform: Affine,
+) -> Filter {
     Filter::DiffuseLighting(DiffuseLighting {
         surface_scale: lighting.surface_scale(),
         diffuse_constant: lighting.diffuse_constant(),
         lighting_color: color_to_rgb(lighting.lighting_color()),
-        light_source: light_source(lighting.light_source()),
+        light_source: light_source(lighting.light_source(), transform),
     })
 }
 
-fn specular_lighting_to_filter(lighting: &usvg::filter::SpecularLighting) -> Filter {
+fn specular_lighting_to_filter(
+    lighting: &usvg::filter::SpecularLighting,
+    transform: Affine,
+) -> Filter {
     Filter::SpecularLighting(SpecularLighting {
         surface_scale: lighting.surface_scale(),
         specular_constant: lighting.specular_constant(),
         specular_exponent: lighting.specular_exponent(),
         lighting_color: color_to_rgb(lighting.lighting_color()),
-        light_source: light_source(lighting.light_source()),
+        light_source: light_source(lighting.light_source(), transform),
     })
 }
 
@@ -1365,27 +1441,42 @@ fn turbulence_kind(kind: usvg::filter::TurbulenceKind) -> TurbulenceKind {
     }
 }
 
-fn light_source(source: usvg::filter::LightSource) -> LightSource {
+fn light_source(source: usvg::filter::LightSource, transform: Affine) -> LightSource {
+    // SVG light positions use primitive coordinates, while the lighting kernel uses canvas pixels.
+    let point = |x: f32, y: f32| {
+        let point = transform * peniko::kurbo::Point::new(x as f64, y as f64);
+        (point.x as f32, point.y as f32)
+    };
+    let [a, b, c, d, _, _] = transform.as_coeffs();
+    // Extend the 2D transform to the height axis without letting rotation or skew change depth.
+    let z_scale = (a * d - b * c).abs().sqrt() as f32;
     match source {
         usvg::filter::LightSource::DistantLight(light) => LightSource::Distant {
             azimuth: light.azimuth,
             elevation: light.elevation,
         },
-        usvg::filter::LightSource::PointLight(light) => LightSource::Point {
-            x: light.x,
-            y: light.y,
-            z: light.z,
-        },
-        usvg::filter::LightSource::SpotLight(light) => LightSource::Spot {
-            x: light.x,
-            y: light.y,
-            z: light.z,
-            points_at_x: light.points_at_x,
-            points_at_y: light.points_at_y,
-            points_at_z: light.points_at_z,
-            specular_exponent: light.specular_exponent.get(),
-            limiting_cone_angle: light.limiting_cone_angle,
-        },
+        usvg::filter::LightSource::PointLight(light) => {
+            let (x, y) = point(light.x, light.y);
+            LightSource::Point {
+                x,
+                y,
+                z: light.z * z_scale,
+            }
+        }
+        usvg::filter::LightSource::SpotLight(light) => {
+            let (x, y) = point(light.x, light.y);
+            let (points_at_x, points_at_y) = point(light.points_at_x, light.points_at_y);
+            LightSource::Spot {
+                x,
+                y,
+                z: light.z * z_scale,
+                points_at_x,
+                points_at_y,
+                points_at_z: light.points_at_z * z_scale,
+                specular_exponent: light.specular_exponent.get(),
+                limiting_cone_angle: light.limiting_cone_angle,
+            }
+        }
     }
 }
 
@@ -1755,6 +1846,39 @@ fn gradient_stops(stops: &[usvg::Stop], opacity: f32) -> Vec<ColorStop> {
         .collect()
 }
 
+fn has_zero_length_subpath(path: &usvg::tiny_skia_path::Path) -> bool {
+    let mut start = None;
+    let mut has_draw_command = false;
+    let mut stays_at_start = true;
+    for segment in path.segments() {
+        match segment {
+            PathSegment::MoveTo(point) => {
+                if has_draw_command && stays_at_start {
+                    return true;
+                }
+                start = Some(point);
+                has_draw_command = false;
+                stays_at_start = true;
+            }
+            PathSegment::LineTo(point) => {
+                has_draw_command = true;
+                stays_at_start &= start == Some(point);
+            }
+            PathSegment::QuadTo(control, point) => {
+                has_draw_command = true;
+                stays_at_start &= start == Some(control) && start == Some(point);
+            }
+            PathSegment::CubicTo(first, second, point) => {
+                has_draw_command = true;
+                stays_at_start &=
+                    start == Some(first) && start == Some(second) && start == Some(point);
+            }
+            PathSegment::Close => has_draw_command = true,
+        }
+    }
+    has_draw_command && stays_at_start
+}
+
 fn stroke_to_kurbo(stroke: &usvg::Stroke) -> Stroke {
     let mut out = Stroke::new(stroke.width().get() as f64)
         .with_join(match stroke.linejoin() {
@@ -1942,3 +2066,6 @@ fn nonzero_rect_to_kurbo(rect: usvg::NonZeroRect) -> Rect {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod deferred_resources;

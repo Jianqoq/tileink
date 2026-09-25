@@ -19,8 +19,8 @@ cargo clippy --release --all-targets -- -D warnings
 ```
 
 Rendering changes must also run the release examples and complete SVG matrix documented in
-[`AGENTS.md`](AGENTS.md). Performance changes require a Criterion benchmark for the affected
-scenario and evidence that the result improved or remained within noise.
+[`AGENTS.md`](AGENTS.md). Measure performance changes in the affected application workload
+and remove temporary measurement code after collecting evidence.
 
 ## Pull requests
 

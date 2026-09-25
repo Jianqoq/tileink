@@ -8,14 +8,12 @@ mod draw_order;
 mod helpers;
 mod lifecycle;
 mod plan;
+mod scoped_damage;
 mod spatial_tiles;
 mod storage;
 
 use self::draw_order::LocalDrawOrder;
 use self::helpers::inactive_draw;
-
-#[cfg(feature = "bench-internals")]
-pub use self::helpers::RetainedMaterializerBenchmark;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum NodeKindTag {
@@ -33,6 +31,9 @@ pub(crate) struct MaterializedNodeMetadata {
     kind: NodeKindTag,
 }
 
+mod chunk_canvas;
+use chunk_canvas::ChunkCanvas;
+
 pub(crate) struct SceneChunk {
     pub(crate) instance: u64,
     pub(crate) generation: u64,
@@ -40,7 +41,7 @@ pub(crate) struct SceneChunk {
     pub(crate) transform_bits: Option<[u64; 6]>,
     // Chunks have a single owner. Keeping their mutable encoding behind an Rc made every
     // revision pay an atomic uniqueness check and made newly inserted chunks allocate twice.
-    pub(crate) canvas: Canvas,
+    pub(crate) canvas: ChunkCanvas,
     lines: ArenaAllocation,
     paths: ArenaAllocation,
     pub(crate) draws: ArenaAllocation,
@@ -62,31 +63,44 @@ pub(crate) struct SceneChunk {
 
 #[derive(Clone, Copy)]
 pub(crate) struct BackdropDependency {
+    pub(crate) scoped: bool,
     dependency: Bounds,
     pub(crate) output: Bounds,
-    output_outset: i32,
+    read: filter::FilterDependency,
 }
 
 #[derive(Clone, Copy)]
 pub(crate) struct BoundsInfluence {
     outset: i32,
-    clip: Bounds,
+    clip: Option<Bounds>,
 }
 
 impl BoundsInfluence {
     fn apply(self, bounds: Bounds) -> Bounds {
         if bounds.is_empty() {
-            bounds
-        } else {
-            bounds.outset(self.outset).intersect(self.clip)
+            return bounds;
         }
+        let expanded = bounds.outset(self.outset);
+        self.clip.map_or(expanded, |clip| expanded.intersect(clip))
     }
 
-    /// Composes a nearer layer effect before this already accumulated ancestor effect.
+    /// Compose local clips before the root clip. None is identity; an empty
+    /// explicit clip stays empty even when an ancestor reads neighbours.
     fn with_nearer(self, nearer: Self) -> Self {
+        let nearer_clip = nearer.clip.map(|clip| {
+            if clip.is_empty() {
+                clip
+            } else {
+                clip.outset(self.outset)
+            }
+        });
         Self {
             outset: nearer.outset.saturating_add(self.outset),
-            clip: nearer.clip.outset(self.outset).intersect(self.clip),
+            clip: match (nearer_clip, self.clip) {
+                (Some(a), Some(b)) => Some(a.intersect(b)),
+                (a, None) => a,
+                (None, b) => b,
+            },
         }
     }
 }
@@ -204,8 +218,22 @@ pub(crate) struct PersistentSceneMaterializer {
     /// Detached plain-scene command-list ranges, reused by later topology insertions with the
     /// same fragment shape so repeated conditional UI does not grow command storage forever.
     vacant_command_fragments: Vec<std::ops::Range<usize>>,
-    resource_refs: HashMap<ImageKey, (Rc<Image>, usize)>,
+    // Preserve deferred vector sources through materialization; only the selected
+    // GPU executor may rasterize them. Counts follow live retained chunks.
+    resource_refs: HashMap<ImageKey, (ImageSource, usize)>,
     pub(crate) dependency_free: bool,
+    /// Refreshed once with dependency metadata after chunks change. Root-domain
+    /// updates must not rescan every backdrop at each frame-patching stage.
+    scoped_backdrop: bool,
+    backdrop_order: Vec<(RetainedNodeId, Rc<[u128]>)>,
+    #[cfg(test)]
+    scoped_backdrop_scans: std::cell::Cell<usize>,
+    #[cfg(test)]
+    backdrop_order_sorts: std::cell::Cell<usize>,
+    #[cfg(test)]
+    local_output_bounds_reads: std::cell::Cell<usize>,
+    #[cfg(test)]
+    input_domain_snapshots: std::cell::Cell<usize>,
     layer_nodes: HashSet<RetainedNodeId>,
     pub(crate) nonlocal_dependencies: HashSet<RetainedNodeId>,
     pub(crate) surface_dependent_plans: HashSet<RetainedNodeId>,
@@ -235,3 +263,5 @@ static NEXT_PLAN_CACHE_KEY: AtomicU64 = AtomicU64::new(1);
 fn next_plan_cache_key() -> u64 {
     (1 << 63) | NEXT_PLAN_CACHE_KEY.fetch_add(1, Ordering::Relaxed)
 }
+
+mod structural_damage;

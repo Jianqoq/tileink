@@ -132,13 +132,6 @@ impl DrawRecord {
         }
     }
 
-    pub(crate) fn fill_rule(self) -> FillRule {
-        match self.fill_rule.0 {
-            value if value == FillRule::EvenOdd as u32 => FillRule::EvenOdd,
-            _ => FillRule::NonZero,
-        }
-    }
-
     // pub fn covers_tile(&self, tile_x: u32, tile_y: u32, width: u32, height: u32) -> bool {
     //     let tile_bounds = Bounds::from_tile_coords(tile_x, tile_y, width, height);
     //     let pb = self.pixel_bounds.intersect(tile_bounds);

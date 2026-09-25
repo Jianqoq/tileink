@@ -6,12 +6,10 @@ use peniko::{
 };
 use tileink::{BlurSampling, Canvas, Filter, Radius, RectLiquidGlass, Region};
 
-use crate::common;
+use super as common;
 
 pub const WIDTH: u32 = 1080;
 pub const HEIGHT: u32 = 560;
-pub const PROFILE_WIDTH: u32 = 1920;
-pub const PROFILE_HEIGHT: u32 = 1080;
 
 #[derive(Clone, Copy)]
 pub enum GlassMode {
@@ -54,33 +52,6 @@ pub fn single_mode_scene(mode: GlassMode) -> Canvas {
         Radius::all(48.0),
         mode,
     );
-    scene
-}
-
-pub fn profile_scene_for_mode(mode: GlassMode, panels: u32) -> Canvas {
-    let mut scene = Canvas::new(PROFILE_WIDTH, PROFILE_HEIGHT, 1.0);
-    background(&mut scene, PROFILE_WIDTH, PROFILE_HEIGHT);
-    let columns = if panels <= 16 { 4 } else { 8 };
-    let rows = panels.div_ceil(columns);
-    let gap = 20.0;
-    let margin = 44.0;
-    let panel_width =
-        (PROFILE_WIDTH as f64 - margin * 2.0 - gap * f64::from(columns - 1)) / f64::from(columns);
-    let panel_height =
-        (PROFILE_HEIGHT as f64 - margin * 2.0 - gap * f64::from(rows - 1)) / f64::from(rows);
-
-    for i in 0..panels {
-        let col = i % columns;
-        let row = i / columns;
-        let x0 = margin + f64::from(col) * (panel_width + gap);
-        let y0 = margin + f64::from(row) * (panel_height + gap);
-        add_panel(
-            &mut scene,
-            Rect::new(x0, y0, x0 + panel_width, y0 + panel_height),
-            Radius::all(18.0),
-            mode,
-        );
-    }
     scene
 }
 

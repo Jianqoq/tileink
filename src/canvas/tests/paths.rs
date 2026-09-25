@@ -22,7 +22,6 @@ fn push_arc_adds_draw_and_path_record() {
 
     assert_eq!(canvas.draw_records.len(), 1);
     assert_eq!(canvas.path_records.len(), 1);
-    assert_eq!(canvas.path_records.len(), 1);
     assert_eq!(canvas.draw_records[0].tag, DrawTag::Brush);
     assert!(!canvas.draw_records[0].solid_rect());
 }

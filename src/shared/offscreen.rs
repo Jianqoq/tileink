@@ -188,9 +188,15 @@ fn local_draw_selection(
     candidates: &[u32],
     bounds: Bounds,
 ) -> LocalDrawSelection {
-    let mut batches = HashSet::new();
+    let mut batches = HashMap::new();
     let mut hidden = HashSet::new();
-    collect_local_plan_draws(children, &plan.layer_stack_data, &mut batches, &mut hidden);
+    collect_local_plan_draws(
+        children,
+        &plan.layer_stack_data,
+        bounds,
+        &mut batches,
+        &mut hidden,
+    );
     let mut draws = Vec::new();
     let mut seen = HashSet::new();
     let mut old_batch_draws = HashMap::<u32, Vec<usize>>::new();
@@ -200,12 +206,39 @@ fn local_draw_selection(
             continue;
         };
         let batch = plan.draw_batch_ids.get(draw).copied().unwrap_or(u32::MAX);
-        if batches.contains(&batch)
-            && pixel_bounds_overlap(record.pixel_bounds, bounds)
+        if batches
+            .get(&batch)
+            .is_some_and(|request| pixel_bounds_overlap(record.pixel_bounds, request.bounds))
             && seen.insert(draw)
         {
             draws.push(draw);
             old_batch_draws.entry(batch).or_default().push(draw);
+        }
+    }
+    // Spatial bins cover the root canvas and the original query only. Nested
+    // filters can read beyond both. Supplement just those batches, in their
+    // original painter order; ordinary bounded batches keep the indexed path.
+    let indexed = bounds.intersect(Bounds::canvas(
+        canvas.physical_width(),
+        canvas.physical_height(),
+    ));
+    for (&batch, request) in &batches {
+        if request.bounds.intersect(indexed) == request.bounds {
+            continue;
+        }
+        let selected = old_batch_draws.entry(batch).or_default();
+        selected.clear();
+        for &draw in request.draws {
+            if canvas
+                .draw_records
+                .get(draw)
+                .is_some_and(|record| pixel_bounds_overlap(record.pixel_bounds, request.bounds))
+            {
+                if seen.insert(draw) {
+                    draws.push(draw);
+                }
+                selected.push(draw);
+            }
         }
     }
     for draw in hidden {
@@ -230,10 +263,16 @@ fn local_draw_selection(
     LocalDrawSelection { draws, batch_draws }
 }
 
-fn collect_local_plan_draws(
-    ops: &[ExecOp],
+struct LocalBatchInput<'a> {
+    bounds: Bounds,
+    draws: &'a [usize],
+}
+
+fn collect_local_plan_draws<'a>(
+    ops: &'a [ExecOp],
     layer_stacks: &[crate::shared::execution::LayerStackEntry],
-    batches: &mut HashSet<u32>,
+    bounds: Bounds,
+    batches: &mut HashMap<u32, LocalBatchInput<'a>>,
     hidden: &mut HashSet<usize>,
 ) {
     for op in ops {
@@ -241,20 +280,39 @@ fn collect_local_plan_draws(
             ExecOp::DrawBatch {
                 batch_id,
                 layer_stack,
+                draws,
                 ..
             } => {
-                batches.insert(*batch_id);
+                batches
+                    .entry(*batch_id)
+                    .and_modify(|input| input.bounds = input.bounds.union(bounds))
+                    .or_insert(LocalBatchInput { bounds, draws });
                 collect_layer_stack_draws(layer_stacks, layer_stack.clone(), hidden);
             }
             ExecOp::OffscreenLayer {
                 draw,
                 outer_stack,
                 children,
+                layer,
                 ..
             } => {
                 hidden.insert(*draw);
                 collect_layer_stack_draws(layer_stacks, outer_stack.clone(), hidden);
-                collect_local_plan_draws(children, layer_stacks, batches, hidden);
+                let source = if let Layer::Filter {
+                    filter,
+                    sample_region,
+                } = layer
+                {
+                    crate::shared::layer::filter::filter_surface_bounds(
+                        filter,
+                        sample_region,
+                        bounds,
+                    )
+                    .map_or(Bounds::new(0, 0, 0, 0), |surface| surface.surface)
+                } else {
+                    bounds
+                };
+                collect_local_plan_draws(children, layer_stacks, source, batches, hidden);
             }
             ExecOp::OffscreenMaskLayer {
                 outer_stack,
@@ -263,8 +321,8 @@ fn collect_local_plan_draws(
                 ..
             } => {
                 collect_layer_stack_draws(layer_stacks, outer_stack.clone(), hidden);
-                collect_local_plan_draws(content, layer_stacks, batches, hidden);
-                collect_local_plan_draws(mask, layer_stacks, batches, hidden);
+                collect_local_plan_draws(content, layer_stacks, bounds, batches, hidden);
+                collect_local_plan_draws(mask, layer_stacks, bounds, batches, hidden);
             }
             ExecOp::BeginClip
             | ExecOp::EndClip
@@ -625,6 +683,9 @@ fn translate_mask_to_local(mask: &Mask, local: LocalSpace) -> Mask {
 
 fn translate_filter_to_local(filter: &Filter, local: LocalSpace) -> Filter {
     match filter {
+        Filter::ProgressiveBlur(blur) => Filter::ProgressiveBlur(blur.translated(
+            peniko::kurbo::Vec2::new(-f64::from(local.surface.x0), -f64::from(local.surface.y0)),
+        )),
         Filter::Chain {
             filters,
             fixed_region,
@@ -645,6 +706,7 @@ fn translate_filter_to_local(filter: &Filter, local: LocalSpace) -> Filter {
                     input: primitive.input,
                     input2: primitive.input2,
                     region: local.bounds(primitive.region),
+                    linear_rgb: primitive.linear_rgb,
                     kind: translate_primitive_kind_to_local(&primitive.kind, local),
                 })
                 .collect(),

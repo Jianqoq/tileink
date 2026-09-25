@@ -1,86 +1,15 @@
 ---
-sidebar_position: 3
-title: WgpuRenderer API
+title: NativeRenderer API
 ---
 
-# `WgpuRenderer` / `Renderer`
+# NativeRenderer API
 
-两个名字是同一类型。Renderer 持有 device/queue clone、pipelines、GPU buffers、image registry、retained cursors、history 和 profiler。
+使用 `NativeRenderer::new(NativeBackend::Dx12, width, height)` 或 `NativeRenderer::with_context(&context, width, height)` 构造。Immediate 方法包括 `render`、`render_with_text`、`render_to_image`、`render_to_texture`、`render_to_target`。Retained 对应方法以 `render_retained` 开头。图像提交的 `readback()` 等待并返回 `Image`；GPU 提交返回同步凭据。`insert_image`、`remove_image`、`clear_images` 管理图像资源；`set_clear_color` 和 `invalidate_retained_history` 更新渲染状态。
 
-## 构造
+Metal 后端要求 Apple7 或更新的 Apple GPU、Tier 2 argument buffers 和至少 256 线程的 compute threadgroup。最终绘制使用硬件 TBDR render pass：覆盖完整目标的 fine pass 由 tile shader 直接读写片上 imageblock，局部裁剪和增量绘制只栅格化活动 tile，并通过 framebuffer fetch 读取目标颜色。路径覆盖、裁剪、文本和混合保持原有解析语义，几何准备和邻域滤镜继续使用 compute。
 
-```rust
-pub fn new(device: &wgpu::Device, queue: &wgpu::Queue,
-           width: u32, height: u32, clear: Color) -> Self;
-pub fn new_with_options(device: &wgpu::Device, queue: &wgpu::Queue,
-                        width: u32, height: u32, clear: Color,
-                        options: RendererOptions) -> Self;
-pub fn new_default_device(width: u32, height: u32, clear: Color) -> Self;
-```
+Metal 支持局部裁剪调度：保守地选择裁剪范围内的 tile；无文本的纯裁剪计划复用预分配粒子空间，减少重复计数、前缀扫描和整屏绘制。增量更新仍考虑移除或重设父级造成的损伤区域，混合分组和文本保留常规分配路径。
 
-`RendererOptions::pipeline_cache` 接收由相同 device 创建的 WGPU pipeline cache。应用负责磁盘持久化。
+Metal compute dispatch、纹理拷贝和绘制保留独立的 encoder 边界，保证裁剪发射与绘制之间的资源依赖。
 
-## 基本 render
-
-| 方法 | 说明 |
-|---|---|
-| `render(&Canvas)` | 普通 Canvas 到 renderer-owned target |
-| `render_native(&Canvas) -> bool` | 显式 native backend，返回是否成功 |
-| `render_with_text(...)` | 带 font/text context |
-| `render_native_with_text(...) -> bool` | native text variant |
-| `render_profiled(&Canvas)` | immediate render，并返回 CPU/GPU profile |
-| `render_with_text_profiled(...)` | text-aware immediate render profile |
-| `render_with_options(canvas, options)` | debug/capture options |
-| `image()` | 同步读回 renderer target 为 `Image` |
-
-## Retained render
-
-| 方法 | 说明 |
-|---|---|
-| `render_retained(&RetainedScene)` | persistent scene |
-| `render_retained_with_text(scene, fonts, text)` | text variant |
-| `render_retained_profiled(scene)` | 自动 start/end profile |
-| `render_retained_with_text_profiled(...)` | retained + text + profile |
-
-## Texture output 对称矩阵
-
-| Scene | Transient texture | Persistent external history |
-|---|---|---|
-| Canvas | `render_to_wgpu_texture` | `render_to_persistent_wgpu_texture` |
-| Canvas + text | `render_with_text_to_wgpu_texture` | `render_with_text_to_persistent_wgpu_texture` |
-| Retained | `render_retained_to_wgpu_texture` | `render_retained_to_persistent_wgpu_texture` |
-| Retained + text | `render_retained_with_text_to_wgpu_texture` | `render_retained_with_text_to_persistent_wgpu_texture` |
-
-全部 texture 方法返回 `Result<(), WgpuTextureRenderError>`。
-
-## Image registry
-
-| 方法 | 说明 |
-|---|---|
-| `insert_image(key, image) -> bool` | 新增/替换；是否改变 registry |
-| `remove_image(key) -> bool` | 删除 |
-| `clear_images() -> bool` | 清空 |
-| `image_resource(key)` | 只读查询 |
-
-资源变化会失效必要的 retained history 和 GPU tables。
-
-## Incremental 配置与状态
-
-| 方法 | 说明 |
-|---|---|
-| `incremental_render_config()` | 复制当前 config |
-| `set_incremental_render_config(config)` | validate 并应用 |
-| `incremental_render_stats()` | 最近一帧详细 counters |
-| `invalidate_retained_history()` | 外部状态使历史不可信时调用 |
-| `set_clear_color(color)` | 改 clear color，并触发必要失效 |
-
-`IncrementalRenderConfig` 包含 `mode`、full-redraw ratio、direct-render hysteresis、active-tile capture 等字段。调用 `validate()` 会检查比例关系。
-
-## Device 与 pipeline
-
-| 方法 | 说明 |
-|---|---|
-| `device()` / `queue()` | renderer 使用的 WGPU handles |
-| `target_rgba8_byte_len()` | 当前目标读回字节数 |
-| `last_frame_used_native_gpu()` | 最近一次是否 native path |
-| `pipeline_compilation_epoch()` | pipelines 新编译时推进，可用于持久 cache |
+宿主导入的纹理若作为绘制目标，必须同时带有 `ShaderRead | ShaderWrite | RenderTarget` usage。增量更新、背景混合及大于视口的目标会加载原有内容，保留未覆盖的像素；整目标替换无需加载旧颜色。

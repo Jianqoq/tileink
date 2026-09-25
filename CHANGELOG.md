@@ -1,47 +1,18 @@
 # Changelog
 
-All notable changes to Tileink are documented in this file.
+## Unreleased
 
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and Tileink uses
-[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+- SVG `feComposite` and `feConvolveMatrix` now honor each primitive's filter color space. Convolution processes premultiplied colors by default and applies bias using the unclamped result alpha, matching the reference output.
+- SVG pattern brushes now account for the path and viewBox transforms when sampling pattern tiles, fixing their scale and phase in native renders.
+- Improved progressive blur shallow-edge quality with direct small Gaussian kernels, denser full-resolution levels, and delayed downsampling. Added independent `Balanced` (default) and `High` quality policies, edge/motion regression tests, and quality-specific benchmarks.
 
-## [Unreleased]
+- Added GPU progressive blur for content and backdrop layers, with smooth directional strength, a calibrated multiscale pyramid, and retained-cache integration. Includes DX12/Vulkan HLSL, Metal shaders, semantic/GPU tests, a visual example, and Criterion benchmarks.
 
-## [0.1.2] - 2026-08-31
+- SVG `feBlend` and `feComponentTransfer` now honor each primitive's `color-interpolation-filters` setting. The renderer previously dropped the setting and processed default linearRGB filters in sRGB; it now converts their premultiplied inputs and outputs at the primitive boundary while preserving explicit sRGB filters.
+- Native DX12, Vulkan, and Metal renderer paths use shared scene semantics and backend-specific GPU resources.
+- Immediate and retained rendering support renderer-owned images, host textures, and host presentation targets.
+- SVG fixture rendering and release-mode test runners use the selected native backend.
 
-### Added
+## 0.1.2
 
-- Documented how to render directly into an acquired WGPU surface texture and present it, with a
-  complete `winit` example covering setup, resize, surface recovery, and presentation.
-
-### Fixed
-
-- Made the direct-surface example require the actual `Rgba8Unorm` format and texture usages needed
-  by both native and portable WGPU paths instead of accepting an unsupported sRGB target.
-- Corrected WGPU destination validation messages and updated code for Rust 1.98 Clippy.
-
-## [0.1.1] - 2026-08-31
-
-### Added
-
-- Added DirectWrite baseline, matrix, metrics, and reference validation for LCD text rendering.
-
-### Changed
-
-- Improved LCD glyph coverage generation and GPU compositing to more closely match DirectWrite on
-  both light and dark backgrounds.
-- Updated WGPU example reference renders for the revised LCD rasterization.
-
-## [0.1.0] - 2026-08-01
-
-### Added
-
-- Initial public release of the tile-based GPU-compute renderer.
-- Added immediate `Canvas` and transactional, incremental `RetainedScene` APIs.
-- Added paths, analytic SDF primitives, text, images, gradients, layers, masks, filters, backdrops,
-  SVG rendering, and native WGPU output.
-
-[Unreleased]: https://github.com/Jianqoq/tileink/compare/v0.1.2...HEAD
-[0.1.2]: https://github.com/Jianqoq/tileink/compare/v0.1.1...v0.1.2
-[0.1.1]: https://github.com/Jianqoq/tileink/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/Jianqoq/tileink/tree/v0.1.0
+- Added transactional retained scenes, incremental materialization, text preparation, and SVG lowering.

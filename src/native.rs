@@ -1,0 +1,124 @@
+//! Explicit native-backend selection and platform availability. Each build owns
+//! one adapter; unavailable platforms return errors without switching backends.
+
+use std::{error::Error, fmt};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeBackend {
+    Dx12,
+    Vulkan,
+    Metal,
+}
+
+impl NativeBackend {
+    fn unavailable(self) -> BackendUnavailable {
+        let (enabled, platform) = match self {
+            Self::Metal => (cfg!(feature = "metal"), cfg!(target_os = "macos")),
+            Self::Dx12 => (cfg!(feature = "dx12"), cfg!(target_os = "windows")),
+            Self::Vulkan => (
+                cfg!(feature = "vulkan"),
+                cfg!(any(target_os = "windows", target_os = "linux")),
+            ),
+        };
+        BackendUnavailable {
+            backend: self,
+            reason: if !enabled {
+                BackendUnavailableReason::FeatureDisabled
+            } else if !platform {
+                BackendUnavailableReason::UnsupportedPlatform
+            } else {
+                BackendUnavailableReason::AdapterNotImplemented
+            },
+        }
+    }
+}
+
+impl fmt::Display for NativeBackend {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Dx12 => "DX12",
+            Self::Vulkan => "Vulkan",
+            Self::Metal => "Metal",
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BackendUnavailableReason {
+    FeatureDisabled,
+    UnsupportedPlatform,
+    AdapterNotImplemented,
+}
+
+/// A forced native choice never silently selects another native API.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BackendUnavailable {
+    pub backend: NativeBackend,
+    pub reason: BackendUnavailableReason,
+}
+
+impl fmt::Display for BackendUnavailable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let reason = match self.reason {
+            BackendUnavailableReason::FeatureDisabled => "its Cargo feature is disabled",
+            BackendUnavailableReason::UnsupportedPlatform => "this platform is unsupported",
+            BackendUnavailableReason::AdapterNotImplemented => {
+                "its adapter is not implemented in this build"
+            }
+        };
+        write!(f, "native {} is unavailable: {reason}", self.backend)
+    }
+}
+
+impl Error for BackendUnavailable {}
+
+mod context;
+mod renderer;
+mod submission;
+mod target;
+mod texture;
+pub use context::{NativeContext, NativeContextOptions, NativeError};
+pub use renderer::NativeRenderer;
+pub use submission::{NativeImageSubmission, NativeSubmission};
+pub use target::NativeRenderTarget;
+pub use texture::NativeTexture;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unavailable_backends_never_fall_back() {
+        for backend in [NativeBackend::Dx12, NativeBackend::Vulkan] {
+            let expected = backend.unavailable();
+            if expected.reason == BackendUnavailableReason::AdapterNotImplemented
+                && cfg!(target_os = "windows")
+            {
+                continue;
+            }
+            let error = NativeRenderer::new(backend, 17, 19).unwrap_err();
+            let NativeError::Unavailable(actual) = error else {
+                panic!("unexpected initialization")
+            };
+            assert_eq!(actual, expected);
+        }
+    }
+}
+
+mod shaders;
+pub use shaders::{NativeShaderArtifact, SHADER_ARTIFACTS};
+
+#[cfg(tileink_native_runtime)]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "Low-level conformance entry points are exercised by the native GPU matrix"
+    )
+)]
+mod runtime;
+
+pub mod interop;
+
+mod target_use;
+pub use target_use::{NativeTargetState, NativeTargetSubmission, NativeTargetUse};
