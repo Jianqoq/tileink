@@ -71,7 +71,6 @@ fn push_rect_records_sdf_rect_without_path_storage() {
 
     assert_eq!(canvas.draw_records.len(), 1);
     assert!(canvas.path_records.is_empty());
-    assert!(canvas.path_records.is_empty());
     let draw = &canvas.draw_records[0];
     assert_eq!(
         draw.pixel_bounds,
@@ -403,7 +402,6 @@ fn push_rect_records_sdf_rect_with_independent_radii() {
 
     assert_eq!(canvas.draw_records.len(), 1);
     assert!(canvas.path_records.is_empty());
-    assert!(canvas.path_records.is_empty());
     match draw_sdf(&canvas, 0) {
         Some(Sdf::Rect(rect)) => {
             assert_eq!(rect.axis_bounds(), (4.0, 5.0, 40.0, 41.0));
@@ -469,7 +467,6 @@ fn push_image_records_pattern_rect_draw() {
 
     assert_eq!(draw.index(), 0);
     assert_eq!(canvas.draw_records.len(), 1);
-    assert!(canvas.path_records.is_empty());
     assert!(canvas.path_records.is_empty());
     let record = &canvas.draw_records[0];
     assert_eq!(
@@ -654,7 +651,6 @@ fn push_circle_records_sdf_circle_without_path_storage() {
     canvas.push_circle(Circle::new((16.0, 20.0), 8.0), Brush::Solid(rgb(255, 0, 0)));
 
     assert_eq!(canvas.draw_records.len(), 1);
-    assert!(canvas.path_records.is_empty());
     assert!(canvas.path_records.is_empty());
     let draw = &canvas.draw_records[0];
     assert_eq!(
@@ -986,7 +982,6 @@ fn push_candlestick_records_sdf_without_path_storage() {
 
     assert_eq!(canvas.draw_records.len(), 1);
     assert!(canvas.path_records.is_empty());
-    assert!(canvas.path_records.is_empty());
     assert_eq!(
         canvas.draw_records[0].pixel_bounds,
         PixelBounds {
@@ -1049,7 +1044,6 @@ fn push_line_records_sdf_without_path_storage() {
 
     assert_eq!(canvas.draw_records.len(), 1);
     assert!(canvas.path_records.is_empty());
-    assert!(canvas.path_records.is_empty());
     assert_eq!(
         canvas.draw_records[0].pixel_bounds,
         PixelBounds {
@@ -1081,7 +1075,6 @@ fn push_dash_line_records_sdf_without_path_storage() {
     );
 
     assert_eq!(canvas.draw_records.len(), 1);
-    assert!(canvas.path_records.is_empty());
     assert!(canvas.path_records.is_empty());
     assert_eq!(
         canvas.draw_records[0].pixel_bounds,
@@ -1117,7 +1110,6 @@ fn push_sdf_arc_records_sdf_without_path_storage() {
     );
 
     assert_eq!(canvas.draw_records.len(), 1);
-    assert!(canvas.path_records.is_empty());
     assert!(canvas.path_records.is_empty());
     match draw_sdf(&canvas, 0) {
         Some(Sdf::Rc(arc)) => {
@@ -1163,7 +1155,6 @@ fn push_shape_shadows_record_sdf_shadow_without_path_storage() {
 
     assert_eq!(canvas.draw_records.len(), 3);
     assert!(canvas.path_records.is_empty());
-    assert!(canvas.path_records.is_empty());
     assert!(
         canvas
             .draw_records
@@ -1195,7 +1186,6 @@ fn push_rect_stroke_records_sdf_without_path_storage() {
     );
 
     assert_eq!(canvas.draw_records.len(), 1);
-    assert!(canvas.path_records.is_empty());
     assert!(canvas.path_records.is_empty());
     let draw = &canvas.draw_records[0];
     assert_eq!(
@@ -1236,7 +1226,6 @@ fn push_rect_stroke_widths_records_per_side_sdf_widths() {
 
     assert_eq!(canvas.draw_records.len(), 1);
     assert!(canvas.path_records.is_empty());
-    assert!(canvas.path_records.is_empty());
     let draw = &canvas.draw_records[0];
     assert_eq!(
         draw.pixel_bounds,
@@ -1266,7 +1255,6 @@ fn push_circle_stroke_records_sdf_without_path_storage() {
     );
 
     assert_eq!(canvas.draw_records.len(), 1);
-    assert!(canvas.path_records.is_empty());
     assert!(canvas.path_records.is_empty());
     let draw = &canvas.draw_records[0];
     assert_eq!(
@@ -1305,7 +1293,6 @@ fn push_sdf_stroke_with_zero_width_is_noop() {
 
     assert!(canvas.draw_records.is_empty());
     assert!(canvas.path_records.is_empty());
-    assert!(canvas.path_records.is_empty());
 }
 
 #[test]
@@ -1318,7 +1305,6 @@ fn push_dashed_circle_stroke_uses_path_storage() {
     );
 
     assert_eq!(canvas.draw_records.len(), 1);
-    assert_eq!(canvas.path_records.len(), 1);
     assert_eq!(canvas.path_records.len(), 1);
     assert!(canvas.draw_records[0].path_id().is_some());
     assert!(canvas.draw_records[0].sdf_range().is_none());

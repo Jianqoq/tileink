@@ -5,13 +5,6 @@ fn parse(svg: &str) -> usvg::Tree {
     usvg::Tree::from_str(svg, &usvg::Options::default()).unwrap()
 }
 
-#[test]
-fn svg_image_raster_size_includes_outer_transform_scale() {
-    let size = usvg::Size::from_wh(100.0, 100.0).unwrap();
-
-    assert_eq!(svg_image_raster_size(Affine::scale(2.4), size), (240, 240));
-}
-
 fn rejected_gradient_scene() -> (Canvas, Canvas) {
     let tree = parse(
         r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">

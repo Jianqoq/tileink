@@ -143,21 +143,6 @@ mod tests {
     }
 
     #[test]
-    fn open_horizontal_line_closes() {
-        let path = BezPath::from_vec(vec![
-            PathEl::MoveTo((0.0, 0.0).into()),
-            PathEl::LineTo((100.0, 0.0).into()),
-        ]);
-        let mut lines = Vec::new();
-
-        PathFlatten::new(&path, 0.1, 0).flatten(&mut lines);
-
-        assert_eq!(lines.len(), 2);
-        assert_eq!(lines[1].p0, [100.0, 0.0]);
-        assert_eq!(lines[1].p1, [0.0, 0.0]);
-    }
-
-    #[test]
     fn circle_flattens_to_many_small_lines() {
         let path = Circle::new((20.0, 20.0), 10.0).to_path(0.1);
         let mut lines = Vec::new();

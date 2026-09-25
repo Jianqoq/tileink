@@ -63,19 +63,3 @@ fn duration_from_millis(millis: f64) -> Duration {
         Duration::from_nanos(nanos as u64)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn cpu_instant_elapsed_is_non_zero_after_work() {
-        let start = CpuInstant::now();
-        let mut work = 0u64;
-        for ix in 0..10_000 {
-            work = work.wrapping_add(ix);
-        }
-        std::hint::black_box(work);
-        assert!(start.elapsed() >= Duration::ZERO);
-    }
-}
