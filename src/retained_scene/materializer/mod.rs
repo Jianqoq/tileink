@@ -15,9 +15,6 @@ mod storage;
 use self::draw_order::LocalDrawOrder;
 use self::helpers::inactive_draw;
 
-#[cfg(feature = "bench-internals")]
-pub use self::helpers::RetainedMaterializerBenchmark;
-
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum NodeKindTag {
     Group,

@@ -2,7 +2,11 @@
 //! Encoder boundaries with tracked resources establish visibility between passes.
 mod encoding;
 use encoding::Encoding;
+#[cfg(test)]
+mod ordering_tests;
+mod pass;
 mod readback;
+mod render;
 mod resources;
 use super::{Metal, Object, Result, memory, pipeline};
 use crate::native::runtime::compute::{Command, ComputeBatch};
@@ -12,6 +16,7 @@ use resources::Resource;
 
 pub(super) struct Frame {
     pub command: Object<dyn MTLCommandBuffer>,
+    completion: super::completion::Completion,
     _resources: Vec<Resource>,
     _staging: Vec<Object<dyn MTLBuffer>>,
     outputs: Vec<readback::Output>,
@@ -59,11 +64,8 @@ impl Frame {
                         continue;
                     }
                     let pipeline = &device.pipelines[pass.shader.entry];
-                    let encoder = command
-                        .computeCommandEncoder()
-                        .ok_or("Metal compute encoder failed")?;
-                    let encoding = Encoding(objc2::runtime::ProtocolObject::from_ref(&*encoder));
-                    encoder.setComputePipelineState(&pipeline.state);
+                    let encoder =
+                        pass::PassEncoder::new(&command, &pipeline.state, batch, pass, &resources)?;
                     for binding in pass.shader.bindings.iter().filter(|b| b.internal) {
                         let words = match binding.slot {
                             31 => vec![pass.grid[0], pass.grid[1], pass.grid[2], 0],
@@ -84,16 +86,15 @@ impl Frame {
                             }
                             _ => return Err("unknown Metal internal binding".into()),
                         };
-                        let grid = memory::upload(&device.device, bytemuck::cast_slice(&words))?;
-                        // SAFETY: immutable, initialized backend-private uniform.
+                        // The 16-byte dispatch grid and 128-byte buffer-length
+                        // table are consumed only by this pass. Inline binding
+                        // avoids a separate tracked allocation per encoder.
+                        // SAFETY: reflection fixes the slot and Metal copies
+                        // these initialized words during this call.
                         unsafe {
-                            encoder.setBuffer_offset_atIndex(
-                                Some(&grid),
-                                0,
-                                pipeline::slot(binding.slot),
-                            );
+                            encoder
+                                .bytes(bytemuck::cast_slice(&words), pipeline::slot(binding.slot));
                         }
-                        staging.push(grid);
                     }
                     for (binding, id) in &pass.bindings {
                         let slot = pipeline::slot(binding.slot);
@@ -103,22 +104,18 @@ impl Frame {
                         unsafe {
                             match binding.kind {
                                 BindingKind::Uniform | BindingKind::Read | BindingKind::Write => {
-                                    encoder.setBuffer_offset_atIndex(
-                                        Some(resource.buffer()?),
-                                        0,
-                                        slot,
-                                    )
+                                    encoder.buffer(resource.buffer()?, slot)
                                 }
                                 BindingKind::Texture
                                 | BindingKind::TextureWrite
                                 | BindingKind::TextureArray => {
-                                    encoder.setTexture_atIndex(Some(resource.texture()?), slot)
+                                    encoder.texture(resource.texture()?, slot)
                                 }
                                 BindingKind::Sampler => {
                                     let Resource::Sampler(sampler) = resource else {
                                         return Err("Metal sampler mismatch".into());
                                     };
-                                    encoder.setSamplerState_atIndex(Some(sampler), slot);
+                                    encoder.sampler(sampler, slot);
                                 }
                                 BindingKind::TextureTable => {
                                     let Resource::Table(images) = resource else {
@@ -133,22 +130,17 @@ impl Frame {
                                     arguments.setArgumentBuffer_offset(Some(&buffer), 0);
                                     for (index, image) in images.iter().enumerate() {
                                         arguments.setTexture_atIndex(Some(image), index);
-                                        encoder.useResource_usage(
+                                        encoder.sampled_resource(
                                             objc2::runtime::ProtocolObject::from_ref(&**image),
-                                            MTLResourceUsage::Read,
                                         );
                                     }
-                                    encoder.setBuffer_offset_atIndex(Some(&buffer), 0, slot);
+                                    encoder.buffer(&buffer, slot);
                                     staging.push(buffer);
                                 }
                             }
                         }
                     }
-                    encoder.dispatchThreadgroups_threadsPerThreadgroup(
-                        memory::size(pass.grid),
-                        memory::size(pass.shader.workgroup),
-                    );
-                    drop(encoding);
+                    encoder.execute(pass);
                 }
             }
         }
@@ -163,12 +155,19 @@ impl Frame {
                 );
             }
         }
+        let completion = super::completion::Completion::new(&command);
         Ok(Self {
             command,
+            completion,
             _resources: resources,
             _staging: staging,
             outputs,
         })
+    }
+    pub fn wait(&self) -> Result<()> {
+        self.completion
+            .wait(&self.command, std::time::Duration::from_secs(30))?;
+        Ok(())
     }
     pub fn readback(self) -> Result<Vec<Vec<u8>>> {
         self.outputs.iter().map(readback::Output::read).collect()

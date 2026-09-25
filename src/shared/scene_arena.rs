@@ -4,11 +4,6 @@ use std::{
     ops::Range,
 };
 
-#[cfg(feature = "bench-internals")]
-mod benchmark;
-#[cfg(feature = "bench-internals")]
-pub use benchmark::{SceneArenaDirtyBenchmark, SceneArenaFillBenchmark};
-
 const COMPACTION_THRESHOLD: f32 = 0.30;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

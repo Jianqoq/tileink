@@ -1,51 +1,5 @@
 use super::*;
 
-/// CPU-only retained materializer access for Criterion benchmarks.
-///
-/// This deliberately exposes no render data and is omitted from normal builds.
-#[cfg(feature = "bench-internals")]
-#[doc(hidden)]
-pub struct RetainedMaterializerBenchmark {
-    materializer: PersistentSceneMaterializer,
-}
-
-#[cfg(feature = "bench-internals")]
-impl RetainedMaterializerBenchmark {
-    pub fn new(scene: &RetainedScene) -> Self {
-        Self {
-            materializer: PersistentSceneMaterializer::new(scene),
-        }
-    }
-
-    pub fn update_incremental(&mut self, scene: &RetainedScene) -> bool {
-        let changes = scene.changes_since(self.materializer.version());
-        self.materializer.update(scene, changes)
-    }
-
-    pub fn visit_tiles_for_bounds(&self, bounds: Bounds) -> (usize, usize) {
-        self.materializer
-            .tiles_for_bounds(bounds)
-            .fold((0, 0), |(count, checksum), tile| {
-                (count + 1, checksum.wrapping_add(tile))
-            })
-    }
-
-    pub fn visit_node_physical_draws(
-        &self,
-        id: RetainedNodeId,
-        repetitions: usize,
-    ) -> (usize, usize) {
-        let mut result = (0usize, 0usize);
-        for _ in 0..repetitions {
-            for draw in self.materializer.node_physical_draws(id) {
-                result.0 += 1;
-                result.1 = result.1.wrapping_add(draw);
-            }
-        }
-        result
-    }
-}
-
 pub(super) fn sync_arena<T: Copy>(
     dst: &mut Vec<T>,
     arena: &mut SceneArena<T>,

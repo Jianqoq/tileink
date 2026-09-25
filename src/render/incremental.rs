@@ -16,11 +16,6 @@ use crate::{
 
 use super::damage_tiles::DamageTiles;
 
-#[cfg(feature = "bench-internals")]
-mod benchmark;
-#[cfg(feature = "bench-internals")]
-pub use benchmark::{FrameDiffBenchmark, FrameDiffBenchmarkCase};
-
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum IncrementalRenderMode {
     #[default]

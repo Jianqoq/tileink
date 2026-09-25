@@ -157,7 +157,11 @@ impl super::app::Host for Host {
             }
             desc.setStorageMode(MTLStorageMode::Private);
             desc.setHazardTrackingMode(MTLHazardTrackingMode::Tracked);
-            desc.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite);
+            desc.setUsage(
+                MTLTextureUsage::ShaderRead
+                    | MTLTextureUsage::ShaderWrite
+                    | MTLTextureUsage::RenderTarget,
+            );
             let texture = self
                 .device
                 .newTextureWithDescriptor(&desc)

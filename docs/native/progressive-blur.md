@@ -75,7 +75,7 @@ decimation phase; clean outputs reuse the existing retained cache. This is the
 intentional correctness policy for this implementation, not sparse pyramid
 updates or shared pyramid caching between separate panels.
 
-## Validation and performance
+## Validation
 
 Run ordinary tests in release mode and on one test thread:
 
@@ -102,41 +102,6 @@ These are fixture measurements, not universal bounds on arbitrary images.
 Tests also cover near-zero and maximum sigma, premultiplied alpha, clear/uniform
 plateaus, reverse/diagonal gradients, tiny/odd images, sufficient source halos,
 DPI/local coordinates, pooled capacity, and retained dirty/clean frames.
-
-The Criterion scenario measures warmed end-to-end submission plus completion,
-without readback. It includes scene rendering, backdrop copies, blur, compositing,
-CPU recording and GPU execution; it is not a GPU timestamp measurement.
-
-```powershell
-$env:TILEINK_BENCH_GPU = '<physical adapter identity>'
-cargo bench --bench progressive_blur -- --save-baseline progressive
-```
-
-The benchmark covers both quality policies at 512x256 sigma 8/32 and 1920x1080
-sigma 2/32/128. Sigma 2 concentrates work in the shallow range. Compare on the
-same GPU/backend/driver. The quality implementation's unpaired-tap baseline is
-`progressive-quality-scalar`; the optimized version pairs adjacent taps without
-changing the Gaussian kernel. The older binomial implementation is a different
-quality/cost tradeoff, not a like-for-like performance baseline.
-
-Measured on Windows/DX12, RTX 4090 (`fe3e010000000000`), 2026-09-24;
-30 samples, 1-second warmup, 2-second measurement. Times are Criterion means
-for end-to-end submission and completion, not GPU timestamps:
-
-| Scene / max sigma | Balanced | High |
-| --- | --- | --- |
-| 1920x1080 / 2 | 508 us | 561 us |
-| 512x256 / 8 | 264 us | 307 us |
-| 512x256 / 32 | 319 us | 386 us |
-| 1920x1080 / 32 | 668 us | 845 us |
-| 1920x1080 / 128 | 730 us | 942 us |
-
-Criterion reported improvement in all ten cases against the same-quality
-unpaired implementation (9.8–27.1% lower time). The old lower-quality binomial
-version measured 370 us at 1080p/sigma32 and 378 us at sigma128 in this session.
-Thus the improved default deliberately costs about 1.8–1.9x at those settings;
-High costs about 2.3–2.5x. Quality improvement is not a free performance win.
-These observations are machine-specific, not a latency promise.
 
 Validation: full release CPU suite, focused DX12 and Vulkan GPU tests, strict
 clippy on both backends, all examples built, and full SVG fixture rendering plus

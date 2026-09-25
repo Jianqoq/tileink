@@ -9,7 +9,7 @@ struct FineInput {
     constant FineConfig* config;
     Words draws,paint,text;
     const device float* segments;
-    device uint* coarse;
+    const device uint* coarse;
     device uint* spills;
 };
 struct FineDraw {uint brush,sdf,shadow;int4 bounds;Affine inverse;};

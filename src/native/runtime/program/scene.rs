@@ -386,15 +386,14 @@ impl SceneCache {
         let layout = (record_base, index_base, records.len(), indices.len());
         // The bin records and indices are read-only inputs to coarse/fine. An
         // immediate Canvas rebuilds the same bins each frame, but copying its
-        // multi-megabyte list to the work buffer again is unnecessary.
+        // multi-megabyte list to the work buffer again is unnecessary. Metal's
+        // render stages also read these bins without modifying them, so they use
+        // the same accepted-snapshot reuse as the other native backends.
         let full_bin_upload = self.buffers.tile_bin_layout != Some(layout)
             || bins_full
-                && (cfg!(feature = "metal")
-                    || !self.buffers.tile_bin_snapshot.as_ref().is_some_and(
-                        |(old_records, old_indices)| {
-                            old_records == records && old_indices == indices
-                        },
-                    ));
+                && !self.buffers.tile_bin_snapshot.as_ref().is_some_and(
+                    |(old_records, old_indices)| old_records == records && old_indices == indices,
+                );
         let mut dirty_updates = if slots_changed {
             prefix_updates
         } else {
@@ -422,7 +421,7 @@ impl SceneCache {
         if clip_dispatch.preallocated && slots_changed {
             self.buffers.clip_slot_snapshot = Some(slot_bytes.to_vec());
         }
-        if cfg!(any(feature = "dx12", feature = "vulkan")) && full_bin_upload {
+        if full_bin_upload {
             let snapshot = self
                 .buffers
                 .tile_bin_snapshot

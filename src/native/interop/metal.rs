@@ -11,6 +11,8 @@ pub struct ContextDescriptor {
     pub queue: Retained<ProtocolObject<dyn MTLCommandQueue>>,
 }
 pub struct TextureDescriptor {
+    /// Textures used as drawing targets require `MTLTextureUsage::RenderTarget`
+    /// in addition to ShaderRead/ShaderWrite. Sampled-only imports do not.
     pub texture: Retained<ProtocolObject<dyn MTLTexture>>,
     pub initialized: bool,
 }

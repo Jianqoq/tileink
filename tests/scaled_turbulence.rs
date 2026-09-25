@@ -1,12 +1,11 @@
-#[allow(dead_code, unused_imports)]
-#[path = "../benches/support/backend_comparison.rs"]
+#[path = "support/native_gpu.rs"]
 mod backend;
 #[allow(unused_imports)]
 #[path = "../examples/common/mod.rs"]
 mod common;
 
 #[test]
-#[ignore = "requires pinned TILEINK_BENCH_GPU and TILEINK_BENCH_API; run each backend separately"]
+#[ignore = "requires pinned TILEINK_TEST_GPU; run each backend separately"]
 fn scaled_turbulence_matches_canonical_rgba() {
     use sha2::{Digest, Sha256};
     let mut gpu = backend::Gpu::new();

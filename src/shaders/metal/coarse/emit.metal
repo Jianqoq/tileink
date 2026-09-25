@@ -27,9 +27,16 @@ kernel void coarse_emit(constant CoarseConfig& c [[buffer(0)]],
     uint2 position(tile % c.tiles_width, tile / c.tiles_width);
     uint cursor = work[tile * 6 + 1], end = work[tile * 6 + 2];
     uint glyph = work[tile * 6 + 4], glyph_end = work[tile * 6 + 5];
+    // Reused slots may still carry EMPTY/COLOR from a preceding scalar batch.
+    // Parallel emission produces an interpreter stream, including a fresh terminator
+    // when a clip rejects this tile; it must never expose the previous batch.
+    if (!lane) work[emit_base(c, c.emit_chunk_capacity) + tile] = cursor < end ? 0 : 1;
     if (cursor >= end) return;
     uint wrappers = wrapper_count(c, layers, draws, paths, backdrops, ranges, paint, position);
-    if (wrappers == invalid_index) return;
+    if (wrappers == invalid_index) {
+        if (!lane) store_particle(work, c, cursor, 0, 0, 0, uint2(0), 0);
+        return;
+    }
     if (!lane) emit_stack(c, work, layers, draws, paths, backdrops, ranges, paint, cursor, position, false);
     cursor += wrappers;
     uint base = tile_draw_base(c, tile), page = work[base], remaining = work[base + 1];
@@ -69,17 +76,33 @@ kernel void coarse_emit_bins(constant CoarseConfig& c [[buffer(0)]],
     Words layers{raw_layers, word_size(sizes, 7)};
     Words batches{raw_batches, word_size(sizes, 9)};
 
-    uint bins = (c.tiles_width + 15) / 16;
-    uint2 position = uint2(group % bins, group / bins) * 16 + uint2(lane % 16, lane / 16);
-    if (position.x >= c.tiles_width || position.y >= c.tiles_height) return;
-    uint tile = position.y * c.tiles_width + position.x;
+    uint tile;
+    uint2 position;
+    if (c.incremental) {
+        // Scalar preallocated emission assigns one lane to each active tile.
+        // Its list can be sparse/nonmonotonic, and the last group can be padded.
+        uint active = group * 256 + lane;
+        if (active >= c.active_tile_count) return;
+        tile = tile_at(work, c, active);
+        if (tile >= c.tile_count) return;
+        position = uint2(tile % c.tiles_width, tile / c.tiles_width);
+    } else {
+        uint bins = (c.tiles_width + 15) / 16;
+        position = uint2(group % bins, group / bins) * 16 + uint2(lane % 16, lane / 16);
+        if (position.x >= c.tiles_width || position.y >= c.tiles_height) return;
+        tile = position.y * c.tiles_width + position.x;
+    }
     if (tile >= c.tile_count) return;
     uint kind = emit_base(c, c.emit_chunk_capacity) + tile;
     uint cursor = work[tile * 6 + 1], end = work[tile * 6 + 2];
     uint glyph = work[tile * 6 + 4], glyph_end = work[tile * 6 + 5];
     if (cursor >= end) { work[kind] = 1; return; }
     uint wrappers = wrapper_count(c, layers, draws, paths, backdrops, ranges, paint, position);
-    if (wrappers == invalid_index) { work[kind] = 0; return; }
+    if (wrappers == invalid_index) {
+        store_particle(work, c, cursor, 0, 0, 0, uint2(0), 0);
+        work[kind] = 1;
+        return;
+    }
     uint flags = wrappers ? 4 : 0;
     emit_stack(c, work, layers, draws, paths, backdrops, ranges, paint, cursor, position, false);
     cursor += wrappers;

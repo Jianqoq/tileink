@@ -1,10 +1,14 @@
 //! Metal owns only API resources, encoding and completion. Scene preparation and
-//! ordered compute batches remain shared with the other native adapters.
+//! ordered workloads remain shared. Analytic fine drawing uses an Apple TBDR
+//! render pass; geometry preparation and neighborhood filters use compute.
+mod completion;
 mod frame;
 #[cfg(test)]
 mod lifecycle_tests;
 mod memory;
 mod pipeline;
+#[cfg(test)]
+mod render_tests;
 #[cfg(test)]
 mod sdf_tests;
 #[cfg(test)]
@@ -55,13 +59,12 @@ impl Metal {
         if !std::ptr::eq(&*queue.device(), &*device) {
             return Err("Metal queue belongs to another device".into());
         }
-        if !(device.supportsFamily(MTLGPUFamily::Apple7)
-            || device.supportsFamily(MTLGPUFamily::Mac2))
+        if !device.supportsFamily(MTLGPUFamily::Apple7)
             || device.argumentBuffersSupport() != MTLArgumentBuffersTier::Tier2
             || device.maxThreadsPerThreadgroup().width < 256
         {
             return Err(
-                "Metal requires Apple7/Mac2, argument buffer tier 2, and 256-thread groups".into(),
+                "Metal requires Apple7 TBDR, argument buffer tier 2, and 256-thread groups".into(),
             );
         }
         Ok(Self {
@@ -159,7 +162,7 @@ impl Metal {
         Ok(command.status() == MTLCommandBufferStatus::Completed)
     }
     pub fn readback_batch(&mut self, ticket: &Ticket) -> Result<Vec<Vec<u8>>> {
-        if let Err(error) = wait(&self.pending.get(ticket)?.command) {
+        if let Err(error) = self.pending.get(ticket)?.wait() {
             self.failed = true;
             return Err(error);
         }
@@ -193,32 +196,12 @@ impl Drop for Metal {
     fn drop(&mut self) {
         // Destruction is an explicit completion boundary. Normal submissions and
         // resize never wait for the queue; command buffers retain their own leases.
-        if self
-            .pending
-            .values()
-            .all(|frame| wait(&frame.command).is_ok())
-        {
+        if self.pending.values().all(|frame| frame.wait().is_ok()) {
             self.pending.clear_after_completion();
         } else {
             // An unsignaled host event or lost device must not destroy leases
             // still referenced by the GPU. Preserve them rather than guessing.
             self.pending.quarantine();
-        }
-    }
-}
-
-fn wait(command: &objc2::runtime::ProtocolObject<dyn MTLCommandBuffer>) -> Result<()> {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-    loop {
-        match command.status() {
-            MTLCommandBufferStatus::Completed => return Ok(()),
-            MTLCommandBufferStatus::Error => {
-                return Err(format!("Metal execution failed: {:?}", command.error()).into());
-            }
-            _ if std::time::Instant::now() >= deadline => {
-                return Err("Metal completion timed out after 30 seconds".into());
-            }
-            _ => std::thread::sleep(std::time::Duration::from_millis(1)),
         }
     }
 }

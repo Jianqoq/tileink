@@ -21,11 +21,6 @@ use crate::{
     text::PreparedTextData,
 };
 
-#[cfg(feature = "bench-internals")]
-mod benchmark;
-#[cfg(feature = "bench-internals")]
-pub use benchmark::{GpuDirtyRangesBenchmark, TileDrawBinsBenchmark};
-
 use super::gpu_constants::CUMSUM_CHUNK_SIZE;
 use super::gpu_constants::SCAN_CHUNK_SIZE;
 pub(crate) const COARSE_CHUNK_SIZE: u32 = crate::shared::gpu_constants::COARSE_WORKGROUP_SIZE;

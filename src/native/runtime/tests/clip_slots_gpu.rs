@@ -71,9 +71,9 @@ fn native_reused_clip_slots_terminate_rejected_tiles() -> super::Result<()> {
         let clipped = canvas(false, scale, small);
         let expected = renderer.render_to_image(&normal)?.readback()?;
         for scene in [&clipped, &normal, &clipped] {
-            assert_eq!(
-                renderer.render_to_image(scene)?.readback()?.pixels,
-                expected.pixels
+            assert!(
+                renderer.render_to_image(scene)?.readback()?.pixels == expected.pixels,
+                "reused clip slots differ: scale={scale} small={small}"
             );
         }
     }

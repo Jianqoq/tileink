@@ -5,7 +5,7 @@ path. Complete command output is stored in a unique `${TMPDIR:-/tmp}/tileink-*` 
 print that path and the last 80 log lines.
 
 `run_tests.sh` always runs release tests with exactly one test thread. SVG category wrappers delegate
-to `run_svg_tests.sh`, and `run_retained_benchmarks.sh` exposes all Criterion retained-scene suites.
+to `run_svg_tests.sh`.
 
 ## Native Metal
 

@@ -48,30 +48,7 @@ then passed after the root-cause fix. Fault injection runs in an isolated child 
 ```powershell
 $env:TILEINK_NATIVE_GPU = '0f42010000000000'
 cargo test --release --no-default-features --features dx12 staging_reuse_preserves --lib -- --ignored --test-threads=1
-cargo bench --no-default-features --features dx12 --bench dx12_staging_reuse
 ```
-
-Criterion compares exact-size fresh committed upload allocations and mapped writes with the
-same writes to reusable resources for 15/17/16 MiB payloads. No GPU execution or presentation is
-included; the Replay application benchmark is separate. DX12 Auto remains VSync in gfx_ui, while
-Vulkan Auto selects supported Mailbox, so cross-backend results are not a policy-controlled API
-comparison. Evidence is in the application checkout under `target/agent-work/dx12-resize/`.
-
-Validation on RTX 4090: release suite passed (709 unit tests plus integrations), the isolated
-staging reuse/failure regression passed, strict library/benchmark Clippy passed, and gfx_ui
-passed 778 unit tests, two integration tests and its doctest including real-window acceptance.
-The full native DX12 corpus matched the approved M6 reference byte-for-byte: 1,712 SVGs,
-45 examples and 174 retained outputs, zero differences. See `dx12-resize/corpus/receipt.json`.
-
-Criterion measured 4.8584 ms for fresh exact-size committed allocations versus 1.8479 ms for
-reuse per three-upload sequence (62.0% lower). The application result is smaller: three alternating
-400-frame Replay pairs reduced median per-run interval p95 from 38.209 to 26.149 ms, per-run
-maximum from 46.179 to 29.499 ms, and submission mean from 14.282 to 10.682 ms. These are
-accepted-present intervals, not physical scanout measurements. Fixed-count runs traverse different
-amounts of the time-driven drag path; each validates actual HWND resize progress. The 144 Hz
-6.944 ms target remains unmet. Remaining resize waits and device-local allocation costs are
-separate optimization work, not resolved by this upload cache.
-
 
 ## Completed device-local buffers
 
@@ -94,34 +71,14 @@ The existing GPU regression now checks both upload and device resource identitie
 isolation, growth/shrinkage, reordered resources, out-of-order retirement and empty preservation.
 The reordered-resource identity assertions failed with sequential matching and pass with best fit. Its new reuse
 assertion caught missing retirement wiring in the prototype before the fixed version passed.
-The Criterion `dx12_device_buffer_reuse` group measures fresh versus reused DEFAULT allocations
-for 32 buffers near 512 KiB each; it excludes GPU execution and upload copies.
 
 Buffer state rule: [Microsoft resource state decay documentation](https://learn.microsoft.com/en-us/windows/win32/direct3d12/using-resource-barriers-to-synchronize-resource-states-in-direct3d-12#state-decay-to-common).
 
 The multi-frame regression retires two in-flight submissions together and verifies that both
 subsequent submissions reuse their original upload and DEFAULT resources. It failed with the
-single-list cache and passed with the free-list pool. `dx12_resize_pipeline_refill` compares the
-previous last-retired-only policy with retaining all free slots for two 9 MiB upload frames.
-It measures CPU allocation/map/copy/retirement only, without GPU execution.
-
-
+single-list cache and passed with the free-list pool.
 ## Final multi-frame validation
 
-Release tests passed (709 unit tests plus integrations), together with the pinned GPU regression
-and strict DX12 library/benchmark Clippy. gfx_ui real-window resize/capture and its release suite
-passed. All 1,931 DX12 corpus outputs remained byte-identical to approved M6 references.
-
-Final Criterion: resize pipeline refill 1.8759 ms with the last-slot-only policy versus 0.68815 ms
-with all completed slots (63.3% lower). Reusing 32 DEFAULT buffers took 0.563 us versus 8.5835 ms
-for fresh allocations; this excludes GPU execution and upload copies. Compared with the prior
-committed helper in the same session, single-frame uploads improved from 1.9073 to 1.8647 ms.
-The intermediate capacity-index vector had shown a small regression and was replaced with
-capacity stored directly beside its COM owner. Unchanged allocation controls varied between runs.
-
-Three alternating final Replay pairs reduced median per-run mean from 18.299 to 8.788 ms, p95
-from 25.713 to 18.006 ms, and submission mean from 10.607 to 3.276 ms. Maximum did not improve:
-median per-run max rose from 31.641 to 32.661 ms. Queue/resize waiting still dominates the tail;
-this cache change does not meet the 144 Hz tail target. Accepted-present intervals are not
-physical scanout frame rates. See the application's `docs/replay-resize-native-performance.md`
-and `target/agent-work/dx12-device-reuse/` for raw traces and verification receipts.
+Release tests passed together with the pinned GPU regression and strict DX12
+library Clippy. gfx_ui real-window resize/capture and its release suite passed.
+All 1,931 DX12 corpus outputs remained byte-identical to approved M6 references.

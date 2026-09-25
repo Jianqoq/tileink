@@ -9,11 +9,6 @@ use crate::{
 };
 use std::collections::HashSet;
 
-#[cfg(feature = "bench-internals")]
-mod benchmark;
-#[cfg(feature = "bench-internals")]
-pub use benchmark::{GlyphCapacityBenchmark, GlyphCapacityBenchmarkCase};
-
 #[derive(Default)]
 pub(crate) struct GlyphCapacityCache {
     capacities: Vec<usize>,
@@ -242,7 +237,7 @@ impl GlyphCapacityCache {
         }
     }
 
-    #[cfg(any(test, feature = "bench-internals"))]
+    #[cfg(test)]
     fn update_incremental(
         &mut self,
         canvas: &Canvas,

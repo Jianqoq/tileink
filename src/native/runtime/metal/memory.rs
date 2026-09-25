@@ -60,7 +60,9 @@ pub(super) fn texture(
         descriptor.setArrayLength(layers as usize);
     }
     descriptor.setStorageMode(MTLStorageMode::Private);
-    descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite);
+    descriptor.setUsage(
+        MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite | MTLTextureUsage::RenderTarget,
+    );
     device
         .newTextureWithDescriptor(&descriptor)
         .ok_or_else(|| "Metal texture allocation failed".into())

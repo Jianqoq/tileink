@@ -25,7 +25,7 @@ fn opacity_only_stacks_need_no_clip_dispatch() -> super::super::Result<()> {
 }
 
 #[test]
-#[cfg(any(feature = "dx12", feature = "vulkan"))]
+#[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
 fn broad_clip_only_schedules_tiles_with_child_draws() -> super::super::Result<()> {
     let mut canvas = Canvas::new(512, 512, 1.0);
     canvas.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 512.0, 512.0), crate::Radius::ZERO);
@@ -112,7 +112,7 @@ fn broad_clip_keeps_dense_binning() {
 }
 
 #[test]
-#[cfg(any(feature = "dx12", feature = "vulkan"))]
+#[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
 fn broad_pure_clip_uses_one_preallocated_dense_emit() -> super::super::Result<()> {
     let mut canvas = Canvas::new(512, 512, 1.0);
     canvas.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 384.0, 512.0), crate::Radius::ZERO);
@@ -135,7 +135,7 @@ fn broad_pure_clip_uses_one_preallocated_dense_emit() -> super::super::Result<()
 }
 
 #[test]
-#[cfg(any(feature = "dx12", feature = "vulkan"))]
+#[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
 fn fixed_clip_slots_are_disjoint_bounded_and_drop_out_for_mixed_passes() -> super::super::Result<()>
 {
     let mut canvas = Canvas::new(64, 64, 1.0);
@@ -218,7 +218,7 @@ fn nested_disjoint_clips_have_no_tiles() {
 }
 
 #[test]
-#[cfg(any(feature = "dx12", feature = "vulkan"))]
+#[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
 fn clip_emit_dispatch_covers_both_sides_of_a_scalar_workgroup() -> super::super::Result<()> {
     // 255, 256 and 272 selected tiles: the last scalar group must cover its tail.
     for (width, height, groups) in [(240.0, 272.0, 255), (256.0, 256.0, 1), (272.0, 256.0, 2)] {

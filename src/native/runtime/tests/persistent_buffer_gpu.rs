@@ -87,19 +87,23 @@ fn native_cached_buffer_rebuilds_after_discarded_dirty_upload() -> Result<()> {
     let pool = Rc::new(RefCell::new(SurfacePool::new(&context)));
     let mut cache = CachedBuffer::default();
     let mut batch = ComputeBatch::with_surfaces(pool.clone());
-    cache.upload(&mut batch, &[1u32, 2, 3, 4], None)?;
+    // Stay above the dense-upload cost threshold so this regression actually
+    // abandons a sparse patch. A four-word buffer intentionally uploads in full.
+    let mut data: Vec<u32> = (0..256).collect();
+    cache.upload(&mut batch, &data, None)?;
     context.submit_compute(&batch)?.wait()?;
     drop(batch);
     let mut rejected = ComputeBatch::with_surfaces(pool.clone());
     let dirty = std::iter::once(1..2).collect::<Vec<_>>();
-    let id = cache.upload(&mut rejected, &[1u32, 7, 3, 4], Some(&dirty))?;
+    data[1] = 777;
+    let id = cache.upload(&mut rejected, &data, Some(&dirty))?;
     assert_eq!(rejected.resources()[id.index()].bytes().len(), 4);
     drop(rejected);
     let mut retry = ComputeBatch::with_surfaces(pool.clone());
     let dirty = std::iter::once(2..3).collect::<Vec<_>>();
-    let data = [1u32, 7, 9, 4];
+    data[2] = 999;
     let id = cache.upload(&mut retry, &data, Some(&dirty))?;
-    assert_eq!(retry.resources()[id.index()].bytes().len(), 16);
+    assert_eq!(retry.resources()[id.index()].bytes().len(), data.len() * 4);
     retry.readback(id)?;
     let receipt = context
         .adapter

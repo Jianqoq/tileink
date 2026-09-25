@@ -50,13 +50,6 @@ impl DamageTiles {
         damage
     }
 
-    #[cfg(feature = "bench-internals")]
-    pub(crate) fn clear_for_benchmark(&mut self) {
-        for tile in self.list.drain(..) {
-            self.bits[tile as usize / 64] &= !(1 << (tile % 64));
-        }
-    }
-
     pub(crate) fn add_bounds(&mut self, bounds: Bounds) {
         // Keep the scalar conversion in this hot path. Returning a TileBbox from the shared query
         // helper measurably regresses workloads that add thousands of tiny bounds.
@@ -441,57 +434,6 @@ impl DamageTiles {
             expanded.add_bounds(rect.outset(pixels).intersect(canvas));
         }
         expanded
-    }
-}
-
-/// Criterion-only access to the production damage-tile implementation.
-///
-/// Keeping the benchmark adapter here ensures performance experiments exercise the same code used
-/// by the renderer without exposing damage bookkeeping as public API in normal builds.
-#[cfg(feature = "bench-internals")]
-#[doc(hidden)]
-pub struct DamageTilesBenchmark(DamageTiles);
-
-#[cfg(feature = "bench-internals")]
-impl DamageTilesBenchmark {
-    pub fn new(size: (u32, u32)) -> Self {
-        Self(DamageTiles::new(size))
-    }
-
-    pub fn full(size: (u32, u32)) -> Self {
-        Self(DamageTiles::full(size))
-    }
-
-    pub fn add_bounds(&mut self, bounds: Bounds) {
-        self.0.add_bounds(bounds);
-    }
-
-    pub fn len(&self) -> u32 {
-        self.0.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn list(&self) -> &[u32] {
-        self.0.list()
-    }
-
-    pub fn intersects_bounds(&self, bounds: Bounds) -> bool {
-        self.0.intersects_bounds(bounds)
-    }
-
-    pub fn count_in_bounds(&self, bounds: Bounds) -> u32 {
-        self.0.count_in_bounds(bounds)
-    }
-
-    pub fn coalesced_rects(&self, physical_size: (u32, u32)) -> Vec<Bounds> {
-        self.0.coalesced_rects(physical_size)
-    }
-
-    pub fn bounds_union(&self, physical_size: (u32, u32)) -> Option<Bounds> {
-        self.0.bounds_union(physical_size)
     }
 }
 

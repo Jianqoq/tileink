@@ -39,6 +39,6 @@ Choose `NativeBackend::Vulkan` or `NativeBackend::Metal` with the corresponding 
 - `scripts/ps1/run_svg_tests.ps1` on Windows, or `scripts/mac/run_svg_tests.sh` on macOS, renders the complete SVG fixture corpus through the native backend.
 - `cargo build --release --examples` checks example targets.
 
-The [documentation site](website/docs/intro.md) covers the scene model and rendering pipeline. The [DXC toolchain guide](docs/native/toolchain-discovery.md) describes native shader compilation. [Benchmarks](BENCHMARKS.md) use Criterion.
+The [documentation site](website/docs/intro.md) covers the scene model and rendering pipeline. The [DXC toolchain guide](docs/native/toolchain-discovery.md) describes native shader compilation.
 
 Licensed under MIT or Apache-2.0.

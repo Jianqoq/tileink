@@ -1,5 +1,6 @@
-//! Owned, API-neutral resources and ordered compute commands. Native adapters
-//! upload each buffer once and keep intermediate values on the GPU until readback.
+//! Owned, API-neutral resources and ordered GPU workloads. Native adapters upload
+//! each buffer once and keep intermediates on the GPU. Metal lowers fine drawing
+//! to a TBDR render pass; preparation and filters remain compute workloads.
 use super::Result;
 use crate::native::shaders::{Binding, BindingKind, NativeShaderArtifact};
 use std::sync::atomic::{AtomicU64, Ordering};

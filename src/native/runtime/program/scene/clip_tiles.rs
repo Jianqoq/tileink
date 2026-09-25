@@ -167,7 +167,7 @@ impl ClipDispatch {
         }
         // The prepared plan already knows its maximum active clip depth. A
         // clip-free retained frame must not rescan every layer stack.
-        if cfg!(feature = "metal") || clip_depth == 0 {
+        if clip_depth == 0 {
             return Ok(result);
         }
         let mut ranges = Vec::new();
@@ -200,9 +200,9 @@ impl ClipDispatch {
         }
         // Only a complete pure-clip schedule can share immutable tile headers:
         // every coarse pass must emit into the same preallocated slots.
-        // Metal retains its existing schedule until its emitter is validated on Mac.
-        let fixed = cfg!(any(feature = "dx12", feature = "vulkan"))
-            && !lengths.text_enabled
+        // All native emitters support these slots. Metal's former opt-out made
+        // each small clip count, allocate, and draw the full viewport again.
+        let fixed = !lengths.text_enabled
             && !ranges.is_empty()
             && plan.ops.iter().all(|op| {
                 matches!(

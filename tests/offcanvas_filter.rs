@@ -1,9 +1,8 @@
-#[allow(dead_code, unused_imports)]
-#[path = "../benches/support/backend_comparison.rs"]
+#[path = "support/native_gpu.rs"]
 mod backend;
 
 #[test]
-#[ignore = "requires pinned TILEINK_BENCH_GPU and TILEINK_BENCH_API"]
+#[ignore = "requires pinned TILEINK_TEST_GPU; run each backend separately"]
 fn offset_filter_preserves_offcanvas_input() {
     use peniko::{Color, kurbo::Rect};
     use tileink::{Canvas, Filter, Radius, Region};

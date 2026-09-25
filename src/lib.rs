@@ -22,27 +22,15 @@ pub use debug::{
     RenderDebugCapture, RenderDebugImage, RenderDebugOptions, RenderDebugText, RenderOptions,
     TileOverlayOptions, debug_capture_json,
 };
-#[cfg(feature = "bench-internals")]
-pub use render::damage_tiles::DamageTilesBenchmark;
 pub use render::incremental::{
     CoarseBinningMode, FullRedrawReason, IncrementalOutputMode, IncrementalRenderConfig,
     IncrementalRenderMode, IncrementalRenderStats,
 };
-#[cfg(feature = "bench-internals")]
-pub use render::incremental::{FrameDiffBenchmark, FrameDiffBenchmarkCase};
 pub use render::output::ExternalTextureHistoryId;
-#[cfg(feature = "bench-internals")]
-pub use render::upload::glyph_capacity::{GlyphCapacityBenchmark, GlyphCapacityBenchmarkCase};
-#[cfg(feature = "bench-internals")]
-pub use retained_scene::RetainedMaterializerBenchmark;
 pub use retained_scene::{
     RetainedChildBranch, RetainedLayerDescriptor, RetainedParent, RetainedScene,
     RetainedSceneError, RetainedSceneTransaction, SceneVersion,
 };
-#[cfg(feature = "bench-internals")]
-pub use shared::gpu_plan::{GpuDirtyRangesBenchmark, TileDrawBinsBenchmark};
-#[cfg(feature = "bench-internals")]
-pub use shared::scene_arena::{SceneArenaDirtyBenchmark, SceneArenaFillBenchmark};
 pub use shared::{
     bounds::Bounds,
     brush::{Brush, PatternBrush, PatternSampling},
@@ -87,16 +75,10 @@ pub use shared::{
     },
 };
 pub use svg::{SvgError, SvgOptions};
-#[cfg(feature = "bench-internals")]
-pub use text::PreparedTextBenchmark;
 pub use text::{
     TextCompositeMode, TextContext, TextLayout, TextLayoutOptions, TextRasterOptions,
     TextSubpixelMode,
 };
-
-#[cfg(feature = "bench-internals")]
-#[doc(hidden)]
-pub use render::upload::uniforms::benchmark::UniformWriteBenchmark;
 
 #[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
 mod native;

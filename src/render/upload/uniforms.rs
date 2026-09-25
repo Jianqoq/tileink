@@ -132,6 +132,3 @@ impl UniformWriteArena {
 
 #[cfg(test)]
 mod tests;
-
-#[cfg(feature = "bench-internals")]
-pub(crate) mod benchmark;

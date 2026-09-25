@@ -59,9 +59,6 @@ pub use model::{
 pub use scene::RetainedScene;
 pub use transaction::RetainedSceneTransaction;
 
-#[cfg(feature = "bench-internals")]
-pub use materializer::RetainedMaterializerBenchmark;
-
 #[cfg(test)]
 #[path = "retained_scene/tests.rs"]
 mod tests;

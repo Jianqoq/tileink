@@ -34,7 +34,8 @@ mod tests {
         let encoder = command.computeCommandEncoder().ok_or("second encoder")?;
         let encoding = Encoding(ProtocolObject::from_ref(&*encoder));
         drop(encoding);
+        let completion = crate::native::runtime::metal::completion::Completion::new(&command);
         command.commit();
-        crate::native::runtime::metal::wait(&command)
+        completion.wait(&command, std::time::Duration::from_secs(30))
     }
 }

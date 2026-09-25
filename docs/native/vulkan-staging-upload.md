@@ -45,31 +45,7 @@ nonoverlapping source data and a destination writable for the checked plan lengt
 maps exactly that length within an exclusively owned staging arena. Empty plans are never mapped.
 
 Unit tests compare the complete output bytes with concatenation, including alignment gaps and
-empty payloads, and reject invalid alignment/overflow without mutating the plan. The Criterion
-workload includes 16 MB of resource payloads, packed uniforms and dispatch-grid padding:
-
-```powershell
-$env:TILEINK_BENCH_CONCATENATED_UPLOAD = '1'
-cargo bench --no-default-features --features vulkan --bench vulkan_frame_upload -- --save-baseline concatenation
-Remove-Item Env:TILEINK_BENCH_CONCATENATED_UPLOAD
-cargo bench --no-default-features --features vulkan --bench vulkan_frame_upload -- --baseline concatenation
-```
-
-Both microbenchmark paths prepare the same uniform prefix. This benchmark measures CPU upload
-packing into ordinary memory, not GPU execution or window frame rate. The application's Replay
-resize benchmark provides the separate end-to-end evidence.
-
-Validation on Windows / RTX 4090: release tests passed (710 unit tests plus integrations),
-strict Vulkan library/benchmark Clippy passed, and validation-enabled corpus comparison against
-the approved M6 native Vulkan baseline found zero changed pixels in 1,712 SVGs, 45 examples and
-174 retained outputs. Shader/resource/font inputs were unchanged. This is a Vulkan-only change;
-no new DX12 or Metal performance result is claimed.
-
-Criterion's concatenation reference measured 5.007 ms versus 0.423 ms for direct writes (91.8%
-reduction). The actual Replay three-pair comparison reduced median per-run submission mean from
-4.434 to 3.203 ms (27.8%). These are different workloads and memory destinations, so the synthetic
-percentage must not be used as a frame-rate claim. Evidence is under the application checkout's
-`target/agent-work/resize-deep/` (`bench-*.log`, `pair-*.txt`, `corpus/receipt.json`).
+empty payloads, and reject invalid alignment/overflow without mutating the plan.
 
 ## Completed upload storage reuse
 
@@ -96,21 +72,10 @@ Run it with a pinned GPU and validation layer:
 ```powershell
 $env:TILEINK_NATIVE_GPU = '0f42010000000000'
 cargo test --release --no-default-features --features vulkan staging_reuse_preserves --lib -- --ignored --test-threads=1
-cargo bench --no-default-features --features vulkan --bench vulkan_staging_reuse
 ```
 
-Criterion compares exact-size fresh allocation + mapped write against completed-storage reuse
-for 15/17/16 MiB uploads. It excludes queue execution and presentation. GPU resources are scoped
-to the benchmark device and no buffer is in flight. Real Replay evidence is in the application
-checkout under `target/agent-work/gpui-resize/`; those accepted-present intervals must not be
-interpreted as physical scanout frame rate.
-
-Criterion on the pinned RTX 4090 measured 3.8077 ms for fresh exact-size allocations and
-1.9909 ms for reuse (47.7% reduction) per 15/17/16 MiB upload sequence. See
-`target/agent-work/gpui-resize/criterion.log` in the application checkout.
-
 Final validation: Vulkan release suite and the pinned validation-enabled staging reuse test
-passed; strict library/benchmark Clippy passed. The full Vulkan corpus matched the approved M6
+passed; strict library Clippy passed. The full Vulkan corpus matched the approved M6
 baseline byte-for-byte: 1,712 SVGs, 45 examples and 174 retained outputs (1,931 total, zero diffs).
 gfx_ui passed 779 unit tests, two integration tests and its doctest, including the real-window
-backend acceptance test. This optimization and its performance evidence are Vulkan-only.
+backend acceptance test.
