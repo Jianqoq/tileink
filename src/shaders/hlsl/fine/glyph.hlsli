@@ -14,6 +14,21 @@
 #include "text/basic.hlsli"
 #include "text/auto.hlsli"
 
+// Match Metal: preserve fractional affine motion while keeping integer texels exact.
+uint glyph_texel(FineInputs input, FineGlyphImage image, int2 p) {
+    if (any(p < 0) || p.x >= int(image.width) || p.y >= int(image.height)) return 0u;
+    return glyph_image_data_at(input, image.data_offset + uint(p.y) * image.width + uint(p.x));
+}
+uint sample_glyph(FineInputs input, FineGlyphImage image, float2 p) {
+    int2 base = int2(floor(p));
+    float2 f = p - float2(base);
+    uint a = glyph_texel(input, image, base);
+    if (all(f == 0.0)) return a;
+    float4 top = lerp(rgba8_to_unorm(a), rgba8_to_unorm(glyph_texel(input, image, base + int2(1,0))), f.x);
+    float4 bottom = lerp(rgba8_to_unorm(glyph_texel(input, image, base + int2(0,1))), rgba8_to_unorm(glyph_texel(input, image, base + int2(1,1))), f.x);
+    return unorm_to_rgba8(lerp(top, bottom, f.y));
+}
+
 float4 composite_glyphs_at(FineInputs input, Texture2D<float4> images[NATIVE_TEXTURE_TABLE_CAPACITY], float4 start_pixel,
     uint glyph_start,
     uint glyph_end,
@@ -26,8 +41,7 @@ float4 composite_glyphs_at(FineInputs input, Texture2D<float4> images[NATIVE_TEX
     float2 local = affine_record_point(
         draw.inverse_transform,
         float2(float(global_x) + 0.5, float(global_y) + 0.5));
-    int px = int(floor(local.x));
-    int py = int(floor(local.y));
+    local -= 0.5;
     while (true) {
         if (glyph_list_ix >= glyph_end) {
             break;
@@ -41,12 +55,11 @@ float4 composite_glyphs_at(FineInputs input, Texture2D<float4> images[NATIVE_TEX
             uint height = image.height;
             int x0 = glyph.x + image.left;
             int y0 = glyph.y - image.top;
-            int local_x = px - x0;
-            int local_y = py - y0;
-            if (local_x >= 0 && local_y >= 0 && local_x < int(width) && local_y < int(height)) {
-                uint data_ix = image.data_offset + uint(local_y) * width + uint(local_x);
+            float local_x = local.x - float(x0);
+            float local_y = local.y - float(y0);
+            if (local_x > -1.0 && local_y > -1.0 && local_x < int(width) && local_y < int(height)) {
                 uint content = image.content;
-                uint data = glyph_image_data_at(input, data_ix);
+                uint data = sample_glyph(input, image, float2(local_x, local_y));
                 if (content == GLYPH_MASK) {
                     uint alpha = combine_alpha(data, clip_mask);
                     if (alpha != 0u) {

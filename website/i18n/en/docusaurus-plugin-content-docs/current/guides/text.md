@@ -29,3 +29,7 @@ and blobs are not rebuilt. Changing raster options or calling `TextContext::clea
 invalidates that prepared atlas. The renderer rebuilds from the live frame after retained image
 data exceeds 32 MiB, discarding stale images. Recreating the renderer for a device reset starts
 with an empty prepared-text cache.
+
+Affine-transformed glyph bitmaps use bilinear sampling with transparent texels outside the glyph.
+Integer translations preserve exact texels; fractional translation no longer snaps animated labels
+to physical pixels. Coarse glyph bounds include the interpolation footprint on all native backends.

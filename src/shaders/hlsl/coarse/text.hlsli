@@ -13,7 +13,7 @@ bool glyph_hits_tile(ByteAddressBuffer text, ConstantBuffer<CoarseConfig> settin
     uint4 image_record = text.Load4(image_base + glyph.x * GLYPH_IMAGE_STRIDE);
     if (image_record.z == 0u || image_record.w == 0u) return false;
     int2 lower = int2(asint(glyph.y) + asint(image_record.x), asint(glyph.z) - asint(image_record.y));
-    return transformed_rect_hits_tile(draw, int4(lower, lower + int2(image_record.zw)), tile);
+    return transformed_rect_hits_tile(draw, int4(lower - 1, lower + int2(image_record.zw) + 1), tile);
 }
 uint count_draw_glyphs(ByteAddressBuffer text, ConstantBuffer<CoarseConfig> settings, DrawData draw, uint2 tile) {
     uint2 run = text.Load2(draw.glyph_run_id * GLYPH_RUN_STRIDE);

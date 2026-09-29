@@ -5,7 +5,7 @@ bool glyph_hits_tile(Words text, constant CoarseConfig& c, DrawData d, uint inde
     Words image = text.offset(image_base + glyph[0] * 6);
     if (!image[2] || !image[3]) return false;
     int2 lower(as_type<int>(glyph[1]) + as_type<int>(image[0]), as_type<int>(glyph[2]) - as_type<int>(image[1]));
-    return transformed_rect_hits_tile(d, int4(lower, lower + int2(image[2], image[3])), tile);
+    return transformed_rect_hits_tile(d, int4(lower - 1, lower + int2(image[2], image[3]) + 1), tile);
 }
 uint count_glyphs(Words text, constant CoarseConfig& c, DrawData d, uint2 tile) {
     uint start = text[d.glyph_run * 2], count = text[d.glyph_run * 2 + 1], result = 0;
