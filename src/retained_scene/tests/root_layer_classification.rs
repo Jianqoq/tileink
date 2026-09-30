@@ -112,3 +112,72 @@ fn root_layer_insertion_survives_a_journal_gap() {
         2
     );
 }
+
+#[test]
+fn replacing_a_root_layer_in_one_transaction_keeps_the_new_page_in_the_plan() {
+    let root = RetainedNodeId::for_owner(73_000);
+    let base = RetainedNodeId::for_owner(73_001);
+    let old_layer = RetainedNodeId::for_owner(73_002);
+    let old_child = RetainedNodeId::for_owner(73_003);
+    let new_layer = RetainedNodeId::for_owner(73_004);
+    let new_child = RetainedNodeId::for_owner(73_005);
+    let descriptor = || RetainedLayerDescriptor::ClipSdf {
+        sdf: crate::Sdf::Rect(crate::SdfRect {
+            start: peniko::kurbo::Point::ORIGIN,
+            end: peniko::kurbo::Point::new(32.0, 32.0),
+            radius: crate::Radius::ZERO,
+        }),
+        transform: Affine::IDENTITY,
+    };
+    let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            base,
+            leaf(Color::WHITE),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+    let mut materializer = PersistentSceneMaterializer::new(&scene);
+    // Install a fragment through the incremental insertion path before replacing it.
+    scene
+        .transaction()
+        .insert_layer(RetainedParent::content(root), None, old_layer, descriptor())
+        .insert_scene(
+            RetainedParent::content(old_layer),
+            None,
+            old_child,
+            leaf(Color::BLACK),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+    assert!(update_materializer(&mut materializer, &scene));
+    scene
+        .transaction()
+        .remove_subtree(old_layer)
+        .insert_layer(RetainedParent::content(root), None, new_layer, descriptor())
+        .insert_scene(
+            RetainedParent::content(new_layer),
+            None,
+            new_child,
+            leaf(Color::BLACK),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+    assert!(update_materializer(&mut materializer, &scene));
+    let plan = materializer
+        .canvas
+        .compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+    for id in [base, new_child] {
+        let draws = materializer.node_physical_draws(id).collect::<Vec<_>>();
+        assert!(!draws.is_empty());
+        assert!(draws.iter().all(|physical| plan.ops.iter().any(|op| {
+            matches!(op, crate::shared::execution::ExecOp::DrawBatch { draws, .. } if draws.contains(physical))
+        })), "live page {id:?} is missing from the execution plan");
+    }
+}

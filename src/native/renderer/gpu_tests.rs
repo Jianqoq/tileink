@@ -339,3 +339,72 @@ fn dense_clip_slots_survive_reuse_mutation_and_plain_frame()
     }
     Ok(())
 }
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn newly_inserted_clipped_page_matches_fresh_render() -> Result<(), Box<dyn std::error::Error>> {
+    use crate::{
+        RetainedLayerDescriptor, RetainedNodeId, RetainedParent, RetainedScene, Sdf, SdfRect,
+    };
+    use peniko::kurbo::{Affine, Point, Rect};
+    let context = context()?;
+    let root = RetainedNodeId::for_owner(1);
+    let mut scene = RetainedScene::new(128, 128, 1.0, root)?;
+    let leaf = |color| {
+        let mut canvas = Canvas::new(128, 128, 1.0);
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, 128.0, 128.0),
+            crate::Radius::ZERO,
+            color,
+        );
+        Rc::new(canvas)
+    };
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            RetainedNodeId::for_owner(2),
+            leaf(peniko::Color::BLACK),
+            Affine::IDENTITY,
+        )
+        .commit()?;
+    let mut renderer = NativeRenderer::with_context(&context, 128, 128)?;
+    renderer.render_retained_to_image(&scene)?.readback()?;
+    for index in 0..4 {
+        let layer = RetainedNodeId::for_owner(10 + index * 2);
+        let mut tx = scene.transaction();
+        if index > 0 {
+            tx.remove_subtree(RetainedNodeId::for_owner(10 + (index - 1) * 2));
+        }
+        tx.insert_layer(
+            RetainedParent::content(root),
+            None,
+            layer,
+            RetainedLayerDescriptor::ClipSdf {
+                sdf: Sdf::Rect(SdfRect {
+                    start: Point::new(10.0, 10.0),
+                    end: Point::new(100.0, 100.0),
+                    radius: crate::Radius::ZERO,
+                }),
+                transform: Affine::IDENTITY,
+            },
+        )
+        .insert_scene(
+            RetainedParent::content(layer),
+            None,
+            RetainedNodeId::for_owner(11 + index * 2),
+            leaf(peniko::Color::WHITE),
+            Affine::IDENTITY,
+        )
+        .commit()?;
+        let actual = renderer.render_retained_to_image(&scene)?.readback()?;
+        let mut fresh = NativeRenderer::with_context(&context, 128, 128)?;
+        let expected = fresh.render_retained_to_image(&scene)?.readback()?;
+        assert!(
+            actual.pixels == expected.pixels,
+            "page {index} differs from a fresh render"
+        );
+    }
+    Ok(())
+}

@@ -237,15 +237,18 @@ impl PersistentSceneMaterializer {
             && !changes.hierarchy_changed
             && changes.removed_nodes.is_empty()
             && changes.changed_nodes == changes.changed_layers;
-        let root_layer_remove_candidate = (!changes.removed_nodes.is_empty())
-            .then(|| {
-                self.root_plan_fragments.iter().find_map(|(&id, fragment)| {
-                    let location = self.layer_command_locations.get(&id)?;
-                    (fragment.nodes == changes.removed_nodes && location.parent_list == 0)
-                        .then_some(id)
-                })
+        // A removal-only fragment patch cannot install or update other live nodes.
+        // Mixed page switches must rebuild the authoritative plan, otherwise the old
+        // page disappears but the newly inserted clip subtree is never executed.
+        let root_layer_remove_candidate = (!changes.removed_nodes.is_empty()
+            && changes.changed_nodes.is_empty())
+        .then(|| {
+            self.root_plan_fragments.iter().find_map(|(&id, fragment)| {
+                let location = self.layer_command_locations.get(&id)?;
+                (fragment.nodes == changes.removed_nodes && location.parent_list == 0).then_some(id)
             })
-            .flatten();
+        })
+        .flatten();
         let mut stable_batch_candidate = !changes.topology_changed;
         let mut reorder_damage = Vec::new();
         let mut plain_topology_damage = Vec::new();

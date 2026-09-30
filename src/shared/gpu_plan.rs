@@ -475,7 +475,9 @@ impl TileDrawBins {
         let tile_count = tiles_size.0 as usize * tiles_size.1 as usize;
         if !self.page_arena_valid {
             self.draw_indices.clear();
-            self.tile_pages.clear();
+            for pages in &mut self.tile_pages {
+                pages.clear();
+            }
             self.free_pages.clear();
             self.active_pages = 0;
             self.page_arena_valid = true;
@@ -631,8 +633,14 @@ impl TileDrawBins {
             });
         }
 
-        self.tile_pages.clear();
-        self.tile_refs.clear();
+        // Retain per-tile allocations across transient motion. Dropping them made the
+        // first sparse frame allocate thousands of vectors as the spring settled.
+        for pages in &mut self.tile_pages {
+            pages.clear();
+        }
+        for refs in &mut self.tile_refs {
+            refs.clear();
+        }
         self.free_pages.clear();
         self.draw_bboxes.clear();
         if preserve_draw_bboxes {
@@ -668,8 +676,14 @@ impl TileDrawBins {
         if self.draw_bboxes.len() != draw_records.len() {
             return true;
         }
-        let dense_tile_threshold = (tiles_size.0 as u64 * tiles_size.1 as u64)
-            .div_ceil(16)
+        // Compare changed draw/tile memberships with the work of rebuilding all bins.
+        // A fixed fraction of viewport tiles classified local UI motion as dense, repeatedly
+        // discarding the persistent index and causing a rebuild/upload spike as motion settled.
+        let dense_tile_threshold = self
+            .records
+            .iter()
+            .map(|record| u64::from(record.end))
+            .sum::<u64>()
             .max(1);
         let mut affected_tile_work = 0u64;
         let mut previous_end = 0usize;
@@ -2919,6 +2933,82 @@ mod tests {
             GpuLengthOverrides::default(),
         );
         assert!(bins.page_arena_valid);
+    }
+
+    #[test]
+    fn local_motion_does_not_trigger_whole_scene_bin_rebuild() {
+        let mut canvas = Canvas::new(320, 320, 1.0);
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, 320.0, 320.0),
+            crate::Radius::ZERO,
+            Color::BLACK,
+        );
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, 80.0, 80.0),
+            crate::Radius::ZERO,
+            Color::WHITE,
+        );
+        let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+        let mut bins = TileDrawBins::default();
+        build_tile_draw_bins_into(&canvas, &plan, &mut bins, &mut Vec::new());
+        canvas.draw_records[1].pixel_bounds.x0 += 16;
+        canvas.draw_records[1].pixel_bounds.x1 += 16;
+        assert!(!bins.spatial_change_is_dense(&canvas.draw_records, (20, 20), &[1..2]));
+    }
+
+    #[test]
+    fn transient_bins_preserve_persistent_tile_allocations_for_recovery() {
+        let mut canvas = Canvas::new(128, 64, 1.0);
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, 128.0, 64.0),
+            crate::Radius::ZERO,
+            Color::BLACK,
+        );
+        let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+        let mut bins = TileDrawBins::default();
+        let mut cursors = Vec::new();
+        build_tile_draw_bins_into(&canvas, &plan, &mut bins, &mut cursors);
+        let pages = bins
+            .tile_pages
+            .iter()
+            .map(Vec::capacity)
+            .collect::<Vec<_>>();
+        let refs = bins.tile_refs.iter().map(Vec::capacity).collect::<Vec<_>>();
+        bins.reset_transient(
+            &canvas.draw_records,
+            &plan.draw_order,
+            None,
+            (canvas.width_in_tiles(), canvas.height_in_tiles()),
+            &mut cursors,
+            true,
+        );
+        assert_eq!(
+            bins.tile_pages
+                .iter()
+                .map(Vec::capacity)
+                .collect::<Vec<_>>(),
+            pages
+        );
+        assert_eq!(
+            bins.tile_refs.iter().map(Vec::capacity).collect::<Vec<_>>(),
+            refs
+        );
+        build_tile_draw_bins_into(&canvas, &plan, &mut bins, &mut cursors);
+        assert!(bins.page_arena_valid);
+        assert_eq!(
+            bins.tile_pages
+                .iter()
+                .map(Vec::capacity)
+                .collect::<Vec<_>>(),
+            pages
+        );
+        assert_eq!(
+            bins.tile_refs.iter().map(Vec::capacity).collect::<Vec<_>>(),
+            refs
+        );
+        for tile in 0..bins.records.len() {
+            assert_eq!(bins.tile_draws(tile), [0]);
+        }
     }
 
     #[test]

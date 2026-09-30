@@ -13,3 +13,9 @@ Metal 支持局部裁剪调度：保守地选择裁剪范围内的 tile；无文
 Metal compute dispatch、纹理拷贝和绘制保留独立的 encoder 边界，保证裁剪发射与绘制之间的资源依赖。
 
 宿主导入的纹理若作为绘制目标，必须同时带有 `ShaderRead | ShaderWrite | RenderTarget` usage。增量更新、背景混合及大于视口的目标会加载原有内容，保留未覆盖的像素；整目标替换无需加载旧颜色。
+
+### Retained motion and tile-bin reuse
+
+The dense-update heuristic compares changed draw/tile memberships against the current full index's membership count, rather than a small fraction of viewport tiles. Local motion therefore stays incremental when that costs less than a full rebuild. Transient/persistent transitions also retain per-tile vector capacities. These changes address index rebuild and allocation spikes during settling animations; draw ordering, coverage, and rendered pixels are unchanged.
+
+A retained root-layer removal fast path applies only when the transaction has no changed live nodes. Mixed removal/insertion or removal/update transactions reconcile the full execution plan; removing a page must not discard the new page’s draw operations. CPU plan coverage and native GPU fresh-render comparison cover successive clipped-page replacements. This fixes missing first-activation content at the plan-classification root cause.
