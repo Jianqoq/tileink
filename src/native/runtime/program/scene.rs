@@ -317,7 +317,7 @@ impl SceneCache {
         let mut clip_dispatch = clip_tiles::ClipDispatch::new(
             canvas,
             &prepared.plan,
-            options.active.map(|a| a.list()),
+            options.active,
             self.staging.tile_draw_bins.upload_records(),
             lengths,
             prepared.stack_depths.0,

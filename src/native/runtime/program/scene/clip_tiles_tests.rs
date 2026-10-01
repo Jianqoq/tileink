@@ -3,6 +3,21 @@ use super::*;
 use crate::native::runtime::compute::ComputeBatch;
 use peniko::kurbo::{Affine, Rect, Shape};
 
+fn active_tiles(canvas: &Canvas, tiles: &[u32]) -> DamageTiles {
+    let mut active = DamageTiles::new(canvas.physical_size());
+    let stride = canvas.physical_width().div_ceil(TILE_SIZE);
+    for &tile in tiles {
+        let (x, y) = (tile % stride, tile / stride);
+        active.add_bounds(Bounds::new(
+            (x * TILE_SIZE) as i32,
+            (y * TILE_SIZE) as i32,
+            ((x + 1) * TILE_SIZE) as i32,
+            ((y + 1) * TILE_SIZE) as i32,
+        ));
+    }
+    active
+}
+
 #[test]
 fn opacity_only_stacks_need_no_clip_dispatch() -> super::super::Result<()> {
     let mut canvas = Canvas::new(64, 64, 1.0);
@@ -53,7 +68,7 @@ fn broad_clip_only_schedules_tiles_with_child_draws() -> super::super::Result<()
             &canvas,
             scene.plan(),
             0..1,
-            Some(&[0, 1, 2, 3, 33, 990]),
+            Some(&active_tiles(&canvas, &[0, 1, 2, 3, 33, 990])),
             Some(&content)
         ),
         None
@@ -61,7 +76,13 @@ fn broad_clip_only_schedules_tiles_with_child_draws() -> super::super::Result<()
     // Retained damage may expose old content outside the current
     // child draw bounds when a node is reparented into this clip.
     assert_eq!(
-        tiles(&canvas, scene.plan(), 0..1, Some(&[0]), Some(&content)),
+        tiles(
+            &canvas,
+            scene.plan(),
+            0..1,
+            Some(&active_tiles(&canvas, &[0])),
+            Some(&content)
+        ),
         Some(vec![0])
     );
     Ok(())
@@ -84,10 +105,25 @@ fn small_clip_limits_dispatch_and_intersects_damage() {
         Some(vec![expected])
     );
     assert_eq!(
-        tiles(&canvas, &plan, 0..1, Some(&[0, expected]), None),
+        tiles(
+            &canvas,
+            &plan,
+            0..1,
+            Some(&active_tiles(&canvas, &[0, expected])),
+            None
+        ),
         Some(vec![expected])
     );
-    assert_eq!(tiles(&canvas, &plan, 0..1, Some(&[0]), None), Some(vec![]));
+    assert_eq!(
+        tiles(
+            &canvas,
+            &plan,
+            0..1,
+            Some(&active_tiles(&canvas, &[0])),
+            None
+        ),
+        Some(vec![])
+    );
     // A retained clip's batch can be empty while later draws still
     // consume its mask after a scene reparent.
     assert_eq!(
@@ -243,26 +279,7 @@ fn clip_emit_dispatch_covers_both_sides_of_a_scalar_workgroup() -> super::super:
 }
 
 #[test]
-fn dense_selection_stops_after_enough_matches_to_choose_dense_dispatch() {
-    let visited = std::cell::Cell::new(0);
-    let tiles = (0..10_000).inspect(|_| visited.set(visited.get() + 1));
-    assert_eq!(collect_sparse_tiles(tiles, 3), None);
-    assert_eq!(
-        visited.get(),
-        4,
-        "dense dispatch must not collect the remaining rejected list"
-    );
-}
-
-#[test]
-fn bounded_sparse_selection_preserves_exact_threshold_order_and_empty_semantics() {
-    assert_eq!(collect_sparse_tiles(std::iter::empty(), 0), Some(vec![]));
-    assert_eq!(collect_sparse_tiles([4].into_iter(), 0), None);
-    assert_eq!(
-        collect_sparse_tiles([8, 0, 3].into_iter(), 3),
-        Some(vec![8, 0, 3])
-    );
-    assert_eq!(collect_sparse_tiles([8, 0, 3, 2].into_iter(), 3), None);
+fn bitmap_selection_preserves_exact_threshold_order_and_empty_semantics() {
     let mut canvas = Canvas::new(112, 16, 1.0);
     canvas.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 48.0, 16.0), crate::Radius::ZERO);
     canvas.push_rect(
@@ -274,9 +291,190 @@ fn bounded_sparse_selection_preserves_exact_threshold_order_and_empty_semantics(
     let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
     let active = [6, 2, 0, 4, 1, 5, 3];
     assert_eq!(
-        tiles(&canvas, &plan, 0..1, Some(&active), None),
+        tiles(
+            &canvas,
+            &plan,
+            0..1,
+            Some(&active_tiles(&canvas, &active)),
+            None
+        ),
         Some(vec![2, 0, 1])
     );
-    assert_eq!(tiles(&canvas, &plan, 0..1, Some(&[]), None), Some(vec![]));
-    assert_eq!(tiles(&canvas, &plan, 0..1, Some(&[0]), None), Some(vec![0]));
+    assert_eq!(
+        tiles(
+            &canvas,
+            &plan,
+            0..1,
+            Some(&active_tiles(&canvas, &[])),
+            None
+        ),
+        Some(vec![])
+    );
+    assert_eq!(
+        tiles(
+            &canvas,
+            &plan,
+            0..1,
+            Some(&active_tiles(&canvas, &[0])),
+            None
+        ),
+        Some(vec![0])
+    );
+}
+
+#[test]
+fn clip_stack_collection_visits_dense_and_empty_stacks_once_in_first_use_order() {
+    use std::rc::Rc;
+    let batch = |stack| ExecOp::DrawBatch {
+        draws: Rc::new(vec![]),
+        batch_id: 0,
+        owners: Rc::new(vec![]),
+        layer_stack: stack,
+    };
+    let ops = [
+        batch(8..10),
+        batch(3..4),
+        batch(8..10),
+        batch(0..0),
+        batch(3..4),
+    ];
+    let canvas = Canvas::new(512, 512, 1.0);
+    let mut ranges = Vec::new();
+    let mut content = ContentBounds::new();
+    collect_stacks(&ops, &canvas, &mut ranges, &mut content, false);
+    assert_eq!(
+        ranges,
+        [8..10, 3..4, 0..0],
+        "regular-dispatch stacks must also be deduplicated"
+    );
+    assert_eq!(content.len(), 3);
+    assert!(
+        content.values().all(Vec::is_empty),
+        "retained damage must not use current child bounds"
+    );
+}
+
+#[test]
+fn clip_stack_collection_combines_content_from_every_batch_and_skips_empty_bounds() {
+    use std::rc::Rc;
+    let mut canvas = Canvas::new(512, 512, 1.0);
+    for rect in [
+        Rect::new(17.0, 17.0, 31.0, 31.0),
+        Rect::new(481.0, 481.0, 495.0, 495.0),
+    ] {
+        canvas.push_rect(rect, crate::Radius::ZERO, peniko::Color::BLACK);
+    }
+    let mut empty = canvas.draw_records[0];
+    empty.pixel_bounds.x1 = empty.pixel_bounds.x0;
+    canvas.draw_records.push(empty);
+    let batch = |draws, stack| ExecOp::DrawBatch {
+        draws: Rc::new(draws),
+        batch_id: 0,
+        owners: Rc::new(vec![]),
+        layer_stack: stack,
+    };
+    let ops = [
+        batch(vec![0], 0..1),
+        ExecOp::OffscreenLayer {
+            retained_id: None,
+            draw: 0,
+            layer: crate::shared::layer::Layer::Isolate,
+            outer_stack: 0..0,
+            children: vec![ExecOp::OffscreenMaskLayer {
+                retained_id: None,
+                layer: crate::shared::layer::mask::Mask {
+                    region: crate::shared::layer::region::Region::rect(
+                        Rect::new(0.0, 0.0, 512.0, 512.0),
+                        crate::Radius::ZERO,
+                    ),
+                    kind: crate::shared::layer::mask::MaskKind::Alpha,
+                },
+                outer_stack: 0..0,
+                content: vec![batch(vec![1, 2], 0..1)],
+                mask: vec![batch(vec![], 3..4), batch(vec![], 0..1)],
+            }],
+        },
+    ];
+    let mut ranges = Vec::new();
+    let mut content = ContentBounds::new();
+    collect_stacks(&ops, &canvas, &mut ranges, &mut content, true);
+    assert_eq!(ranges, [0..1, 3..4]);
+    assert_eq!(content[&(0, 1)], [(17, 17, 31, 31), (481, 481, 495, 495)]);
+    assert_eq!(content[&(3, 4)], []);
+}
+
+#[test]
+fn retained_bitmap_clip_selection_matches_list_reference_for_edges_holes_and_order() {
+    for (width, height) in [(1, 1), (17, 17), (112, 16), (1031, 67)] {
+        for clip in [
+            Rect::new(-3.0, -3.0, 19.0, 19.0),
+            Rect::new(17.0, 1.0, 48.0, 33.0),
+            Rect::new(0.0, 0.0, width as f64, height as f64),
+            Rect::new(width as f64 + 1.0, 0.0, width as f64 + 3.0, height as f64),
+        ] {
+            let mut canvas = Canvas::new(width, height, 1.0);
+            canvas.push_clip_sdf_rect_layer(clip, crate::Radius::ZERO);
+            canvas.push_rect(
+                Rect::new(0.0, 0.0, width as f64, height as f64),
+                crate::Radius::ZERO,
+                peniko::Color::BLACK,
+            );
+            canvas.pop_layer();
+            let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+            for step in [1, 2, 5, 1000] {
+                let mut active = DamageTiles::new((width, height));
+                let stride = width.div_ceil(TILE_SIZE);
+                let count = stride * height.div_ceil(TILE_SIZE);
+                for tile in (0..count).rev().filter(|tile| tile % step == 0) {
+                    let (x, y) = (tile % stride, tile / stride);
+                    active.add_bounds(crate::Bounds::new(
+                        (x * TILE_SIZE) as i32,
+                        (y * TILE_SIZE) as i32,
+                        ((x + 1) * TILE_SIZE) as i32,
+                        ((y + 1) * TILE_SIZE) as i32,
+                    ));
+                }
+                let LayerStackEntry::Clip { draw } = plan.layer_stack_data[0] else {
+                    panic!("clip stack")
+                };
+                let b = canvas.draw_records[draw as usize].pixel_bounds;
+                let bounds = (
+                    b.x0.max(0),
+                    b.y0.max(0),
+                    b.x1.min(width as i32),
+                    b.y1.min(height as i32),
+                );
+                let selected: Vec<_> = active
+                    .list()
+                    .iter()
+                    .copied()
+                    .filter(|tile| {
+                        if bounds.0 >= bounds.2 || bounds.1 >= bounds.3 {
+                            return false;
+                        }
+                        let (x, y) = (tile % stride, tile / stride);
+                        x >= bounds.0 as u32 / TILE_SIZE
+                            && y >= bounds.1 as u32 / TILE_SIZE
+                            && x < (bounds.2 as u32).div_ceil(TILE_SIZE)
+                            && y < (bounds.3 as u32).div_ceil(TILE_SIZE)
+                    })
+                    .collect();
+                let expected = if selected.len() > active.list().len().div_ceil(3) {
+                    None
+                } else {
+                    Some(selected)
+                };
+                assert_eq!(
+                    tiles(&canvas, &plan, 0..1, Some(&active), None),
+                    expected,
+                    "surface {width}x{height}, clip {clip:?}, damage step {step}"
+                );
+                let empty = DamageTiles::new((width, height));
+                assert_eq!(
+                    tiles(&canvas, &plan, 0..1, Some(&empty), None),
+                    Some(vec![])
+                );
+            }
+        }
+    }
 }
