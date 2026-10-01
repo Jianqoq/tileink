@@ -296,13 +296,8 @@ impl SceneCache {
             if active.dimensions() != (lengths.tiles_width as u32, lengths.tiles_height as u32) {
                 return Err("native damage dimensions differ from scene".into());
             }
-            self.staging.active_batch_ids(
-                active.list(),
-                canvas
-                    .stable_batch_ids
-                    .as_deref()
-                    .unwrap_or(&prepared.plan.draw_batch_ids),
-            )
+            self.staging
+                .active_batch_ids(active, canvas, &prepared.plan)
         } else {
             Vec::new()
         };

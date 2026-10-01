@@ -6,7 +6,9 @@ use crate::{
     Canvas,
     shared::{
         gpu_coarse::LayerStackRecord,
-        gpu_plan::{GpuBufferLengths, GpuLengthOverrides, PersistentPathPlans, TileDrawBins},
+        gpu_plan::{
+            ActiveBatches, GpuBufferLengths, GpuLengthOverrides, PersistentPathPlans, TileDrawBins,
+        },
     },
     text::{PreparedTextChanges, PreparedTextData},
 };
@@ -16,6 +18,7 @@ pub(crate) struct SceneUploadStaging {
     pub(crate) text: TextUpload,
     pub(crate) path_plans: PersistentPathPlans,
     glyph_capacity: GlyphCapacityCache,
+    active_batches: ActiveBatches,
     coarse_ptcl_capacity: usize,
     coarse_ptcl_underused_frames: u16,
     coarse_glyph_capacity: usize,
@@ -47,8 +50,16 @@ impl SceneUploadStaging {
         false
     }
 
-    pub(crate) fn active_batch_ids(&mut self, tiles: &[u32], draw_batch_ids: &[u32]) -> Vec<u32> {
-        Rc::make_mut(&mut self.tile_draw_bins).active_batch_ids(tiles, draw_batch_ids)
+    pub(crate) fn active_batch_ids(
+        &mut self,
+        active: &crate::render::damage_tiles::DamageTiles,
+        canvas: &Canvas,
+        plan: &ExecPlan,
+    ) -> Vec<u32> {
+        // Query scratch belongs to staging, not the shared spatial snapshot.
+        // Mutating that snapshot here cloned its entire index when a Scene held it.
+        self.active_batches
+            .collect(&self.tile_draw_bins, canvas, plan, active)
     }
 
     pub(crate) fn build_lengths(
@@ -147,6 +158,33 @@ fn stable_work_capacity(capacity: &mut usize, underused_frames: &mut u16, live: 
 mod tests {
     use super::{SceneUploadStaging, WORK_CAPACITY_SHRINK_DELAY, stable_work_capacity};
     use crate::shared::execution::LayerStackEntry;
+
+    #[test]
+    fn active_batch_query_preserves_shared_spatial_index() {
+        let mut canvas = crate::Canvas::new(32, 16, 1.0);
+        canvas.push_rect(
+            peniko::kurbo::Rect::new(0.0, 0.0, 32.0, 16.0),
+            crate::Radius::ZERO,
+            peniko::Color::BLACK,
+        );
+        let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+        let mut staging = SceneUploadStaging::default();
+        staging.build_lengths(&canvas, None, &plan, false, None, None);
+        let shared = staging.tile_draw_bins.clone();
+        assert!(
+            !staging
+                .active_batch_ids(
+                    &crate::render::damage_tiles::DamageTiles::full((32, 16)),
+                    &canvas,
+                    &plan
+                )
+                .is_empty()
+        );
+        assert!(
+            std::rc::Rc::ptr_eq(&shared, &staging.tile_draw_bins),
+            "a query must not clone the shared spatial index to mutate scratch"
+        );
+    }
 
     #[test]
     fn layer_stack_refresh_converts_only_dirty_entries() {

@@ -8,6 +8,9 @@ the filter-validation optimization. Stop selection once dense dispatch is certai
 this removes unnecessary traversal and storage at their source, rather than
 changing frame pacing or GPU coverage.
 
+Related: [active-batch selection](active-batch-selection.md) removes repeated
+CPU membership work before clip scheduling, with the same batch set.
+
 ## Required invariants
 
 - Only pure clip stacks may restrict dispatch. Clip bounds intersect the viewport;
