@@ -1,6 +1,7 @@
 use super::*;
 use crate::native::runtime::compute::{Resource as Input, SamplerFilter};
 pub(super) enum Resource {
+    InlineUniform,
     Buffer(Object<dyn MTLBuffer>),
     Texture(Object<dyn MTLTexture>),
     Sampler(Object<dyn MTLSamplerState>),
@@ -30,9 +31,11 @@ pub(super) fn allocate(
         .blitCommandEncoder()
         .ok_or("Metal upload encoder failed")?;
     let encoding = Encoding(objc2::runtime::ProtocolObject::from_ref(&*encoder));
-    let mut resources = Vec::new();
-    for input in batch.resources() {
+    let inline = super::inline::uniforms(batch);
+    let mut resources = Vec::with_capacity(batch.resources().len());
+    for (index, input) in batch.resources().iter().enumerate() {
         let resource = match input {
+            Input::Buffer(_) if inline[index] => Resource::InlineUniform,
             Input::Buffer(bytes) => Resource::Buffer(memory::upload(device, bytes)?),
             Input::PersistentBuffer(upload) => {
                 let crate::native::runtime::buffer::Allocation::Metal(destination) =

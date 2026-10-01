@@ -67,18 +67,6 @@ impl PassEncoder {
                         width: config.width as usize,
                         height: config.height as usize,
                     });
-                    // SAFETY: reflected vertex inputs and unique active tile IDs.
-                    unsafe {
-                        for (binding, id) in &pass.bindings {
-                            if matches!(binding.slot, 0 | 4) {
-                                encoder.setVertexBuffer_offset_atIndex(
-                                    Some(resources[id.index()].buffer()?),
-                                    0,
-                                    binding.slot as usize,
-                                );
-                            }
-                        }
-                    }
                     Ok(result)
                 }
             }
@@ -92,7 +80,12 @@ impl PassEncoder {
             match self {
                 Self::Compute(e) => e.setBuffer_offset_atIndex(Some(buffer), 0, slot),
                 Self::Tile(e) => e.setTileBuffer_offset_atIndex(Some(buffer), 0, slot),
-                Self::Sparse(e, _) => e.setFragmentBuffer_offset_atIndex(Some(buffer), 0, slot),
+                Self::Sparse(e, _) => {
+                    if matches!(slot, 0 | 4) {
+                        e.setVertexBuffer_offset_atIndex(Some(buffer), 0, slot);
+                    }
+                    e.setFragmentBuffer_offset_atIndex(Some(buffer), 0, slot);
+                }
             }
         }
     }
@@ -100,15 +93,21 @@ impl PassEncoder {
     /// every pass. Metal copies the data before this call returns.
     ///
     /// # Safety
-    /// Bytes must match the reflected slot and be smaller than 4 KiB.
+    /// Bytes must match the reflected slot and be at most 4 KiB.
     pub unsafe fn bytes(&self, bytes: &[u8], slot: usize) {
-        debug_assert!(!bytes.is_empty() && bytes.len() < 4096);
+        debug_assert!(!bytes.is_empty() && bytes.len() <= super::inline::MAX_BYTES);
         let pointer = NonNull::new(bytes.as_ptr().cast_mut().cast()).unwrap();
         unsafe {
             match self {
                 Self::Compute(e) => e.setBytes_length_atIndex(pointer, bytes.len(), slot),
                 Self::Tile(e) => e.setTileBytes_length_atIndex(pointer, bytes.len(), slot),
-                Self::Sparse(e, _) => e.setFragmentBytes_length_atIndex(pointer, bytes.len(), slot),
+                Self::Sparse(e, _) => {
+                    // Sparse fine drawing reads config in both vertex and fragment.
+                    if matches!(slot, 0 | 4) {
+                        e.setVertexBytes_length_atIndex(pointer, bytes.len(), slot);
+                    }
+                    e.setFragmentBytes_length_atIndex(pointer, bytes.len(), slot);
+                }
             }
         }
     }

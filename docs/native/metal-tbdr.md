@@ -28,6 +28,20 @@ non-Apple GPUs are rejected during context creation; there is no legacy compute
 fine fallback. Tile, fragment, and vertex resource bindings and uniform layouts are checked
 by reflection. All encoders close on error as well as success.
 
+Immutable uniforms of at most 4096 bytes now use Metal's copied encoder bytes,
+avoiding one short-lived MTLBuffer upload allocation per constant resource.
+Compute and tile passes bind their respective stages; sparse fine drawing binds
+config to both vertex and fragment, keeping active tile IDs in their storage
+buffer. The shared immutable-uniform classifier also serves DX12 and Vulkan's
+existing packed upload arenas: all uses must be uniform reads, with no storage
+alias, persistent-buffer identity or explicit readback. Larger constants retain
+the ordinary buffer path. Metal copies bytes during encoding, so host recording
+data can be dropped before GPU submission/completion. This addresses allocation
+churn directly, rather than changing rendering, coverage or retained history.
+Tests cover aliases, CPU readback identity, the 4096/4100-byte boundary and actual
+GPU execution after host data is dropped. The limit follows Apple's
+[setBytes contract](https://developer.apple.com/documentation/metal/mtlcomputecommandencoder/setbytes%28_%3Alength%3Aindex%3A%29).
+
 Command completion now wakes a dispatch semaphore through a Metal completion
 handler, replacing the old 1 ms status polling interval. The bounded wait and
 pending-resource ownership are preserved; the handler captures only a semaphore.

@@ -1,6 +1,7 @@
 //! A submission owns its staging, indirect texture leases and readback buffers.
 //! Encoder boundaries with tracked resources establish visibility between passes.
 mod encoding;
+mod inline;
 use encoding::Encoding;
 #[cfg(test)]
 mod ordering_tests;
@@ -103,6 +104,13 @@ impl Frame {
                         // every resource's kind, size, slot and write ownership.
                         unsafe {
                             match binding.kind {
+                                BindingKind::Uniform
+                                    if matches!(resource, Resource::InlineUniform) =>
+                                {
+                                    // Metal owns the copy before returning; no host bytes or
+                                    // separate MTLBuffer need survive this encoder binding.
+                                    encoder.bytes(batch.resources()[id.index()].bytes(), slot)
+                                }
                                 BindingKind::Uniform | BindingKind::Read | BindingKind::Write => {
                                     encoder.buffer(resource.buffer()?, slot)
                                 }

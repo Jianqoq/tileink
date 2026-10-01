@@ -148,6 +148,8 @@ fn independent_compute_writes_preserve_both_outputs() -> Result<()> {
         )?;
     }
     let frame = Frame::record(&metal, &batch)?;
+    // Encoders must own copied constants after host recording data is released.
+    drop(batch);
     frame.command.commit();
     frame.wait()?;
     assert_eq!(
