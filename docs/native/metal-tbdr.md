@@ -42,6 +42,33 @@ Tests cover aliases, CPU readback identity, the 4096/4100-byte boundary and actu
 GPU execution after host data is dropped. The limit follows Apple's
 [setBytes contract](https://developer.apple.com/documentation/metal/mtlcomputecommandencoder/setbytes%28_%3Alength%3Aindex%3A%29).
 
+Full, dense `filter_clear_region` dispatches now use a render attachment with
+`Clear`/`Store` load/store actions instead of one compute lane per pixel. The
+configuration must be a proven immutable inline uniform, the dispatch must cover
+the entire logical surface, and a 2D RenderTarget texture must have exactly that
+extent. Partial/compact dispatches, oversized backing textures, storage aliases,
+persistent configs and textures without RenderTarget usage retain the shader.
+The existing tracked-resource encoder boundaries preserve visibility to following
+filters and copies; retained-pool initialization skipping remains unchanged.
+RGBA8 channel bytes, including alpha and RGB greater than alpha, are preserved.
+A GPU-written config must never be replaced with its original host value. The
+regression first reproduced stale clear colors, then passed after requiring the
+shared immutable classification rather than inspecting host bytes alone.
+
+This addresses the GPU cost of full initialization, not a temporary reduction
+of the required clear region. Local blur work can still read outside its output
+rectangle, so full transparent initialization remains required. Maximized AAPL
+Replay at 3420x1966 otherwise dispatches three whole-surface clears per frame.
+Two alternating Metal traces reduce the affected filter/coarse Compute channel
+mean from 1.90–1.93 ms to 0.99–1.00 ms, plus about 0.08–0.10 ms of clear render
+channels. Whole command-buffer execution windows improve about 6–8%; channels
+can overlap and are not summed as frame latency. GPU performance states remain
+a measured constraint, not locked clocks. Frame tails need separate unprofiled
+comparisons. Tests cover all 256 channel values, incomplete grids, oversized
+backing textures, sparse tiles, GPU writes to config and host-data lifetime.
+DX12/Vulkan retain their current compute path; equivalent native clears require
+backend-specific descriptor/state/barrier handling and hardware validation.
+
 Command completion now wakes a dispatch semaphore through a Metal completion
 handler, replacing the old 1 ms status polling interval. The bounded wait and
 pending-resource ownership are preserved; the handler captures only a semaphore.

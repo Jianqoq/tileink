@@ -1,5 +1,6 @@
 //! A submission owns its staging, indirect texture leases and readback buffers.
 //! Encoder boundaries with tracked resources establish visibility between passes.
+mod clear;
 mod encoding;
 mod inline;
 use encoding::Encoding;
@@ -62,6 +63,9 @@ impl Frame {
                 Command::Dispatch(index) => {
                     let pass = &batch.passes()[*index];
                     if batch.skip_initialization(pass) {
+                        continue;
+                    }
+                    if clear::encode(&command, batch, pass, &resources)? {
                         continue;
                     }
                     let pipeline = &device.pipelines[pass.shader.entry];
