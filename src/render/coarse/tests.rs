@@ -174,3 +174,103 @@ fn resolving_pipelines_keeps_every_live_dispatch_and_skips_padding() {
         assert_eq!(visits, resolved);
     }
 }
+
+#[cfg(feature = "metal")]
+#[test]
+fn large_metal_sparse_coarse_batches_tiles_without_changing_prefix_allocation() {
+    use CoarseProgram::*;
+    for active in [0, 1, 255, 256, 257, 323] {
+        for has_draws in [false, true] {
+            let plan = CoarsePlan::new(
+                lengths(),
+                CoarseBatch {
+                    draw_end: if has_draws { 7 } else { 0 },
+                    active_tile_count: Some(active),
+                    ..Default::default()
+                },
+                0,
+                true,
+                65535,
+            )
+            .unwrap();
+            if active == 0 {
+                assert!(plan.passes().is_empty());
+                continue;
+            }
+            let scalar = active >= COARSE_WORKGROUP_SIZE;
+            let mut expected = vec![
+                if scalar { CountBins } else { CountTiles },
+                PrefixChunks,
+                ChunkOffsets,
+                ApplyChunkOffsets,
+            ];
+            if has_draws {
+                expected.push(if scalar { EmitBins } else { EmitTiles });
+            }
+            assert_eq!(
+                programs(&plan),
+                expected,
+                "active={active} draws={has_draws}"
+            );
+            assert_eq!(
+                plan.passes()[0].grid,
+                [
+                    if scalar {
+                        active.div_ceil(COARSE_WORKGROUP_SIZE)
+                    } else {
+                        active
+                    },
+                    1,
+                    1
+                ]
+            );
+            assert_eq!(
+                plan.config.chunk_count,
+                active.div_ceil(COARSE_WORKGROUP_SIZE)
+            );
+            assert_eq!(plan.config.incremental, 1);
+            assert_eq!(plan.config.active_tile_count, active);
+        }
+    }
+}
+
+#[cfg(feature = "metal")]
+#[test]
+fn preallocated_sparse_slots_preserve_large_scalar_emission_and_skip_empty_draws() {
+    use CoarseProgram::*;
+    for active in [0, 1, 255, 256, 257, 323] {
+        for has_draws in [false, true] {
+            let mut plan = CoarsePlan::new(
+                lengths(),
+                CoarseBatch {
+                    draw_end: if has_draws { 7 } else { 0 },
+                    active_tile_count: Some(active),
+                    ..Default::default()
+                },
+                0,
+                true,
+                65535,
+            )
+            .unwrap();
+            plan.use_preallocated_tiles(lengths(), 65535).unwrap();
+            if active == 0 || !has_draws {
+                assert!(plan.passes().is_empty());
+            } else {
+                let scalar = active >= COARSE_WORKGROUP_SIZE;
+                assert_eq!(programs(&plan), [if scalar { EmitBins } else { EmitTiles }]);
+                assert_eq!(
+                    plan.passes()[0].grid,
+                    [
+                        if scalar {
+                            active.div_ceil(COARSE_WORKGROUP_SIZE)
+                        } else {
+                            active
+                        },
+                        1,
+                        1
+                    ]
+                );
+            }
+        }
+    }
+}

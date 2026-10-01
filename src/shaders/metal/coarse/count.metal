@@ -55,10 +55,22 @@ kernel void coarse_count_bins(constant CoarseConfig& c [[buffer(0)]],
     Words sdf{raw_sdf, word_size(sizes, 8)};
     Words batches{raw_batches, word_size(sizes, 9)};
 
-    uint bins = (c.tiles_width + 15) / 16;
-    uint2 position = uint2(group % bins, group / bins) * 16 + uint2(lane % 16, lane / 16);
-    if (position.x >= c.tiles_width || position.y >= c.tiles_height) return;
-    uint tile = position.y * c.tiles_width + position.x;
+    uint tile;
+    uint2 position;
+    if (c.incremental) {
+        // One lane per active tile; IDs may be sparse/nonmonotonic and the final
+        // group is padded. Do not read or overwrite an inactive tile's history.
+        uint active = group * 256 + lane;
+        if (active >= c.active_tile_count) return;
+        tile = tile_at(work, c, active);
+        if (tile >= c.tile_count) return;
+        position = uint2(tile % c.tiles_width, tile / c.tiles_width);
+    } else {
+        uint bins = (c.tiles_width + 15) / 16;
+        position = uint2(group % bins, group / bins) * 16 + uint2(lane % 16, lane / 16);
+        if (position.x >= c.tiles_width || position.y >= c.tiles_height) return;
+        tile = position.y * c.tiles_width + position.x;
+    }
     if (tile >= c.tile_count) return;
     uint wrappers = wrapper_count(c, layers, draws, paths, backdrops, ranges, sdf, position);
     uint2 count(0);

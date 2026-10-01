@@ -179,7 +179,14 @@ impl CoarsePlan {
         use CoarseProgram::*;
         let emit = batch.draw_start < batch.draw_end && ptcl_capacity > 0;
         let chunked = emit_chunks && !incremental && emit && emit_chunk_capacity > 0;
-        let count = if incremental {
+        // Root-cause fix: large Metal damage lists previously launched 256 threads
+        // per tile for count/emission, mostly idle on ordinary UI bins. The scalar
+        // kernels keep the same sparse IDs, prefix allocation and ordered particles.
+        let scalar_sparse =
+            cfg!(feature = "metal") && incremental && active >= COARSE_WORKGROUP_SIZE;
+        let count = if scalar_sparse {
+            active.div_ceil(COARSE_WORKGROUP_SIZE)
+        } else if incremental {
             active
         } else {
             super::binning::coarse_bin_count(lengths)
@@ -206,7 +213,11 @@ impl CoarsePlan {
             }
         } else {
             plan.push(
-                if incremental { CountTiles } else { CountBins },
+                if incremental && !scalar_sparse {
+                    CountTiles
+                } else {
+                    CountBins
+                },
                 count,
                 limit,
             )?;
@@ -227,7 +238,15 @@ impl CoarsePlan {
             plan.push(EmitChunks, emit_chunk_capacity, limit)?;
             plan.push(EmitChunkTileKinds, chunk_count, limit)?;
         } else if emit {
-            plan.push(if incremental { EmitTiles } else { EmitBins }, count, limit)?;
+            plan.push(
+                if incremental && !scalar_sparse {
+                    EmitTiles
+                } else {
+                    EmitBins
+                },
+                count,
+                limit,
+            )?;
         }
         Ok(plan)
     }
@@ -305,7 +324,12 @@ impl CoarsePlan {
         let emit = self
             .passes()
             .iter()
-            .find(|p| p.program == CoarseProgram::EmitTiles)
+            .find(|p| {
+                matches!(
+                    p.program,
+                    CoarseProgram::EmitTiles | CoarseProgram::EmitBins
+                )
+            })
             .copied();
         self.len = 0;
         if let Some(emit) = emit {

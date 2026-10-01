@@ -116,3 +116,48 @@ fn native_routes_coarse_counts_cover_partial_bins_sparse_tiles_and_final_empty_r
     routes.validate()?;
     Ok(())
 }
+
+#[cfg(feature = "metal")]
+#[test]
+#[ignore = "requires physical Metal GPU and MTL_DEBUG_LAYER=1"]
+fn metal_scalar_sparse_count_preserves_nonmonotonic_ids_and_padded_lanes() -> Result<()> {
+    let routes = Routes::new()?;
+    for active_count in [0, 1, 255, 256, 257, 276] {
+        let (mut scene, counts, _) = grid_scene();
+        let active: Vec<u32> = (0..counts.len() as u32)
+            .rev()
+            .filter(|tile| tile % 7 != 3)
+            .take(active_count)
+            .collect();
+        let base = scene.config[17] as usize;
+        scene.work.resize(base + active.len() + 3, 0x45454545);
+        scene.work[base..base + active.len()].copy_from_slice(&active);
+        scene.config[16] = active.len() as u32;
+        scene.config[18] = 1;
+        scene.expected = scene.work.clone();
+        for tile in active {
+            let tile = tile as usize;
+            scene.expected[tile * 6] = if counts[tile] == 0 {
+                0
+            } else {
+                counts[tile] + 1
+            };
+            scene.expected[tile * 6 + 3] = 0;
+            scene.expected[scene.kind_base + tile] = u32::from(counts[tile] == 0);
+        }
+        let batch = scene.batch_grid(
+            "coarse_count_bins",
+            [
+                (active_count as u32).div_ceil(COARSE_WORKGROUP_SIZE) + 1,
+                1,
+                1,
+            ],
+        )?;
+        routes.check(
+            &batch,
+            &[bytes(&scene.expected)],
+            &format!("scalar sparse count {active_count}"),
+        )?;
+    }
+    routes.validate()
+}

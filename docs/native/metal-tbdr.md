@@ -108,3 +108,47 @@ a failure, and the migration must not be described as an entirely green run.
 Full-raster, indirect-routing, and SIMD experiments were rejected and removed;
 they are not the shipped rendering architecture. The remaining clip render
 passes cannot be merged across dependent resource updates.
+
+
+## Large sparse regular coarse scheduling
+
+Metal incremental coarse allocation uses one scalar lane per active tile once the
+list contains at least 256 tiles, grouping 256 tiles per count/emission dispatch.
+Smaller lists retain the parallel per-tile workgroup. Dense rendering and other
+backends retain their schedules. This applies to regular allocation as well as
+preallocated pure-clip slots; text and mixed stacks still require regular prefix
+allocation and are not allowed to borrow pure-clip particle ranges.
+
+The scalar counter maps through the active ID list rather than dense bin geometry.
+IDs may be sparse and nonmonotonic. Padded lanes return before reading the list;
+inactive counts, classifications and retained history must remain untouched.
+Counting, glyph destinations, ordered particle emission and prefix offsets keep
+the existing semantics. Eliminating count/prefix for preallocated slots must retain
+an existing scalar emitter instead of accidentally removing all drawing.
+
+This is a root-cause performance fix. Maximized AAPL Manual Replay at 3420x1966
+on Apple M5 dirtied about 14,500 tiles across 21.6 batches per frame. The old regular
+schedule launched 256 lanes per tile even when most UI draw lists were short.
+A Metal trace attributed 84.5% of summed GPU channel durations to Compute, dominated
+by the coarse count/prefix/emit groups. Three alternating real-application pairs
+improved mean accepted-present interval from 33.432 ms to 16.664 ms and mean
+acquisition/retirement from 25.325 ms to about 0.098 ms. The built-in display reports
+60 Hz; these intervals are application cadence, not scanout or input latency.
+
+Planner regressions cover empty work, empty draws, the 255/256/257 boundary and
+retained preallocated emission. A physical Metal regression checks arbitrary active
+ID order, inactive sentinels and padded groups; it failed before this fix. All 1712
+SVG fixtures plus tiger and both progressive-blur qualities match frozen baseline
+outputs byte-for-byte. Native presentation completes eight frames and two sizes.
+Release all-targets Clippy and formatting pass with existing warnings.
+
+The serial, API-validated release all-targets run on GPU 000000010000058b has 887
+passes and six failures. Five coarse glyph/clip-oracle failures reproduce with the
+same differing bytes on untouched f052665dd3df951bc34fd8326550143d065a035e. The existing
+1600-pixel turbulence canonical mismatch also reproduces: both builds on this M5
+produce ba95370899224599efa0bbd4d3d3915eb2bf9e4ed189a94553fecde0302231b2. Two unavailable
+DXC tests and one test lacking historical WGSL evidence are explicitly excluded.
+This is not an entirely green all-backend certification. Temporary Metal encoder
+labels are removed; the app keeps an opt-in real Replay pan regression workload.
+The full profile and remaining optimization candidates are documented in Northstar's
+`docs/replay-pan-metal-performance.md` and its Chinese translation.
