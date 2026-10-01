@@ -152,3 +152,14 @@ This is not an entirely green all-backend certification. Temporary Metal encoder
 labels are removed; the app keeps an opt-in real Replay pan regression workload.
 The full profile and remaining optimization candidates are documented in Northstar's
 `docs/replay-pan-metal-performance.md` and its Chinese translation.
+
+## Shared filter validation follow-up
+
+The subsequent CPU optimization replaces repeated filter tile tree validation and
+GPU uploads in the common recorder. It applies to Metal, DX12 and Vulkan; its
+[ownership, content identity and range invariants](filter-tile-validation.md) are
+required independently of the Metal coarse schedule. Three real AAPL pan pairs
+reduce submission mean from 5.020 to 2.886 ms and total rendering from 6.132 to
+4.281 ms. Cadence stays at the display's 60 Hz, with no consistent interval-tail
+improvement. Seven new tests pass, full SVG/blur outputs are unchanged, and the
+all-targets run has 894 passes with the same six existing failures.

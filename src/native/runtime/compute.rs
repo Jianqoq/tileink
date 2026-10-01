@@ -15,6 +15,8 @@ impl ResourceId {
         self.index
     }
 }
+#[path = "compute/filter_tiles.rs"]
+mod filter_tiles;
 #[path = "compute/persistent.rs"]
 mod persistent;
 #[path = "compute/surfaces.rs"]
@@ -40,6 +42,7 @@ pub struct ComputeBatch {
     passes: Vec<Pass>,
     commands: Vec<Command>,
     outputs: Vec<ResourceId>,
+    filter_tile_cache: rustc_hash::FxHashMap<Vec<u32>, filter_tiles::CachedFilterTiles>,
 }
 impl ComputeBatch {
     pub(crate) fn acceptance(&self) -> std::rc::Rc<std::cell::Cell<bool>> {
@@ -59,6 +62,7 @@ impl ComputeBatch {
             passes: Vec::new(),
             commands: Vec::new(),
             outputs: Vec::new(),
+            filter_tile_cache: Default::default(),
         }
     }
     pub fn buffer(&mut self, bytes: Vec<u8>) -> Result<ResourceId> {

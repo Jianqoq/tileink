@@ -15,3 +15,6 @@ mod persistent_buffer;
 mod persistent_image;
 #[path = "tests/persistent_texture_gpu.rs"]
 mod persistent_texture;
+
+#[path = "tests/filter_tiles_gpu.rs"]
+mod filter_tiles;

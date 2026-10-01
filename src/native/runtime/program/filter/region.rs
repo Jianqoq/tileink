@@ -1,7 +1,6 @@
 use super::{ComputeBatch, FilterConfig, ResourceId, Result};
 use crate::native::runtime::compute::Resource;
 use crate::shared::gpu_constants::{FILTER_WORKGROUP_SIZE, FINE_WORKGROUP_SIZE, TILE_SIZE};
-use std::collections::BTreeSet;
 
 #[derive(Clone, Copy)]
 pub(super) enum Geometry {
@@ -87,15 +86,15 @@ pub(super) fn record(
     config.tiles_height = config.height.div_ceil(TILE_SIZE);
     config.compact_tiles = u32::from(tiles.is_some());
     config.active_tile_count = u32::try_from(tiles.map_or(0, |t| t.len()))?;
-    config.pixel_count = if let Some(tiles) = tiles {
-        let tile_count = u64::from(config.tiles_width) * u64::from(config.tiles_height);
-        let mut unique = BTreeSet::new();
-        if tiles
-            .iter()
-            .any(|t| u64::from(*t) >= tile_count || !unique.insert(*t))
-        {
-            return Err("filter active tiles must be unique and within the surface".into());
-        }
+    let validated_tiles = tiles
+        .map(|tiles| {
+            batch.validate_filter_tiles(
+                tiles,
+                u64::from(config.tiles_width) * u64::from(config.tiles_height),
+            )
+        })
+        .transpose()?;
+    config.pixel_count = if tiles.is_some() {
         config
             .active_tile_count
             .checked_mul(FINE_WORKGROUP_SIZE)
@@ -147,14 +146,10 @@ pub(super) fn record(
     }
     config.dispatch_width = columns;
     let uniform = batch.buffer(bytemuck::bytes_of(&config).to_vec())?;
-    let active = batch.buffer(
-        tiles
-            .filter(|t| !t.is_empty())
-            .unwrap_or(&[0])
-            .iter()
-            .flat_map(|v| v.to_le_bytes())
-            .collect(),
-    )?;
+    let active = match validated_tiles {
+        Some(tiles) => batch.filter_tile_buffer(tiles)?,
+        None => batch.buffer(vec![0; 4])?,
+    };
     let mut bindings = vec![(0, uniform), (3, target), (8, active)];
     bindings.extend_from_slice(reads.textures);
     bindings.extend_from_slice(reads.buffers);

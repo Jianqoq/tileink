@@ -92,3 +92,6 @@ mod renderer_rounding;
 
 #[path = "tests/clip_slots_gpu.rs"]
 mod clip_slots;
+
+#[path = "tests/filter_tiles_gpu.rs"]
+mod filter_tiles;

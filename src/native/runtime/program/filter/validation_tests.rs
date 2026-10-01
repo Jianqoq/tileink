@@ -123,3 +123,169 @@ fn layer_upload_rejects_invalid_logical_ranges_and_opacity_before_allocating() -
     assert_eq!(batch.resources().len(), count + 1);
     Ok(())
 }
+
+fn active_buffer(batch: &ComputeBatch, pass: usize) -> super::ResourceId {
+    batch.passes()[pass]
+        .bindings
+        .iter()
+        .find(|(binding, _)| binding.slot == 8)
+        .unwrap()
+        .1
+}
+
+fn tiled_config(size: [u32; 2]) -> FilterConfig {
+    FilterConfig {
+        width: size[0],
+        height: size[1],
+        region_width: size[0],
+        region_height: size[1],
+        ..Default::default()
+    }
+}
+
+#[test]
+fn filter_passes_share_validated_tile_buffers_by_contents_and_preserve_order() -> Result<()> {
+    use crate::native::runtime::compute::Resource;
+    let mut batch = ComputeBatch::new();
+    let first = batch.texture_rgba8([64, 64], vec![0; 64 * 64 * 4])?;
+    let second = batch.texture_rgba8([64, 64], vec![0; 64 * 64 * 4])?;
+    let tiles = [15u32, 0, 5, 14];
+    super::encode(
+        &mut batch,
+        super::BasicFilter::Clear,
+        tiled_config([64, 64]),
+        Some(&tiles),
+        None,
+        first,
+    )?;
+    let active = active_buffer(&batch, 0);
+    let count = batch.resources().len();
+    // Independently owned but equal lists must reuse validation and GPU storage.
+    let equal = tiles.to_vec();
+    super::encode(
+        &mut batch,
+        super::BasicFilter::Copy,
+        tiled_config([64, 64]),
+        Some(&equal),
+        Some(first),
+        second,
+    )?;
+    assert_eq!(active_buffer(&batch, 1), active);
+    assert_eq!(
+        batch.resources().len(),
+        count + 1,
+        "only the pass uniform is new"
+    );
+    let reordered = [0u32, 5, 14, 15];
+    super::encode(
+        &mut batch,
+        super::BasicFilter::Clear,
+        tiled_config([64, 64]),
+        Some(&reordered),
+        None,
+        first,
+    )?;
+    assert_ne!(active_buffer(&batch, 2), active);
+    let Resource::Buffer(bytes) = &batch.resources()[active.index()] else {
+        panic!("tile list must be owned read-only bytes")
+    };
+    let expected: Vec<_> = tiles.into_iter().flat_map(u32::to_le_bytes).collect();
+    assert_eq!(bytes, &expected);
+    Ok(())
+}
+
+#[test]
+fn cached_tile_validation_rechecks_content_bounds_and_preserves_failure_atomicity() -> Result<()> {
+    let mut batch = ComputeBatch::new();
+    let target = batch.texture_rgba8([64, 64], vec![0; 64 * 64 * 4])?;
+    let mut tiles = [15u32, 0, 5, 14];
+    super::encode(
+        &mut batch,
+        super::BasicFilter::Clear,
+        tiled_config([64, 64]),
+        Some(&tiles),
+        None,
+        target,
+    )?;
+    let resources = batch.resources().len();
+    for (size, invalid) in [
+        ([32, 32], tiles),
+        ([64, 64], [15, 0, 5, 0]),
+        ([64, 64], [16, 0, 5, 14]),
+    ] {
+        assert!(
+            super::encode(
+                &mut batch,
+                super::BasicFilter::Clear,
+                tiled_config(size),
+                Some(&invalid),
+                None,
+                target
+            )
+            .is_err()
+        );
+        assert_eq!(batch.resources().len(), resources);
+        assert_eq!(batch.passes().len(), 1);
+    }
+    tiles[3] = 0;
+    assert!(
+        super::encode(
+            &mut batch,
+            super::BasicFilter::Clear,
+            tiled_config([64, 64]),
+            Some(&tiles),
+            None,
+            target
+        )
+        .is_err(),
+        "same address cannot bypass duplicate detection"
+    );
+    let malformed = FilterConfig {
+        dispatch_width: 65536,
+        ..tiled_config([64, 64])
+    };
+    assert!(
+        super::encode(
+            &mut batch,
+            super::BasicFilter::Clear,
+            malformed,
+            Some(&[1, 2, 3]),
+            None,
+            target
+        )
+        .is_err()
+    );
+    assert_eq!(batch.resources().len(), resources);
+    assert_eq!(batch.passes().len(), 1);
+    let empty = [0u32; 0];
+    super::encode(
+        &mut batch,
+        super::BasicFilter::Clear,
+        tiled_config([64, 64]),
+        Some(&empty),
+        None,
+        target,
+    )?;
+    let zero_region = FilterConfig {
+        region_width: 0,
+        ..tiled_config([64, 64])
+    };
+    assert!(
+        super::encode(
+            &mut batch,
+            super::BasicFilter::Clear,
+            zero_region,
+            Some(&[0, 0]),
+            None,
+            target
+        )
+        .is_err()
+    );
+    assert_eq!(
+        batch.resources().len(),
+        resources,
+        "empty selections and invalid regions allocate no GPU resources"
+    );
+    assert_eq!(batch.passes().len(), 1);
+    Ok(())
+}
