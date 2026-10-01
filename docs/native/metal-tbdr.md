@@ -167,3 +167,12 @@ reduce submission mean from 5.020 to 2.886 ms and total rendering from 6.132 to
 4.281 ms. Cadence stays at the display's 60 Hz, with no consistent interval-tail
 improvement. Seven new tests pass, full SVG/blur outputs are unchanged, and the
 all-targets run has 894 passes with the same six existing failures.
+
+## Shared blur output workgroups
+
+The shared blur stage now rejects whole workgroups outside its output rectangle
+before loading the axis halo. This removes GPU work hidden inside the expensive
+filter/coarse Compute cluster. The [shared-blur contract](shared-blur-workgroups.md)
+requires uniform rejection, partial-tile barrier participation and exact retained
+history. HLSL uses the same fix for DX12/Vulkan. Validated AAPL diagnostic pairs
+improve mean interval by 5.1%; they do not meet the 120 Hz tail budget.

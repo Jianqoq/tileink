@@ -95,3 +95,6 @@ mod clip_slots;
 
 #[path = "tests/filter_tiles_gpu.rs"]
 mod filter_tiles;
+
+#[path = "tests/shared_blur_gpu.rs"]
+mod shared_blur;

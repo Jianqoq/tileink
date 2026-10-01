@@ -15,6 +15,12 @@ kernel void filter_blur_shared_region(constant FilterConfig& config [[buffer(0)]
         if(index>=config.active_tile_count) return;
         uint tile=tiles[index];origin=uint2(tile%config.tiles_width,tile/config.tiles_width)*16;
     }
+    // Compact damage lists can cover much more than this filter's output. Skip
+    // nonintersecting workgroups before loading the halo or reaching a barrier.
+    // Origin is group-uniform; partial output tiles still keep every lane alive.
+    uint2 lower(config.region_x0,config.region_y0);
+    uint2 upper=lower+uint2(config.region_width,config.region_height);
+    if(any(origin>=upper) || any(origin+16<=lower)) return;
     uint2 xy=origin+local;
     bool output=all(xy<uint2(config.width,config.height)) && filter_contains(config,int2(xy));
     float deviation=max(config.amount,0.0f);

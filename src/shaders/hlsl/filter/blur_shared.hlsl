@@ -22,6 +22,13 @@ void filter_blur_shared_region(uint3 local:SV_GroupThreadID,uint3 group:SV_Group
         uint tile=active_tiles.Load(index*4u);
         tile_origin=uint2(tile%config.tiles_width,tile/config.tiles_width)*uint2(SHARED_BLUR_TILE_WIDTH,SHARED_BLUR_TILE_HEIGHT);
     }
+    // The retained damage list may be much larger than the filter rectangle.
+    // This group-uniform rejection precedes all shared loads and barriers;
+    // individual out-of-region lanes in intersecting tiles must participate.
+    uint2 region_lower=uint2(config.region_x0,config.region_y0);
+    uint2 region_upper=region_lower+uint2(config.region_width,config.region_height);
+    if (any(tile_origin>=region_upper)
+        || any(tile_origin+uint2(SHARED_BLUR_TILE_WIDTH,SHARED_BLUR_TILE_HEIGHT)<=region_lower)) return;
     uint2 xy=tile_origin+local.xy;
     bool in_region=all(xy<uint2(config.width,config.height)) && all(xy>=uint2(config.region_x0,config.region_y0))
         && all(xy<uint2(config.region_x0+config.region_width,config.region_y0+config.region_height));
