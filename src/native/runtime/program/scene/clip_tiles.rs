@@ -75,16 +75,15 @@ pub(super) fn tiles(
         }
     }
     let selected: Vec<u32> = if let Some(active) = active {
-        active
-            .iter()
-            .copied()
-            .filter(|tile| {
+        collect_sparse_tiles(
+            active.iter().copied().filter(|tile| {
                 let (x, y) = (tile % stride, tile / stride);
                 tile_rects
                     .iter()
                     .any(|&(x0, y0, x1, y1)| x >= x0 && x < x1 && y >= y0 && y < y1)
-            })
-            .collect()
+            }),
+            sparse_limit as usize,
+        )?
     } else {
         let mut selected = Vec::new();
         for (x0, y0, x1, y1) in tile_rects {
@@ -94,7 +93,21 @@ pub(super) fn tiles(
         selected.dedup();
         selected
     };
-    (selected.len() <= sparse_limit as usize).then_some(selected)
+    Some(selected)
+}
+
+fn collect_sparse_tiles(tiles: impl Iterator<Item = u32>, limit: usize) -> Option<Vec<u32>> {
+    let mut selected = Vec::new();
+    for tile in tiles {
+        // Root-cause fix shared by native backends: once selection exceeds the
+        // sparse budget, dense dispatch is certain. Do not build and discard the
+        // rest of a large retained list. Exactly-at-budget lists remain sparse.
+        if selected.len() == limit {
+            return None;
+        }
+        selected.push(tile);
+    }
+    Some(selected)
 }
 
 pub(super) struct ClipDispatch {

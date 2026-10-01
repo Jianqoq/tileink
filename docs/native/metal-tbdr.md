@@ -64,6 +64,10 @@ to enable reuse.
 Pure clip stacks intersect clip bounds with the viewport and, for complete
 repaints, known child bounds. Retained damage intersects the clip mask without
 restricting to current child bounds, preserving removal and reparenting semantics.
+Dense retained selection now stops at the first matching tile exceeding the sparse
+budget, preserving the exact threshold and active-list order; this CPU change is
+shared by all native backends. See the [clip selection contract](clip-tile-selection.md)
+for required invariants, regression tests and measured limits.
 Dense selections use the regular schedule. Complete non-text pure-clip plans
 reuse bounded disjoint particle slots, requiring only emission instead of
 recounting and reallocating each batch. Mixed group/opacity schedules and text

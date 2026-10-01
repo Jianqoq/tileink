@@ -241,3 +241,42 @@ fn clip_emit_dispatch_covers_both_sides_of_a_scalar_workgroup() -> super::super:
     }
     Ok(())
 }
+
+#[test]
+fn dense_selection_stops_after_enough_matches_to_choose_dense_dispatch() {
+    let visited = std::cell::Cell::new(0);
+    let tiles = (0..10_000).inspect(|_| visited.set(visited.get() + 1));
+    assert_eq!(collect_sparse_tiles(tiles, 3), None);
+    assert_eq!(
+        visited.get(),
+        4,
+        "dense dispatch must not collect the remaining rejected list"
+    );
+}
+
+#[test]
+fn bounded_sparse_selection_preserves_exact_threshold_order_and_empty_semantics() {
+    assert_eq!(collect_sparse_tiles(std::iter::empty(), 0), Some(vec![]));
+    assert_eq!(collect_sparse_tiles([4].into_iter(), 0), None);
+    assert_eq!(
+        collect_sparse_tiles([8, 0, 3].into_iter(), 3),
+        Some(vec![8, 0, 3])
+    );
+    assert_eq!(collect_sparse_tiles([8, 0, 3, 2].into_iter(), 3), None);
+    let mut canvas = Canvas::new(112, 16, 1.0);
+    canvas.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 48.0, 16.0), crate::Radius::ZERO);
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 112.0, 16.0),
+        crate::Radius::ZERO,
+        peniko::Color::BLACK,
+    );
+    canvas.pop_layer();
+    let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+    let active = [6, 2, 0, 4, 1, 5, 3];
+    assert_eq!(
+        tiles(&canvas, &plan, 0..1, Some(&active), None),
+        Some(vec![2, 0, 1])
+    );
+    assert_eq!(tiles(&canvas, &plan, 0..1, Some(&[]), None), Some(vec![]));
+    assert_eq!(tiles(&canvas, &plan, 0..1, Some(&[0]), None), Some(vec![0]));
+}

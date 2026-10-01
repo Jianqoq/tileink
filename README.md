@@ -39,6 +39,11 @@ Choose `NativeBackend::Vulkan` or `NativeBackend::Metal` with the corresponding 
 - `scripts/ps1/run_svg_tests.ps1` on Windows, or `scripts/mac/run_svg_tests.sh` on macOS, renders the complete SVG fixture corpus through the native backend.
 - `cargo build --release --examples` checks example targets.
 
-The [documentation site](website/docs/intro.md) covers the scene model and rendering pipeline. The [DXC toolchain guide](docs/native/toolchain-discovery.md) describes native shader compilation. The [shared native filter validation contract](docs/native/filter-tile-validation.md) documents content and resource reuse across all three backends.
+Development documentation:
+
+- [Scene model and rendering pipeline](website/docs/intro.md)
+- [DXC toolchain discovery](docs/native/toolchain-discovery.md)
+- [Shared native filter validation](docs/native/filter-tile-validation.md)
+- [Conservative clip dispatch and bounded retained selection](docs/native/clip-tile-selection.md)
 
 Licensed under MIT or Apache-2.0.
