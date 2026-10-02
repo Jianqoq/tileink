@@ -79,3 +79,10 @@ passed; strict library Clippy passed. The full Vulkan corpus matched the approve
 baseline byte-for-byte: 1,712 SVGs, 45 examples and 174 retained outputs (1,931 total, zero diffs).
 gfx_ui passed 779 unit tests, two integration tests and its doctest, including the real-window
 backend acceptance test.
+
+## Shared persistent upload packing
+
+The common recorder validates and sizes each journal before allocating its final
+payload. Metal/DX12 scatter writes directly into its packet; Vulkan copy selection
+is preserved. See [persistent buffer uploads](persistent-buffer-uploads.md) for
+the required range, ownership, packet and ordering invariants.

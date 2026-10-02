@@ -1,8 +1,9 @@
-use super::{ComputeBatch, PackedUpdates, ResourceId, Result};
+use super::{ComputeBatch, ResourceId, Result, packing::Upload};
 use crate::shared::gpu_constants::{RANGE_SCATTER_DESCRIPTOR_WORDS, RANGE_SCATTER_HEADER_WORDS};
 
-// DX12 has one CopyBufferRegion call per fragment. Small journals still use
-// copies; larger journals amortize a compute dispatch instead of CPU API calls.
+// Metal and DX12 encode a host copy call per fragment. Small journals still
+// use copies; larger journals amortize one scatter dispatch. Direct packet
+// construction avoids the extra payload allocation/copy of the old DX12 path.
 const MIN_SCATTER_COPIES: usize = 16;
 const MAX_SCATTER_COPIES: usize = 65_535;
 
@@ -11,10 +12,10 @@ pub(super) struct Packet {
     groups: u32,
 }
 
-pub(super) fn packet(packed: &PackedUpdates, destination_size: usize) -> Option<Packet> {
-    let count = packed.copies.len();
+pub(super) fn packet(upload: &Upload) -> Option<Packet> {
+    let count = upload.copy_count;
     if !(MIN_SCATTER_COPIES..=MAX_SCATTER_COPIES).contains(&count)
-        || destination_size > u32::MAX as usize
+        || upload.destination_size > u32::MAX as usize
     {
         return None;
     }
@@ -22,7 +23,7 @@ pub(super) fn packet(packed: &PackedUpdates, destination_size: usize) -> Option<
     // four words per descriptor, then tightly packed source words.
     let payload_words =
         RANGE_SCATTER_HEADER_WORDS as usize + count * RANGE_SCATTER_DESCRIPTOR_WORDS as usize;
-    let size = (payload_words * 4).checked_add(packed.bytes.len())?;
+    let size = (payload_words * 4).checked_add(upload.byte_len)?;
     if size > u32::MAX as usize {
         return None;
     }
@@ -30,12 +31,12 @@ pub(super) fn packet(packed: &PackedUpdates, destination_size: usize) -> Option<
     for word in [payload_words as u32, count as u32, 0, 0] {
         bytes.extend_from_slice(&word.to_le_bytes());
     }
-    for &[source, destination, length] in &packed.copies {
+    for [source, destination, length] in upload.copies() {
         for word in [destination / 4, source / 4, length / 4, 0] {
             bytes.extend_from_slice(&(word as u32).to_le_bytes());
         }
     }
-    bytes.extend_from_slice(&packed.bytes);
+    upload.append_payload(&mut bytes);
     Some(Packet {
         bytes,
         groups: count as u32,
@@ -48,7 +49,7 @@ pub(super) fn record(
     packet: Packet,
 ) -> Result<()> {
     let source = batch.buffer(packet.bytes)?;
-    // SAFETY: pack_updates validates sorted, disjoint, aligned destinations;
+    // SAFETY: Upload validates sorted, disjoint, aligned destinations;
     // packet bounds all byte addresses and creates a complete source descriptor
     // and payload for each dispatched group. No group writes a gap.
     unsafe {
@@ -75,13 +76,11 @@ mod tests {
     fn scatter_packet_preserves_descriptors_and_payload() {
         let data = [1, 2, 3, 4];
         let updates: Vec<_> = (0..32).map(|i| (i * 12, data.as_slice())).collect();
-        let packed = super::super::pack_updates(384, &updates).unwrap();
-        let packet = packet(&packed, 384).unwrap();
-        let words: Vec<_> = packet
-            .bytes
-            .chunks_exact(4)
-            .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
-            .collect();
+        let upload = Upload::new(384, &updates).unwrap();
+        let packet = packet(&upload).unwrap();
+        let (words, remainder) = packet.bytes.as_chunks::<4>();
+        assert!(remainder.is_empty());
+        let words: Vec<_> = words.iter().copied().map(u32::from_le_bytes).collect();
         assert_eq!(packet.groups, 32);
         let validated =
             crate::native::runtime::program::Scatter::new(packet.bytes.clone(), vec![0; 384])
@@ -105,12 +104,12 @@ mod tests {
     fn later_import_uploads_precede_previously_recorded_commands() {
         let data = [1, 2, 3, 4];
         let updates: Vec<_> = (0..32).map(|i| (i * 12, data.as_slice())).collect();
-        let packed = super::super::pack_updates(384, &updates).unwrap();
+        let upload = Upload::new(384, &updates).unwrap();
         let mut batch = ComputeBatch::new();
         let first = batch.buffer(vec![0; 384]).unwrap();
-        record(&mut batch, first, packet(&packed, 384).unwrap()).unwrap();
+        record(&mut batch, first, packet(&upload).unwrap()).unwrap();
         let second = batch.buffer(vec![0; 384]).unwrap();
-        record(&mut batch, second, packet(&packed, 384).unwrap()).unwrap();
+        record(&mut batch, second, packet(&upload).unwrap()).unwrap();
         // Uploads imported after command recording still execute first. The two
         // independently owned destinations make reversing their uploads safe.
         assert!(matches!(
@@ -125,14 +124,23 @@ mod tests {
     #[test]
     fn small_or_unaddressable_uploads_keep_the_copy_path() {
         let data = [0; 4];
-        let packed = super::super::pack_updates(4, &[(0, &data)]).unwrap();
-        assert!(packet(&packed, 4).is_none());
-        let packed = PackedUpdates {
-            bytes: vec![0; 64],
-            copies: vec![[0, 0, 4]; 16],
-        };
+        let updates = [(0, data.as_slice())];
+        assert!(packet(&Upload::new(4, &updates).unwrap()).is_none());
+        let updates: Vec<_> = (0..16).map(|i| (i * 12, data.as_slice())).collect();
         if let Some(size) = (u32::MAX as usize).checked_add(1) {
-            assert!(packet(&packed, size).is_none());
+            assert!(packet(&Upload::new(size, &updates).unwrap()).is_none());
         }
+    }
+
+    #[test]
+    fn scatter_thresholds_use_coalesced_copy_count() {
+        let data = [0; 4];
+        for count in [15, 16, 65_535, 65_536] {
+            let updates: Vec<_> = (0..count).map(|i| (i * 8, data.as_slice())).collect();
+            let upload = Upload::new(count * 8, &updates).unwrap();
+            assert_eq!(packet(&upload).is_some(), (16..=65_535).contains(&count));
+        }
+        let updates: Vec<_> = (0..32).map(|i| (i * 4, data.as_slice())).collect();
+        assert!(packet(&Upload::new(128, &updates).unwrap()).is_none());
     }
 }

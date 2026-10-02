@@ -217,3 +217,10 @@ filter/coarse Compute cluster. The [shared-blur contract](shared-blur-workgroups
 requires uniform rejection, partial-tile barrier participation and exact retained
 history. HLSL uses the same fix for DX12/Vulkan. Validated AAPL diagnostic pairs
 improve mean interval by 5.1%; they do not meet the 120 Hz tail budget.
+
+## Shared persistent upload packing
+
+The common recorder validates and sizes each journal before allocating its final
+payload. Metal/DX12 scatter writes directly into its packet; Vulkan copy selection
+is preserved. See [persistent buffer uploads](persistent-buffer-uploads.md) for
+the required range, ownership, packet and ordering invariants.

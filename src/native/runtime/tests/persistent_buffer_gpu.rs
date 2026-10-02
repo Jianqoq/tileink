@@ -159,7 +159,7 @@ fn native_fragmented_uploads_preserve_holes_and_queued_readbacks() -> Result<()>
             .collect();
         let mut batch = ComputeBatch::new();
         let id = batch.import_buffer(&buffer, &updates)?;
-        #[cfg(feature = "dx12")]
+        #[cfg(any(feature = "dx12", feature = "metal"))]
         assert_eq!(
             batch
                 .passes()

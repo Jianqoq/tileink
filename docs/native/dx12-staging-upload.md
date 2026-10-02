@@ -82,3 +82,10 @@ single-list cache and passed with the free-list pool.
 Release tests passed together with the pinned GPU regression and strict DX12
 library Clippy. gfx_ui real-window resize/capture and its release suite passed.
 All 1,931 DX12 corpus outputs remained byte-identical to approved M6 references.
+
+## Shared persistent upload packing
+
+The common recorder validates and sizes each journal before allocating its final
+payload. Metal/DX12 scatter writes directly into its packet; Vulkan copy selection
+is preserved. See [persistent buffer uploads](persistent-buffer-uploads.md) for
+the required range, ownership, packet and ordering invariants.
