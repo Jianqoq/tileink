@@ -12,7 +12,12 @@ bool sdf_clip_covers(Words sdf, DrawData d, uint2 tile) {
     float2 lower = min(rect.xy, rect.zw), upper = max(rect.xy, rect.zw), size = upper - lower;
     float2 a = float2(tile * 16) + 0.5f - d.translation, b = a + 15.0f;
     if (any(size < 16.0f) || any(a < lower + 0.5f) || any(b > upper - 0.5f)) return false;
-    float4 r = clamp(as_type<float4>(uint4(p[5], p[6], p[7], p[8])), 0.0f, min(size.x, size.y) * 0.5f);
+    float4 radii = as_type<float4>(uint4(p[5], p[6], p[7], p[8]));
+    // Large finite coordinates can lose the AA inset or overflow fine's center.
+    // Restrict this full-tile proof; uncertain geometry keeps exact fine evaluation.
+    if (!all(abs(rect) <= 65536.0f) || !all(abs(radii) <= 65536.0f)
+        || !all(abs(d.translation) <= 65536.0f)) return false;
+    float4 r = clamp(radii, 0.0f, min(size.x, size.y) * 0.5f);
     return corner_covers(a, lower, lower + r.x, r.x)
         && corner_covers(float2(b.x, a.y), float2(upper.x, lower.y), float2(upper.x-r.y, lower.y+r.y), r.y)
         && corner_covers(float2(a.x, b.y), float2(lower.x, upper.y), float2(lower.x+r.z, upper.y-r.z), r.z)

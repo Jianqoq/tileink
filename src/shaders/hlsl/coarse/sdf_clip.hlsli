@@ -23,7 +23,12 @@ bool sdf_clip_covers(ByteAddressBuffer sdf, DrawData draw, uint2 tile) {
     float2 size = upper - lower;
     if (any(size < float(TILE_SIZE - 1u) + 2.0 * FULL_TILE_SDF_INSET) || any(tile_lower < lower + FULL_TILE_SDF_INSET) || any(tile_upper > upper - FULL_TILE_SDF_INSET)) return false;
     float limit = min(size.x, size.y) * 0.5;
-    float4 radii = min(max(asfloat(sdf.Load4(base + 20u)), 0.0), limit);
+    float4 radii = asfloat(sdf.Load4(base + 20u));
+    // Large finite coordinates can lose the AA inset or overflow fine's center.
+    // Restrict this full-tile proof; uncertain geometry keeps exact fine evaluation.
+    if (!all(abs(rect) <= 65536.0) || !all(abs(radii) <= 65536.0)
+        || !all(abs(draw.translation) <= 65536.0)) return false;
+    radii = min(max(radii, 0.0), limit);
     return rounded_corner_covers(tile_lower, lower, lower + radii.x, radii.x)
         && rounded_corner_covers(float2(tile_upper.x, tile_lower.y), float2(upper.x, lower.y), float2(upper.x-radii.y, lower.y+radii.y), radii.y)
         && rounded_corner_covers(float2(tile_lower.x, tile_upper.y), float2(lower.x, upper.y), float2(lower.x+radii.z, upper.y-radii.z), radii.z)

@@ -34,3 +34,7 @@ All 36 filter GPU tests run with both DXC executables unavailable. New shader id
 create driver pipelines from embedded bytecode on their first use. Separate basic-filter
 and SDF processes subsequently hit disk pipeline caches without compiling pipelines.
 Driver pipeline creation and HLSL source compilation are distinct cache layers.
+
+Native coarse bounds the numeric domain of rectangle full-tile color/mask proofs.
+The invariants and independent fine-only pixel regression are documented in
+[rectangle tile proofs](rectangle-tile-proofs.md).
