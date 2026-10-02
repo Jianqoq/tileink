@@ -31,7 +31,7 @@ void coarse_count(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {
         while (page != INVALID_INDEX && remaining != 0u) {
             if (local.x < min(remaining, COARSE_WORKGROUP_SIZE)) {
                 uint draw_index = draw_page_index(coarse_work,config,page,local.x);
-                count += draw_particle_count(config,draw_records,text_blob,path_records,backdrops,segment_ranges,draw_batch_ids,draw_index,position);
+                count += draw_particle_count(config,draw_records,text_blob,path_records,backdrops,segment_ranges,draw_batch_ids, sdf_blob, draw_index,position);
             }
             remaining -= min(remaining,COARSE_WORKGROUP_SIZE);
             page = draw_page_next(coarse_work,config,page);
@@ -62,7 +62,7 @@ void coarse_count_bins(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID)
             uint page_count=min(remaining,COARSE_WORKGROUP_SIZE);
             for (uint slot=0u;slot<page_count;slot++) {
                 uint draw_index=draw_page_index(coarse_work,config,page,slot);
-                count += draw_particle_count(config,draw_records,text_blob,path_records,backdrops,segment_ranges,draw_batch_ids,draw_index,position);
+                count += draw_particle_count(config,draw_records,text_blob,path_records,backdrops,segment_ranges,draw_batch_ids, sdf_blob, draw_index,position);
             }
             remaining -= page_count;
             page = draw_page_next(coarse_work,config,page);

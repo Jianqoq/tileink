@@ -31,7 +31,7 @@ uint stack_wrapper_count(ConstantBuffer<CoarseConfig> settings, ByteAddressBuffe
     return count;
 }
 uint2 draw_particle_count(ConstantBuffer<CoarseConfig> settings, ByteAddressBuffer draws, ByteAddressBuffer text,
-    ByteAddressBuffer paths, ByteAddressBuffer backdrops, ByteAddressBuffer ranges, ByteAddressBuffer batches, uint draw_index, uint2 tile) {
+    ByteAddressBuffer paths, ByteAddressBuffer backdrops, ByteAddressBuffer ranges, ByteAddressBuffer batches, ByteAddressBuffer sdf, uint draw_index, uint2 tile) {
     uint batch_bytes; batches.GetDimensions(batch_bytes);
     if (draw_index >= batch_bytes / 4u || batches.Load(draw_index * 4u) != settings.draw_start) return uint2(0u,0u);
     DrawData draw = load_draw(draws, draw_index);
@@ -40,7 +40,7 @@ uint2 draw_particle_count(ConstantBuffer<CoarseConfig> settings, ByteAddressBuff
         uint glyphs = count_draw_glyphs(text, settings, draw, tile);
         return uint2(glyphs > 0u ? 1u : 0u, glyphs);
     }
-    if (draw_has_sdf(draw)) return uint2(draw.tag == DRAW_BRUSH ? 1u : 0u,0u);
+    if (draw_has_sdf(draw)) return uint2(draw.tag == DRAW_BRUSH && !sdf_stroke_empty(sdf, draw, tile) ? 1u : 0u,0u);
     uint backdrop = draw_backdrop(paths, draw, tile, uint2(settings.tiles_width, settings.tiles_height));
     if (backdrop == INVALID_INDEX || (draw.tag != DRAW_BRUSH && draw.tag != DRAW_PATH_GLYPH && draw.tag != DRAW_CLIP)) return uint2(0u,0u);
     uint2 range = ranges.Load2(backdrop * TILE_SEGMENT_RANGE_STRIDE);

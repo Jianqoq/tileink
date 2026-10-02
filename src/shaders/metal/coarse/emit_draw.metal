@@ -11,7 +11,7 @@ Particle draw_particle(constant CoarseConfig& c, Words draws, Words text,
         return p;
     }
     if (has_sdf(d)) {
-        if (!d.tag) {
+        if (!d.tag && !sdf_stroke_empty(paint, d, tile)) {
             p.valid = true;
             uint color = solid(paint, c, d) && sdf_clip_covers(paint, d, tile) ? solid_color(paint, c, d) : 0;
             if (color) { p.tag = 2; p.color = color; }

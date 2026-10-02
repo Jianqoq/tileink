@@ -24,7 +24,7 @@ Particle draw_particle(ConstantBuffer<CoarseConfig> settings, ByteAddressBuffer 
         return result;
     }
     if (draw_has_sdf(draw)) {
-        if (draw.tag == DRAW_BRUSH) {
+        if (draw.tag == DRAW_BRUSH && !sdf_stroke_empty(paint, draw, tile)) {
             result.valid = true;
             uint color = full_tile_solid(paint, settings, draw, tile);
             if (color != 0u) { result.tag = PTCL_COLOR; result.color = color; }

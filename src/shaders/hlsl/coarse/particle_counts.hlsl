@@ -36,7 +36,7 @@ void coarse_emit_chunk_particle_counts(uint3 group : SV_GroupID, uint3 local : S
     uint2 count = uint2(0u, 0u);
     if (wrappers != INVALID_INDEX && page != INVALID_INDEX && ordinal < draw_count) {
         uint draw_index = draw_page_index(coarse_work, config, page, local.x);
-        count = draw_particle_count(config, draw_records, text_blob, path_records, backdrops, segment_ranges, draw_batch_ids, draw_index, position);
+        count = draw_particle_count(config, draw_records, text_blob, path_records, backdrops, segment_ranges, draw_batch_ids, sdf_blob, draw_index, position);
     }
     uint2 total;
     exclusive_prefix(count, local.x, total);

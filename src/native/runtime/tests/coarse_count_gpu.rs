@@ -243,3 +243,6 @@ fn native_routes_coarse_invalid_optional_references_leave_streams_empty() -> Res
 
 #[path = "coarse_count/rect_pixels.rs"]
 mod rect_pixels;
+
+#[path = "coarse_count/stroke.rs"]
+mod stroke;

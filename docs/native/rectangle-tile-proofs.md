@@ -38,6 +38,45 @@ Metal is hardware validated here; matching HLSL source does not establish DX12
 or Vulkan hardware results. Full SVG/examples and real application performance
 validation are required for changes to this proof.
 
-The related experiment that removed zero-coverage rectangle-stroke particles was
-rejected because real application frame tails regressed, despite reducing the
-identified batch's GPU time. It is not part of the implementation.
+## Zero-coverage rectangle-stroke particles
+
+The follow-up application investigation re-enables rectangle-stroke interior
+rejection in Metal and the shared DX12/Vulkan coarse path. It removes redundant
+fine evaluation at the particle source; it does not change stroke coverage or
+presentation policy. The first experiment's worse application tails motivate
+separate present/queue attribution, rather than invalidating its measured GPU gain.
+
+- Only brush rectangle strokes can be rejected. Glyph routing keeps priority;
+  layer descriptors, fills and other shapes keep their original routing.
+- Require a complete 13-word stroke record, no shadow alias, identity linear
+  transform, and raw rectangle/radius/half-width fields within ±2^16. NaN,
+  infinity, incomplete geometry, scale/shear/rotation and uncertain coordinates
+  retain the original particle. The shared proof also checks the inner rectangle
+  and translation's numeric domain.
+- Fine's serialized half widths are top/right/bottom/left, clamped to zero. Inset
+  the normalized outer rectangle by those widths; subtract the maximum adjacent
+  widths from each inner corner radius, then clamp as in fine. A collapsed inner
+  rectangle cannot justify rejection.
+- Stroke coverage is `clamp(outer - inner, 0, 1)`. All pixel centers of the complete
+  16×16 tile must be in the inner rectangle's full-alpha region. The shared
+  corner/rectangle proof uses a one-pixel inset for stroke interiors, including
+  a half-pixel rounding reserve; fills/clips retain the half-pixel inset. Partial
+  viewport tiles still use the complete-tile proof.
+- All three count routes and draw emission use the same immutable paint/draw
+  predicate. Prefix allocation, emitted stream bounds and classification must
+  agree. Clip/opacity/blend ordering and the loaded/clear target base remain owned
+  by the existing empty-stream handling.
+
+`native_routes_coarse_rect_stroke_interiors_have_no_particles` covers ordinary,
+asymmetric, clamped-negative and translated widths, rounded interiors, reversed
+bounds, AA/thin/collapsed boundaries, fills, unsupported transforms, shadow aliases,
+truncated records, nonfinite fields and large coordinates across all three count
+routes. It fails on source without culling. The independent pixel oracle above
+checks removal against fine's original calculation, rather than a duplicated CPU
+formula. Real application frame tails and GPU work are measured separately.
+
+`native_routes_coarse_stroke_proof_preserves_glyph_priority` checks glyph counts
+and both emission routes with and without an aliased empty-stroke record. It
+reproduces a restoration error where Metal applied the stroke predicate before
+glyph emission, despite count routing selecting the glyph. Restoring glyph
+priority fixes that count/emission disagreement at its source.

@@ -27,7 +27,7 @@ uint wrapper_count(constant CoarseConfig& c, Words layers, Words draws,
 }
 uint2 particle_count(constant CoarseConfig& c, Words draws, Words text,
     Words paths, Words backdrops, const device packed_uint2* ranges,
-    Words batches, uint index, uint2 tile) {
+    Words batches, Words sdf, uint index, uint2 tile) {
     if (index >= batches.length || batches[index] != c.draw_start) return uint2(0);
     DrawData d = load_draw(draws, index);
     if (c.text_enabled && d.glyph_run != invalid_index) {
@@ -35,7 +35,7 @@ uint2 particle_count(constant CoarseConfig& c, Words draws, Words text,
         uint glyphs = count_glyphs(text, c, d, tile);
         return uint2(glyphs > 0, glyphs);
     }
-    if (has_sdf(d)) return uint2(d.tag == 0, 0);
+    if (has_sdf(d)) return uint2(d.tag == 0 && !sdf_stroke_empty(sdf, d, tile), 0);
     uint backdrop = draw_backdrop(paths, d, tile, uint2(c.tiles_width, c.tiles_height));
     if (backdrop == invalid_index || (d.tag != 0 && d.tag != 1 && d.tag != 5)) return uint2(0);
     uint2 range(ranges[backdrop]);

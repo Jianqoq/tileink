@@ -29,7 +29,7 @@ kernel void coarse_count(constant CoarseConfig& c [[buffer(0)]],
         uint base = tile_draw_base(c, tile), page = work[base], remaining = work[base + 1];
         while (page != invalid_index && remaining) {
             if (lane < min(remaining, 256u))
-                count += particle_count(c, draws, text, paths, backdrops, ranges, batches, page_index(work, c, page, lane), position);
+                count += particle_count(c, draws, text, paths, backdrops, ranges, batches, sdf, page_index(work, c, page, lane), position);
             remaining -= min(remaining, 256u);
             page = page_next(work, c, page);
         }
@@ -79,7 +79,7 @@ kernel void coarse_count_bins(constant CoarseConfig& c [[buffer(0)]],
         while (page != invalid_index && remaining) {
             uint n = min(remaining, 256u);
             for (uint i = 0; i < n; ++i)
-                count += particle_count(c, draws, text, paths, backdrops, ranges, batches, page_index(work, c, page, i), position);
+                count += particle_count(c, draws, text, paths, backdrops, ranges, batches, sdf, page_index(work, c, page, i), position);
             remaining -= n;
             page = page_next(work, c, page);
         }

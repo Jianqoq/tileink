@@ -29,7 +29,7 @@ kernel void coarse_emit_chunk_particle_counts(constant CoarseConfig& c [[buffer(
     uint page = page_at(work, c, tile, chunk), ordinal = chunk * 256 + lane;
     uint2 count(0), total;
     if (wrappers != invalid_index && page != invalid_index && ordinal < work[tile_draw_base(c, tile) + 1])
-        count = particle_count(c, draws, text, paths, backdrops, ranges, batches, page_index(work, c, page, lane), position);
+        count = particle_count(c, draws, text, paths, backdrops, ranges, batches, sdf, page_index(work, c, page, lane), position);
     threadgroup uint2 scratch[256];
     exclusive_prefix(count, lane, scratch, total);
     if (!lane) { work[base + 2] = total.x; work[base + 4] = total.y; }
