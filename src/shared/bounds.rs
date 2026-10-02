@@ -25,12 +25,14 @@ impl Bounds {
         }
     }
 
+    // Saturate before clipping: large valid filter anchors must not wrap a
+    // nonempty source footprint into negative upper bounds.
     pub fn outset(self, amount: i32) -> Bounds {
         Bounds {
-            x0: self.x0 - amount,
-            y0: self.y0 - amount,
-            x1: self.x1 + amount,
-            y1: self.y1 + amount,
+            x0: self.x0.saturating_sub(amount),
+            y0: self.y0.saturating_sub(amount),
+            x1: self.x1.saturating_add(amount),
+            y1: self.y1.saturating_add(amount),
         }
     }
 

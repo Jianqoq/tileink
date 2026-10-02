@@ -9,7 +9,7 @@ Tileink 使用 cosmic-text 做 shaping/layout，使用 `TextContext` 管理 layo
 
 ```rust
 use peniko::{Color, kurbo::Point};
-use tileink::{Canvas, TextContext, TextFontSystem, TextLayoutOptions, WgpuRenderer};
+use tileink::{Canvas, TextContext, TextFontSystem, TextLayoutOptions, NativeRenderer};
 
 let mut fonts = TextFontSystem::new();
 let mut text = TextContext::new();
@@ -21,7 +21,7 @@ let layout = text.layout(
 let mut canvas = Canvas::new(640, 160, 1.0);
 canvas.push_text_layout(&layout, Point::new(24.0, 52.0), Color::WHITE);
 
-renderer.render_with_text(&canvas, &mut fonts, &mut text);
+renderer.render_with_text(&canvas, &mut fonts, &mut text)?.wait()?;
 ```
 
 如果应用已经为测量或编辑保留了 `cosmic_text::Buffer`，使用
@@ -52,3 +52,6 @@ range 会直接传给 GPU text upload，因此无需重建未变化的 text reco
 ## Retained text
 
 把包含 text runs 的 Canvas 放入 `RetainedScene`，使用 `render_retained_with_text*`。替换文本时创建新的 `Rc<Canvas>` 并 `replace_scene`；仅移动文本时只调用 `set_transform`。
+
+经过仿射变换的字形位图采用双线性采样，字形外部按透明像素处理。整数位移保持原始像素，
+小数位移不会将动画文字吸附到物理整数像素。各原生后端的粗粒度字形边界均包含插值范围。

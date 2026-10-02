@@ -1,36 +1,7 @@
 ---
-sidebar_position: 1
-title: Installation and local docs
+title: Installation
 ---
 
 # Installation
 
-```toml title="Cargo.toml"
-[dependencies]
-tileink = { path = "../tileink" }
-peniko = "0.6.1"
-wgpu = "30"
-pollster = "0.4"
-```
-
-Tileink uses Rust edition 2024. The WGPU renderer is available by default; `directwrite-reference` and `vello-compare` are development comparison features.
-
-## Run this documentation locally
-
-Node.js 20 or newer is required.
-
-```powershell
-cd website
-npm install
-npm run start
-```
-
-The development server opens at `http://localhost:3000` with hot reload and a language selector. Validate and preview the production output with:
-
-```powershell
-npm run typecheck
-npm run build
-npm run serve
-```
-
-Static files are generated in `website/build/`.
+Add `tileink = { path = "../tileink" }` and `peniko = "0.6.1"` to Cargo.toml. The default feature selects DX12 on Windows. For Vulkan on Windows/Linux or Metal on macOS, disable default features and enable exactly one backend: `cargo test --release --no-default-features --features vulkan -- --test-threads=1` or `--features metal`. The documentation site requires Node.js 20 or newer; run `npm install && npm run build` in `website/`.

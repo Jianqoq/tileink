@@ -1,0 +1,389 @@
+use super::super::{Result, compute::Texture};
+use ash::vk;
+
+pub(crate) struct Image {
+    device: std::rc::Rc<ash::Device>,
+    pub image: vk::Image,
+    memory: vk::DeviceMemory,
+    host_owner: Option<std::rc::Rc<dyn std::any::Any>>,
+    pub current_layout: std::cell::Cell<vk::ImageLayout>,
+    pub final_layout: vk::ImageLayout,
+    pub current_family: std::cell::Cell<u32>,
+    pub view: vk::ImageView,
+    extent: vk::Extent3D,
+    layers: u32,
+}
+impl Image {
+    pub fn import(
+        device: &std::rc::Rc<ash::Device>,
+        descriptor: crate::native::interop::vulkan::TextureDescriptor,
+    ) -> Result<Self> {
+        let allowed = |layout| {
+            matches!(
+                layout,
+                vk::ImageLayout::GENERAL
+                    | vk::ImageLayout::TRANSFER_SRC_OPTIMAL
+                    | vk::ImageLayout::TRANSFER_DST_OPTIMAL
+                    | vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+                    | vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
+                    | vk::ImageLayout::PRESENT_SRC_KHR
+            )
+        };
+        if descriptor.image == vk::Image::null()
+            || !(allowed(descriptor.initial_layout)
+                || descriptor.initial_layout == vk::ImageLayout::UNDEFINED)
+            || !allowed(descriptor.final_layout)
+            || (descriptor.initialized && descriptor.initial_layout == vk::ImageLayout::UNDEFINED)
+        {
+            return Err("invalid imported Vulkan image or layout".into());
+        }
+        let mut this = Self {
+            device: device.clone(),
+            image: descriptor.image,
+            memory: vk::DeviceMemory::null(),
+            host_owner: Some(descriptor.owner),
+            view: vk::ImageView::null(),
+            layers: 1,
+            extent: vk::Extent3D {
+                width: descriptor.size[0],
+                height: descriptor.size[1],
+                depth: 1,
+            },
+            current_layout: std::cell::Cell::new(descriptor.initial_layout),
+            final_layout: descriptor.final_layout,
+            current_family: std::cell::Cell::new(vk::QUEUE_FAMILY_IGNORED),
+        };
+        this.view = unsafe {
+            device.create_image_view(
+                &vk::ImageViewCreateInfo::default()
+                    .image(this.image)
+                    .view_type(vk::ImageViewType::TYPE_2D)
+                    .format(vk::Format::R8G8B8A8_UNORM)
+                    .subresource_range(this.range()),
+                None,
+            )?
+        };
+        Ok(this)
+    }
+    pub fn new(
+        device: &std::rc::Rc<ash::Device>,
+        memory: &vk::PhysicalDeviceMemoryProperties,
+        texture: &Texture,
+    ) -> Result<Self> {
+        let mut this = Self {
+            device: device.clone(),
+            layers: texture.layers,
+            image: vk::Image::null(),
+            memory: vk::DeviceMemory::null(),
+            host_owner: None,
+            current_layout: std::cell::Cell::new(vk::ImageLayout::UNDEFINED),
+            final_layout: vk::ImageLayout::GENERAL,
+            current_family: std::cell::Cell::new(vk::QUEUE_FAMILY_IGNORED),
+            view: vk::ImageView::null(),
+            extent: vk::Extent3D {
+                width: texture.size[0],
+                height: texture.size[1],
+                depth: 1,
+            },
+        };
+        unsafe {
+            this.image = device.create_image(
+                &vk::ImageCreateInfo::default()
+                    .image_type(vk::ImageType::TYPE_2D)
+                    .format(vk::Format::R8G8B8A8_UNORM)
+                    .extent(this.extent)
+                    .mip_levels(1)
+                    .array_layers(texture.layers)
+                    .samples(vk::SampleCountFlags::TYPE_1)
+                    .tiling(vk::ImageTiling::OPTIMAL)
+                    .usage(
+                        vk::ImageUsageFlags::SAMPLED
+                            | vk::ImageUsageFlags::STORAGE
+                            | vk::ImageUsageFlags::TRANSFER_SRC
+                            | vk::ImageUsageFlags::TRANSFER_DST,
+                    )
+                    .sharing_mode(vk::SharingMode::EXCLUSIVE),
+                None,
+            )?;
+            let requirements = device.get_image_memory_requirements(this.image);
+            let index = (0..memory.memory_type_count)
+                .find(|i| {
+                    requirements.memory_type_bits & (1 << i) != 0
+                        && memory.memory_types[*i as usize]
+                            .property_flags
+                            .contains(vk::MemoryPropertyFlags::DEVICE_LOCAL)
+                })
+                .ok_or("native Vulkan image memory unavailable")?;
+            this.memory = device.allocate_memory(
+                &vk::MemoryAllocateInfo::default()
+                    .allocation_size(requirements.size)
+                    .memory_type_index(index),
+                None,
+            )?;
+            device.bind_image_memory(this.image, this.memory, 0)?;
+            this.view = device.create_image_view(
+                &vk::ImageViewCreateInfo::default()
+                    .image(this.image)
+                    .view_type(if texture.array {
+                        vk::ImageViewType::TYPE_2D_ARRAY
+                    } else {
+                        vk::ImageViewType::TYPE_2D
+                    })
+                    .format(vk::Format::R8G8B8A8_UNORM)
+                    .subresource_range(this.range()),
+                None,
+            )?;
+        }
+        Ok(this)
+    }
+    fn range(&self) -> vk::ImageSubresourceRange {
+        vk::ImageSubresourceRange::default()
+            .aspect_mask(vk::ImageAspectFlags::COLOR)
+            .level_count(1)
+            .layer_count(self.layers)
+    }
+    fn region(&self, offset: u64) -> vk::BufferImageCopy {
+        vk::BufferImageCopy::default()
+            .buffer_offset(offset)
+            .image_subresource(
+                vk::ImageSubresourceLayers::default()
+                    .aspect_mask(vk::ImageAspectFlags::COLOR)
+                    .layer_count(self.layers),
+            )
+            .image_extent(self.extent)
+    }
+    pub(super) fn transition(
+        &self,
+        command: vk::CommandBuffer,
+        before: vk::ImageLayout,
+        after: vk::ImageLayout,
+    ) {
+        let access = |layout| match layout {
+            vk::ImageLayout::UNDEFINED => (
+                vk::PipelineStageFlags::TOP_OF_PIPE,
+                vk::AccessFlags::empty(),
+            ),
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL => (
+                vk::PipelineStageFlags::TRANSFER,
+                vk::AccessFlags::TRANSFER_WRITE,
+            ),
+            vk::ImageLayout::TRANSFER_SRC_OPTIMAL => (
+                vk::PipelineStageFlags::TRANSFER,
+                vk::AccessFlags::TRANSFER_READ,
+            ),
+            vk::ImageLayout::PRESENT_SRC_KHR => (
+                vk::PipelineStageFlags::ALL_COMMANDS,
+                vk::AccessFlags::empty(),
+            ),
+            vk::ImageLayout::GENERAL
+            | vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+            | vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL => (
+                vk::PipelineStageFlags::ALL_COMMANDS,
+                vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+            ),
+            _ => unreachable!("compute image layout"),
+        };
+        let (src_stage, src_access) = access(before);
+        let (dst_stage, dst_access) = access(after);
+        unsafe {
+            self.device.cmd_pipeline_barrier(
+                command,
+                src_stage,
+                dst_stage,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[vk::ImageMemoryBarrier::default()
+                    .image(self.image)
+                    .subresource_range(self.range())
+                    .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .old_layout(before)
+                    .new_layout(after)
+                    .src_access_mask(src_access)
+                    .dst_access_mask(dst_access)],
+            );
+        }
+    }
+    pub fn upload(&self, command: vk::CommandBuffer, buffer: vk::Buffer, offset: u64) {
+        self.transition(
+            command,
+            self.current_layout.get(),
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+        );
+        unsafe {
+            self.device.cmd_copy_buffer_to_image(
+                command,
+                buffer,
+                self.image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &[self.region(offset)],
+            );
+        }
+        // Keep sampled/storage descriptors in GENERAL across compute passes.
+        self.transition(
+            command,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            vk::ImageLayout::GENERAL,
+        );
+    }
+    pub fn readback(&self, command: vk::CommandBuffer, buffer: vk::Buffer, offset: u64) {
+        self.transition(
+            command,
+            vk::ImageLayout::GENERAL,
+            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+        );
+        unsafe {
+            self.device.cmd_copy_image_to_buffer(
+                command,
+                self.image,
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                buffer,
+                &[self.region(offset)],
+            );
+        }
+    }
+}
+impl Drop for Image {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.destroy_image_view(self.view, None);
+            if self.host_owner.is_none() {
+                self.device.destroy_image(self.image, None);
+                self.device.free_memory(self.memory, None);
+            }
+        }
+    }
+}
+
+impl Image {
+    pub(super) fn copy_to(
+        &self,
+        command: vk::CommandBuffer,
+        destination: &Image,
+        copy: &crate::native::runtime::compute::TextureCopy,
+    ) {
+        self.transition(
+            command,
+            vk::ImageLayout::GENERAL,
+            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+        );
+        destination.transition(
+            command,
+            vk::ImageLayout::GENERAL,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+        );
+        let layers = |base_array_layer| {
+            vk::ImageSubresourceLayers::default()
+                .aspect_mask(vk::ImageAspectFlags::COLOR)
+                .base_array_layer(base_array_layer)
+                .layer_count(copy.extent[2])
+        };
+        unsafe {
+            self.device.cmd_copy_image(
+                command,
+                self.image,
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                destination.image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &[vk::ImageCopy::default()
+                    .src_subresource(layers(copy.source_origin[2]))
+                    .dst_subresource(layers(copy.destination_origin[2]))
+                    .src_offset(vk::Offset3D {
+                        x: copy.source_origin[0] as i32,
+                        y: copy.source_origin[1] as i32,
+                        z: 0,
+                    })
+                    .dst_offset(vk::Offset3D {
+                        x: copy.destination_origin[0] as i32,
+                        y: copy.destination_origin[1] as i32,
+                        z: 0,
+                    })
+                    .extent(vk::Extent3D {
+                        width: copy.extent[0],
+                        height: copy.extent[1],
+                        depth: 1,
+                    })],
+            );
+        }
+        self.transition(
+            command,
+            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+            vk::ImageLayout::GENERAL,
+        );
+        destination.transition(
+            command,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            vk::ImageLayout::GENERAL,
+        );
+    }
+}
+
+impl Image {
+    fn compute_scope(family: u32) -> crate::native::interop::vulkan::ImageState {
+        crate::native::interop::vulkan::ImageState {
+            layout: vk::ImageLayout::GENERAL,
+            stages: vk::PipelineStageFlags::ALL_COMMANDS,
+            access: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+            queue_family: family,
+        }
+    }
+    pub(super) fn acquire(
+        &self,
+        command: vk::CommandBuffer,
+        mut before: crate::native::interop::vulkan::ImageState,
+        family: u32,
+    ) {
+        let mut after = Self::compute_scope(family);
+        if before.queue_family != vk::QUEUE_FAMILY_IGNORED && before.queue_family != family {
+            before.stages = vk::PipelineStageFlags::TOP_OF_PIPE;
+            before.access = vk::AccessFlags::empty();
+        } else {
+            before.queue_family = vk::QUEUE_FAMILY_IGNORED;
+            after.queue_family = vk::QUEUE_FAMILY_IGNORED;
+        }
+        self.external_barrier(command, before, after);
+    }
+    pub(super) fn release(
+        &self,
+        command: vk::CommandBuffer,
+        mut after: crate::native::interop::vulkan::ImageState,
+        family: u32,
+    ) {
+        let mut before = Self::compute_scope(family);
+        if after.queue_family != vk::QUEUE_FAMILY_IGNORED && after.queue_family != family {
+            after.stages = vk::PipelineStageFlags::BOTTOM_OF_PIPE;
+            after.access = vk::AccessFlags::empty();
+        } else {
+            before.queue_family = vk::QUEUE_FAMILY_IGNORED;
+            after.queue_family = vk::QUEUE_FAMILY_IGNORED;
+        }
+        self.external_barrier(command, before, after);
+    }
+    fn external_barrier(
+        &self,
+        command: vk::CommandBuffer,
+        before: crate::native::interop::vulkan::ImageState,
+        after: crate::native::interop::vulkan::ImageState,
+    ) {
+        unsafe {
+            self.device.cmd_pipeline_barrier(
+                command,
+                before.stages,
+                after.stages,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[vk::ImageMemoryBarrier::default()
+                    .image(self.image)
+                    .subresource_range(self.range())
+                    .old_layout(before.layout)
+                    .new_layout(after.layout)
+                    .src_access_mask(before.access)
+                    .dst_access_mask(after.access)
+                    .src_queue_family_index(before.queue_family)
+                    .dst_queue_family_index(after.queue_family)],
+            );
+        }
+    }
+}

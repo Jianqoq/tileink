@@ -545,7 +545,8 @@ impl PersistentSceneMaterializer {
         id: RetainedNodeId,
         command_lists: std::ops::Range<usize>,
     ) -> bool {
-        let compile_profile = crate::wgpu::start_cpu_scope("retained.root_fragment.compile");
+        let compile_profile =
+            crate::render::profile::cpu::start_cpu_scope("retained.root_fragment.compile");
         let location = self.layer_command_locations[&id];
         if location.parent_list != 0 {
             return false;
@@ -561,7 +562,8 @@ impl PersistentSceneMaterializer {
         let _ = Rc::make_mut(&mut self.canvas).command_lists.pop();
         drop(compile_profile);
 
-        let spatial_profile = crate::wgpu::start_cpu_scope("retained.root_fragment.spatial");
+        let spatial_profile =
+            crate::render::profile::cpu::start_cpu_scope("retained.root_fragment.spatial");
         let mut nodes = Vec::new();
         scene.collect_subtree(id, &mut nodes);
         let node_set = nodes.iter().copied().collect::<HashSet<_>>();
@@ -600,7 +602,8 @@ impl PersistentSceneMaterializer {
             *moved_per_batch.entry(batch).or_default() += self.node_physical_draws(node).len();
         }
         drop(spatial_profile);
-        let plan_profile = crate::wgpu::start_cpu_scope("retained.root_fragment.plan");
+        let plan_profile =
+            crate::render::profile::cpu::start_cpu_scope("retained.root_fragment.plan");
         let mut after_id = false;
         let next_fragment_start = scene.nodes[&scene.root].content.values().find_map(|child| {
             if *child == id {
@@ -665,7 +668,8 @@ impl PersistentSceneMaterializer {
             }
         }
         drop(plan_profile);
-        let metadata_profile = crate::wgpu::start_cpu_scope("retained.root_fragment.metadata");
+        let metadata_profile =
+            crate::render::profile::cpu::start_cpu_scope("retained.root_fragment.metadata");
         if let Some(batch) = after_batch {
             for &node in reassigned_batches.keys() {
                 self.node_batches.insert(node, batch);

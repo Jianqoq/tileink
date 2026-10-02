@@ -1,117 +1,28 @@
-use std::{
-    env, fs,
-    path::{Path, PathBuf},
-};
+#[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
+#[path = "build/native.rs"]
+mod native_shaders;
 
-#[path = "build/dxc.rs"]
-mod dxc;
-#[path = "build/dxil.rs"]
-mod dxil;
-#[path = "build/dxil_cache.rs"]
-mod dxil_cache;
-#[path = "src/wgpu/dxil_manifest.rs"]
-mod dxil_manifest;
-#[path = "src/wgpu/shader_variants.rs"]
-mod shader_variants;
-
-const WGPU_SHADER_ENTRIES: [(&str, &str); 16] = [
-    ("scan/clear.wgsl", "tileink_wgpu_scan_clear.wgsl"),
-    ("scan/count.wgsl", "tileink_wgpu_scan_count.wgsl"),
-    (
-        "scan/prefix_chunks.wgsl",
-        "tileink_wgpu_scan_prefix_chunks.wgsl",
-    ),
-    (
-        "scan/chunk_offsets.wgsl",
-        "tileink_wgpu_scan_chunk_offsets.wgsl",
-    ),
-    (
-        "scan/apply_chunk_offsets.wgsl",
-        "tileink_wgpu_scan_apply_chunk_offsets.wgsl",
-    ),
-    ("scan/emit.wgsl", "tileink_wgpu_scan_emit.wgsl"),
-    ("cumsum.wgsl", "tileink_wgpu_cumsum.wgsl"),
-    ("coarse/count.wgsl", "tileink_wgpu_coarse_count.wgsl"),
-    ("coarse/prefix.wgsl", "tileink_wgpu_coarse_prefix.wgsl"),
-    ("coarse/emit.wgsl", "tileink_wgpu_coarse_emit.wgsl"),
-    ("coarse/emit_web.wgsl", "tileink_wgpu_coarse_emit_web.wgsl"),
-    ("fine.wgsl", "tileink_wgpu_fine.wgsl"),
-    ("fine_compact.wgsl", "tileink_wgpu_fine_compact.wgsl"),
-    ("filter.wgsl", "tileink_wgpu_filter.wgsl"),
-    ("fine_web.wgsl", "tileink_wgpu_fine_web.wgsl"),
-    ("filter_web.wgsl", "tileink_wgpu_filter_web.wgsl"),
-];
+#[path = "build/gpu_constants.rs"]
+mod gpu_constants;
 
 fn main() {
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    for input in [
-        "build.rs",
-        "build/dxc.rs",
-        "build/dxil.rs",
-        "src/wgpu/dxil_manifest.rs",
-        "src/wgpu/shader_variants.rs",
-    ] {
-        println!(
-            "cargo:rerun-if-changed={}",
-            manifest_dir.join(input).display()
-        );
+    println!("cargo:rustc-check-cfg=cfg(tileink_native_runtime)");
+    let platform = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
+    if (platform == "windows" && cfg!(any(feature = "dx12", feature = "vulkan")))
+        || (platform == "macos" && cfg!(feature = "metal"))
+    {
+        println!("cargo:rustc-cfg=tileink_native_runtime");
     }
-    let shader_dir = manifest_dir.join("src").join("wgpu").join("shaders");
-    emit_rerun_if_changed(&shader_dir);
-
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-    let mut fine_portable_source = None;
-    for (entry, output) in WGPU_SHADER_ENTRIES {
-        let source = expand_shader(&shader_dir.join(entry), &mut Vec::new());
-        if entry == "fine_web.wgsl" {
-            fine_portable_source = Some(source.clone());
-        }
-        fs::write(out_dir.join(output), source).unwrap();
-    }
-    dxil::generate(&fine_portable_source.unwrap(), &out_dir);
+    println!("cargo:rerun-if-changed=build/gpu_constants.rs");
+    println!("cargo:rerun-if-changed=build/hlsl_source.rs");
+    println!("cargo:rerun-if-changed=src/shaders/hlsl/constants.hlsli");
+    gpu_constants::write_rust(&std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap()))
+        .expect("generate host GPU constants");
+    #[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
+    native_shaders::generate()
+        .unwrap_or_else(|error| panic!("native shader build failed: {error}"));
+    println!("cargo:rerun-if-changed=build.rs");
 }
 
-fn emit_rerun_if_changed(path: &Path) {
-    println!("cargo:rerun-if-changed={}", path.display());
-    if let Ok(entries) = fs::read_dir(path) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                emit_rerun_if_changed(&path);
-            } else {
-                println!("cargo:rerun-if-changed={}", path.display());
-            }
-        }
-    }
-}
-
-fn expand_shader(path: &Path, stack: &mut Vec<PathBuf>) -> String {
-    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    if stack.contains(&canonical) {
-        panic!("cyclic WGSL include: {}", path.display());
-    }
-    stack.push(canonical);
-
-    let source = fs::read_to_string(path).unwrap();
-    let mut expanded = String::new();
-    for line in source.lines() {
-        if let Some(include) = parse_include(line) {
-            let include_path = path.parent().unwrap().join(include);
-            expanded.push_str(&format!("// begin include {}\n", include_path.display()));
-            expanded.push_str(&expand_shader(&include_path, stack));
-            expanded.push_str(&format!("// end include {}\n", include_path.display()));
-        } else {
-            expanded.push_str(line);
-            expanded.push('\n');
-        }
-    }
-
-    stack.pop();
-    expanded
-}
-
-fn parse_include(line: &str) -> Option<&str> {
-    let trimmed = line.trim();
-    let rest = trimmed.strip_prefix("#include")?.trim();
-    rest.strip_prefix('"')?.strip_suffix('"')
-}
+#[path = "src/backend_features.rs"]
+mod backend_features;

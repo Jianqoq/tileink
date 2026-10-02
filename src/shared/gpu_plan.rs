@@ -1,4 +1,9 @@
-use std::{collections::HashSet, ops::Range};
+#[path = "gpu_plan/active_batches.rs"]
+mod active_batches;
+pub(crate) use active_batches::ActiveBatches;
+
+use std::collections::HashSet;
+use std::ops::Range;
 
 use bytemuck::{Pod, Zeroable};
 
@@ -20,27 +25,24 @@ use crate::{
     text::PreparedTextData,
 };
 
-#[cfg(feature = "bench-internals")]
-mod benchmark;
-#[cfg(feature = "bench-internals")]
-pub use benchmark::{GpuDirtyRangesBenchmark, TileDrawBinsBenchmark};
-
-pub(crate) const SCAN_CHUNK_SIZE: u32 = 256;
-pub(crate) const CUMSUM_CHUNK_SIZE: u32 = 256;
-pub(crate) const COARSE_CHUNK_SIZE: u32 = 256;
+use super::gpu_constants::CUMSUM_CHUNK_SIZE;
+use super::gpu_constants::SCAN_CHUNK_SIZE;
+pub(crate) const COARSE_CHUNK_SIZE: u32 = crate::shared::gpu_constants::COARSE_WORKGROUP_SIZE;
 pub(crate) const COARSE_BIN_TILES: u32 = 16;
+const _: () = assert!(COARSE_CHUNK_SIZE == COARSE_BIN_TILES * COARSE_BIN_TILES);
 pub(crate) const TILE_DRAW_PAGE_WORDS: usize = COARSE_CHUNK_SIZE as usize + 1;
 const TILE_DRAW_FLAT_FLAG: u32 = 1 << 31;
 const RETAINED_TILE_DIRTY_CAPACITY: usize = 1_024;
-pub(crate) const FINE_WORKGROUP_SIZE: u32 = 256;
-pub(crate) const FINE_LOCAL_CLIP_DEPTH: usize = 4;
-pub(crate) const FINE_LOCAL_GROUP_DEPTH: usize = 2;
-pub(crate) const FINE_GROUP_SPILL_FIELDS: usize = 5;
+
+pub(crate) const FINE_LOCAL_CLIP_DEPTH: usize =
+    super::gpu_constants::FINE_LOCAL_CLIP_DEPTH as usize;
+pub(crate) const FINE_LOCAL_GROUP_DEPTH: usize =
+    super::gpu_constants::FINE_LOCAL_GROUP_DEPTH as usize;
 
 /// Canvas-derived fixed capacities for GPU buffers.
 ///
 /// GPU compute stages cannot grow vectors while dispatching. This plan keeps
-/// allocation sizes explicit and shared by native wgpu upload paths
+/// allocation sizes explicit for native upload paths
 /// so both backends launch against the same buffer contract.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct GpuBufferLengths {
@@ -306,10 +308,6 @@ pub(crate) struct TileDrawBins {
     full_upload_indices: Vec<u32>,
     page_arena_valid: bool,
     compactions: u64,
-    active_batch_marks: Vec<u32>,
-    active_batch_generation: u32,
-    active_batches: Vec<u32>,
-    active_draws: Vec<u32>,
     dense_bin_max_candidates: Vec<u32>,
     dense_candidate_rounds: u64,
     visited_draws: GenerationMarks,
@@ -318,6 +316,7 @@ pub(crate) struct TileDrawBins {
     affected_dense_bins: DenseIndexSet,
 }
 
+#[cfg(test)]
 /// Candidate-loop work executed by the two native coarse kernels.
 ///
 /// Compact kernels process one 256-draw page per workgroup round. Dense kernels assign one lane
@@ -332,6 +331,7 @@ pub(crate) struct CoarseBinningStats {
 }
 
 impl TileDrawBins {
+    #[cfg(test)]
     pub(crate) fn coarse_binning_stats(&self, tiles: &[u32]) -> CoarseBinningStats {
         CoarseBinningStats {
             active_tiles: tiles.len() as u32,
@@ -342,43 +342,6 @@ impl TileDrawBins {
                 .sum(),
             dense_candidate_rounds: self.dense_candidate_rounds,
         }
-    }
-
-    pub(crate) fn active_batch_ids(&mut self, tiles: &[u32], draw_batch_ids: &[u32]) -> Vec<u32> {
-        self.active_batch_generation = self.active_batch_generation.wrapping_add(1);
-        if self.active_batch_generation == 0 {
-            self.active_batch_marks.fill(0);
-            self.active_batch_generation = 1;
-        }
-        let generation = self.active_batch_generation;
-        self.active_batches.clear();
-        let mut transient_draws = std::mem::take(&mut self.active_draws);
-        transient_draws.clear();
-        if !self.page_arena_valid {
-            for &tile in tiles {
-                if (tile as usize) < self.records.len() {
-                    self.for_each_tile_draw(tile as usize, |draw| transient_draws.push(draw));
-                }
-            }
-        }
-        let marks = &mut self.active_batch_marks;
-        let batches = &mut self.active_batches;
-        if self.page_arena_valid {
-            for &draw in tiles
-                .iter()
-                .filter_map(|&tile| self.tile_refs.get(tile as usize))
-                .flatten()
-            {
-                mark_active_batch(draw, draw_batch_ids, generation, marks, batches);
-            }
-        } else {
-            for &draw in &transient_draws {
-                mark_active_batch(draw, draw_batch_ids, generation, marks, batches);
-            }
-        }
-        self.active_draws = transient_draws;
-        self.active_batches.sort_unstable();
-        self.active_batches.clone()
     }
 
     #[cfg(test)]
@@ -415,10 +378,20 @@ impl TileDrawBins {
         }
     }
 
-    /// Returns painter-ordered draws touching a pixel region without scanning the scene draw
-    /// table. Persistent bins already maintain the spatial reverse index; transient bins use the
-    /// same uploaded page/flat representation so local offscreen extraction has one code path.
+    /// Returns conservative painter-ordered candidates for a pixel region. Queries within the
+    /// indexed domain avoid scanning the scene draw table. Persistent and transient bins share
+    /// the same page/flat query path; exterior queries preserve all possible filter sources.
     pub(crate) fn draws_in_bounds(&self, bounds: Bounds, draw_order: &[u32]) -> Vec<u32> {
+        // Filters can move off-canvas source pixels into visible output. Tile
+        // membership covers only this indexed domain, so an exterior query must
+        // leave exact source clipping to the localizer instead of dropping draws.
+        let indexed = Bounds::canvas(
+            self.tiles_size.0 * crate::TILE_SIZE,
+            self.tiles_size.1 * crate::TILE_SIZE,
+        );
+        if bounds.intersect(indexed) != bounds {
+            return draw_order.to_vec();
+        }
         let bbox = PixelBounds {
             x0: bounds.x0,
             y0: bounds.y0,
@@ -465,7 +438,9 @@ impl TileDrawBins {
         let tile_count = tiles_size.0 as usize * tiles_size.1 as usize;
         if !self.page_arena_valid {
             self.draw_indices.clear();
-            self.tile_pages.clear();
+            for pages in &mut self.tile_pages {
+                pages.clear();
+            }
             self.free_pages.clear();
             self.active_pages = 0;
             self.page_arena_valid = true;
@@ -621,8 +596,14 @@ impl TileDrawBins {
             });
         }
 
-        self.tile_pages.clear();
-        self.tile_refs.clear();
+        // Retain per-tile allocations across transient motion. Dropping them made the
+        // first sparse frame allocate thousands of vectors as the spring settled.
+        for pages in &mut self.tile_pages {
+            pages.clear();
+        }
+        for refs in &mut self.tile_refs {
+            refs.clear();
+        }
         self.free_pages.clear();
         self.draw_bboxes.clear();
         if preserve_draw_bboxes {
@@ -658,8 +639,14 @@ impl TileDrawBins {
         if self.draw_bboxes.len() != draw_records.len() {
             return true;
         }
-        let dense_tile_threshold = (tiles_size.0 as u64 * tiles_size.1 as u64)
-            .div_ceil(16)
+        // Compare changed draw/tile memberships with the work of rebuilding all bins.
+        // A fixed fraction of viewport tiles classified local UI motion as dense, repeatedly
+        // discarding the persistent index and causing a rebuild/upload spike as motion settled.
+        let dense_tile_threshold = self
+            .records
+            .iter()
+            .map(|record| u64::from(record.end))
+            .sum::<u64>()
             .max(1);
         let mut affected_tile_work = 0u64;
         let mut previous_end = 0usize;
@@ -978,6 +965,7 @@ impl TileDrawBins {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn active_page_count(&self) -> usize {
         self.active_pages
     }
@@ -1002,6 +990,7 @@ impl TileDrawBins {
         self.upload_indices().len()
     }
 
+    #[cfg(test)]
     pub(crate) fn compactions(&self) -> u64 {
         self.compactions
     }
@@ -1020,29 +1009,6 @@ impl TileDrawBins {
         self.records.len()
             + self.draw_ptcl_capacity
             + self.records.len() * 2 * (clip_depth + group_depth)
-    }
-}
-
-fn mark_active_batch(
-    draw: u32,
-    draw_batch_ids: &[u32],
-    generation: u32,
-    marks: &mut Vec<u32>,
-    batches: &mut Vec<u32>,
-) {
-    let Some(&batch) = draw_batch_ids.get(draw as usize) else {
-        return;
-    };
-    if batch == u32::MAX {
-        return;
-    }
-    let index = batch as usize;
-    if index >= marks.len() {
-        marks.resize(index + 1, 0);
-    }
-    if marks[index] != generation {
-        marks[index] = generation;
-        batches.push(batch);
     }
 }
 
@@ -1483,29 +1449,6 @@ pub(crate) struct GpuCanvasConfig {
     pub clear_color: u32,
 }
 
-impl GpuCanvasConfig {
-    pub(crate) fn new(canvas: &Canvas, lengths: GpuBufferLengths, clear_color: u32) -> Self {
-        Self {
-            width: canvas.physical_width(),
-            height: canvas.physical_height(),
-            tiles_width: canvas.width_in_tiles(),
-            tiles_height: canvas.height_in_tiles(),
-            line_count: lengths.line_count as u32,
-            path_count: lengths.path_count as u32,
-            draw_count: lengths.draw_count as u32,
-            backdrop_record_count: lengths.backdrop_record_count as u32,
-            backdrop_len: lengths.backdrop_len as u32,
-            segment_capacity: lengths.segment_capacity as u32,
-            scan_chunk_count: lengths.scan_chunk_count as u32,
-            cumsum_chunk_count: lengths.cumsum_chunk_count as u32,
-            cumsum_row_count: lengths.cumsum_row_count as u32,
-            coarse_chunk_count: lengths.coarse_chunk_count as u32,
-            coarse_ptcl_capacity: lengths.coarse_ptcl_capacity as u32,
-            clear_color,
-        }
-    }
-}
-
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Pod, Zeroable, PartialEq, Eq)]
 pub(crate) struct GpuScanChunk {
@@ -1522,7 +1465,6 @@ pub(crate) struct GpuScanChunkRange {
     pub end: u32,
 }
 
-#[cfg(test)]
 #[cfg(test)]
 pub(crate) fn build_scan_chunks(canvas: &Canvas) -> (Vec<GpuScanChunk>, Vec<GpuScanChunkRange>) {
     let lengths = GpuBufferLengths::from_scene(canvas);
@@ -1678,6 +1620,12 @@ impl PersistentPathPlans {
             self.row_chunk_counts.resize(path_len, None);
             self.scan_ranges
                 .resize(path_len, GpuScanChunkRange::default());
+            // A regrown vacant slot is zero on the CPU, but a retained GPU
+            // allocation can still contain its old range. Publish the entire
+            // exposed suffix even when update_path sees no value change.
+            if path_len > old_len {
+                merge_range(&mut self.dirty_scan_ranges, old_len..path_len);
+            }
         }
 
         if full {
@@ -1983,7 +1931,6 @@ fn merge_range(target: &mut Vec<Range<usize>>, mut range: Range<usize>) {
 }
 
 #[cfg(test)]
-#[cfg(test)]
 pub(crate) fn build_cumsum_plan(canvas: &Canvas) -> GpuCumsumPlan {
     let lengths = GpuBufferLengths::from_scene(canvas);
     let mut plan = GpuCumsumPlan::default();
@@ -2249,6 +2196,34 @@ mod tests {
     }
 
     #[test]
+    fn regrown_vacant_scan_slots_are_uploaded_over_retained_gpu_contents() {
+        let mut canvas = Canvas::new(64, 16, 1.0);
+        for x in [0.0, 32.0] {
+            canvas.push_path(
+                Rect::new(x, 0.0, x + 32.0, 16.0).to_path(0.0),
+                Color::BLACK,
+                Affine::IDENTITY,
+                FillRule::NonZero,
+                0.0,
+            );
+        }
+        let mut plans = PersistentPathPlans::default();
+        plans.update(&canvas, None);
+        plans.take_dirty();
+        let mut gpu = plans.scan_ranges().to_vec();
+        assert_ne!(gpu[1], GpuScanChunkRange::default());
+        canvas.path_records.truncate(1);
+        plans.update(&canvas, Some(&[]));
+        plans.take_dirty();
+        canvas.path_records.push(Default::default());
+        plans.update(&canvas, Some(&[]));
+        for range in plans.take_dirty().scan_ranges {
+            gpu[range.clone()].copy_from_slice(&plans.scan_ranges()[range]);
+        }
+        assert_eq!(gpu, plans.scan_ranges());
+    }
+
+    #[test]
     fn vacant_stable_path_slot_does_not_clobber_path_zero_scan_range() {
         let mut canvas = Canvas::new(crate::TILE_SIZE * 4, crate::TILE_SIZE, 1.0);
         for x in [0.0, 32.0] {
@@ -2425,35 +2400,14 @@ mod tests {
             vec![0]
         );
         assert!(
-            bins.draws_in_bounds(Bounds::new(0, 32, 32, 64), &plan.draw_order)
+            bins.draws_in_bounds(Bounds::new(0, 16, 32, 32), &plan.draw_order)
                 .is_empty()
         );
-    }
-
-    #[test]
-    fn active_batch_ids_deduplicate_with_reusable_generation_marks() {
-        let mut canvas = Canvas::new(crate::TILE_SIZE * 3, crate::TILE_SIZE, 1.0);
-        canvas.push_rect(
-            Rect::new(0.0, 0.0, 32.0, 16.0),
-            crate::Radius::ZERO,
-            Color::BLACK,
+        // The index cannot rule out source draws beyond its canvas domain.
+        assert_eq!(
+            bins.draws_in_bounds(Bounds::new(0, 32, 32, 64), &plan.draw_order),
+            *plan.draw_order
         );
-        canvas.push_rect(
-            Rect::new(16.0, 0.0, 32.0, 16.0),
-            crate::Radius::ZERO,
-            Color::WHITE,
-        );
-        canvas.push_rect(
-            Rect::new(32.0, 0.0, 48.0, 16.0),
-            crate::Radius::ZERO,
-            Color::BLACK,
-        );
-        let mut bins = build_tile_draw_bins(&canvas);
-        let batches = [7, 3, u32::MAX];
-
-        assert_eq!(bins.active_batch_ids(&[0, 1], &batches), [3, 7]);
-        assert!(bins.active_batch_ids(&[2], &batches).is_empty());
-        assert_eq!(bins.active_batch_ids(&[1], &batches), [3, 7]);
     }
 
     #[test]
@@ -2846,7 +2800,10 @@ mod tests {
         assert!(!bins.page_arena_valid);
         assert_eq!(lengths.tile_draw_index_count, 4);
         assert!(bins.take_dirty().0);
-        assert_eq!(bins.active_batch_ids(&[0, 1, 2, 3, 4], &[9; 4]), vec![9]);
+        assert_eq!(
+            super::ActiveBatches::default().query_tiles(&bins, &[0, 1, 2, 3, 4], &[9; 4]),
+            vec![9]
+        );
 
         let mut moved_again = Canvas::new(crate::TILE_SIZE * 5, crate::TILE_SIZE, 1.0);
         for tile in 0..4 {
@@ -2893,6 +2850,82 @@ mod tests {
             GpuLengthOverrides::default(),
         );
         assert!(bins.page_arena_valid);
+    }
+
+    #[test]
+    fn local_motion_does_not_trigger_whole_scene_bin_rebuild() {
+        let mut canvas = Canvas::new(320, 320, 1.0);
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, 320.0, 320.0),
+            crate::Radius::ZERO,
+            Color::BLACK,
+        );
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, 80.0, 80.0),
+            crate::Radius::ZERO,
+            Color::WHITE,
+        );
+        let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+        let mut bins = TileDrawBins::default();
+        build_tile_draw_bins_into(&canvas, &plan, &mut bins, &mut Vec::new());
+        canvas.draw_records[1].pixel_bounds.x0 += 16;
+        canvas.draw_records[1].pixel_bounds.x1 += 16;
+        assert!(!bins.spatial_change_is_dense(&canvas.draw_records, (20, 20), &[1..2]));
+    }
+
+    #[test]
+    fn transient_bins_preserve_persistent_tile_allocations_for_recovery() {
+        let mut canvas = Canvas::new(128, 64, 1.0);
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, 128.0, 64.0),
+            crate::Radius::ZERO,
+            Color::BLACK,
+        );
+        let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+        let mut bins = TileDrawBins::default();
+        let mut cursors = Vec::new();
+        build_tile_draw_bins_into(&canvas, &plan, &mut bins, &mut cursors);
+        let pages = bins
+            .tile_pages
+            .iter()
+            .map(Vec::capacity)
+            .collect::<Vec<_>>();
+        let refs = bins.tile_refs.iter().map(Vec::capacity).collect::<Vec<_>>();
+        bins.reset_transient(
+            &canvas.draw_records,
+            &plan.draw_order,
+            None,
+            (canvas.width_in_tiles(), canvas.height_in_tiles()),
+            &mut cursors,
+            true,
+        );
+        assert_eq!(
+            bins.tile_pages
+                .iter()
+                .map(Vec::capacity)
+                .collect::<Vec<_>>(),
+            pages
+        );
+        assert_eq!(
+            bins.tile_refs.iter().map(Vec::capacity).collect::<Vec<_>>(),
+            refs
+        );
+        build_tile_draw_bins_into(&canvas, &plan, &mut bins, &mut cursors);
+        assert!(bins.page_arena_valid);
+        assert_eq!(
+            bins.tile_pages
+                .iter()
+                .map(Vec::capacity)
+                .collect::<Vec<_>>(),
+            pages
+        );
+        assert_eq!(
+            bins.tile_refs.iter().map(Vec::capacity).collect::<Vec<_>>(),
+            refs
+        );
+        for tile in 0..bins.records.len() {
+            assert_eq!(bins.tile_draws(tile), [0]);
+        }
     }
 
     #[test]

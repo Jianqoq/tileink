@@ -68,6 +68,8 @@ use crate::text::{TextRun, layout_bounds_at_scaled_origin, scene_glyphs_at_scale
 use crate::{TextContext, TextFontSystem, TextLayout};
 
 pub use retained::RetainedNodeId;
+pub(crate) mod damage_history;
+
 pub(crate) use retained::{
     NodeGeneration, PersistentLayerKey, RetainedDamage, RetainedFrame, RetainedFrameDelta,
     RetainedNodeKind, RetainedNodePatch, RetainedNodeState, RetainedSurfaceId,
@@ -387,6 +389,9 @@ impl SceneOffset {
 
     fn filter(self, filter: Filter) -> Filter {
         match filter {
+            Filter::ProgressiveBlur(blur) => {
+                Filter::ProgressiveBlur(blur.translated(peniko::kurbo::Vec2::new(self.dx, self.dy)))
+            }
             Filter::Chain {
                 filters,
                 fixed_region,
@@ -407,6 +412,7 @@ impl SceneOffset {
                         input: primitive.input,
                         input2: primitive.input2,
                         region: self.bounds(primitive.region),
+                        linear_rgb: primitive.linear_rgb,
                         kind: self.primitive_kind(primitive.kind),
                     })
                     .collect(),

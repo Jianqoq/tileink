@@ -370,7 +370,7 @@ impl Canvas {
         }
     }
 
-    pub(super) fn can_fuse(&self, layer: &Layer, children: CommandListId) -> bool {
+    pub(crate) fn can_fuse(&self, layer: &Layer, children: CommandListId) -> bool {
         match layer {
             Layer::Clip => true,
             Layer::ClipSdf { .. } => true,

@@ -28,8 +28,7 @@ mod prelude {
             bounds::Bounds,
             draw_record::{DrawRecord, DrawTagWord, FillRuleWord},
             execution::{Command, CommandList, RetainedBatchBranch},
-            image::Image,
-            image_resource::{ImageKey, ImageResourceStore},
+            image_resource::{ImageKey, ImageResourceStore, ImageSource},
             layer::{Layer, filter},
             line::Line,
             path::PathRecord,
@@ -59,9 +58,6 @@ pub use model::{
 };
 pub use scene::RetainedScene;
 pub use transaction::RetainedSceneTransaction;
-
-#[cfg(feature = "bench-internals")]
-pub use materializer::RetainedMaterializerBenchmark;
 
 #[cfg(test)]
 #[path = "retained_scene/tests.rs"]

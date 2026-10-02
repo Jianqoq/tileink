@@ -254,11 +254,13 @@ impl Canvas {
                         input: primitive.input,
                         input2: primitive.input2,
                         region: self.physical_bounds(primitive.region),
+                        linear_rgb: primitive.linear_rgb,
                         kind: self.physical_filter_primitive_kind(primitive.kind),
                     })
                     .collect(),
                 fixed_region,
             },
+            Filter::ProgressiveBlur(blur) => Filter::ProgressiveBlur(blur.scaled(f64::from(scale))),
             Filter::RectLiquidGlass(mut glass) => {
                 glass.blur_radius = ((glass.blur_radius as f32) * scale).round().max(1.0) as u32;
                 glass.refraction_thickness *= scale;

@@ -143,6 +143,7 @@ pub(crate) struct RetainedFrame {
     /// Persistent-scene version and immutable journal overlay.
     pub(crate) version: Option<u64>,
     pub(crate) delta: Option<Rc<RetainedFrameDelta>>,
+    pub(crate) damage_history: crate::canvas::damage_history::DamageHistory,
     /// No layer/filter/mask can propagate leaf damage outside the changed node bounds.
     pub(crate) dependency_free: bool,
     /// Backdrops require walking command ancestry after retained diffing to discover changed

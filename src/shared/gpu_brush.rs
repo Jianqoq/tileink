@@ -17,6 +17,7 @@ use crate::shared::{
 #[derive(Clone, Default)]
 pub(crate) struct GpuBrushUpload {
     pub(crate) blob: Vec<u32>,
+    pub(crate) offsets: Vec<u32>,
 }
 
 impl GpuBrushUpload {
@@ -79,6 +80,7 @@ impl GpuBrushUpload {
         image_resources: Option<&GpuImageResourceUpload>,
     ) -> u32 {
         let offset = self.blob.len() as u32;
+        self.offsets.push(offset);
         let (brush_offset, _) = push_encoded_brush(&mut self.blob, brush);
         debug_assert_eq!(offset, brush_offset);
         patch_resource_brush_at(&mut self.blob, offset, image_resources);

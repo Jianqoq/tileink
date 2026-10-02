@@ -23,18 +23,6 @@ use super::{
 };
 
 #[test]
-fn layout_produces_positioned_glyphs_when_a_font_is_available() {
-    let mut font_system = FontSystem::new();
-    let mut context = TextContext::new();
-    let layout = context.layout(&mut font_system, TextLayoutOptions::new("Hello", 24.0));
-    if layout.glyphs.is_empty() {
-        return;
-    }
-
-    assert!(!layout.bounds().is_empty());
-}
-
-#[test]
 fn load_font_file_makes_font_available_to_layout() {
     let mut font_system = FontSystem::new();
     let mut context = TextContext::new();

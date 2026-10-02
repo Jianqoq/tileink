@@ -12,3 +12,18 @@ Persistent frame snapshots may share immutable node arrays and record removals o
 `IncrementalOutputMode` distinguishes renderer-owned internal history, caller-owned external history, direct transient output, and history rebuilding. A recreated or externally modified texture must receive a new `ExternalTextureHistoryId`.
 
 `IncrementalRenderMode::ForceFull` is a correctness and performance oracle. It forces full raster damage while preserving normal retained materialization, chunk reuse, and incremental uploads.
+
+## Scoped Backdrop and structural updates
+
+Scoped input damage history is independent of prunable node state and retains at
+most 256 version transitions. Consecutive complete versions remain partial; missing
+history explicitly recovers. Before deleting or moving nodes, resolve their old input
+in the old command tree, then resolve new input in the new tree. Join final root
+coordinates and dirty Backdrop identities only, so outer filters are not applied
+twice. Changed Groups contribute their descendants; Mask branches resolve separately.
+
+During a partial frame, each unvisited old Backdrop input survives until its painter
+position consumes it. Cache pressure may evict ordinary reusable output. If only
+protected input could make space, discard the new cache entry and preserve the budget.
+Clean tiles in the final image cannot replace pre-filter input because they may
+already contain later foreground drawing.

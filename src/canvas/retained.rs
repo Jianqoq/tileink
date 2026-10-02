@@ -1,4 +1,5 @@
 mod damage;
+mod damage_buffer;
 mod types;
 
 pub use types::RetainedNodeId;

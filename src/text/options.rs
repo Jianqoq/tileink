@@ -76,7 +76,7 @@ pub struct TextRasterOptions {
     pub composite_mode: TextCompositeMode,
     /// Contrast-dependent text coverage parameters.
     ///
-    /// The wgpu renderer consumes this at runtime, which lets the quality harness
+    /// The renderer consumes this at runtime, letting the quality harness
     /// search candidates without recompiling.
     pub coverage_params: TextCoverageParams,
 }

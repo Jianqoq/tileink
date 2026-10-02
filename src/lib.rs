@@ -1,22 +1,15 @@
 mod canvas;
 mod debug;
+mod render;
 mod retained_scene;
 mod shared;
 mod svg;
 mod text;
-mod wgpu;
 
-pub const TILE_SIZE: u32 = 16;
+pub use shared::gpu_constants::TILE_SIZE;
 pub const TILE_SCALE: f32 = 1.0 / TILE_SIZE as f32;
 pub const BLOCK_SIZE: u32 = 16 * 16;
 
-pub use crate::wgpu::{
-    CoarseBinningMode, ExternalTextureHistoryId, FullRedrawReason, IncrementalOutputMode,
-    IncrementalRenderConfig, IncrementalRenderMode, IncrementalRenderStats, Renderer,
-    Renderer as WgpuRenderer, RendererOptions, RendererOptions as WgpuRendererOptions,
-    WgpuRenderProfile, WgpuRenderProfileEntry, WgpuRenderProfileEventSummary,
-    WgpuRenderProfileReport, WgpuTextureRenderError,
-};
 pub use canvas::{Canvas, DrawId, RetainedNodeId};
 pub(crate) use canvas::{NodeGeneration, PersistentLayerKey};
 pub use cosmic_text::{
@@ -29,16 +22,15 @@ pub use debug::{
     RenderDebugCapture, RenderDebugImage, RenderDebugOptions, RenderDebugText, RenderOptions,
     TileOverlayOptions, debug_capture_json,
 };
-#[cfg(feature = "bench-internals")]
-pub use retained_scene::RetainedMaterializerBenchmark;
+pub use render::incremental::{
+    CoarseBinningMode, FullRedrawReason, IncrementalOutputMode, IncrementalRenderConfig,
+    IncrementalRenderMode, IncrementalRenderStats,
+};
+pub use render::output::ExternalTextureHistoryId;
 pub use retained_scene::{
     RetainedChildBranch, RetainedLayerDescriptor, RetainedParent, RetainedScene,
     RetainedSceneError, RetainedSceneTransaction, SceneVersion,
 };
-#[cfg(feature = "bench-internals")]
-pub use shared::gpu_plan::{GpuDirtyRangesBenchmark, TileDrawBinsBenchmark};
-#[cfg(feature = "bench-internals")]
-pub use shared::scene_arena::{SceneArenaDirtyBenchmark, SceneArenaFillBenchmark};
 pub use shared::{
     bounds::Bounds,
     brush::{Brush, PatternBrush, PatternSampling},
@@ -49,8 +41,8 @@ pub use shared::{
         filter::{
             BlurDownsampleFilter, BlurSampling, BlurUpsampleFilter, CompositeOperator,
             ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, Filter, FilterInput,
-            FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator, RectLiquidGlass,
-            SpecularLighting,
+            FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator, ProgressiveBlur,
+            ProgressiveBlurQuality, RectLiquidGlass, SpecularLighting,
         },
         mask::{Mask, MaskKind},
         region::Region,
@@ -83,13 +75,25 @@ pub use shared::{
     },
 };
 pub use svg::{SvgError, SvgOptions};
-#[cfg(feature = "bench-internals")]
-pub use text::PreparedTextBenchmark;
 pub use text::{
     TextCompositeMode, TextContext, TextLayout, TextLayoutOptions, TextRasterOptions,
     TextSubpixelMode,
 };
-#[cfg(feature = "bench-internals")]
-pub use wgpu::{DamageTilesBenchmark, GlyphCapacityBenchmark, GlyphCapacityBenchmarkCase};
-#[cfg(feature = "bench-internals")]
-pub use wgpu::{FrameDiffBenchmark, FrameDiffBenchmarkCase};
+
+#[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
+mod native;
+#[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
+pub use native::{
+    BackendUnavailable, BackendUnavailableReason, NativeBackend, NativeContext,
+    NativeContextOptions, NativeError, NativeImageSubmission, NativeRenderTarget, NativeRenderer,
+    NativeShaderArtifact, NativeSubmission, NativeTexture,
+    SHADER_ARTIFACTS as NATIVE_SHADER_ARTIFACTS,
+};
+
+#[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
+pub use native::interop as native_interop;
+
+#[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
+pub use native::{NativeTargetState, NativeTargetSubmission, NativeTargetUse};
+
+mod backend_features;
