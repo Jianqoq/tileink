@@ -1,5 +1,6 @@
 mod canvas;
 mod debug;
+mod pixel_grid;
 mod render;
 mod retained_scene;
 mod shared;
@@ -22,6 +23,7 @@ pub use debug::{
     RenderDebugCapture, RenderDebugImage, RenderDebugOptions, RenderDebugText, RenderOptions,
     TileOverlayOptions, debug_capture_json,
 };
+pub use pixel_grid::{PixelGrid, uniform_axis_scale};
 pub use render::incremental::{
     CoarseBinningMode, FullRedrawReason, IncrementalOutputMode, IncrementalRenderConfig,
     IncrementalRenderMode, IncrementalRenderStats,

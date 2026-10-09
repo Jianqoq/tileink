@@ -7,7 +7,7 @@ use peniko::{
 use usvg::{Node, Paint, PaintOrder, SpreadMethod, tiny_skia_path::PathSegment};
 
 use crate::{
-    Brush, Canvas, FillRule, Filter, Radius, Region,
+    Brush, Canvas, FillRule, Filter, PixelGrid, Radius, Region,
     shared::{
         bounds::Bounds,
         brush::{PatternBrush, PatternSampling},
@@ -30,6 +30,8 @@ mod image;
 pub struct SvgOptions {
     pub tolerance: f64,
     pub transform: Affine,
+    /// Optional fitting for small UI glyphs. General SVG content preserves subpixel geometry.
+    pub pixel_grid: Option<PixelGrid>,
 }
 
 const MAX_PATTERN_DEPTH: u8 = 16;
@@ -40,6 +42,7 @@ impl Default for SvgOptions {
         Self {
             tolerance: 0.1,
             transform: Affine::IDENTITY,
+            pixel_grid: None,
         }
     }
 }
@@ -348,6 +351,7 @@ impl SvgBuilder {
             options: SvgOptions {
                 tolerance: self.options.tolerance,
                 transform,
+                pixel_grid: None,
             },
             base_transform: transform,
             pattern_depth: self.pattern_depth,
@@ -398,8 +402,12 @@ impl SvgBuilder {
 
         let brush =
             self.paint_to_brush(canvas, fill.paint(), fill.opacity().get(), path_transform)?;
+        let data = self
+            .options
+            .pixel_grid
+            .map_or_else(|| data.clone(), |grid| grid.fill_path(data, transform));
         canvas.push_path(
-            data.clone(),
+            data,
             brush,
             transform,
             fill_rule(fill.rule()),
@@ -463,8 +471,12 @@ impl SvgBuilder {
         }
 
         let stroke_style = stroke_to_kurbo(stroke);
+        let (data, stroke_style) = self.options.pixel_grid.map_or_else(
+            || (data.clone(), stroke_style.clone()),
+            |grid| grid.stroke_path(data, &stroke_style, transform),
+        );
         canvas.push_stroke(
-            data.clone(),
+            data,
             stroke_style,
             brush,
             transform,
@@ -734,7 +746,10 @@ impl SvgBuilder {
 
         let mut tile_scene = Canvas::new(tile_width, tile_height, 1.0);
         SvgBuilder {
-            options: self.options,
+            options: SvgOptions {
+                pixel_grid: None,
+                ..self.options
+            },
             base_transform: tile_scale * pattern_content_correction(pattern.root()),
             pattern_depth: self.pattern_depth + 1,
             image_depth: self.image_depth,
@@ -813,6 +828,7 @@ impl SvgBuilder {
                 options: SvgOptions {
                     tolerance: self.options.tolerance,
                     transform: local_transform,
+                    pixel_grid: None,
                 },
                 base_transform: local_transform,
                 pattern_depth: self.pattern_depth,
