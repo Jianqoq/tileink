@@ -16,20 +16,6 @@ const TABLE_SIZE: usize = 64;
 unsafe impl bytemuck::Zeroable for ProgressiveBlurConfig {}
 unsafe impl bytemuck::Pod for ProgressiveBlurConfig {}
 
-fn allocate(batch: &mut ComputeBatch, size: [u32; 2]) -> Result<ResourceId> {
-    if let Some(image) = batch.reusable_overwritten_surface(size)? {
-        return Ok(image);
-    }
-    let bytes = (size[0] as usize)
-        .checked_mul(size[1] as usize)
-        .and_then(|n| n.checked_mul(4))
-        .ok_or("progressive blur allocation overflow")?;
-    let mut pixels = Vec::new();
-    pixels.try_reserve_exact(bytes)?;
-    pixels.resize(bytes, 0);
-    batch.texture_rgba8(size, pixels)
-}
-
 fn dispatch(
     batch: &mut ComputeBatch,
     entry: &str,
@@ -78,7 +64,7 @@ pub(crate) fn encode(
     }
     let sampler = batch.sampler(SamplerFilter::Linear)?;
     let mut images = Vec::with_capacity(TABLE_SIZE);
-    let original = allocate(batch, extent)?;
+    let original = batch.reusable_overwritten_surface(extent)?;
     batch.copy_texture(TextureCopy {
         source: target,
         destination: original,
@@ -90,12 +76,12 @@ pub(crate) fn encode(
     // One scratch image is overwritten between horizontal/vertical pairs.
     // Explicit source extents exclude spare capacity on every later pass.
     let scratch = if levels.len() > 1 {
-        Some(allocate(batch, extent)?)
+        Some(batch.reusable_overwritten_surface(extent)?)
     } else {
         None
     };
     for (i, level) in levels.iter().enumerate().skip(1) {
-        let image = allocate(batch, level.size)?;
+        let image = batch.reusable_overwritten_surface(level.size)?;
         let previous = &levels[i - 1];
         let kernel = batch.buffer(bytemuck::cast_slice(&level.kernel).to_vec())?;
         let intermediate = [level.size[0], previous.size[1]];

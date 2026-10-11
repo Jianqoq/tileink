@@ -63,12 +63,7 @@ fn raster(
     let bounds = bounds.intersect(Bounds::canvas(size[0], size[1]));
     let extent = [bounds.width().max(1), bounds.height().max(1)];
     let origin = [bounds.x0.max(0) as u32, bounds.y0.max(0) as u32];
-    let texture = match batch.reusable_overwritten_surface(extent)? {
-        Some(texture) => texture,
-        None => {
-            batch.texture_rgba8(extent, vec![0; extent[0] as usize * extent[1] as usize * 4])?
-        }
-    };
+    let texture = batch.reusable_overwritten_surface(extent)?;
     if !bounds.is_empty() {
         let mut instance = brush.0.clone();
         let [a, b, c, d, e, f] = instance.transform;

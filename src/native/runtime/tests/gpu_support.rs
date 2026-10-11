@@ -3,6 +3,12 @@ use crate::native::runtime::compute::{ComputeBatch, SamplerFilter};
 use crate::shared::fine_config::FineConfig;
 use crate::{NativeContext, NativeContextOptions};
 
+pub(super) fn batch(context: &NativeContext) -> ComputeBatch {
+    use crate::native::runtime::compute::SurfacePool;
+    use std::{cell::RefCell, rc::Rc};
+    ComputeBatch::with_surfaces(Rc::new(RefCell::new(SurfacePool::new(context))))
+}
+
 pub(super) fn context() -> Result<NativeContext> {
     #[cfg(feature = "dx12")]
     unsafe {

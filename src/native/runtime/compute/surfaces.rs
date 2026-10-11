@@ -13,6 +13,8 @@ use crate::shared::filter_config::FilterConfig;
 /// from reusing storage before their owning command batch is resolved.
 /// Retained surfaces pin their allocation: the pool skips pinned entries, so a
 /// new scratch lease cannot clear pixels still serving as retained history.
+/// Renderer allocations require this pool; a standalone transfer batch must not
+/// silently replace native leases with CPU pixel uploads.
 pub(crate) struct SurfacePool {
     pub(super) context: NativeContext,
     pub(super) shader_resources: super::shader_resources::ShaderResourcePool,
@@ -144,14 +146,11 @@ impl ComputeBatch {
         &mut self,
         size: [u32; 2],
         clear_color: u32,
-    ) -> Result<Option<ResourceId>> {
+    ) -> Result<ResourceId> {
         self.reusable_surface_inner(size, clear_color, false)
     }
 
-    pub(crate) fn reusable_scratch_surface(
-        &mut self,
-        size: [u32; 2],
-    ) -> Result<Option<ResourceId>> {
+    pub(crate) fn reusable_scratch_surface(&mut self, size: [u32; 2]) -> Result<ResourceId> {
         self.reusable_surface_inner(size, 0, true)
     }
 
@@ -160,15 +159,13 @@ impl ComputeBatch {
     /// pooled capacity retains unspecified old pixels. Progressive pyramid copy
     /// and reduction passes satisfy this contract, so clearing them wastes a
     /// dispatch and full-capacity memory bandwidth on every level.
-    pub(crate) fn reusable_overwritten_surface(
-        &mut self,
-        size: [u32; 2],
-    ) -> Result<Option<ResourceId>> {
-        let Some(pool) = &self.surface_pool else {
-            return Ok(None);
-        };
+    pub(crate) fn reusable_overwritten_surface(&mut self, size: [u32; 2]) -> Result<ResourceId> {
+        let pool = self
+            .surface_pool
+            .as_ref()
+            .ok_or("native surfaces require a renderer resource pool")?;
         let texture = pool.borrow_mut().acquire(size, true)?;
-        self.import_texture(&texture).map(Some)
+        self.import_texture(&texture)
     }
 
     fn reusable_surface_inner(
@@ -176,10 +173,11 @@ impl ComputeBatch {
         size: [u32; 2],
         clear_color: u32,
         scratch: bool,
-    ) -> Result<Option<ResourceId>> {
-        let Some(pool) = &self.surface_pool else {
-            return Ok(None);
-        };
+    ) -> Result<ResourceId> {
+        let pool = self
+            .surface_pool
+            .as_ref()
+            .ok_or("native surfaces require a renderer resource pool")?;
         let texture = pool.borrow_mut().acquire(size, scratch)?;
         let image = self.import_texture(&texture)?;
         let extent = texture.size();
@@ -200,7 +198,7 @@ impl ComputeBatch {
             None,
             image,
         )?;
-        Ok(Some(image))
+        Ok(image)
     }
 }
 

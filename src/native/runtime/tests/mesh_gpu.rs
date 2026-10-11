@@ -1,7 +1,7 @@
 //! Known parameter points provide an oracle independent of shader quad inversion.
 use super::{
     Result,
-    brush_support::{context, sample},
+    gpu_support::{context, sample},
 };
 use crate::shared::{brush::push_encoded_brush, image::premul_color_to_rgba8_pack};
 use crate::{Brush, MeshGradient, MeshInterpolation};

@@ -5,11 +5,12 @@ use super::super::{
 use crate::render::scratch_slots::ScratchSlots;
 use crate::render::{output::RenderTargetId, retained_surfaces::SurfaceAllocation};
 
-/// A logical surface lease. ComputeBatch and then the submitted API frame own
-/// its physical allocation, even after a scratch slot is released or replaced.
+/// A logical lease of persistent native storage. The lease, ComputeBatch and
+/// submitted API frame retain its allocation independently, so retained surfaces
+/// can cross batches without relying on a previous batch's resource ID.
 pub(crate) struct Surface {
     image: ResourceId,
-    persistent: Option<crate::native::NativeTexture>,
+    texture: crate::native::NativeTexture,
     size: [u32; 2],
     bytes: u64,
 }
@@ -36,36 +37,19 @@ impl Surface {
         if size.contains(&0) || size.iter().any(|&n| n > i32::MAX as u32) {
             return Err("invalid native surface dimensions".into());
         }
-        let bytes = (size[0] as usize)
-            .checked_mul(size[1] as usize)
-            .and_then(|n| n.checked_mul(4))
-            .ok_or("native surface size overflow")?;
-        let reusable = if scratch {
+        let image = if scratch {
             batch.reusable_scratch_surface(size)?
         } else {
             batch.reusable_surface(size, clear_color)?
         };
-        if let Some(image) = reusable {
-            return Ok(Self {
-                image,
-                persistent: batch.persistent_texture(image)?.cloned(),
-                size,
-                bytes: batch.size(image)? as u64,
-            });
-        }
-        let mut pixels = Vec::new();
-        pixels.try_reserve_exact(bytes)?;
-        pixels.resize(bytes, 0);
-        if clear_color != 0 {
-            for pixel in pixels.chunks_exact_mut(4) {
-                pixel.copy_from_slice(&clear_color.to_le_bytes());
-            }
-        }
         Ok(Self {
-            image: batch.texture_rgba8(size, pixels)?,
-            persistent: None,
+            image,
+            texture: batch
+                .persistent_texture(image)?
+                .expect("pooled native surface")
+                .clone(),
             size,
-            bytes: bytes as u64,
+            bytes: batch.size(image)? as u64,
         })
     }
 
@@ -74,12 +58,13 @@ impl Surface {
     }
 
     pub(crate) fn image_in(&self, batch: &mut ComputeBatch) -> Result<ResourceId> {
-        if let Some(texture) = &self.persistent {
-            batch.import_texture(texture)
-        } else {
-            batch.size(self.image)?;
-            Ok(self.image)
+        let adapter = batch
+            .adapter()
+            .ok_or("native surfaces require a renderer resource pool")?;
+        if !adapter.same_device(&self.texture.context.adapter) {
+            return Err("native surface belongs to another logical device".into());
         }
+        batch.import_texture(&self.texture)
     }
 }
 
@@ -119,7 +104,11 @@ impl Targets {
         Ok(Self {
             main: Surface {
                 image,
-                persistent: texture.persistent.clone(),
+                texture: texture
+                    .persistent
+                    .as_ref()
+                    .ok_or("native frame target requires a persistent texture")?
+                    .clone(),
                 size,
                 bytes: batch.size(image)? as u64,
             },
@@ -190,11 +179,11 @@ impl Targets {
         mut surface: Surface,
     ) -> Result<()> {
         batch.size(self.main.image)?;
-        surface.image = surface.image_in(batch)?;
         if surface.size != self.main.size {
             return Err("native scratch surface dimensions do not match context".into());
         }
         let index = self.slot_index(target)?;
+        surface.image = surface.image_in(batch)?;
         self.scratch[index] = Some(surface);
         Ok(())
     }

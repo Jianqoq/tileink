@@ -2,7 +2,6 @@
 //! input/output textures are essential: reading a concurrently written neighbour
 //! would make refraction depend on GPU scheduling.
 use super::*;
-use crate::native::runtime::compute::ComputeBatch;
 use crate::shared::filter_config::FilterConfig;
 
 fn sampling(offset: [f32; 4], radius: f32) -> Result<crate::ShaderPipeline> {
@@ -22,7 +21,7 @@ fn sample_record(
     filter: &crate::ShaderPipeline,
     compact: bool,
 ) -> Result<Vec<u32>> {
-    let mut batch = ComputeBatch::new();
+    let mut batch = crate::native::runtime::gpu_support::batch(context);
     let mut pixels = vec![0xffeeddccu32; 16 * 16];
     for y in 0..5 {
         for x in 0..7 {

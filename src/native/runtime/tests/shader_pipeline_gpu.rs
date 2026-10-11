@@ -1,7 +1,7 @@
 //! Production-native pipeline tests: HDR, extra textures/samplers, read/write
 //! buffers, barriers, 3D groups, odd extents, reuse, backdrop and retained updates.
 use super::compute::{ComputeBatch, SurfacePool};
-use super::{Result, brush_support::context};
+use super::{Result, gpu_support::context};
 use crate::*;
 use peniko::{
     Color,

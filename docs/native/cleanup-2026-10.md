@@ -99,7 +99,38 @@ The 13 paired real-renderer workloads again preserve exact pixels; p50 changes
 range from -0.84% to +0.73%. These measurements do not establish a material
 regression or speedup. [Raw measurements and protocol](benchmarks/cleanup-phase3-metal-2026-10-11.json).
 
+## Phase 4: native surface allocation has one storage contract
+
+Root and scratch surfaces now require the renderer's native resource pool.
+Missing pools return an error instead of allocating and uploading zero-filled
+CPU images. Progressive blur levels and custom brush outputs use that same
+required allocator; shader-owned buffers always use the native shader resource
+pool. The contextless CPU alternatives are deleted, rather than kept as another
+implementation to maintain.
+
+A retained surface always owns a `NativeTexture`. Frame targets must import
+persistent storage, and installing a retained surface validates its logical
+device before importing it into the new batch. Same-device cross-batch history
+remains supported. Standalone transfer batches still support explicit CPU
+uploads, native imports and readbacks; these are actual transfer operations.
+
+The missing-pool regression failed before the change and passes afterward.
+Allocation tests now exercise actual native textures and GPU readbacks rather
+than inspecting surrogate CPU pixels. Coverage includes root/scratch clear
+colors, sibling isolation, retained ownership, cross-batch imports, foreign-device
+rejection, resize capacity, logical bounds, shader sampling and progressive blur.
+The release suite reports 963 passing tests and the same nine known failures;
+two tests initially lacked their separately named GPU environment variable and
+passed after correcting the runner environment. All 1730 SVG outputs and seven
+example images match the initial cleanup baseline exactly. Example tests and
+release Clippy pass without new warnings. This removes the allocation fallback
+itself and is not a temporary bridge.
+
+The same 13 paired real-renderer workloads preserve exact pixels, with p50
+changes from -0.25% to +1.16%. These small variations do not establish a material
+regression or speedup. [Raw measurements and protocol](benchmarks/cleanup-phase4-metal-2026-10-11.json).
+
 ## Remaining audit work
 
-- Contextless private paths still substitute CPU uploads for pooled surfaces, persistent buffers and shader resources. Make allocator requirements explicit and migrate their conformance tests before removal.
+- Contextless private paths still substitute CPU uploads for cached persistent buffers and bypass the image cache. Make allocator requirements explicit and migrate their conformance tests before removal.
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.

@@ -24,7 +24,7 @@ pub(super) fn render(
     input: Vec<u8>,
     blur: ProgressiveBlur,
 ) -> Result<Vec<u8>> {
-    let mut batch = ComputeBatch::new();
+    let mut batch = crate::native::runtime::gpu_support::batch(context);
     let image = batch.texture_rgba8(size, input)?;
     encode(
         &mut batch,

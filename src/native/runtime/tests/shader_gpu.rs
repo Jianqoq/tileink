@@ -1,5 +1,5 @@
 //! Native user shaders exercise the production compiler and renderer directly.
-use super::{Result, brush_support::context};
+use super::{Result, gpu_support::context};
 use crate::{ShaderInput, ShaderProgram, ShaderSources};
 #[path = "shader_pixels.rs"]
 mod pixels;

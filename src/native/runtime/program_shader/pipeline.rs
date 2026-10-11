@@ -159,13 +159,7 @@ fn record_invocation(
                 let id = match &pipeline.resources[index] {
                     R::External { index, .. } => bound[*index],
                     R::Uniform(bytes) => batch.buffer(bytes.to_vec())?,
-                    R::Buffer(words) => {
-                        if batch.context().is_some() {
-                            batch.shader_buffer(words)?
-                        } else {
-                            batch.buffer(bytemuck::cast_slice(words).to_vec())?
-                        }
-                    }
+                    R::Buffer(words) => batch.shader_buffer(words)?,
                     R::Sampler(f) => batch.sampler(match f {
                         ShaderSampler::Nearest => SamplerFilter::Nearest,
                         ShaderSampler::Linear => SamplerFilter::Linear,

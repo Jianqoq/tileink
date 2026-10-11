@@ -38,9 +38,11 @@ use crate::{
 
 #[test]
 #[should_panic(expected = "occupied native scratch slot")]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn extracting_released_scratch_cannot_silently_discard_a_cache_entry() {
     use crate::render::surfaces::SurfaceAdapter;
-    let mut batch = ComputeBatch::new();
+    let context = crate::native::runtime::gpu_support::context().unwrap();
+    let mut batch = crate::native::runtime::gpu_support::batch(&context);
     let upload = Default::default();
     let images = Images::record(&mut batch, &upload).unwrap();
     let canvas = Canvas::new(4, 4, 1.0);
@@ -66,10 +68,13 @@ fn extracting_released_scratch_cannot_silently_discard_a_cache_entry() {
 }
 
 #[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn frame_records_directly_into_supplied_target_without_full_frame_copy() -> Result<()> {
     use crate::native::runtime::compute::Command;
-    let mut batch = ComputeBatch::new();
-    let target = batch.texture_rgba8([3, 2], vec![255; 24])?;
+    let context = crate::native::runtime::gpu_support::context()?;
+    let mut batch = crate::native::runtime::gpu_support::batch(&context);
+    let texture = context.create_texture(3, 2)?;
+    let target = batch.import_texture(&texture)?;
     let upload = Default::default();
     let images = Images::record(&mut batch, &upload)?;
     let canvas = Canvas::new(3, 2, 1.0);
@@ -130,10 +135,12 @@ fn frame_rejects_foreign_image_upload_before_recording() -> Result<()> {
 }
 
 #[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn local_filter_context_restores_parent_after_scan_failure() -> Result<()> {
     use crate::render::filters::FilterAdapter;
     use crate::shared::layer::filter::Filter;
-    let mut batch = ComputeBatch::new();
+    let context = crate::native::runtime::gpu_support::context()?;
+    let mut batch = crate::native::runtime::gpu_support::batch(&context);
     let upload = Default::default();
     let images = Images::record(&mut batch, &upload)?;
     let canvas = Canvas::new(4, 4, 1.0);
@@ -172,10 +179,12 @@ fn local_filter_context_restores_parent_after_scan_failure() -> Result<()> {
 }
 
 #[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn failed_filter_context_preparation_keeps_parent_active() -> Result<()> {
     use crate::render::filters::FilterAdapter;
     use crate::shared::layer::filter::{ConvolveEdgeMode, ConvolveMatrix, Filter};
-    let mut batch = ComputeBatch::new();
+    let context = crate::native::runtime::gpu_support::context()?;
+    let mut batch = crate::native::runtime::gpu_support::batch(&context);
     let upload = Default::default();
     let images = Images::record(&mut batch, &upload)?;
     let canvas = Canvas::new(4, 4, 1.0);

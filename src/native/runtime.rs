@@ -40,8 +40,8 @@ mod buffer;
 mod mesh_gpu;
 
 #[cfg(all(test, tileink_native_runtime))]
-#[path = "runtime/tests/brush_support.rs"]
-mod brush_support;
+#[path = "runtime/tests/gpu_support.rs"]
+mod gpu_support;
 
 #[cfg(all(test, tileink_native_runtime))]
 #[path = "runtime/tests/shader_gpu.rs"]

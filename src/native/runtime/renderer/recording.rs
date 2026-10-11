@@ -27,6 +27,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
     fn invalid_frame_limits_fail_before_resources_or_cache_are_modified() {
         let canvas = Canvas::new(3, 2, 1.0);
         let resources = ImageResourceStore::default();
@@ -68,7 +69,8 @@ mod tests {
             assert!(recording.signature.is_none());
         }
         // Invalid attempts leave the same recorder usable for subsequent frames.
-        let mut batch = ComputeBatch::new();
+        let context = crate::native::runtime::gpu_support::context().unwrap();
+        let mut batch = crate::native::runtime::gpu_support::batch(&context);
         let output = recording
             .record(
                 &mut batch,
