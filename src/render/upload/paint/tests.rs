@@ -132,8 +132,51 @@ fn resources(key: ImageKey) -> ImageResourceStore {
 
 fn expected_brushes(canvas: &Canvas, resources: &GpuImageResourceUpload) -> Vec<u32> {
     let mut expected = canvas.brush_blob.clone();
-    GpuBrushUpload::patch_scene_brush_blob(&mut expected, &canvas.draw_records, Some(resources));
+    GpuBrushUpload::patch_scene_brush_blob(
+        &mut expected,
+        &canvas.brush_blob,
+        &canvas.draw_records,
+        Some(resources),
+    );
     expected
+}
+
+#[test]
+fn draw_only_updates_preserve_resource_brushes_when_paint_storage_relayouts() {
+    let key = ImageKey::new(2);
+    let upload = resources(key).upload_merged(&ImageResourceStore::default(), 8, 4, 0, None);
+    let mut canvas = Canvas::new(32, 32, 1.0);
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 20.0, 20.0),
+        Radius::ZERO,
+        resource_brush(key),
+    );
+    canvas.buffer_changes = Some(SceneBufferChanges::default());
+    let mut state = PaintUploadState::default();
+    let _ = state.prepare(&canvas, Some(&upload));
+
+    // A retained transform changes the draw but leaves its local brush payload intact.
+    canvas.set_retained_transform(peniko::kurbo::Affine::translate((1.0, 0.0)));
+    canvas.buffer_changes = Some(SceneBufferChanges {
+        draws: std::iter::once(0..1).collect(),
+        ..Default::default()
+    });
+    let (_, ranges, _, _) = retained_data(state.prepare(&canvas, Some(&upload)));
+    assert!(ranges.is_empty());
+
+    // Another node can grow the shared SDF arena without rewriting this brush.
+    let old_sdf_len = canvas.sdf_blob.len();
+    canvas.sdf_blob.resize(257, 0);
+    canvas.buffer_changes = Some(SceneBufferChanges {
+        sdfs: std::iter::once(old_sdf_len..257).collect(),
+        ..Default::default()
+    });
+    let expected = expected_brushes(&canvas, &upload);
+    let (words, _, _, base) = retained_data(state.prepare(&canvas, Some(&upload)));
+    assert_eq!(
+        &words[base as usize..base as usize + expected.len()],
+        &expected
+    );
 }
 
 #[test]

@@ -18,6 +18,112 @@ fn context() -> Result<NativeContext, Box<dyn std::error::Error>> {
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn retained_resource_brush_survives_transform_then_sdf_arena_growth()
+-> Result<(), Box<dyn std::error::Error>> {
+    use crate::{Brush, FillRule, Image, ImageKey, PatternBrush, PatternSampling};
+    use crate::{Radius, RetainedNodeId, RetainedParent, RetainedScene};
+    use peniko::{
+        Color, Extend,
+        kurbo::{Affine, Rect, Shape},
+    };
+    let context = context()?;
+    let key = ImageKey::new(1);
+    let image = Image::from_rgba8(2, 2, [10, 20, 30, 255].repeat(4));
+    let mut image_canvas = Canvas::new(64, 64, 1.0);
+    image_canvas.push_rect(
+        Rect::new(0.0, 0.0, 20.0, 20.0),
+        Radius::ZERO,
+        Brush::Pattern(
+            PatternBrush::new_resource(
+                crate::shared::image_resource::ImageResourceId::renderer(key),
+                [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                Extend::Pad,
+                PatternSampling::Nearest,
+                255,
+            )
+            .unwrap(),
+        ),
+    );
+    let geometry = |sdf| {
+        let mut canvas = Canvas::new(64, 64, 1.0);
+        for index in 0..16 {
+            let x = 32.0 + (index % 4) as f64 * 8.0;
+            let y = (index / 4) as f64 * 8.0;
+            let rect = Rect::new(x, y, x + 6.0, y + 6.0);
+            if sdf {
+                canvas.push_rect(rect, Radius::ZERO, Color::WHITE);
+            } else {
+                canvas.push_path(
+                    rect.to_path(0.1),
+                    Color::WHITE,
+                    Affine::IDENTITY,
+                    FillRule::NonZero,
+                    0.1,
+                );
+            }
+        }
+        Rc::new(canvas)
+    };
+    let paths = geometry(false);
+    let sdfs = geometry(true);
+    assert_eq!(paths.brush_blob.len(), sdfs.brush_blob.len());
+    assert!(paths.sdf_blob.is_empty());
+    assert!(sdfs.sdf_blob.len() > 256);
+    let root = RetainedNodeId::for_owner(1);
+    let image_node = RetainedNodeId::for_owner(2);
+    let geometry_node = RetainedNodeId::for_owner(3);
+    let mut scene = RetainedScene::new(64, 64, 1.0, root)?;
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            image_node,
+            Rc::new(image_canvas),
+            Affine::IDENTITY,
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            geometry_node,
+            paths,
+            Affine::IDENTITY,
+        )
+        .commit()?;
+    let mut renderer = NativeRenderer::with_context(&context, 64, 64)?;
+    renderer.insert_image(key, image.clone());
+    for frame in 0..3 {
+        if frame == 1 {
+            scene
+                .transaction()
+                .set_transform(image_node, Affine::translate((1.0, 0.0)))
+                .commit()?;
+        } else if frame == 2 {
+            // Keep brush storage unchanged while growing another node's SDF storage.
+            scene
+                .transaction()
+                .replace_scene(geometry_node, sdfs.clone())
+                .invalidate_all()
+                .commit()?;
+        }
+        let actual = renderer.render_retained_to_image(&scene)?.readback()?;
+        let mut fresh = NativeRenderer::with_context(&context, 64, 64)?;
+        fresh.insert_image(key, image.clone());
+        let expected = fresh.render_retained_to_image(&scene)?.readback()?;
+        assert_eq!(
+            expected.pixels[5 * 64 + 5],
+            u32::from_le_bytes([10, 20, 30, 255])
+        );
+        assert!(
+            actual.pixels == expected.pixels,
+            "resource brush differs after frame {frame}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn owned_resize_reuses_capacity_and_crops_readback_and_external_copy()
 -> Result<(), Box<dyn std::error::Error>> {
     let context = context()?;

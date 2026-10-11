@@ -185,25 +185,18 @@ pub(crate) fn prepare_brushes(
         } else {
             let range =
                 draw.brush_offset as usize..draw.brush_offset as usize + draw.brush_len as usize;
-            blob.extend(
-                canvas
-                    .brush_blob
-                    .get(range)
-                    .ok_or("invalid native brush record bounds")?,
-            );
-        }
-        let len = blob.len() as u32 - offset;
-        if !program {
-            crate::shared::gpu_brush::GpuBrushUpload::patch_scene_brush_blob(
-                &mut blob,
-                &[DrawRecord {
-                    brush_offset: offset,
-                    brush_len: len,
-                    ..*draw
-                }],
+            let source = canvas
+                .brush_blob
+                .get(range)
+                .ok_or("invalid native brush record bounds")?;
+            blob.extend_from_slice(source);
+            crate::shared::gpu_brush::GpuBrushUpload::patch_brush_record(
+                &mut blob[offset as usize..],
+                source,
                 images,
             );
         }
+        let len = blob.len() as u32 - offset;
         offsets.insert(key, (offset, len));
         draw.brush_offset = offset;
         draw.brush_len = len;

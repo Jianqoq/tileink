@@ -215,6 +215,46 @@ The same 17 paired actual renderer workloads preserve exact pixels, with p50 cha
 from -0.97% to +0.59%. These variations do not establish a material regression
 or speedup. [Raw measurements and protocol](benchmarks/cleanup-phase7-metal-2026-10-11.json).
 
+## Phase 8: resolve resource brushes from immutable source records
+
+Retained transform updates change draw records without changing their local brush
+payloads. Resource-brush packing previously reinterpreted the already patched GPU
+header as a CPU record: its atlas coordinates occupied the original payload
+offset/length fields. This silently cleared the staging brush. Later SDF arena
+growth could copy that corrupted header into a repacked paint buffer, making an
+otherwise unchanged image disappear.
+
+Resource header resolution now takes an immutable CPU source and a separate GPU
+destination. Sparse updates, shared draw records and relocated native shader
+brush packing all use the same operation. Fresh filter brushes resolve their
+header before overwriting their newly encoded record. This fixes the underlying
+format ownership error without copying all brush data on transform-only frames.
+
+Malformed private records no longer silently turn transparent, and draw ranges
+already clipped by the retained arena journal are consumed directly. Genuinely
+absent or empty images keep their specified transparent sampling behavior.
+Host packing and actual retained GPU regressions both fail before the fix and
+pass afterward. Additional semantic coverage exercises atlas/texture placements,
+repeated shared draws, relocated records and missing images inserted later.
+Production packing and its tests now live in separate modules.
+
+All 8 paint-packing, 3 resource-brush, 8 public native-renderer, 8 native shader
+packing/pipeline and 98 retained-scene focused release tests pass. The full
+single-thread release suite reports 962 passing tests and the same nine known
+failures. Release Clippy and example builds/tests pass without new warnings.
+All 1730 SVG images and seven example PNGs remain byte-identical to the initial
+cleanup baseline.
+
+The benchmark now includes 19 paired real-renderer workloads, adding sparse and
+dense resource-image translations. All preserve exact baseline pixels; image
+translations also match fresh renderers. Paired p50 changes range from -0.57%
+to +0.69%, with no material measured regression. A twentieth workload repeatedly
+replaces paths with SDF geometry while moving image nodes: corrected output stays
+equal to fresh rendering, and the original corruption reproduces. Its corrected
+p50 is 0.435 ms; no before/after speed claim is made for incorrect baseline pixels.
+Temporary measurement source is removed after validation.
+[Raw measurements and protocol](benchmarks/cleanup-phase8-metal-2026-10-11.json).
+
 ## Remaining audit work
 
 - Standalone vector-image placements still upload a zero-filled placeholder before

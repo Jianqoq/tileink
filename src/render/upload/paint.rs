@@ -65,6 +65,7 @@ impl PaintUploadState {
                 self.scene_brush_blob.extend_from_slice(&canvas.brush_blob);
                 GpuBrushUpload::patch_scene_brush_blob(
                     &mut self.scene_brush_blob,
+                    &canvas.brush_blob,
                     &canvas.draw_records,
                     image_resources,
                 );
@@ -78,6 +79,7 @@ impl PaintUploadState {
                 );
                 GpuBrushUpload::patch_scene_brush_blob_draw_ranges(
                     &mut self.scene_brush_blob,
+                    &canvas.brush_blob,
                     &canvas.draw_records,
                     &changes.draws,
                     image_resources,
@@ -217,10 +219,7 @@ impl PaintUploadState {
                 .unwrap()
                 .draws
                 .iter()
-                .flat_map(|range| {
-                    range.start.min(canvas.draw_records.len())
-                        ..range.end.min(canvas.draw_records.len())
-                })
+                .flat_map(|range| range.clone())
             {
                 let resource = GpuBrushUpload::draw_uses_resource_brush(
                     &canvas.draw_records[index],
