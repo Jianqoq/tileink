@@ -10,7 +10,7 @@ struct TileOptions<'a> {
     kind: u32,
     mixed: bool,
     patterned: bool,
-    end_clip: bool,
+    terminator: bool,
     empty: &'a [u32],
     clear: [u8; 4],
 }
@@ -28,7 +28,9 @@ fn solid_tiles(
     let tile_count = tiles_width * tiles_height;
     let all: Vec<_> = (0..tile_count).collect();
     let selected = active.unwrap_or(&all);
-    let particles_per_tile = 1 + u32::from(options.end_clip);
+    // Tag zero terminates every tile kind. Clip/group particles instead require
+    // the general kind and are exercised through real coarse producers.
+    let particles_per_tile = 1 + u32::from(options.terminator);
     let kind_base = tile_count * 6 * (1 + particles_per_tile);
     let list_base = kind_base + tile_count;
     let mut coarse = vec![0u32; list_base as usize + selected.len()];
@@ -38,9 +40,6 @@ fn solid_tiles(
         let particle = tile_count as usize * 6 + tile * 6 * particles_per_tile as usize;
         coarse[particle] = 2; // solid premultiplied red at half opacity
         coarse[particle + 5] = 0x80000080;
-        if options.end_clip {
-            coarse[particle + 6] = if options.mixed && tile % 3 == 0 { 0 } else { 4 };
-        }
         if options.empty.contains(&(tile as u32)) {
             coarse[tile * 6 + 2] = coarse[tile * 6 + 1];
             coarse[kind_base as usize + tile] = 1;
@@ -232,13 +231,13 @@ fn drawing_rejects_import_without_attachment_usage_and_context_remains_usable() 
 
 #[test]
 #[ignore = "requires physical Metal GPU and MTL_DEBUG_LAYER=1"]
-fn simple_tiles_and_unexpected_tag_fallback_blend_destination_once() -> Result<()> {
+fn simple_tiles_with_optional_terminators_blend_destination_once() -> Result<()> {
     let mut metal = Metal::with_options(&crate::NativeContextOptions {
         validation: true,
         ..Default::default()
     })?;
     for kind in [2, 3, 4] {
-        for end_clip in [false, true] {
+        for terminator in [false, true] {
             for load in [false, true] {
                 for active in [None, Some(&[8, 0, 4][..])] {
                     let (batch, expected) = solid_tiles(
@@ -248,7 +247,7 @@ fn simple_tiles_and_unexpected_tag_fallback_blend_destination_once() -> Result<(
                         load,
                         TileOptions {
                             kind,
-                            end_clip,
+                            terminator,
                             ..Default::default()
                         },
                     )?;
@@ -256,7 +255,7 @@ fn simple_tiles_and_unexpected_tag_fallback_blend_destination_once() -> Result<(
                     assert_eq!(
                         metal.readback_batch(&ticket)?,
                         [expected],
-                        "kind={kind} fallback={end_clip} load={load} sparse={}",
+                        "kind={kind} terminator={terminator} load={load} sparse={}",
                         active.is_some()
                     );
                 }
@@ -304,10 +303,10 @@ fn empty_tiles_clear_or_preserve_pixels_without_touching_outside_viewport() -> R
     metal.assert_valid()
 }
 
-// Mixed coarse kinds, terminators, and empty tiles must preserve blend order.
+// Mixed coarse kinds, legal terminators, and empty tiles preserve blend order.
 #[test]
 #[ignore = "requires physical Metal GPU and MTL_DEBUG_LAYER=1"]
-fn mixed_tile_kinds_preserve_blend_order_and_terminate_before_unused_particles() -> Result<()> {
+fn mixed_tile_kinds_preserve_blend_order_with_terminators_and_empty_tiles() -> Result<()> {
     let mut metal = Metal::with_options(&crate::NativeContextOptions {
         validation: true,
         ..Default::default()
@@ -323,7 +322,7 @@ fn mixed_tile_kinds_preserve_blend_order_and_terminate_before_unused_particles()
                     kind: 2,
                     mixed: true,
                     patterned: false,
-                    end_clip: true,
+                    terminator: true,
                     empty: &[4, 127],
                     clear: [8, 24, 40, 64],
                 },
@@ -354,7 +353,7 @@ fn solid_tiles_preserve_uniform_and_varying_destinations_at_partial_tile_edges()
     ] {
         for load in [false, true] {
             for patterned in [false, true] {
-                for end_clip in [false, true] {
+                for terminator in [false, true] {
                     let (batch, expected) = solid_tiles(
                         size,
                         viewport,
@@ -363,7 +362,7 @@ fn solid_tiles_preserve_uniform_and_varying_destinations_at_partial_tile_edges()
                         TileOptions {
                             kind: 2,
                             patterned,
-                            end_clip,
+                            terminator,
                             clear: [8, 24, 40, 64],
                             ..Default::default()
                         },
@@ -372,7 +371,7 @@ fn solid_tiles_preserve_uniform_and_varying_destinations_at_partial_tile_edges()
                     assert_eq!(
                         metal.readback_batch(&ticket)?,
                         [expected],
-                        "size={size:?} load={load} patterned={patterned} fallback={end_clip}"
+                        "size={size:?} load={load} patterned={patterned} terminator={terminator}"
                     );
                 }
             }

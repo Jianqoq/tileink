@@ -62,7 +62,13 @@ mod tests {
             validation: true,
             ..Default::default()
         })?;
-        for (size, expected) in [(4096, true), (4100, false)] {
+        let header = std::mem::size_of::<FilterConfig>();
+        for (size, expected) in [
+            (header, true),
+            (header + 4, true),
+            (4096, true),
+            (4100, false),
+        ] {
             let mut batch = ComputeBatch::new();
             let config = FilterConfig {
                 width: 17,

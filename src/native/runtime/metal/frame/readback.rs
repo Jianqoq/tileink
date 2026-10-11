@@ -34,6 +34,11 @@ pub(super) fn record(
     batch: &ComputeBatch,
     resources: &[Resource],
 ) -> Result<Vec<Output>> {
+    // Target rendering has no CPU outputs. Completion and external event signals
+    // belong to the command buffer and need no empty transfer encoder.
+    if batch.outputs().is_empty() {
+        return Ok(Vec::new());
+    }
     let encoder = command
         .blitCommandEncoder()
         .ok_or("Metal readback encoder failed")?;

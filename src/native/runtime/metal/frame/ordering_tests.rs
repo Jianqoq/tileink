@@ -8,6 +8,27 @@ use crate::shared::filter_config::FilterConfig;
 
 #[test]
 #[ignore = "requires physical Metal GPU and MTL_DEBUG_LAYER=1"]
+fn empty_frame_completes_and_signals_without_readback() -> Result<()> {
+    let metal = Metal::with_options(&crate::NativeContextOptions {
+        validation: true,
+        ..Default::default()
+    })?;
+    let batch = ComputeBatch::new();
+    let event = metal.device.newSharedEvent().ok_or("Metal shared event")?;
+    let frame = Frame::record(&metal, &batch)?;
+    frame
+        .command
+        .encodeSignalEvent_value(objc2::runtime::ProtocolObject::from_ref(&*event), 1);
+    drop(batch);
+    frame.command.commit();
+    frame.wait()?;
+    assert_eq!(event.signaledValue(), 1);
+    assert!(frame.readback()?.is_empty());
+    metal.assert_valid()
+}
+
+#[test]
+#[ignore = "requires physical Metal GPU and MTL_DEBUG_LAYER=1"]
 fn compute_runs_preserve_texture_dependencies() -> Result<()> {
     let mut metal = Metal::with_options(&crate::NativeContextOptions {
         validation: true,
