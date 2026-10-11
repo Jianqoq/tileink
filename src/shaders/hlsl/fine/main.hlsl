@@ -32,10 +32,9 @@ void fine_tile_main(uint3 group : SV_GroupID,uint3 local : SV_GroupThreadID) {
     input.text=text;input.spills=spills;input.target=target;input.atlas=atlas;input.image_sampler=image_sampler;
     uint kind=coarse.Load((config.fine_tile_kind_base+tile_ix)*4u) & TILE_KIND_MASK;
     float4 pixel=0.0;
-    bool handled=false;
-    if(kind==TILE_KIND_EMPTY) { pixel=fine_initial_pixel(input,xy.x,xy.y);handled=true; }
-    else if(kind==TILE_KIND_COLOR) handled=color_only_no_stack_tile_pixel(input,tile_ix,local.x,pixel);
-    else if(kind==TILE_KIND_SDF || kind==TILE_KIND_MIXED) handled=analytic_solid_no_stack_tile_pixel(input,images,tile_ix,local.x,pixel);
-    if(!handled) pixel=tile_pixel(input,images,tile_ix,local.x);
+    if(kind==TILE_KIND_INTERPRETER) pixel=tile_pixel(input,images,tile_ix,local.x);
+    else if(kind==TILE_KIND_EMPTY) pixel=fine_initial_pixel(input,xy.x,xy.y);
+    else if(kind==TILE_KIND_COLOR) pixel=color_only_no_stack_tile_pixel(input,tile_ix,local.x);
+    else pixel=analytic_solid_no_stack_tile_pixel(input,images,tile_ix,local.x);
     target[xy]=pixel;
 }

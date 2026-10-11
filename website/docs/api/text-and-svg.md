@@ -30,7 +30,7 @@ title: Text 与 SVG API
 
 `TextLayout::is_empty()` 与 `bounds()` 用于跳过空文本和计算 placement/damage。
 
-`TextRasterOptions::new()` 可链 `with_subpixel_mode`、`with_composite_mode`、`with_coverage_params`。`TextSubpixelMode` 为 `None/Rgb/Bgr`，`TextCompositeMode` 为 `Srgb/Linear`。
+`TextRasterOptions::new()` 可链 `with_subpixel_mode`、`with_composite_mode`、`with_alpha_mask_embolden`、`with_subpixel_mask_embolden`。`TextSubpixelMode` 为 `None/Rgb/Bgr`，`TextCompositeMode` 为 `Srgb/Linear`。两个 embolden 参数以光栅像素指定额外字重，分别用于灰度和 RGB/BGR mask；默认值为 `0.11944195` 和 `0.03273267`。对比度覆盖率补偿由原生 shader 固定实现，已删除没有运行时消费者的 `TextCoverageParams` 配置。
 
 # SVG API
 

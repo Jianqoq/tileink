@@ -1,6 +1,6 @@
 use cosmic_text::{Align, Attrs, Wrap};
 
-use crate::shared::pixel::TextCoverageParams;
+use std::hash::{Hash, Hasher};
 
 #[derive(Clone, Debug)]
 pub struct TextLayoutOptions<'a> {
@@ -70,15 +70,14 @@ pub enum TextCompositeMode {
     Linear,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug)]
 pub struct TextRasterOptions {
     pub subpixel_mode: TextSubpixelMode,
     pub composite_mode: TextCompositeMode,
-    /// Contrast-dependent text coverage parameters.
-    ///
-    /// The renderer consumes this at runtime, letting the quality harness
-    /// search candidates without recompiling.
-    pub coverage_params: TextCoverageParams,
+    /// Extra outline weight in raster pixels for grayscale masks.
+    pub alpha_mask_embolden: f32,
+    /// Extra outline weight in raster pixels for RGB/BGR masks.
+    pub subpixel_mask_embolden: f32,
 }
 
 impl TextRasterOptions {
@@ -86,7 +85,8 @@ impl TextRasterOptions {
         Self {
             subpixel_mode: TextSubpixelMode::Rgb,
             composite_mode: TextCompositeMode::Linear,
-            coverage_params: TextCoverageParams::DEFAULT,
+            alpha_mask_embolden: 0.119_441_95,
+            subpixel_mask_embolden: 0.032_732_67,
         }
     }
 
@@ -100,18 +100,20 @@ impl TextRasterOptions {
         self
     }
 
-    /// Overrides text coverage compensation parameters for quality tuning.
-    pub const fn with_coverage_params(mut self, params: TextCoverageParams) -> Self {
-        self.coverage_params = params;
+    pub const fn with_alpha_mask_embolden(mut self, pixels: f32) -> Self {
+        self.alpha_mask_embolden = pixels;
+        self
+    }
+
+    pub const fn with_subpixel_mask_embolden(mut self, pixels: f32) -> Self {
+        self.subpixel_mask_embolden = pixels;
         self
     }
 
     pub(crate) const fn mask_embolden(self) -> f32 {
         match self.subpixel_mode {
-            TextSubpixelMode::None => self.coverage_params.alpha_mask_embolden,
-            TextSubpixelMode::Rgb | TextSubpixelMode::Bgr => {
-                self.coverage_params.subpixel_mask_embolden
-            }
+            TextSubpixelMode::None => self.alpha_mask_embolden,
+            TextSubpixelMode::Rgb | TextSubpixelMode::Bgr => self.subpixel_mask_embolden,
         }
     }
 }
@@ -121,3 +123,27 @@ impl Default for TextRasterOptions {
         Self::new()
     }
 }
+
+// Bitwise float identity keeps glyph preparation cache keys reflexive, including
+// NaN payloads and signed zero, without retaining the removed coverage settings.
+impl PartialEq for TextRasterOptions {
+    fn eq(&self, other: &Self) -> bool {
+        self.subpixel_mode == other.subpixel_mode
+            && self.composite_mode == other.composite_mode
+            && self.alpha_mask_embolden.to_bits() == other.alpha_mask_embolden.to_bits()
+            && self.subpixel_mask_embolden.to_bits() == other.subpixel_mask_embolden.to_bits()
+    }
+}
+impl Eq for TextRasterOptions {}
+impl Hash for TextRasterOptions {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.subpixel_mode.hash(state);
+        self.composite_mode.hash(state);
+        state.write_u32(self.alpha_mask_embolden.to_bits());
+        state.write_u32(self.subpixel_mask_embolden.to_bits());
+    }
+}
+
+#[cfg(test)]
+#[path = "tests/options.rs"]
+mod tests;

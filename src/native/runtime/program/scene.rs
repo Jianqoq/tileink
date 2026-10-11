@@ -93,6 +93,10 @@ mod upload_journal_tests;
 #[path = "../tests/scene.rs"]
 mod tests;
 
+#[cfg(test)]
+#[path = "../tests/fine_specialization.rs"]
+mod fine_specialization_tests;
+
 #[path = "scene/images.rs"]
 mod images;
 

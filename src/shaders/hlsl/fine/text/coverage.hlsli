@@ -68,17 +68,6 @@ uint auto_text_coverage(uint dst, uint src, uint coverage_in, float chroma_scale
             perceptual_light_on_dark_gate *
             channel_contrast *
             clamp((src_chroma + dst_chroma) * 0.5, 0.0, 1.0);
-        float src_chroma_dominance = clamp((src_chroma - dst_chroma) * 2.0, 0.0, 1.0);
-        float source_chroma_contrast_gate = 0.0;
-        if (TEXT_SOURCE_CHROMA_COVERAGE_CONTRAST_LIMIT > 0.0) {
-            source_chroma_contrast_gate = clamp((TEXT_SOURCE_CHROMA_COVERAGE_CONTRAST_LIMIT - luma_contrast) / TEXT_SOURCE_CHROMA_COVERAGE_CONTRAST_LIMIT, 0.0, 1.0);
-        }
-        float source_chroma_coverage_boost =
-            TEXT_SOURCE_CHROMA_COVERAGE_BOOST *
-            source_chroma_contrast_gate *
-            src_chroma_dominance *
-            src_chroma *
-            channel_contrast;
         if (src_luma < dst_luma) {
             float contrast = clamp(dst_luma - src_luma, 0.0, 1.0);
             float hidden_chroma_contrast = max(channel_contrast - contrast, 0.0);
@@ -93,7 +82,7 @@ uint auto_text_coverage(uint dst, uint src, uint coverage_in, float chroma_scale
                 0.0,
                 1.0);
             float exponent = max(
-                1.0 - TEXT_DARK_ON_LIGHT_COVERAGE_STRENGTH * curve - source_chroma_coverage_boost +
+                1.0 - TEXT_DARK_ON_LIGHT_COVERAGE_STRENGTH * curve +
                     low_luma_chroma_suppression * dst_chroma_dominance,
                 0.03);
             float compensated = pow(float(coverage_in) * (1.0 / 255.0), exponent);
@@ -151,8 +140,7 @@ uint auto_text_coverage(uint dst, uint src, uint coverage_in, float chroma_scale
                         colored_dark_surface *
                         src_chroma *
                         channel_contrast +
-                    low_luma_chroma_suppression -
-                    source_chroma_coverage_boost * (1.0 - black_surface),
+                    low_luma_chroma_suppression,
                 0.03);
             float compensated = pow(float(coverage_in) * (1.0 / 255.0), exponent);
             result = apparent_axis_corrected_coverage(

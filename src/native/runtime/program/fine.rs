@@ -19,8 +19,9 @@ pub(crate) struct FineBindings {
 
 /// # Safety
 /// All particle/draw/text/paint/segment records and image indices must be valid
-/// for this plan and its bound resources. Coarse must have completed before fine
-/// reads it. Sparse tile IDs must be unique and within the physical tile range;
+/// for this plan and its bound resources, with tile kinds matching their emitted
+/// particle membership. Coarse must have completed before fine reads it.
+/// Sparse tile IDs must be unique and within the physical tile range;
 /// spill depths must cover actual clip/group nesting. Discard the batch on error.
 pub(crate) unsafe fn encode(
     batch: &mut ComputeBatch,

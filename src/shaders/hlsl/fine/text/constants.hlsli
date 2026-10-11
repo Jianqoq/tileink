@@ -1,14 +1,12 @@
 #ifndef TILEINK_HLSL_FINE_TEXT_CONSTANTS_INCLUDED
 #define TILEINK_HLSL_FINE_TEXT_CONSTANTS_INCLUDED
 
-// Shared perceptual text parameters; the WGSL build imports these exact literals.
+// Native perceptual text parameters; runtime raster options control mask weight.
 static const float TEXT_DARK_ON_LIGHT_COVERAGE_STRENGTH = 0.95;
 static const float TEXT_DARK_ON_LIGHT_LUMA_BASE = 1.5728465;
 static const float TEXT_DARK_ON_LIGHT_LUMA_TAPER = 1.15;
 static const float TEXT_DARK_ON_LIGHT_CHROMA_BOOST = 0.3656558;
 static const float TEXT_DARK_ON_LIGHT_CORE_CONTRAST = 0.8;
-static const float TEXT_SOURCE_CHROMA_COVERAGE_BOOST = 0.0;
-static const float TEXT_SOURCE_CHROMA_COVERAGE_CONTRAST_LIMIT = 0.23100804;
 static const float TEXT_LIGHT_ON_DARK_COVERAGE_REDUCTION = 0.20662805;
 static const float TEXT_LIGHT_ON_DARK_BLACK_LUMA_LIMIT = 0.02875403;
 static const float TEXT_LIGHT_ON_DARK_CHROMA_REDUCTION = 0.11479953;

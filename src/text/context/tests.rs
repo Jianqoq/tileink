@@ -35,10 +35,45 @@ fn image_cache_reuses_data_and_separates_raster_options() {
         assert_eq!(context.image_cache.len(), index + 1);
     }
     let mut options = context.raster_options();
-    options.coverage_params.alpha_mask_embolden += 0.25;
+    options.alpha_mask_embolden += 0.25;
     context.set_raster_options(options);
     assert!(context.glyph_image(&mut fonts, key).is_some());
     assert_eq!(context.image_cache.len(), 4);
+}
+
+#[test]
+fn mask_weight_options_change_pixels_and_reuse_only_the_selected_mode() {
+    let mut fonts = font_system();
+    let mut context = TextContext::new();
+    let layout = context.layout(&mut fonts, TextLayoutOptions::new("H", 24.0));
+    let key = layout.glyphs()[0].cache_key;
+    for mode in [
+        TextSubpixelMode::None,
+        TextSubpixelMode::Rgb,
+        TextSubpixelMode::Bgr,
+    ] {
+        context.clear_glyph_caches();
+        let options = TextRasterOptions::new().with_subpixel_mode(mode);
+        context.set_raster_options(options);
+        let original = context.glyph_image(&mut fonts, key).unwrap().data.clone();
+        let unused = if mode == TextSubpixelMode::None {
+            options.with_subpixel_mask_embolden(0.75)
+        } else {
+            options.with_alpha_mask_embolden(0.75)
+        };
+        context.set_raster_options(unused);
+        assert_eq!(context.glyph_image(&mut fonts, key).unwrap().data, original);
+        assert_eq!(context.image_cache.len(), 1);
+        let changed = options
+            .with_alpha_mask_embolden(0.75)
+            .with_subpixel_mask_embolden(0.75);
+        context.set_raster_options(changed);
+        assert_ne!(context.glyph_image(&mut fonts, key).unwrap().data, original);
+        assert_eq!(context.image_cache.len(), 2);
+        context.set_raster_options(options);
+        assert_eq!(context.glyph_image(&mut fonts, key).unwrap().data, original);
+        assert_eq!(context.image_cache.len(), 2);
+    }
 }
 
 #[test]

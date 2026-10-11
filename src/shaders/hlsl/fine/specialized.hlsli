@@ -13,14 +13,15 @@
 #include "../shared/brush/data.hlsli"
 #include "../shared/brush/constants.hlsli"
 
-// A failed specialization leaves the root entry to run the interpreter once.
-// Do not inline the complete glyph/stack interpreter into each fast path.
-bool color_only_no_stack_tile_pixel(FineInputs input, uint tile_ix, uint local_ix, out float4 pixel) {
+// Coarse classifies the particles it emits: COLOR contains only colors, while
+// SDF/MIXED contain colors, full-tile images and supported solid SDFs. Scalar,
+// chunked and reused preallocated streams establish this before fine executes.
+float4 color_only_no_stack_tile_pixel(FineInputs input, uint tile_ix, uint local_ix) {
     uint tile_x = tile_ix % input.config.tiles_width;
     uint tile_y = tile_ix / input.config.tiles_width;
     uint global_x = tile_x * TILE_SIZE + local_ix % TILE_SIZE;
     uint global_y = tile_y * TILE_SIZE + local_ix / TILE_SIZE;
-    pixel = fine_initial_pixel(input, global_x, global_y);
+    float4 pixel = fine_initial_pixel(input, global_x, global_y);
 
     FineTile tile = coarse_load_tile(input, tile_ix);
     uint ptcl_ix = tile.ptcl_start;
@@ -33,9 +34,6 @@ bool color_only_no_stack_tile_pixel(FineInputs input, uint tile_ix, uint local_i
         if (tag == PTCL_END) {
             break;
         }
-        if (tag != PTCL_COLOR) {
-            return false;
-        }
         if (premul_u8_is_opaque(ptcl.color)) {
             pixel = rgba8_to_unorm(ptcl.color);
         } else {
@@ -43,17 +41,17 @@ bool color_only_no_stack_tile_pixel(FineInputs input, uint tile_ix, uint local_i
         }
         ptcl_ix += 1u;
     }
-    return true;
+    return pixel;
 }
 
-bool analytic_solid_no_stack_tile_pixel(FineInputs input, Texture2D<float4> images[NATIVE_TEXTURE_TABLE_CAPACITY], uint tile_ix, uint local_ix, out float4 pixel) {
+float4 analytic_solid_no_stack_tile_pixel(FineInputs input, Texture2D<float4> images[NATIVE_TEXTURE_TABLE_CAPACITY], uint tile_ix, uint local_ix) {
     uint tile_x = tile_ix % input.config.tiles_width;
     uint tile_y = tile_ix / input.config.tiles_width;
     uint global_x = tile_x * TILE_SIZE + local_ix % TILE_SIZE;
     uint global_y = tile_y * TILE_SIZE + local_ix / TILE_SIZE;
     float sample_x = float(global_x) + 0.5;
     float sample_y = float(global_y) + 0.5;
-    pixel = fine_initial_pixel(input, global_x, global_y);
+    float4 pixel = fine_initial_pixel(input, global_x, global_y);
 
     FineTile tile = coarse_load_tile(input, tile_ix);
     if (tile.ptcl_start + 1u < tile.ptcl_end) {
@@ -62,9 +60,9 @@ bool analytic_solid_no_stack_tile_pixel(FineInputs input, Texture2D<float4> imag
         if (first.tag == PTCL_IMAGE && second.tag == PTCL_END) {
             uint color = sample_draw_brush(input, images, load_fine_draw(input.draws,first.color), sample_x, sample_y);
             if (premul_u8_is_opaque(color)) {
-                pixel = rgba8_to_unorm(color); return true;
+                return rgba8_to_unorm(color);
             }
-            pixel = src_over_premul_unorm(pixel, rgba8_to_unorm(color)); return true;
+            return src_over_premul_unorm(pixel, rgba8_to_unorm(color));
         }
     }
     uint ptcl_ix = tile.ptcl_start;
@@ -91,7 +89,7 @@ bool analytic_solid_no_stack_tile_pixel(FineInputs input, Texture2D<float4> imag
             } else {
                 pixel = src_over_premul_unorm(pixel, rgba8_to_unorm(color));
             }
-        } else if (tag == PTCL_SDF) {
+        } else {
             FineDraw draw = load_fine_draw(input.draws,ptcl.color);
             float coverage = 0.0;
             if (pixel_in_draw_bounds(draw, global_x, global_y)) {
@@ -106,12 +104,10 @@ bool analytic_solid_no_stack_tile_pixel(FineInputs input, Texture2D<float4> imag
                     pixel = src_over_premul_unorm(pixel, scale_premul_u8_to_unorm(color, alpha));
                 }
             }
-        } else {
-            return false;
         }
         ptcl_ix += 1u;
     }
-    return true;
+    return pixel;
 }
 
 #endif

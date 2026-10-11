@@ -1992,9 +1992,85 @@ perform clip/group/path/text compositing; they are unrelated to the removed
 custom-shader expression interpreter. The SVG entry has only been read through
 line 220 and is not counted as complete. Independent auditing continues.
 
+## Phase 41: classified fine streams and active text raster options
+
+Coarse already classifies the particle stream it emits. Scalar emission accumulates
+membership from each stored particle; chunked emission reduces the same flags
+before selecting the kind. Non-elided clips/groups force general compositing.
+Parallel emission refreshes reused tile kinds and terminators, and preallocated
+clip slots start with general kinds. Inactive tiles are excluded from sparse fine
+dispatch. The unsafe fine encoder now explicitly documents the existing requirement
+that tile kinds match particle membership.
+
+Both native fine implementations therefore select their rasterizer directly.
+Removed the boolean/out-result protocol, unexpected-tag checks and retry of the
+entire tile after partial shading. Colors, supported solid SDFs and full-tile
+images retain the same blend order and quantization. The general clip/group/path/
+text compositor remains current functionality; this is a permanent producer/
+consumer cleanup, without a replacement recovery path. Two new GPU tests pass
+before and after the edit: real normal/chunked producers observe all five kinds
+across 30 scene changes and work-arena reuse, while a general SDF oracle checks
+60 renderer frames across empty/color/SDF/mixed/general streams, alpha 0/127/255,
+partial edge tiles and draw counts 0/1/17/257. Existing coarse tests cover image,
+glyph, wrapper, sparse/preallocated and retained exposure behavior.
+
+The runtime TextCoverageParams container retained 25 fields from a quality-harness
+interface, but only its two mask embolden fields still affected rasterization.
+The other 23 fields changed defaults/equality/hashing without configuring native
+coverage shaders. Removed that container, export and with_coverage_params method.
+TextRasterOptions now directly owns alpha_mask_embolden and subpixel_mask_embolden,
+with individual builders and unchanged default weights. Bitwise float equality
+and hashing preserve signed-zero and NaN identity for preparation caches. Three
+new tests cover real grayscale/RGB/BGR glyph pixels, active-mode cache reuse,
+weight defaults and hash-map identity. Both website languages document the actual
+runtime controls; no compatibility alias remains.
+
+HLSL also computed a source-chroma dominance/gate/boost whose sole multiplier was
+a fixed zero. Packed u8 channels, guarded nonzero alpha division and clamping
+establish finite values throughout that term. Removed its dead math and constants
+from both exponent expressions, preserving active alpha/LCD compensation and
+quantization. Metal already omitted this term. This removes dormant code; a
+compiler may already have folded it away, so no HLSL speedup is asserted.
+
+Focused serial release checks pass 61 text tests, 30 coarse tests and the two fine
+tests. Full all-target release tests pass 1089 cases with the same three known
+failures: two missing pinned-DXC checks and the 1600-pixel turbulence canonical
+mismatch. Formatting, release clippy, backend-free compilation and example builds
+pass. The existing one library/eight test clippy warnings remain. Actual HLSL/DXC,
+DX12/Vulkan execution and the website build dependencies remain unavailable.
+
+With Metal validation enabled, all 1730 SVG PNGs and seven image examples match
+baseline bytes exactly, which also proves identical decoded pixels. Native
+presentation completes eight frames with the expected 640x360 to 480x270 resize.
+Both Metal artifact manifests change consistently with fine specialization; the
+backend-free manifest is unchanged. No shader binding ABI changes.
+
+The [application report](benchmarks/cleanup-phase41-metal-2026-10-12.json)
+retains 96 whole-process observations: baseline/current and identical-current
+controls, with two warmups per label and ten alternating timed pairs. SVG medians
+change 4277.178 to 4303.238 ms (+0.61%), control -0.32%; window medians change
+250.550 to 250.053 ms (-0.20%), control +0.19%. No material central timing
+regression is observed in these applications. Raw observations and tails remain
+available; nearest-rank p95 is the maximum of ten samples. These measurements do
+not establish an isolated shader speedup or performance for every workload.
+Verification follows each stopped timer: 83040 SVG PNG hashes and 384 completed
+window frames pass, and the 1730 SVG source hashes are unchanged. Timing disables
+Metal validation; window pins registry ID 0000000100000575, and SVG uses the
+default on the freshly verified single-GPU Apple M5 host. The temporary validation
+script and all four copied measurement executables are removed. All 47 benchmark
+JSON/gzip files parse; generated npm lockfile declarations match.
+
+The audit has fully read 804 of 973 current implementation files, leaving 169:
+60 native runtime files, 108 production shader files and the SVG entry. All scan
+shaders and the reviewed Metal completion, allocation, frame encoding, resource,
+readback and attachment paths preserve real geometry/ownership/error semantics.
+An unnecessary empty readback encoder and duplicated clear-shortcut binding/type
+skips are recorded for focused producer/ordering proof and application validation.
+The SVG entry is still only read through line 220 and is not counted as complete.
+
 ## Remaining audit work
 
-- Continue the 209 pending native runtime, shader and SVG-entry reads. Prove coarse stack emitter inputs, fine specialization membership across reused slots and constant-zero HLSL text callers before removing their redundant paths. Test DX12 lock-poison policy and prove packed uniform handle presence. Trace exact retained metadata patching for clip-bound updates inside filters and prove offscreen clip exclusion before removing its error wrapper. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
+- Continue the 169 pending native runtime, shader and SVG-entry reads. Prove coarse stack emitter inputs before removing duplicate validity skips. Fine specialization retry and dormant HLSL/runtime text coverage settings have been removed. Investigate the empty Metal readback encoder and duplicate clear-shortcut binding/type skips; preserve partial/compact targets and GPU-written uniform behavior. Test DX12 lock-poison policy and prove packed uniform handle presence. Trace exact retained metadata patching for clip-bound updates inside filters and prove offscreen clip exclusion before removing its error wrapper. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
 - Execute the HLSL editor test against the actual ShaderTools language server; local protocol regressions pass, but the server is unavailable locally.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

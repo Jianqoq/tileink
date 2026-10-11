@@ -50,10 +50,19 @@ pub(super) fn interpret_rectangles(
         [width, height],
         [0, 0, 0, 255].repeat((width * height) as usize),
     )?;
-    let draws = batch.buffer(bytemuck::cast_slice(&canvas.draw_records).to_vec())?;
-    let paint = batch.buffer(bytes(&paint))?;
-    let coarse = batch.buffer(bytes(&coarse))?;
+    // Empty scenes still bind nonempty buffers, even though END prevents reads.
     let dummy = batch.buffer(vec![0; 4])?;
+    let draws = if canvas.draw_records.is_empty() {
+        dummy
+    } else {
+        batch.buffer(bytemuck::cast_slice(&canvas.draw_records).to_vec())?
+    };
+    let paint = if paint.is_empty() {
+        dummy
+    } else {
+        batch.buffer(bytes(&paint))?
+    };
+    let coarse = batch.buffer(bytes(&coarse))?;
     let spills = batch.buffer(vec![0; 4])?;
     let atlas = batch.texture_array_rgba8([1, 1, 1], vec![0; 4])?;
     let image = batch.texture_rgba8([1, 1], vec![0; 4])?;
@@ -211,6 +220,55 @@ fn native_rect_tile_proofs_match_fine_only_pixels() -> Result<()> {
                 .zip(&expected)
                 .position(|(a, b)| a != b)
         );
+    }
+    context.check_validation()?;
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn native_fine_specializations_match_general_shading_across_reused_frames() -> Result<()> {
+    use crate::{Brush, Canvas, NativeRenderer, Radius, native::runtime::gpu_support};
+    use peniko::{Color, kurbo::Rect};
+    let context = gpu_support::context()?;
+    let mut renderer = NativeRenderer::with_context(&context, 129, 113)?;
+    renderer.set_clear_color(Color::BLACK);
+    // Switching among empty, color, analytic, mixed and general streams reuses
+    // the same renderer. The oracle emits every rectangle as general SDF work,
+    // independently of coarse's full-tile and solid-brush classification proofs.
+    for count in [0, 1, 17, 257] {
+        for alpha in [0, 127, 255] {
+            for mode in [2, 3, 0, 1, 4] {
+                let mut canvas = Canvas::new(129, 113, 1.0);
+                for i in 0..count {
+                    let partial = mode == 1 || mode == 2 && i % 2 == 0;
+                    let rect = if partial {
+                        Rect::new(3.25, 7.75, 124.5, 107.25)
+                    } else {
+                        Rect::new(0., 0., 129., 113.)
+                    };
+                    let color = Color::from_rgba8(
+                        (i * 37) as u8,
+                        (i * 71) as u8,
+                        (i * 97) as u8,
+                        if mode == 4 { 0 } else { alpha },
+                    );
+                    let brush = if mode == 3 {
+                        Brush::four_corner(rect, [color; 4])
+                    } else {
+                        Brush::Solid(color)
+                    };
+                    canvas.push_rect(rect, Radius::all(if partial { 19.5 } else { 0. }), brush);
+                }
+                let expected = interpret_rectangles(&context, &canvas)?;
+                let actual = renderer.render_to_image(&canvas)?.readback()?;
+                assert_eq!(
+                    bytemuck::cast_slice::<u32, u8>(&actual.pixels),
+                    expected,
+                    "count={count} alpha={alpha} mode={mode}"
+                );
+            }
+        }
     }
     context.check_validation()?;
     Ok(())
