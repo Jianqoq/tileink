@@ -191,6 +191,30 @@ Every case preserves exact pixels, and p50 changes range from -0.76% to +0.70%,
 with no material measured regression.
 [Raw measurements and protocol](benchmarks/cleanup-phase6-metal-2026-10-11.json).
 
+## Phase 7: fixed layouts do not need missing-value substitutes
+
+LCD rasterization always merges exactly three channel masks. Their bounds now
+use that fixed shape directly, without defaults for an impossible empty channel
+collection. Brush and SDF decoders also extract their validated fixed parameter
+arrays directly, removing impossible fallible length conversions and the private
+partial-parameter zero-fill helper.
+
+Actual record bounds, payload lengths, unknown shape kinds and descriptor
+validation remain enforced. New semantic tests cover nontrivial gradient
+parameters, truncated headers/payloads, invalid variable color counts, unknown
+SDF kinds and exact floating-point bit preservation. Both tests pass before and
+after the refactor. The brush and SDF tests now live in separate test modules,
+keeping production files smaller. This removes redundant branches, rather than
+masking a malformed-data error with a temporary substitute.
+
+All 14 brush, 2 SDF, 38 text and 8 localized-offscreen focused release tests pass.
+The complete single-thread suite reports 959 passing tests and the same nine known
+failures. All 1730 SVG images and seven example PNGs remain byte-identical to the
+initial cleanup baseline. Example tests and release Clippy pass without new warnings.
+The same 17 paired actual renderer workloads preserve exact pixels, with p50 changes
+from -0.97% to +0.59%. These variations do not establish a material regression
+or speedup. [Raw measurements and protocol](benchmarks/cleanup-phase7-metal-2026-10-11.json).
+
 ## Remaining audit work
 
 - Standalone vector-image placements still upload a zero-filled placeholder before

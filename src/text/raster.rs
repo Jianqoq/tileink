@@ -171,26 +171,17 @@ pub(super) fn harmony_lcd_outline_shifts(mode: TextSubpixelMode) -> [f32; 3] {
 }
 
 pub(super) fn merge_harmony_lcd_masks(channels: [SwashImage; 3]) -> SwashImage {
-    let left = channels
-        .iter()
-        .map(|image| image.placement.left)
-        .min()
-        .unwrap_or(0);
-    let right = channels
-        .iter()
-        .map(|image| image.placement.left + image.placement.width as i32)
-        .max()
-        .unwrap_or(left);
-    let top = channels
-        .iter()
-        .map(|image| image.placement.top)
-        .max()
-        .unwrap_or(0);
-    let bottom = channels
-        .iter()
-        .map(|image| image.placement.top - image.placement.height as i32)
-        .min()
-        .unwrap_or(top);
+    // The input always contains three channels, including empty glyph masks.
+    // Their union has no missing-channel/default-bounds case.
+    let [red, green, blue] = channels.each_ref().map(|image| image.placement);
+    let left = red.left.min(green.left).min(blue.left);
+    let right = (red.left + red.width as i32)
+        .max(green.left + green.width as i32)
+        .max(blue.left + blue.width as i32);
+    let top = red.top.max(green.top).max(blue.top);
+    let bottom = (red.top - red.height as i32)
+        .min(green.top - green.height as i32)
+        .min(blue.top - blue.height as i32);
     let width = (right - left).max(0) as u32;
     let height = (top - bottom).max(0) as u32;
     let mut data = vec![0; width as usize * height as usize * 3];

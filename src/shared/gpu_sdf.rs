@@ -286,16 +286,17 @@ pub(crate) fn push_encoded_sdf_shadow(blob: &mut Vec<u32>, sdf_shadow: SdfShadow
 
 pub(crate) fn encoded_sdf(blob: &[u32], offset: u32, len: u32) -> Option<EncodedSdf> {
     let words = encoded_words(blob, offset, len)?;
-    let mut values = [0.0; 16];
-    for (dst, src) in values.iter_mut().zip(&words[1..]) {
-        *dst = f32::from_bits(*src);
-    }
+    // A validated record contains exactly four four-float groups. Decode their
+    // fixed layout directly, retaining the genuine truncated-record check above.
+    let [coords, radii, stroke, shadow] = std::array::from_fn(|group| {
+        std::array::from_fn(|component| f32::from_bits(words[1 + group * 4 + component]))
+    });
     Some(EncodedSdf {
         kind: words[0],
-        coords: values[0..4].try_into().ok()?,
-        radii: values[4..8].try_into().ok()?,
-        stroke: values[8..12].try_into().ok()?,
-        shadow: values[12..16].try_into().ok()?,
+        coords,
+        radii,
+        stroke,
+        shadow,
     })
 }
 
@@ -532,115 +533,4 @@ fn line_cap_from_value(value: f32) -> LineCap {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn encoded_sdf_blob_round_trips_sdf_and_shadow_records() {
-        let sdfs = [
-            Sdf::Rect(Rect {
-                start: Point::new(2.0, 3.0),
-                end: Point::new(18.0, 19.0),
-                radius: Radius::all(4.0),
-            }),
-            Sdf::RectStroke(RectStroke {
-                rect: Rect {
-                    start: Point::new(4.0, 5.0),
-                    end: Point::new(40.0, 41.0),
-                    radius: Radius {
-                        top_left: 1.0,
-                        top_right: 2.0,
-                        bottom_right: 3.0,
-                        bottom_left: 4.0,
-                    },
-                },
-                widths: StrokeWidths {
-                    top: 2.0,
-                    right: 4.0,
-                    bottom: 6.0,
-                    left: 8.0,
-                },
-            }),
-            Sdf::DashLine(DashLine::with_offset(
-                Point::new(8.0, 16.5),
-                Point::new(32.0, 16.5),
-                1.0,
-                LineCap::Square,
-                4.0,
-                3.0,
-                1.5,
-            )),
-            Sdf::Triangle(crate::shared::sdf::triangle::Triangle::new(
-                Point::new(4.0, 5.0),
-                Point::new(20.0, 12.0),
-                Point::new(7.0, 30.0),
-                2.5,
-            )),
-            Sdf::Star(Star::new(
-                Point::new(18.0, 19.0),
-                8.0,
-                3.5,
-                1.25,
-                -std::f32::consts::FRAC_PI_2,
-            )),
-            Sdf::StarStroke(StarStroke::new(
-                Star::new(Point::new(24.0, 25.0), 10.0, 4.6, 1.0, 0.2),
-                2.5,
-            )),
-            Sdf::Callout(Callout::new(
-                peniko::kurbo::Rect::new(4.0, 5.0, 84.0, 45.0),
-                8.0,
-                CalloutTail::new(CalloutSide::Bottom, 38.0, 10.0, 6.0, 1.5),
-            )),
-            Sdf::CalloutStroke(CalloutStroke::new(
-                Callout::new(
-                    peniko::kurbo::Rect::new(8.0, 9.0, 92.0, 52.0),
-                    7.0,
-                    CalloutTail::hidden(),
-                ),
-                1.5,
-            )),
-        ];
-        let shadows = [
-            SdfShadow::Circle(CircleShadow {
-                circle: Circle {
-                    center: Point::new(20.0, 21.0),
-                    radius: 8.0,
-                },
-                options: ShadowOptions::new(2.0, 3.0, 4.0, 0.5),
-            }),
-            SdfShadow::Rc(ArcShadow {
-                arc: Rc::new(
-                    Point::new(32.0, 32.0),
-                    10.0,
-                    0.0,
-                    std::f32::consts::FRAC_PI_2,
-                    3.0,
-                    LineCap::Round,
-                ),
-                options: ShadowOptions::new(-1.0, 2.0, 5.0, 0.75),
-            }),
-            SdfShadow::Callout(CalloutShadow {
-                callout: Callout::new(
-                    peniko::kurbo::Rect::new(4.0, 5.0, 84.0, 45.0),
-                    8.0,
-                    CalloutTail::new(CalloutSide::Left, 18.0, 10.0, 6.0, 1.5),
-                ),
-                options: ShadowOptions::new(0.0, 6.0, 16.0, 0.28),
-            }),
-        ];
-        let mut sdf_blob = Vec::new();
-        for sdf in sdfs {
-            let (offset, len) = push_encoded_sdf(&mut sdf_blob, sdf);
-            let decoded = decode_sdf(&sdf_blob, offset, len).expect("decode sdf");
-            assert_eq!(encode_sdf(decoded), encode_sdf(sdf));
-        }
-
-        let mut shadow_blob = Vec::new();
-        for shadow in shadows {
-            let (offset, len) = push_encoded_sdf_shadow(&mut shadow_blob, shadow);
-            let decoded = decode_sdf_shadow(&shadow_blob, offset, len).expect("decode sdf shadow");
-            assert_eq!(encode_sdf_shadow(decoded), encode_sdf_shadow(shadow));
-        }
-    }
-}
+mod tests;

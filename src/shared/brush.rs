@@ -331,7 +331,7 @@ pub(crate) fn encoded_brush_word_len(brush: &Brush) -> usize {
 
 pub(crate) fn encoded_brush_payload(blob: &[u32], offset: u32, len: u32) -> Option<&[u32]> {
     let record = encoded_brush_words(blob, offset, len)?;
-    let data: &[u32; GPU_BRUSH_U32_STRIDE] = record[..GPU_BRUSH_U32_STRIDE].try_into().ok()?;
+    let data = &record[..GPU_BRUSH_U32_STRIDE];
     let start = data[2] as usize;
     let end = start.checked_add(data[3] as usize)?;
     record.get(start..end)
@@ -339,15 +339,18 @@ pub(crate) fn encoded_brush_payload(blob: &[u32], offset: u32, len: u32) -> Opti
 
 pub(crate) fn decode_encoded_brush(blob: &[u32], offset: u32, len: u32) -> Option<Brush> {
     let record = encoded_brush_words(blob, offset, len)?;
-    let data: &[u32; GPU_BRUSH_U32_STRIDE] = record[..GPU_BRUSH_U32_STRIDE].try_into().ok()?;
-    let params = decode_params(&record[GPU_BRUSH_U32_STRIDE..ENCODED_BRUSH_HEADER_WORDS]);
+    let data = &record[..GPU_BRUSH_U32_STRIDE];
+    // Header validation guarantees every fixed parameter. Variable payloads and
+    // encoded descriptor values still require validation below.
+    let params: [f32; GPU_BRUSH_PARAM_STRIDE] =
+        std::array::from_fn(|i| f32::from_bits(record[GPU_BRUSH_U32_STRIDE + i]));
     let payload = encoded_brush_payload(blob, offset, len)?;
     match data[0] {
         GPU_BRUSH_SOLID => Some(Brush::Solid(color_from_premul_rgba8(data[4]))),
         GPU_BRUSH_LINEAR => Some(Brush::Linear(LinearGradient {
             start: [params[0], params[1]],
             end: [params[2], params[3]],
-            transform: params[4..10].try_into().ok()?,
+            transform: std::array::from_fn(|i| params[4 + i]),
             extend: decode_gpu_extend(data[1]),
             ramp: Rc::from(payload),
         })),
@@ -356,7 +359,7 @@ pub(crate) fn decode_encoded_brush(blob: &[u32], offset: u32, len: u32) -> Optio
             end_center: [params[2], params[3]],
             start_radius: params[4],
             end_radius: params[5],
-            transform: params[6..12].try_into().ok()?,
+            transform: std::array::from_fn(|i| params[6 + i]),
             extend: decode_gpu_extend(data[1]),
             ramp: Rc::from(payload),
         })),
@@ -368,7 +371,7 @@ pub(crate) fn decode_encoded_brush(blob: &[u32], offset: u32, len: u32) -> Optio
             ramp: Rc::from(payload),
         })),
         GPU_BRUSH_FOUR_CORNER => Some(Brush::FourCorner(FourCornerGradient {
-            bounds: params[0..4].try_into().ok()?,
+            bounds: std::array::from_fn(|i| params[i]),
             colors: payload.try_into().ok()?,
         })),
         GPU_BRUSH_MESH => {
@@ -387,8 +390,8 @@ pub(crate) fn decode_encoded_brush(blob: &[u32], offset: u32, len: u32) -> Optio
                 return None;
             }
             Some(Brush::Mesh(MeshGradient {
-                transform: params[..6].try_into().ok()?,
-                bounds: params[6..10].try_into().ok()?,
+                transform: std::array::from_fn(|i| params[i]),
+                bounds: std::array::from_fn(|i| params[6 + i]),
                 bins,
                 patch_base: data[6],
                 interpolation: if data[7] == 0 {
@@ -400,7 +403,11 @@ pub(crate) fn decode_encoded_brush(blob: &[u32], offset: u32, len: u32) -> Optio
             }))
         }
         GPU_BRUSH_PROGRAM => Some(Brush::Program(super::shader::ProgramBrush(
-            super::shader::ProgramInstance::decode(payload, params[..6].try_into().ok()?, false)?,
+            super::shader::ProgramInstance::decode(
+                payload,
+                std::array::from_fn(|i| params[i]),
+                false,
+            )?,
         ))),
         GPU_BRUSH_PATTERN_RESOURCE => {
             if payload.len() < 3 {
@@ -410,7 +417,7 @@ pub(crate) fn decode_encoded_brush(blob: &[u32], offset: u32, len: u32) -> Optio
                 image: PatternImage::Resource(ImageResourceId::decode(
                     payload[0], payload[1], payload[2],
                 )),
-                transform: params[0..6].try_into().ok()?,
+                transform: std::array::from_fn(|i| params[i]),
                 extend: decode_gpu_extend(data[1]),
                 sampling: decode_gpu_pattern_sampling(data[8]),
                 opacity: data[7].min(255) as u8,
@@ -688,14 +695,6 @@ fn encoded_brush_words(blob: &[u32], offset: u32, len: u32) -> Option<&[u32]> {
     (record.len() >= ENCODED_BRUSH_HEADER_WORDS).then_some(record)
 }
 
-fn decode_params(words: &[u32]) -> [f32; GPU_BRUSH_PARAM_STRIDE] {
-    let mut params = [0.0; GPU_BRUSH_PARAM_STRIDE];
-    for (dst, src) in params.iter_mut().zip(words) {
-        *dst = f32::from_bits(*src);
-    }
-    params
-}
-
 fn color_from_premul_rgba8(color: u32) -> peniko::Color {
     let [r, g, b, a] = unpack_rgba8(color);
     if a == 0 {
@@ -749,113 +748,4 @@ fn quantize_ramp_size(span: f32, stop_count: usize) -> usize {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use peniko::{
-        ColorStop, ColorStops, Gradient, GradientKind, LinearGradientPosition,
-        color::{AlphaColor, ColorSpaceTag, HueDirection},
-    };
-
-    fn linear_gradient() -> Gradient {
-        let stops = [
-            ColorStop::from((0.0, AlphaColor::from_rgb8(255, 0, 0))),
-            ColorStop::from((1.0, AlphaColor::from_rgb8(0, 0, 255))),
-        ];
-        Gradient {
-            kind: GradientKind::Linear(LinearGradientPosition::new((0.0, 0.0), (1.0, 0.0))),
-            extend: Extend::Pad,
-            stops: ColorStops::from(stops.as_slice()),
-            interpolation_cs: ColorSpaceTag::Srgb,
-            interpolation_alpha_space: InterpolationAlphaSpace::Premultiplied,
-            hue_direction: HueDirection::Shorter,
-        }
-    }
-
-    #[test]
-    fn from_gradient_with_ramp_size_uses_dynamic_len() {
-        let brush = Brush::from_gradient_with_ramp_size(&linear_gradient(), 33);
-        let Brush::Linear(gradient) = brush else {
-            panic!("expected linear gradient");
-        };
-        assert_eq!(gradient.ramp.len(), 33);
-    }
-
-    #[test]
-    fn from_gradient_automatically_estimates_small_linear_ramp() {
-        let brush = Brush::from_gradient(&linear_gradient());
-        let Brush::Linear(gradient) = brush else {
-            panic!("expected linear gradient");
-        };
-        assert_eq!(gradient.ramp.len(), MIN_GRADIENT_RAMP_SIZE);
-    }
-
-    #[test]
-    fn estimated_ramp_size_grows_with_span() {
-        let small = estimate_linear_ramp_size([0.0, 0.0], [8.0, 0.0], 2);
-        let large = estimate_linear_ramp_size([0.0, 0.0], [512.0, 0.0], 2);
-        assert!(large > small, "small={small} large={large}");
-    }
-
-    #[test]
-    fn estimated_ramp_size_respects_stop_density() {
-        let sparse = estimate_linear_ramp_size([0.0, 0.0], [8.0, 0.0], 2);
-        let dense = estimate_linear_ramp_size([0.0, 0.0], [8.0, 0.0], 12);
-        assert!(dense > sparse, "sparse={sparse} dense={dense}");
-    }
-
-    #[test]
-    fn encoded_brush_blob_round_trips_variable_payload_brushes() {
-        let renderer_key = ImageKey::new(0x1234_5678_9abc_def0);
-        let scene_key = ImageKey::new(0x2234_5678_9abc_def0);
-        let brushes = [
-            Brush::Solid(peniko::Color::from_rgba8(64, 128, 255, 128)),
-            Brush::Pattern(
-                PatternBrush::new_resource(
-                    ImageResourceId::renderer(renderer_key),
-                    [2.0, 0.0, 0.0, 3.0, 5.0, 7.0],
-                    Extend::Reflect,
-                    PatternSampling::Bilinear,
-                    200,
-                )
-                .unwrap(),
-            ),
-            Brush::Pattern(
-                PatternBrush::new_resource(
-                    ImageResourceId::scene(scene_key),
-                    [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-                    Extend::Repeat,
-                    PatternSampling::Nearest,
-                    255,
-                )
-                .unwrap(),
-            ),
-        ];
-        let mut blob = Vec::new();
-        let ranges = brushes
-            .iter()
-            .map(|brush| push_encoded_brush(&mut blob, brush))
-            .collect::<Vec<_>>();
-
-        assert_eq!(
-            decode_encoded_brush(&blob, ranges[0].0, ranges[0].1)
-                .and_then(|brush| brush.solid_color()),
-            Some(peniko::Color::from_rgba8(64, 128, 255, 128))
-        );
-        let Some(Brush::Pattern(resource)) = decode_encoded_brush(&blob, ranges[1].0, ranges[1].1)
-        else {
-            panic!("expected renderer resource pattern");
-        };
-        assert_eq!(resource.image_key(), Some(renderer_key));
-        assert_eq!(resource.transform, [2.0, 0.0, 0.0, 3.0, 5.0, 7.0]);
-        assert_eq!(resource.extend, Extend::Reflect);
-        assert_eq!(resource.sampling, PatternSampling::Bilinear);
-        assert_eq!(resource.opacity, 200);
-
-        let Some(Brush::Pattern(scene)) = decode_encoded_brush(&blob, ranges[2].0, ranges[2].1)
-        else {
-            panic!("expected scene resource pattern");
-        };
-        assert_eq!(scene.image_resource_id(), ImageResourceId::scene(scene_key));
-        assert_eq!(scene.extend, Extend::Repeat);
-    }
-}
+mod tests;
