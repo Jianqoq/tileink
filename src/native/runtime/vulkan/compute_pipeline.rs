@@ -45,7 +45,7 @@ pub fn ensure(
     let compiled = pass
         .native_source
         .as_ref()
-        .map(|source| crate::native::runtime::program_shader::dxc::compile(source, entry, "spirv"))
+        .map(|source| crate::native::runtime::program_shader::dxc::compile(source, "spirv"))
         .transpose()?;
     let (bytes, key) = compiled
         .as_ref()

@@ -278,6 +278,16 @@ fn validate_inner(bytes: &[u8], entry: &str, abi: &Interface, optional: bool) ->
                     && r.decorations.contains_key(&(structure, 3)),
                 "SPIR-V byte buffer block",
             )?;
+            // DXC uses the same BufferBlock/uint-array layout for ByteAddressBuffer
+            // and RWByteAddressBuffer. Only NonWritable proves a read binding;
+            // writable bindings may legitimately be optimized to read-only.
+            if resource.kind == Kind::Read {
+                require(
+                    r.decorations.contains_key(&(id, 24))
+                        || r.member_decorations.contains_key(&(structure, 0, 24)),
+                    "SPIR-V read-only byte buffer",
+                )?;
+            }
             let array = members[0];
             let ty = r
                 .types

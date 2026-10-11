@@ -52,6 +52,44 @@ fn actual_spirv_rejects_wrong_entry_layout_binding_stride_and_workgroup() {
 
 #[cfg(all(feature = "vulkan", any(target_os = "windows", target_os = "linux")))]
 #[test]
+fn actual_spirv_readonly_buffer_rejects_removed_nonwritable_decorations() {
+    let artifact = tileink::NATIVE_SHADER_ARTIFACTS
+        .iter()
+        .find(|a| a.format == "spirv" && a.entry == "copy_words")
+        .unwrap();
+    let interface = interfaces::get("probe").unwrap();
+    spirv::validate(artifact.bytes, artifact.entry, &interface).unwrap();
+    let words: Vec<u32> = artifact
+        .bytes
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .copied()
+        .map(u32::from_le_bytes)
+        .collect();
+    let mut changed = words[..5].to_vec();
+    let mut cursor = 5;
+    let mut removed = 0;
+    while cursor < words.len() {
+        let count = (words[cursor] >> 16) as usize;
+        let opcode = words[cursor] & 65535;
+        if (opcode == 71 && words[cursor + 2] == 24) || (opcode == 72 && words[cursor + 3] == 24) {
+            removed += 1;
+        } else {
+            changed.extend_from_slice(&words[cursor..cursor + count]);
+        }
+        cursor += count;
+    }
+    assert!(
+        removed > 0,
+        "actual ByteAddressBuffer must carry NonWritable"
+    );
+    let bytes: Vec<_> = changed.into_iter().flat_map(u32::to_le_bytes).collect();
+    assert!(spirv::validate(&bytes, artifact.entry, &interface).is_err());
+}
+
+#[cfg(all(feature = "vulkan", any(target_os = "windows", target_os = "linux")))]
+#[test]
 fn actual_spirv_texture_dimension_array_sample_type_and_binding_are_checked() {
     let artifact = tileink::NATIVE_SHADER_ARTIFACTS
         .iter()

@@ -26,8 +26,9 @@ pub(crate) struct Compiled {
     pub(crate) bytes: Vec<u8>,
     pub(crate) key: String,
 }
-pub(crate) fn compile(source: &NativeSource, entry: &str, target: &str) -> Result<Compiled> {
+pub(crate) fn compile(source: &NativeSource, target: &str) -> Result<Compiled> {
     let text = source.text(false)?;
+    let entry = source.entry.as_ref();
     let user_cache = env::var_os("LOCALAPPDATA")
         .or_else(|| env::var_os("XDG_CACHE_HOME"))
         .map(PathBuf::from)
@@ -47,7 +48,10 @@ pub(crate) fn compile(source: &NativeSource, entry: &str, target: &str) -> Resul
     let recipe = serde_json::to_vec(
         &serde_json::json!({"compiler":compiler.identity,"flags":flags,"target":target,"entry":entry}),
     )?;
-    let key = cache::CacheKey::new(&[&recipe, text.as_bytes(), &interface(source).cache_bytes()]);
+    let interface = interface(source);
+    let key = cache::CacheKey::new(&[&recipe, text.as_bytes(), &interface.cache_bytes()]);
+    let key_text = key.hex();
+    let work = Work::new(&key_text);
     let root = env::var_os("TILEINK_NATIVE_SHADER_CACHE_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
@@ -55,34 +59,35 @@ pub(crate) fn compile(source: &NativeSource, entry: &str, target: &str) -> Resul
                 .unwrap_or_else(env::temp_dir)
                 .join("tileink/runtime-shaders")
         });
-    let validate = |bytes: &[u8], work: &Path| -> std::io::Result<()> {
+    let validate = |bytes: &[u8]| -> std::io::Result<()> {
         compiler::validate_container(target, bytes)?;
         if target == "spirv" {
-            spirv::validate_user(bytes, entry, &interface(source))
+            spirv::validate_user(bytes, entry, &interface)
         } else {
             dxil_reflection::validate_user(
-                &compiler.reflect_dxil(bytes, work)?,
+                &compiler.reflect_dxil(bytes, &work.0)?,
                 entry,
-                &interface(source),
+                &interface,
             )
         }
     };
     let artifact = cache::ShaderCache::new(root).get_or_compile_validated(
         &key,
         |bytes| {
-            let work = Work::new(&key.hex());
-            Ok(validate(bytes, &work.0).is_ok())
+            // A verified portable artifact has the exact source/toolchain/ABI
+            // key. Reflection failures are errors, not a reason to retry DXC.
+            validate(bytes)?;
+            Ok(true)
         },
         || {
-            let work = Work::new(&key.hex());
             let bytes = compiler.compile(text, &flags, &work.0, target)?;
-            validate(&bytes, &work.0)?;
+            validate(&bytes)?;
             Ok(bytes)
         },
     )?;
     Ok(Compiled {
         bytes: artifact.bytes,
-        key: key.hex(),
+        key: key_text,
     })
 }
 pub(crate) fn interface(source: &NativeSource) -> abi::Interface {

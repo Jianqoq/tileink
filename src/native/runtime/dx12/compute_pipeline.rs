@@ -48,7 +48,7 @@ pub fn ensure(
     let compiled = pass
         .native_source
         .as_ref()
-        .map(|source| crate::native::runtime::program_shader::dxc::compile(source, entry, "dxil"))
+        .map(|source| crate::native::runtime::program_shader::dxc::compile(source, "dxil"))
         .transpose()?;
     let (bytes, key) = compiled
         .as_ref()

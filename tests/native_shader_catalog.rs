@@ -64,3 +64,28 @@ fn production_texture_tables_share_the_shader_owned_capacity_and_binding() {
         );
     }
 }
+
+#[test]
+fn catalog_buffer_permissions_match_declared_hlsl_resources() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    for &(family, source) in program::FAMILIES {
+        let prepared = program::prepare(root, family, source).unwrap();
+        for (name, resource) in &prepared.description.resources {
+            let (ty, register) = match resource.kind {
+                abi::Kind::Read => ("ByteAddressBuffer", 't'),
+                abi::Kind::Write => ("RWByteAddressBuffer", 'u'),
+                _ => continue,
+            };
+            let expected = format!("{ty}{name}:register({register}{});", resource.binding);
+            assert!(
+                prepared.graph.expanded.lines().any(|line| line
+                    .chars()
+                    .filter(|c| !c.is_whitespace())
+                    .collect::<String>()
+                    .replace(",space0", "")
+                    == expected),
+                "{family}/{name}: expected {expected}"
+            );
+        }
+    }
+}

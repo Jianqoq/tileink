@@ -28,6 +28,10 @@ DXIL and Vulkan compiles HLSL to SPIR-V using the pinned DXC toolchain. Sources
 must be self-contained; resolve application includes before submission. The
 framework does not insert includes, helper functions, declarations or wrappers.
 
+DXC cache hits also propagate container, reflection-process and interface errors;
+they do not silently recompile after validation fails. A truncated or
+checksum-invalid cache entry remains a cache miss and compiles the same source.
+
 ## Resource and dispatch contract
 
 Use the complete files in `examples/shaders/` as application-owned templates.

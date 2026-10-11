@@ -80,6 +80,8 @@ canvas.pop_layer();
 
 只需提供应用支持的后端源码；缺失源码或编译／接口错误会返回渲染错误。完整的 ABI、像素范围检查和采样示例见仓库 `examples/shaders/` 与 `docs/native/program-brush-filter.md`。每组 256 个线程，`ShaderConfig` 提供范围、坐标变换、compact tiles 和采样声明；用户 shader 自行负责越界处理、采样和预乘 sRGB 输出。
 
+DXC 缓存命中后的容器、反射进程或接口校验错误会直接返回，不再静默重新编译。截断或校验和损坏的缓存条目仍按缓存未命中处理，重新编译同一份源码。
+
 `ShaderInput::None` 不读输入，可创建 Brush；`Current` 只读当前输入像素；`Sampled { radius }` 声明最大逻辑采样范围，用于背景捕获和 retained 刷新依赖。声明不会改写 shader。普通 Filter 读取本层内容；Backdrop 读取此前已绘制的背景。读取输入的滤镜使用独立输出纹理和局部 copy-back，支持 chain／graph。
 
 `ShaderProgram::filter()` 是构造普通 `ShaderPipeline` 的便捷方法，使用固定的单 pass ABI；需要额外资源、浮点中间纹理和显式调度时，使用下方的 `ShaderPipeline`。两者均编译用户源码，不使用解释器。原生源码版本为 Metal 2.4／HLSL `cs_6_0`，不会开放所有图形 API 能力。

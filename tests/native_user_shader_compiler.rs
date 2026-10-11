@@ -8,10 +8,13 @@ struct NativeSource {
     entry: std::rc::Rc<str>,
     interface_bindings: std::rc::Rc<[tileink::ShaderBinding]>,
     workgroup: [u32; 3],
+    hlsl: Option<String>,
 }
 impl NativeSource {
     fn text(&self, _metal: bool) -> Result<&str> {
-        Err("shader has no HLSL source".into())
+        self.hlsl
+            .as_deref()
+            .ok_or_else(|| "shader has no HLSL source".into())
     }
 }
 #[allow(dead_code)]
@@ -23,8 +26,9 @@ fn missing_hlsl_source_is_reported_before_toolchain_discovery() {
         entry: "paint".into(),
         interface_bindings: std::rc::Rc::from([]),
         workgroup: [256, 1, 1],
+        hlsl: None,
     };
-    match runtime_dxc::compile(&source, "paint", "dxil") {
+    match runtime_dxc::compile(&source, "dxil") {
         Err(error) => assert_eq!(error.to_string(), "shader has no HLSL source"),
         Ok(_) => panic!("missing source compiled"),
     }
@@ -35,6 +39,7 @@ fn dynamic_user_interface_preserves_names_slots_precision_and_workgroup() {
     let source = NativeSource {
         entry: "custom".into(),
         workgroup: [16, 8, 1],
+        hlsl: None,
         interface_bindings: std::rc::Rc::from([
             B {
                 name: "params".into(),
@@ -84,3 +89,6 @@ fn dynamic_user_interface_preserves_names_slots_precision_and_workgroup() {
     assert_eq!(interface.resources["s"].size, 0);
     assert_eq!(interface.resources["config"].fields.len(), 28);
 }
+
+#[path = "native_user_shader_compiler/process.rs"]
+mod process;

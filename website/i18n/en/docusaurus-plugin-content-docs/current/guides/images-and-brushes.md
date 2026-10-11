@@ -58,6 +58,8 @@ canvas.pop_layer();
 
 Provide source for each supported backend. Missing source, compilation and reflected interface errors fail rendering explicitly. Complete ABI declarations and pixel/sampling helpers are application-owned files in `examples/shaders/`; see `docs/native/program-brush-filter.md`. Workgroups have 256 lanes. The public `ShaderConfig` supplies output bounds, coordinate mapping, compact tiles and sampling declarations. The shader owns bounds checks, sampling and premultiplied sRGB output.
 
+Container, reflection-process and interface validation errors on DXC cache hits propagate without silently recompiling. Truncated or checksum-invalid cache entries remain cache misses and compile the same source again.
+
 `ShaderInput::None` has no input and supports brushes; `Current` reads only the current input pixel; `Sampled { radius }` declares the maximum logical sampling displacement for backdrop capture and retained damage. The declaration does not rewrite source. Ordinary filters read their layer; backdrop filters read earlier background. Input-reading filters use a distinct output texture and region copy-back, including in chains/graphs.
 
 `ShaderProgram::filter()` constructs an ordinary `ShaderPipeline` using the fixed single-pass ABI. Use `ShaderPipeline` below for extra resources, floating-point intermediates and explicit scheduling. Both compile application source without an interpreter. Source versions are Metal 2.4 / HLSL `cs_6_0`; they do not expose every graphics API capability.

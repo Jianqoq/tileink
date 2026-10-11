@@ -748,8 +748,51 @@ ABI/compiled-output/executable hashes and the exact measurement scope are saved 
 Temporary catalog probes, copied build sources, measurement scripts and presentation
 executables are removed after validation.
 
+## Phase 20: explicit cached-compiler errors and read-only SPIR-V buffers
+
+The runtime DXC path no longer converts every cached-artifact validation error
+into a cache miss and recompiles. Container, reflection subprocess, encoding and
+ABI errors propagate to the caller. Truncated/checksum-invalid cache framing
+still causes a genuine miss, and a fresh compile is validated before publication.
+One interface description and work directory serve each invocation; the entry
+comes directly from NativeSource. This permanently fixes the silent retry, with
+no alternate shader or error suppression.
+
+SPIR-V byte-buffer reflection now requires NonWritable on a read binding's own
+variable or its sole buffer member. BufferBlock and uint-array layout alone
+cannot distinguish ByteAddressBuffer from RWByteAddressBuffer. This follows the
+[pinned DXC mapping](https://github.com/microsoft/DirectXShaderCompiler/blob/v1.8.2502/docs/SPIR-V.rst).
+Read/write bindings still allow read-only optimization. The shared validator
+enforces this contract for built-in and application kernels.
+
+Three runtime regressions first reproduced the extra compilation after cached
+process, encoding and ABI failures. A fourth covers source-key reuse/change,
+truncated cache recovery and uncached compile failures. They execute the actual
+runtime compiler/cache path with a controlled subprocess protocol; that fixture
+does not compile HLSL or prove DXC conformance. Four SPIR-V tests cover absent,
+correctly placed and unrelated NonWritable decorations, and read/write
+optimization. The two rejecting cases failed before the fix. A catalog test
+checks buffer permissions against all 51 production HLSL families. A separate
+real-artifact Vulkan regression is added but requires execution on a Vulkan host.
+
+All 36 focused serial release tests pass. The full Metal release suite, including
+ignored GPU/compiler tests, reports 1034 passing tests and the same three known
+failures described in phase 12. All 12 example tests pass; release Clippy adds no
+warnings, and the backend-free library compiles. DX12/Vulkan Windows library,
+example and test types pass through the temporary type-only harness. Actual DXC
+compilation, Vulkan artifact execution and DX12/Vulkan GPU execution remain
+unverified on this host.
+
+All 1730 SVG images and seven example PNGs match phase 19 exactly. The validated
+Metal window completes eight frames and the 640x360 to 480x270 resize. Its release
+executable and the actual Metal shader manifest remain byte-identical. These
+changes correct compilation/error semantics; no GPU performance improvement or
+actual DXC performance measurement is claimed. Public shader error documentation
+is updated in both website languages. The temporary type-check harness and copied
+presentation executable are removed after verification.
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
-- Reproduce the SPIR-V readonly-buffer reflection contract and runtime DXC cached-reflection subprocess error conversion before fixing; these are recorded followups, not validated compatibility paths.
+- Audit Vulkan pipeline-cache error classification: its cached construction currently turns every driver error into a cold retry, including errors unrelated to cache rejection. Add an executable focused regression before fixing.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

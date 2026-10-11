@@ -127,3 +127,6 @@ fn raw_user_constant_blocks_validate_byte_size_without_builtin_field_names() {
 #[allow(dead_code)]
 #[path = "../build/native/spirv.rs"]
 mod spirv;
+
+#[path = "native_user_shader_reflection/spirv_access.rs"]
+mod spirv_access;
