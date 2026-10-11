@@ -1122,6 +1122,79 @@ filter-resource traversals and upload repacking. That independent cleanup is
 recorded for the next stage. Eight current implementation groups still contain
 unread files; the repository-wide audit remains in progress.
 
+## Phase 28: one filter-resource collector and direct upload payloads
+
+Transfer, convolution, turbulence and filter-brush preparation each recursively
+walked the same execution/filter tree. The new `FilterResourceUpload` collects
+all four payload kinds in one traversal, preserving child-before-filter,
+backdrop-before-children and content-before-mask order. An enclosing localized
+filter is appended after its child plan. The three old upload types and the
+separate brush collection constructors/walkers are deleted, with no forwarding
+aliases or alternative preparation path.
+
+Transfer tables now borrow their original fixed-size arrays through native
+upload, removing both flattening and array reconstruction. Generated turbulence
+lattices move directly into upload instead of being flattened and reconstructed
+with new gradient allocations. Brush words move into the native owner after
+byte upload, removing its full-vector clone. Variable convolution offsets and
+the GPU byte layout remain unchanged. Immutable image associations, public
+value/address validation and batch ownership remain enforced. This permanently
+removes redundant preparation at its source.
+
+A mixed-payload preservation test passed on the old implementation before
+cleanup. It independently checks transfers, variable kernel offsets, seeded
+lattices, encoded brush words and cursor positions across nested filters,
+backdrops, masks, sibling operations and an optional enclosing filter. The same
+assertions pass after the collector change. Another test covers empty plans,
+empty chains/graphs and filters with no resource payloads. Existing order,
+skipped-work, localized-index and native brush boundary tests remain in use.
+
+All 54 focused serial release tests pass. The broader `--all-targets` release
+suite, including ignored tests, reports 1053 passes and the same three known
+failures described in phase 12. This includes all twelve example tests, including
+the automatically discovered SVG/mesh examples. Formatting, backend-free
+checking and release Clippy pass; Clippy warnings decrease from 4/12 to 1/8 for
+the library/library tests. All 1730 SVG images and seven example PNGs match the
+baseline exactly. The validated Metal window completes eight frames and its
+640x360 to 480x270 resize. Both active Metal manifests remain byte-identical.
+Actual DXC, ShaderTools and DX12/Vulkan GPU execution remain unavailable.
+
+The [application measurements](benchmarks/cleanup-phase28-metal-2026-10-12.json)
+render four existing 300x300 SVG inputs through `NativeRenderer`: transfer,
+convolution, turbulence and image brushes. Initial separate-process comparisons
+sometimes show slower results; repeating them with the identical executable
+also produces changes of tens of percent. Longer sampling and interactive
+thread QoS alone do not remove this variation. Those earlier results and their
+controls are retained, rather than discarded.
+
+The final comparison links the committed baseline and current implementation
+into one measurement process and alternates versions every frame, waiting for
+each completion. Two current renderers provide a same-implementation control.
+Each mode has two warmup processes and eight timed processes; every workload
+warms up 64 cycles and measures 512 cycles per process. Each variant/workload
+therefore has 4096 timed frames. Complete-frame medians change by -0.64%, +0.51%,
+-1.10% and +0.12%; submission medians change by -0.38%, -0.13%, -0.56% and -1.10%.
+Same-implementation complete-frame medians vary by up to +1.36%. These measured
+applications preserve performance within observed control variation. No
+universal GPU or frame-throughput speedup is claimed. Parsing, initialization,
+final readback and PNG output are excluded from frame timings.
+Latency tails remain variable: the image-brush same-implementation control's
+complete-frame p95 changes by +31.58%, so tail changes are not attributed to the
+cleanup.
+
+All 720 measurement readbacks match the immutable SVG baseline exactly. Every
+earlier series, control and individual sample is preserved in the report's
+compressed raw-data archive. The two linked versions have identical shader
+recipes; their artifact hashes differ between compilation roots, so linked
+artifacts are not described as byte-identical. Temporary Rust measurement
+programs, isolated baseline source, copied executables, QoS helper and readback
+PNGs are removed after validation.
+
+Additional complete reads cover the filter scheduler/cursor tests, shared brush
+encoder and scene/glyph upload staging. The whole-repository audit remains in
+progress, including the retained version/journal-loss/backdrop contract and
+eight groups with unread implementation files.
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.

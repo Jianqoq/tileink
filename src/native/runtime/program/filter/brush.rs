@@ -17,26 +17,20 @@ pub(crate) struct Brushes {
 impl Brushes {
     pub(crate) fn record(
         batch: &mut ComputeBatch,
-        ops: &[crate::shared::execution::ExecOp],
-        filter: Option<&crate::shared::layer::filter::Filter>,
-        images: &crate::shared::image_resource::GpuImageResourceUpload,
+        upload: GpuBrushUpload,
+        texture_start: usize,
     ) -> Result<Option<Self>> {
-        let upload = if let Some(filter) = filter {
-            GpuBrushUpload::from_filter_ops_and_filter_with_resources(ops, filter, Some(images))
-        } else {
-            GpuBrushUpload::from_filter_plan_with_resources(ops, Some(images))
-        };
-
         if upload.offsets.is_empty() {
             return Ok(None);
         }
         if upload.blob.len() > u32::MAX as usize / 4 {
             return Err("filter brush byte addressing overflow".into());
         }
+        let buffer = batch.buffer(bytemuck::cast_slice(&upload.blob).to_vec())?;
         Ok(Some(Self {
-            programs: upload.blob.clone(),
-            texture_start: images.textures().len(),
-            buffer: batch.buffer(bytemuck::cast_slice(&upload.blob).to_vec())?,
+            programs: upload.blob,
+            texture_start,
+            buffer,
             offsets: upload.offsets,
         }))
     }

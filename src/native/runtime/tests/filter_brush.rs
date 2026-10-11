@@ -8,7 +8,12 @@ fn brush_dispatch_rejects_nonrecord_offsets_aliases_and_foreign_batches() -> Res
     let filter = Filter::Flood {
         brush: peniko::Color::from_rgb8(31, 57, 111).into(),
     };
-    let brushes = Brushes::record(&mut batch, &[], Some(&filter), &upload)?.unwrap();
+    let prepared = crate::render::filter_resources::upload::FilterResourceUpload::new(
+        &[],
+        Some(&filter),
+        Some(&upload),
+    );
+    let brushes = Brushes::record(&mut batch, prepared.brushes, upload.textures().len())?.unwrap();
     let target = batch.texture_rgba8([2, 2], vec![0; 16])?;
     let c = FilterConfig {
         width: 2,
@@ -52,6 +57,13 @@ fn brush_dispatch_rejects_nonrecord_offsets_aliases_and_foreign_batches() -> Res
         );
         assert!(foreign.passes().is_empty());
     }
-    assert!(Brushes::record(&mut batch, &[], None, &upload)?.is_none());
+    assert!(
+        Brushes::record(
+            &mut batch,
+            GpuBrushUpload::default(),
+            upload.textures().len()
+        )?
+        .is_none()
+    );
     Ok(())
 }

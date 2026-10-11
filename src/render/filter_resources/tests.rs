@@ -1,7 +1,9 @@
-use super::{cursors::FilterCursors, tables::*};
+use super::{cursors::FilterCursors, upload::FilterResourceUpload};
 use crate::shared::{gpu_brush::GpuBrushUpload, layer::filter::*};
 use crate::{Canvas, Radius, Region};
 use peniko::{Color, kurbo::Rect};
+
+mod ordering;
 
 fn region() -> Region {
     Region::Rect {
@@ -36,10 +38,10 @@ fn nested_transfers() -> crate::shared::execution::ExecPlan {
 #[test]
 fn filter_tables_follow_backdrop_then_children_then_parent_order() {
     let plan = nested_transfers();
-    let upload = FilterTransferUpload::from_plan(&plan);
+    let upload = FilterResourceUpload::new(&plan.ops, None, None);
     let markers: Vec<_> = upload
-        .tables
-        .chunks_exact(COMPONENT_TRANSFER_TABLE_LEN)
+        .transfers
+        .iter()
         .map(|table| {
             assert!(table.iter().all(|&value| value == table[0]));
             table[0]
@@ -51,15 +53,12 @@ fn filter_tables_follow_backdrop_then_children_then_parent_order() {
 #[test]
 fn skipping_nested_filter_work_keeps_following_table_indices_aligned() {
     let plan = nested_transfers();
-    let upload = FilterTransferUpload::from_plan(&plan);
+    let upload = FilterResourceUpload::new(&plan.ops, None, None);
     let mut cursor = FilterCursors::default();
     cursor.advance_ops(&plan.ops[..1]);
     let next = cursor.next_transfer_index();
     assert_eq!(next, 3);
-    assert_eq!(
-        upload.tables[next as usize * COMPONENT_TRANSFER_TABLE_LEN],
-        44
-    );
+    assert_eq!(upload.transfers[next as usize][0], 44);
     let mut clone = cursor.clone();
     assert_eq!(clone.next_transfer_index(), 4);
     assert_eq!(cursor.next_transfer_index(), 4);
@@ -105,8 +104,8 @@ fn variable_convolve_offsets_match_the_shared_upload_blob() {
             },
         ],
     };
-    let upload = FilterConvolveUpload::from_ops_and_filter(&[], &filter);
-    assert_eq!(upload.kernels, [1.0, 2.0, 3.0, -1.0, 4.0]);
+    let upload = FilterResourceUpload::new(&[], Some(&filter), None);
+    assert_eq!(upload.convolves, [1.0, 2.0, 3.0, -1.0, 4.0]);
     let mut cursor = FilterCursors::default();
     assert_eq!(cursor.next_convolve_offset(&first), 0);
     assert_eq!(cursor.next_convolve_offset(&second), 3);
@@ -114,7 +113,7 @@ fn variable_convolve_offsets_match_the_shared_upload_blob() {
     skipped.advance_filter(&filter);
     assert_eq!(
         skipped.next_convolve_offset(&first) as usize,
-        upload.kernels.len()
+        upload.convolves.len()
     );
 }
 
@@ -150,18 +149,16 @@ fn graph_turbulence_indices_match_seeded_selector_and_gradient_tables() {
             }))),
         ],
     };
-    let upload = FilterTurbulenceUpload::from_ops_and_filter(&[], &filter);
-    assert_eq!(upload.selectors.len(), 2 * TURBULENCE_TABLE_LEN);
-    assert_eq!(upload.gradients.len(), 2 * TURBULENCE_GRADIENT_LEN);
+    let upload = FilterResourceUpload::new(&[], Some(&filter), None);
+    assert_eq!(upload.turbulence.len(), 2);
     for (index, seed) in [42, -7].into_iter().enumerate() {
         let expected = turbulence_lattice(seed);
         assert_eq!(
-            &upload.selectors[index * TURBULENCE_TABLE_LEN..(index + 1) * TURBULENCE_TABLE_LEN],
+            upload.turbulence[index].selectors.as_slice(),
             expected.selectors.as_slice()
         );
         assert_eq!(
-            &upload.gradients
-                [index * TURBULENCE_GRADIENT_LEN..(index + 1) * TURBULENCE_GRADIENT_LEN],
+            upload.turbulence[index].gradients.as_slice(),
             expected.gradients.as_slice()
         );
     }
@@ -187,7 +184,7 @@ fn graph_image_and_flood_brush_offsets_match_the_actual_shared_encoder() {
     draw(&mut canvas);
     canvas.pop_layer();
     let plan = canvas.compile(canvas.root_commands);
-    let upload = GpuBrushUpload::from_filter_plan_with_resources(&plan.ops, None);
+    let upload = FilterResourceUpload::new(&plan.ops, None, None).brushes;
     assert!(!upload.blob.is_empty());
     let mut cursor = FilterCursors::default();
     cursor.advance_ops(&plan.ops);

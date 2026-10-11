@@ -61,7 +61,7 @@ pub(super) fn case() -> Result<(ComputeBatch, Vec<Vec<u8>>)> {
         .collect();
     let mut batch = ComputeBatch::new();
     let data = tables();
-    let table = transfer::upload(&mut batch, &data)?;
+    let table = transfer::upload(&mut batch, &data.iter().collect::<Vec<_>>())?;
     let tiles = [5, 2, 0];
     let mut expected = Vec::new();
     for compact in [false, true] {

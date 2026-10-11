@@ -7,10 +7,10 @@ pub struct TransferTables {
     count: u32,
 }
 
-/// Validate table values and all raw byte addresses once, before GPU use.
+/// Borrow original tables and validate values/byte addresses before GPU use.
 pub fn upload(
     batch: &mut ComputeBatch,
-    tables: &[ComponentTransferTable],
+    tables: &[&ComponentTransferTable],
 ) -> Result<TransferTables> {
     if tables.is_empty() {
         return Err("component transfer requires at least one table".into());
@@ -21,7 +21,7 @@ pub fn upload(
         .filter(|n| u32::try_from(*n).is_ok())
         .ok_or("component transfer byte addressing overflow")?;
     let mut bytes = Vec::with_capacity(size);
-    for value in tables.iter().flatten() {
+    for value in tables.iter().flat_map(|table| table.iter()) {
         if *value > u32::from(u8::MAX) {
             return Err("component transfer values must be bytes".into());
         }

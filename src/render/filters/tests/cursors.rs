@@ -1,5 +1,5 @@
 use super::*;
-use crate::render::filter_resources::{paths::FilterPathUpload, tables::FilterTransferUpload};
+use crate::render::filter_resources::{paths::FilterPathUpload, upload::FilterResourceUpload};
 use crate::shared::layer::Layer;
 use crate::shared::layer::filter::COMPONENT_TRANSFER_TABLE_LEN;
 use peniko::kurbo::{Affine, BezPath, Shape};
@@ -52,9 +52,9 @@ fn full_canvas_filter_on_scratch_preserves_prefix_resource_indices() {
         unreachable!()
     };
     *filter = Filter::ComponentTransfer(Box::new([22; COMPONENT_TRANSFER_TABLE_LEN]));
-    let upload = FilterTransferUpload::from_ops_and_filter(&plan.ops, filter);
-    assert_eq!(upload.tables[0], 11);
-    assert_eq!(upload.tables[COMPONENT_TRANSFER_TABLE_LEN], 22);
+    let upload = FilterResourceUpload::new(&plan.ops, Some(filter), None);
+    assert_eq!(upload.transfers[0][0], 11);
+    assert_eq!(upload.transfers[1][0], 22);
     plan.ops.push(second);
     let mut adapter = Adapter::new(&canvas, RetainedSurfaceKind::Filter);
     adapter.targets.push(Some(Allocation(900)));

@@ -3,7 +3,7 @@
 
 pub(crate) mod cursors;
 pub(crate) mod paths;
-pub(crate) mod tables;
+pub(crate) mod upload;
 
 #[cfg(test)]
 mod tests;
