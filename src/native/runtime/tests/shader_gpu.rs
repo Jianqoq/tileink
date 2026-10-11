@@ -5,6 +5,8 @@ use crate::{ShaderInput, ShaderProgram, ShaderSources};
 mod pixels;
 #[path = "shader_sampling.rs"]
 mod sampling;
+#[path = "shader_scene_cache.rs"]
+mod scene_cache;
 fn pack(value: [f64; 4]) -> u32 {
     let a = value[3].clamp(0.0, 1.0);
     u32::from_le_bytes(value.map(|v| (v.clamp(0.0, a) * 255.0).round() as u8))

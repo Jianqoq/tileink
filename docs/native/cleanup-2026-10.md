@@ -1466,6 +1466,82 @@ next cleanup. The audit has now read 526 of 953 current implementation files;
 427 remain across six groups. Actual DXC/ShaderTools and DX12/Vulkan GPU execution
 remain unavailable.
 
+## Phase 33: unify initialized scene metadata and shader detection
+
+Native scene preparation now owns one optional, complete `PlanMetadata` containing
+its fingerprint, stack depths and program-brush detection. `PreparedPlan` carries
+those values into recording. The separate `SceneCache::has_programs` and
+`programs_initialized` flags are deleted. An installed retained plan no longer
+implies that this renderer has already initialized its metadata; reuse requires
+an actual prior metadata snapshot. Explicit localized plans compute the same
+complete metadata from their associated Canvas.
+
+This fixes two real bugs rather than adding a temporary recovery path. Execution
+fingerprints deliberately omit brush data, but the old program flag was retained
+when immediate frames changed from solid paint to a native shader with the same
+commands. The renderer skipped that shader and produced different pixels from a
+fresh renderer. The permanent public-renderer regression failed on frame 1 before
+the fix. Program detection now refreshes on immediate frames and on retained
+draw/brush changes; only an explicit unchanged retained journal can preserve it.
+A separate new regression failed because a first installed plan with retained
+structure/value hints incorrectly reported reused metadata, leaving stack depths
+at their uninitialized defaults. Initialized metadata ownership fixes that contract
+at its source. Tests that intentionally force a fingerprint mismatch now mutate
+an initialized fingerprint rather than remove its initialization evidence.
+
+The 697-line native scene module is divided into shared ownership types, cache
+lifecycle, scene input upload, CPU work-arena upload and raster dispatch. Each
+resulting module is small and keeps its implementation dependencies local.
+Thirteen moved function/work-block comparisons confirm unchanged bodies, apart
+from the work block's `active` parameter and its extraction boundary. Frame-local
+shader images, accepted GPU snapshots, abandoned-upload recovery, empty GPU buffer
+allocations and physical extent validation retain their required semantics.
+
+Four permanent tests cover first installed metadata under both retained hints,
+draw membership edits without re-encoding brushes, same-topology solid/shader/
+uniform switching with and without an SDF clip, and a shader compilation failure
+followed by successful shader and solid frames on the same renderer. Focused serial
+release selections pass: eight preparation, two shader-cache, 43 native scene and
+165 retained tests; selections overlap. Full release tests including ignored
+cases pass 1066 with the same three known failures documented in phase 12. All
+12 example tests, release Clippy, formatting, backend-free checking and example
+builds pass; Clippy retains the existing 1/8 library/library-test warnings.
+
+All 1730 SVG native PNGs, seven example images and both active Metal artifact
+manifests match their immutable baseline. The validated native window completes
+eight frames and its 640x360 to 480x270 resize. The separate 32-frame actual
+application probe also matches old rendering exactly.
+
+The [actual application measurements](benchmarks/cleanup-phase33-metal-2026-10-12.json)
+retain 96 process observations and all 1536 mixed-scene frame samples. Each of two
+workloads has a baseline/current series and an identical-current control, with
+two warmups per label and ten timed alternating pairs. The mixed application uses
+public renderer/retained APIs for 768 draws, 32 opacity-filter leaves and 16 native
+shader-painted draws. Two rounds cover immediate paint replacement and retained
+content edits, transforms, removal/reinsertion, reordering and resize. Paint kinds
+stay fixed so baseline/current images are comparable; separate regressions cover
+the previously broken kind switches. The other workload runs the complete
+1730-fixture SVG application, including ordinary paint with no shader brushes.
+
+Mixed whole-process medians change 366.204 to 375.645 ms (+2.58%), compared with
++4.00% in the same-version control. SVG medians change 4418.261 to 4396.405 ms
+(-0.49%), compared with +0.43% in its control. These workloads show no detectable
+material regression; they do not establish an isolated GPU/stage improvement or
+guarantee every workload. Nearest-rank p95 is the maximum of ten observations.
+Whole-process time includes initialization, preparation, GPU completion, readback,
+PNG writes and teardown; mixed per-frame samples exclude PNG saving. All 84576
+measured PNGs match their validated baseline manifests. Timing disables Metal
+validation; separate tests and probes enable it. The mixed workload explicitly
+pins registry ID `0000000100000575`; the SVG application selects the system-default
+Metal device on this verified single-GPU Apple M5 host.
+
+Temporary Rust source, timing script and copied/compiled measurement executables
+are removed; no production instrumentation remains. The audit has read 545 of
+958 current implementation files, leaving 413 across six groups. Newly traced
+native execution state and obsolete filter-work callbacks are the next concrete
+cleanup targets. Actual DXC/ShaderTools and DX12/Vulkan GPU execution remain
+unavailable here; independent repository auditing continues.
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
