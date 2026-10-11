@@ -63,8 +63,6 @@ fn probe_pipelines_are_created_only_for_probe_submissions() -> Result<()> {
         return Ok(());
     }
     let mut device = Dx12::new(&std::env::var("TILEINK_NATIVE_GPU")?)?;
-    assert!(device.gpu.signature.is_none());
-    assert!(device.gpu.pipelines.is_empty());
     assert!(device.gpu.compute_pipelines.is_empty());
     let command = super::super::program::Probe {
         entry: "clear_words",
@@ -79,9 +77,9 @@ fn probe_pipelines_are_created_only_for_probe_submissions() -> Result<()> {
         destination: vec![0; 4],
     };
     let ticket = device.submit(&command)?;
-    assert!(device.gpu.signature.is_some());
-    assert!(!device.gpu.pipelines.is_empty());
-    device.readback(&ticket)?;
+    assert_eq!(device.gpu.compute_pipelines.len(), 1);
+    assert!(device.gpu.compute_pipelines.contains_key("clear_words"));
+    assert_eq!(device.readback(&ticket)?, 0x12345678u32.to_le_bytes());
     assert_valid(&device.validation_queue())
 }
 
@@ -290,9 +288,7 @@ fn staging_reuse_preserves_in_flight_and_resized_uploads() -> Result<()> {
         Ok(batch)
     };
     let handle = |device: &Dx12, ticket: &super::super::submissions::Ticket| {
-        let super::work::Work::Compute(frame) = device.gpu.pending.get(ticket).unwrap() else {
-            panic!("expected compute frame");
-        };
+        let frame = device.gpu.pending.get(ticket).unwrap();
         [
             frame.uploads[0].resource.as_raw(),
             frame.storage[0].resource.as_raw(),
@@ -359,9 +355,7 @@ fn staging_reuse_preserves_in_flight_and_resized_uploads() -> Result<()> {
         reordered.readback(id)?;
     }
     let ticket = device.submit_compute(&reordered)?;
-    let super::work::Work::Compute(frame) = device.gpu.pending.get(&ticket).unwrap() else {
-        panic!("expected compute frame");
-    };
+    let frame = device.gpu.pending.get(&ticket).unwrap();
     assert_eq!(frame.uploads[0].resource.as_raw(), uploads[1]);
     assert_eq!(frame.uploads[1].resource.as_raw(), uploads[0]);
     assert_eq!(frame.storage[0].resource.as_raw(), storage[1]);
@@ -440,9 +434,7 @@ fn completed_unused_buffers_survive_alternating_frame_sizes() -> Result<()> {
         Ok(batch)
     };
     let a = device.submit_compute(&batch(&[4096, 128])?)?;
-    let super::work::Work::Compute(frame) = device.gpu.pending.get(&a).unwrap() else {
-        panic!("expected compute frame");
-    };
+    let frame = device.gpu.pending.get(&a).unwrap();
     let large_upload = frame.uploads[0].resource.as_raw();
     let large_storage = frame.storage[0].resource.as_raw();
     assert_eq!(
@@ -455,9 +447,7 @@ fn completed_unused_buffers_survive_alternating_frame_sizes() -> Result<()> {
     let empty = device.submit_compute(&super::super::compute::ComputeBatch::new())?;
     assert!(device.readback_batch(&empty)?.is_empty());
     let c = device.submit_compute(&batch(&[4096])?)?;
-    let super::work::Work::Compute(frame) = device.gpu.pending.get(&c).unwrap() else {
-        panic!("expected compute frame");
-    };
+    let frame = device.gpu.pending.get(&c).unwrap();
     assert_eq!(frame.uploads[0].resource.as_raw(), large_upload);
     assert_eq!(frame.storage[0].resource.as_raw(), large_storage);
     assert_eq!(device.readback_batch(&c)?, vec![vec![17; 4096]]);

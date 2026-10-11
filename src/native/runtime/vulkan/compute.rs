@@ -72,53 +72,8 @@ impl Frame {
         pipelines: &BTreeMap<String, Pipeline>,
         frame_cache: &mut super::frame_cache::Cache,
     ) -> Result<Self> {
+        super::limits::resources(batch, &properties.limits)?;
         let limits = &properties.limits;
-        // Every owned image is allocated, including images reachable only through a table.
-        for resource in batch.resources() {
-            if let Resource::Texture(texture) = resource
-                && (texture
-                    .size
-                    .iter()
-                    .any(|&n| n > limits.max_image_dimension2_d)
-                    || texture.layers > limits.max_image_array_layers)
-            {
-                return Err("native Vulkan texture exceeds device dimensions".into());
-            }
-        }
-        for pass in batch.passes() {
-            if pass
-                .grid
-                .iter()
-                .zip(limits.max_compute_work_group_count)
-                .any(|(n, limit)| *n > limit)
-            {
-                return Err("native Vulkan dispatch exceeds device limit".into());
-            }
-            for (binding, id) in &pass.bindings {
-                if matches!(
-                    binding.kind,
-                    BindingKind::Sampler | BindingKind::TextureTable
-                ) {
-                    continue;
-                }
-                if matches!(&batch.resources()[id.index()], Resource::Texture(_)) {
-                    continue;
-                }
-                let size = if binding.kind == BindingKind::Uniform {
-                    binding.size as usize
-                } else {
-                    batch.size(*id)?
-                };
-                let limit = if binding.kind == BindingKind::Uniform {
-                    limits.max_uniform_buffer_range
-                } else {
-                    limits.max_storage_buffer_range
-                };
-                if size > limit as usize {
-                    return Err("native Vulkan descriptor range exceeds device limit".into());
-                }
-            }
-        }
         let synchronization = match &batch.synchronization {
             Some((id, crate::native::interop::Synchronization::Vulkan(sync))) => Some((*id, sync)),
             None => None,

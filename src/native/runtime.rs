@@ -11,7 +11,11 @@ mod lifecycle_gpu_tests;
 mod metal;
 #[cfg(all(test, feature = "metal"))]
 mod metal_lifecycle_gpu_tests;
+#[cfg(any(feature = "dx12", feature = "vulkan"))]
 mod pipeline_cache;
+#[cfg(test)]
+#[path = "runtime/tests/cases.rs"]
+mod probe_cases;
 mod program;
 pub(crate) mod program_shader;
 mod submissions;

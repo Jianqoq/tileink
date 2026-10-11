@@ -109,12 +109,8 @@ impl Dx12 {
             Ok(Self {
                 gpu: GpuOwners {
                     device,
-                    adapter,
-                    physical_identity: identity,
                     messages,
                     queue,
-                    signature: None,
-                    pipelines: BTreeMap::new(),
                     fence,
                     pending: Pending::new(),
                     staging: super::buffer_cache::Pool::default(),

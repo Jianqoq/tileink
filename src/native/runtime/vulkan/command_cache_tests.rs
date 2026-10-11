@@ -36,9 +36,7 @@ fn completed_command_pools_and_fences_are_reused() -> Result<()> {
         Ok(batch)
     };
     let handles = |device: &Vulkan, ticket: &super::super::submissions::Ticket| {
-        let work::Work::Compute(frame) = device.pending.get(ticket).unwrap() else {
-            unreachable!()
-        };
+        let frame = device.pending.get(ticket).unwrap();
         frame.command_handles()
     };
     let a = device.submit_compute(&batch(4, 0xff112233)?)?;

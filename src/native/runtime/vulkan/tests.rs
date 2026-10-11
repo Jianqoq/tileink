@@ -2,15 +2,13 @@ use super::*;
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
-fn probe_pipelines_are_lazy_and_partial_initialization_can_retry() -> Result<()> {
+fn probe_pipelines_use_only_requested_compute_entries() -> Result<()> {
     if super::super::isolation::run(
-        "native::runtime::vulkan::tests::probe_pipelines_are_lazy_and_partial_initialization_can_retry",
+        "native::runtime::vulkan::tests::probe_pipelines_use_only_requested_compute_entries",
     )? {
         return Ok(());
     }
     let mut device = Vulkan::new(&std::env::var("TILEINK_NATIVE_GPU")?)?;
-    assert_eq!(device.layout, vk::PipelineLayout::null());
-    assert!(device.pipelines.is_empty());
     assert!(device.compute_pipelines.is_empty());
     let command = super::super::program::Probe {
         entry: "clear_words",
@@ -24,15 +22,10 @@ fn probe_pipelines_are_lazy_and_partial_initialization_can_retry() -> Result<()>
         source: vec![0; 4],
         destination: vec![0; 4],
     };
-    device.inject_probe_init_failure = true;
-    assert!(device.submit(&command).is_err());
-    assert!(device.pipelines.is_empty());
-    assert_eq!(device.layout, vk::PipelineLayout::null());
-    assert_eq!(device.bindings, vk::DescriptorSetLayout::null());
-    assert_eq!(device.pending_count(), 0);
     let ticket = device.submit(&command)?;
-    assert!(!device.pipelines.is_empty());
-    device.readback(&ticket)?;
+    assert_eq!(device.compute_pipelines.len(), 1);
+    assert!(device.compute_pipelines.contains_key("clear_words"));
+    assert_eq!(device.readback(&ticket)?, 0x12345678u32.to_le_bytes());
     assert!(device.validation_messages().lock().unwrap().is_empty());
     Ok(())
 }
@@ -131,9 +124,7 @@ fn staging_reuse_preserves_in_flight_and_resized_uploads() -> Result<()> {
         Ok(batch)
     };
     let handle = |device: &Vulkan, ticket: &super::super::submissions::Ticket| {
-        let super::work::Work::Compute(frame) = device.pending.get(ticket).unwrap() else {
-            panic!("expected compute frame");
-        };
+        let frame = device.pending.get(ticket).unwrap();
         frame.upload.as_ref().unwrap().arena.buffers[0]
     };
     let a = device.submit_compute(&batch(4096, 17)?)?;

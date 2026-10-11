@@ -5,14 +5,10 @@ mod retirement;
 mod staging;
 mod storage;
 mod validation;
-pub(super) use debug::enable_validation;
-use validation::cache_retryable;
-mod frame;
-mod pipeline;
 use super::submissions::{Pending, Ticket};
-use frame::Frame;
+pub(super) use debug::enable_validation;
 pub use validation::{Validation, assert_valid};
-// Native D3D12 execution of the same compiled probe contract.
+// Native D3D12 execution for renderer and conformance workloads.
 use super::{Result, program::Dispatch};
 use retirement::Retirement;
 use std::collections::BTreeMap;
@@ -30,14 +26,10 @@ use windows::{
 #[derive(Clone)]
 struct GpuOwners {
     device: ID3D12Device,
-    adapter: IDXGIAdapter1,
-    physical_identity: String,
     messages: Validation,
     queue: ID3D12CommandQueue,
-    signature: Option<ID3D12RootSignature>,
-    pipelines: BTreeMap<&'static str, ID3D12PipelineState>,
     fence: ID3D12Fence,
-    pending: Pending<work::Work>,
+    pending: Pending<compute::Frame>,
     staging: buffer_cache::Pool,
     storage: buffer_cache::Pool,
     tables: Vec<compute_tables::Tables>,
@@ -92,33 +84,7 @@ impl Dx12 {
     }
 
     pub fn submit_batch(&mut self, commands: &[Dispatch]) -> Result<Ticket> {
-        self.retirement.wait_value()?;
-        super::program::validate_batch(commands)?;
-        if !commands.is_empty() && self.gpu.signature.is_none() {
-            let (signature, pipelines) = pipeline::create(
-                &self.gpu.device,
-                &self.gpu.adapter,
-                &self.gpu.physical_identity,
-                &self.gpu.messages,
-            )?;
-            self.gpu.signature = Some(signature);
-            self.gpu.pipelines = pipelines;
-        }
-        let frames = commands
-            .iter()
-            .map(|command| {
-                Frame::record(
-                    &self.gpu.device,
-                    self.gpu
-                        .signature
-                        .as_ref()
-                        .expect("probe pipeline initialized"),
-                    &self.gpu.pipelines[command.entry()],
-                    command,
-                )
-            })
-            .collect::<Result<Vec<_>>>()?;
-        self.submit_work(work::Work::Probes(frames))
+        self.submit_compute(&super::program::record_batch(commands)?)
     }
     pub fn submit_compute(&mut self, batch: &super::compute::ComputeBatch) -> Result<Ticket> {
         self.retirement.wait_value()?;
@@ -153,16 +119,12 @@ impl Dx12 {
             &mut self.gpu.tables,
             &mut self.gpu.commands,
         )?;
-        self.submit_work(work::Work::Compute(Box::new(frame)))
+        self.submit_work(frame)
     }
-    fn submit_work(&mut self, work: work::Work) -> Result<Ticket> {
-        // Record/allocate before registering; both work types use the same
-        // uncertain-submission quarantine and completion contract.
-        let lists = work.lists()?;
-        let synchronization = match &work {
-            work::Work::Compute(frame) => frame.synchronization.clone(),
-            _ => None,
-        };
+    fn submit_work(&mut self, work: compute::Frame) -> Result<Ticket> {
+        // Record before registering; uncertain submissions retain every owner.
+        let lists = [Some(work.list.cast()?)];
+        let synchronization = work.synchronization.clone();
         let ticket = self.gpu.pending.track(work)?;
         unsafe {
             self.retirement = Retirement::Unfenced;
@@ -214,17 +176,14 @@ impl Dx12 {
         let result = work.readback();
         // Never recycle on Drop or uncertain submission: only a confirmed fence
         // permits overwriting upload memory that belonged to an earlier frame.
-        if let work::Work::Compute(frame) = &mut work {
-            self.gpu.staging.retire(std::mem::take(&mut frame.uploads));
-            self.gpu.storage.retire(std::mem::take(&mut frame.storage));
-            self.gpu.commands.push(frame.command_owners());
-            // Descriptor writes may overwrite an older frame only after this
-            // confirmed fence completion, never on Drop or uncertain submission.
-            if let Some(tables) = frame.tables.take()
-                && !tables.is_empty()
-            {
-                self.gpu.tables.push(tables);
-            }
+        self.gpu.staging.retire(std::mem::take(&mut work.uploads));
+        self.gpu.storage.retire(std::mem::take(&mut work.storage));
+        self.gpu.commands.push(work.command_owners());
+        // Descriptor writes may overwrite a frame only after confirmed completion.
+        if let Some(tables) = work.tables.take()
+            && !tables.is_empty()
+        {
+            self.gpu.tables.push(tables);
         }
         result
     }
@@ -329,8 +288,6 @@ mod compute_bindings;
 #[path = "dx12/compute_pipeline.rs"]
 mod compute_pipeline;
 mod compute_resources;
-#[path = "dx12/work.rs"]
-mod work;
 
 #[path = "dx12/compute_texture.rs"]
 mod compute_texture;

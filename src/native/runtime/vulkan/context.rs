@@ -212,7 +212,6 @@ impl Vulkan {
                 .user_data(std::sync::Arc::as_ptr(&messages).cast_mut().cast());
             let memory = instance.get_physical_device_memory_properties(physical);
             let properties = instance.get_physical_device_properties(physical);
-            let limits = properties.limits;
             let families = instance.get_physical_device_queue_family_properties(physical);
             let debug = ash::ext::debug_utils::Instance::new(&entry, &instance);
             let mut this = Self {
@@ -227,24 +226,17 @@ impl Vulkan {
                 device,
                 memory,
                 queue,
-                bindings: vk::DescriptorSetLayout::null(),
-                layout: vk::PipelineLayout::null(),
-                pipelines: BTreeMap::new(),
                 pending: Pending::new(),
                 frame_cache: Default::default(),
                 properties,
                 compute_pipelines: BTreeMap::new(),
                 family,
-                max_storage_buffer_bytes: limits.max_storage_buffer_range,
-                max_image_width: limits.max_image_dimension2_d,
                 failed: false,
                 texture_tables,
                 timeline_semaphores,
                 families,
                 #[cfg(test)]
                 injected_submit_error: None,
-                #[cfg(test)]
-                inject_probe_init_failure: false,
             };
             if validation {
                 this.messenger = this.debug.create_debug_utils_messenger(&debug_info, None)?;

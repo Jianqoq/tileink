@@ -1,15 +1,13 @@
 //! Native lifetime checks run in each legal single-backend build.
 #[cfg(feature = "dx12")]
 use super::dx12::Dx12 as Device;
-use super::program::{Params, Probe};
 #[cfg(feature = "vulkan")]
 use super::vulkan::Vulkan as Device;
 use super::{Result, submissions};
 
 #[path = "tests/brush_bounds_gpu.rs"]
 mod brush_bounds;
-#[path = "tests/cases.rs"]
-mod cases;
+use super::probe_cases as cases;
 #[path = "tests/interop_gpu.rs"]
 mod interop;
 #[path = "tests/persistent_buffer_gpu.rs"]

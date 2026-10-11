@@ -17,9 +17,7 @@ fn storage_buffers_are_reused_after_completion_only() -> Result<()> {
         Ok(batch)
     };
     let buffers = |device: &Vulkan, ticket: &super::super::submissions::Ticket| {
-        let work::Work::Compute(frame) = device.pending.get(ticket).unwrap() else {
-            unreachable!()
-        };
+        let frame = device.pending.get(ticket).unwrap();
         frame.storage_buffers().to_vec()
     };
     let a = device.submit_compute(&batch(4096, 17)?)?;

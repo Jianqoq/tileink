@@ -138,7 +138,7 @@ pub fn ensure(
                 key,
                 b"native-compute-buffer-table-v1",
                 |data| {
-                    if !super::pipeline::cache_header_matches(
+                    if !cache_header_matches(
                         data,
                         properties.vendor_id,
                         properties.device_id,
@@ -181,5 +181,36 @@ impl Drop for Pipeline {
             self.device
                 .destroy_descriptor_set_layout(self.bindings, None);
         }
+    }
+}
+
+fn cache_header_matches(bytes: &[u8], vendor: u32, device: u32, uuid: &[u8; 16]) -> bool {
+    bytes.len() >= 32
+        && u32::from_le_bytes(bytes[0..4].try_into().unwrap()) == 32
+        && u32::from_le_bytes(bytes[4..8].try_into().unwrap()) == 1
+        && u32::from_le_bytes(bytes[8..12].try_into().unwrap()) == vendor
+        && u32::from_le_bytes(bytes[12..16].try_into().unwrap()) == device
+        && bytes[16..32] == *uuid
+}
+
+#[test]
+fn driver_cache_header_requires_exact_device_and_uuid() {
+    let uuid = [17; 16];
+    let mut bytes: Vec<_> = [32u32, 1, 23, 41]
+        .iter()
+        .flat_map(|word| word.to_le_bytes())
+        .collect();
+    bytes.extend(uuid);
+    assert!(cache_header_matches(&bytes, 23, 41, &uuid));
+    assert!(!cache_header_matches(&bytes, 24, 41, &uuid));
+    assert!(!cache_header_matches(&bytes, 23, 42, &uuid));
+    assert!(!cache_header_matches(&bytes, 23, 41, &[18; 16]));
+    for length in 0..32 {
+        assert!(!cache_header_matches(&bytes[..length], 23, 41, &uuid));
+    }
+    for offset in [0, 4] {
+        let mut invalid = bytes.clone();
+        invalid[offset] += 1;
+        assert!(!cache_header_matches(&invalid, 23, 41, &uuid));
     }
 }

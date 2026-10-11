@@ -13,9 +13,7 @@ fn immutable_samplers_are_shared_across_in_flight_frames() -> Result<()> {
     let a = device.submit_compute(&batch)?;
     let b = device.submit_compute(&batch)?;
     let identities = |ticket: &super::super::submissions::Ticket| {
-        let work::Work::Compute(frame) = device.pending.get(ticket).unwrap() else {
-            unreachable!()
-        };
+        let frame = device.pending.get(ticket).unwrap();
         frame.sampler_identities()
     };
     let first = identities(&a);
@@ -28,9 +26,7 @@ fn immutable_samplers_are_shared_across_in_flight_frames() -> Result<()> {
     device.readback_batch(&b)?;
     device.readback_batch(&a)?;
     let c = device.submit_compute(&batch)?;
-    let work::Work::Compute(frame) = device.pending.get(&c)? else {
-        unreachable!()
-    };
+    let frame = device.pending.get(&c)?;
     assert_eq!(first, frame.sampler_identities());
     device.readback_batch(&c)?;
     assert!(messages.lock().unwrap().is_empty());

@@ -140,11 +140,7 @@ pub fn generate() -> io::Result<()> {
                     let output = out.join(format!("native-{entry}.{target}"));
                     write_changed(&output, &artifact.bytes)?;
                     let workgroup = format!("{:?}", description.workgroup);
-                    let bindings = if family != "probe" {
-                        abi::binding_declarations(&description, entry)?
-                    } else {
-                        "&[]".into()
-                    };
+                    let bindings = abi::binding_declarations(&description, entry)?;
                     declarations.push_str(&format!("NativeShaderArtifact {{ format: {target:?}, entry: {entry:?}, cache_key: {:?}, workgroup: {workgroup}, bindings: {bindings}, bytes: include_bytes!({:?}) }},\n",key.hex(),output));
                     manifest.push(serde_json::json!({"key":key.hex(),"artifact_sha256":digest(&artifact.bytes),"recipe":recipe}));
                     println!(

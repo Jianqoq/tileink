@@ -40,8 +40,46 @@ The measured p50 changes range from -1.33% to +0.76%. These small variations do 
 
 [Raw measurements and protocol](benchmarks/cleanup-phase1-metal-2026-10-11.json). Temporary measurement drivers are removed after validation.
 
+## Phase 2: one native submission path
+
+DX12 and Vulkan verification programs now record the same `ComputeBatch` resources,
+per-entry binding layouts, pipeline cache and frame used by the renderer. The old
+fixed-layout probe pipelines, per-probe native frames, texture upload helpers and
+`Work::Probes` submission variants are deleted. Pending submissions own a compute
+frame directly; Vulkan fences no longer pass through an optional/error conversion
+that could omit a pending fence during teardown. This removes the duplicate
+implementation, rather than retaining a compatibility bridge.
+
+HLSL probe artifacts carry their actual reflected per-entry layouts, like Metal
+and every other shader family. Only requested compute entries create pipelines.
+Resource/device limit validation, uncertain-submission quarantine and original
+GPU ownership checks remain required. Vulkan resource-limit tests now target
+production compute descriptors, including uniform ranges and launch dimensions.
+The driver-cache header check remains with the compute pipeline cache and tests
+reject truncated, wrong-device and wrong-UUID data.
+
+Shared probe oracles cover zero counts, workgroup tails, layouts, buffer and
+texture sampling, mixed dispatches, uniform-free scatter and ordered readbacks.
+They are defined once and run through actual compute recording. Focused Metal
+release tests pass. The final full release suite reports 959 passing tests and
+nine previously observed failures: six Metal reference/particle oracles, two DXC
+tests and the intermittent scaled turbulence test. There are no new failures.
+All 1730 SVG images and seven example images match `2ea5d59c` byte for byte.
+Release Clippy passes without new warnings.
+
+DX12 and Vulkan Rust libraries and unit-test code were type-checked separately
+for Windows. A temporary harness supplied an empty shader artifact table solely
+for Rust type checking, because DXC is unavailable here. This does **not** validate
+DXIL/SPIR-V compilation or GPU execution; those checks require the native GPU
+matrix. The harness is removed after verification.
+
+The same 13 paired real-renderer workloads compare the cumulative cleanup with
+`2ea5d59c`: p50 changes range from -0.33% to +1.57%, with exact pixels in every
+case. This does not establish a speedup or material regression. The Metal renderer
+execution path is unchanged in phase 2; probe-only allocations no longer upload
+unused source buffers. [Raw measurements and protocol](benchmarks/cleanup-phase2-metal-2026-10-11.json).
+
 ## Remaining audit work
 
-- DX12/Vulkan still have separate probe frame/pipeline implementations; Metal already records those verification workloads through production `ComputeBatch`. Preserve the probe oracles while removing duplicate backends.
 - Contextless private paths still substitute CPU uploads for pooled surfaces, persistent buffers and shader resources. Make allocator requirements explicit and migrate their conformance tests before removal.
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.

@@ -1,45 +1,6 @@
 //! Vulkan descriptor/image limits must be checked before void recording calls;
 //! successful allocation does not establish that a descriptor range is legal.
-use super::{Dispatch, Result};
-
-pub(super) fn validate(command: &Dispatch, buffer_bytes: u32, image_width: u32) -> Result<()> {
-    if command.source().len() as u64 > buffer_bytes as u64
-        || command.destination().len() as u64 > buffer_bytes as u64
-        || command
-            .texture()
-            .is_some_and(|(width, _)| width > image_width)
-    {
-        return Err("native Vulkan resource exceeds physical device limits".into());
-    }
-    Ok(())
-}
-
-#[test]
-fn descriptor_range_and_texture_extent_cannot_exceed_device_limits() {
-    let mut command = super::super::program::Probe {
-        entry: "copy_words",
-        params: super::super::program::Params {
-            count: 1,
-            source_offset: 0,
-            destination_offset: 0,
-            stride: 4,
-            value: [0, 0, 1, 0],
-        },
-        source: vec![0; 4],
-        destination: vec![0; 4],
-    };
-    assert!(validate(&command.clone().into(), 4, 1).is_ok());
-    assert!(validate(&command.clone().into(), 3, 1).is_err());
-    command.source.resize(8, 0);
-    assert!(validate(&command.clone().into(), 4, 1).is_err());
-    command.source.resize(4, 0);
-    command.destination.resize(8, 0);
-    assert!(validate(&command.clone().into(), 4, 1).is_err());
-    command.destination.resize(4, 0);
-    command.entry = "sample_words";
-    assert!(validate(&command.clone().into(), 4, 0).is_err());
-    assert!(validate(&command.clone().into(), 4, 1).is_ok());
-}
+use super::Result;
 
 /// Vulkan only guarantees 128 invocations. Reject a 256-lane renderer kernel
 /// before creating its pipeline on devices that cannot execute that workgroup.
@@ -137,4 +98,109 @@ fn texture_table_elements_count_toward_stage_and_set_limits() {
     limits.max_descriptor_set_sampled_images = 8;
     limits.max_per_stage_resources = 7;
     assert!(descriptors(&bindings, &limits).is_err());
+}
+
+/// Validate the resources actually bound by each pass before native recording.
+/// Verification programs and renderer kernels must obey the same device limits.
+pub(super) fn resources(
+    batch: &super::super::compute::ComputeBatch,
+    limits: &ash::vk::PhysicalDeviceLimits,
+) -> Result<()> {
+    use super::super::compute::Resource;
+    use crate::native::shaders::BindingKind;
+    // Every owned image is allocated, including images reachable only through a table.
+    for resource in batch.resources() {
+        if let Resource::Texture(texture) = resource
+            && (texture
+                .size
+                .iter()
+                .any(|&n| n > limits.max_image_dimension2_d)
+                || texture.layers > limits.max_image_array_layers)
+        {
+            return Err("native Vulkan texture exceeds device dimensions".into());
+        }
+    }
+    for pass in batch.passes() {
+        if pass
+            .grid
+            .iter()
+            .zip(limits.max_compute_work_group_count)
+            .any(|(n, limit)| *n > limit)
+        {
+            return Err("native Vulkan dispatch exceeds device limit".into());
+        }
+        for (binding, id) in &pass.bindings {
+            if matches!(
+                binding.kind,
+                BindingKind::Sampler | BindingKind::TextureTable
+            ) {
+                continue;
+            }
+            if matches!(&batch.resources()[id.index()], Resource::Texture(_)) {
+                continue;
+            }
+            let size = if binding.kind == BindingKind::Uniform {
+                binding.size as usize
+            } else {
+                batch.size(*id)?
+            };
+            let limit = if binding.kind == BindingKind::Uniform {
+                limits.max_uniform_buffer_range
+            } else {
+                limits.max_storage_buffer_range
+            };
+            if size > limit as usize {
+                return Err("native Vulkan descriptor range exceeds device limit".into());
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn compute_descriptors_and_image_extents_obey_device_limits() {
+    use super::super::program::{Params, Probe, record_batch};
+    let mut command = Probe {
+        entry: "copy_words",
+        params: Params {
+            count: 1,
+            source_offset: 0,
+            destination_offset: 0,
+            stride: 4,
+            value: [0, 0, 1, 0],
+        },
+        source: vec![0; 4],
+        destination: vec![0; 4],
+    };
+    let mut limits = ash::vk::PhysicalDeviceLimits {
+        max_compute_work_group_count: [65535; 3],
+        max_storage_buffer_range: 4,
+        max_uniform_buffer_range: 32,
+        max_image_dimension2_d: 1,
+        max_image_array_layers: 1,
+        ..Default::default()
+    };
+    let check = |command: &Probe, limits: &ash::vk::PhysicalDeviceLimits| {
+        resources(&record_batch(&[command.clone().into()]).unwrap(), limits)
+    };
+    assert!(check(&command, &limits).is_ok());
+    limits.max_storage_buffer_range = 3;
+    assert!(check(&command, &limits).is_err());
+    limits.max_storage_buffer_range = 4;
+    command.source.resize(8, 0);
+    assert!(check(&command, &limits).is_err());
+    command.source.resize(4, 0);
+    command.destination.resize(8, 0);
+    assert!(check(&command, &limits).is_err());
+    command.destination.resize(4, 0);
+    limits.max_uniform_buffer_range = 31;
+    assert!(check(&command, &limits).is_err());
+    limits.max_uniform_buffer_range = 32;
+    command.entry = "sample_words";
+    assert!(check(&command, &limits).is_ok());
+    limits.max_image_dimension2_d = 0;
+    assert!(check(&command, &limits).is_err());
+    limits.max_image_dimension2_d = 1;
+    limits.max_compute_work_group_count = [0, 1, 1];
+    assert!(check(&command, &limits).is_err());
 }

@@ -132,31 +132,7 @@ impl Metal {
         Ok(ticket)
     }
     pub fn submit_batch(&mut self, commands: &[super::program::Dispatch]) -> Result<Ticket> {
-        super::program::validate_batch(commands)?;
-        let mut batch = ComputeBatch::new();
-        for command in commands {
-            let destination = batch.buffer(command.destination().to_vec())?;
-            let source = batch.buffer(command.source().to_vec())?;
-            let mut bindings = vec![(0, destination), (1, source)];
-            if let Some(params) = command.params() {
-                let uniform = batch.buffer(bytemuck::bytes_of(params).to_vec())?;
-                bindings.push((2, uniform));
-                if !matches!(command.entry(), "copy_words" | "sample_words") {
-                    bindings.retain(|(slot, _)| *slot != 1);
-                }
-                if let Some((width, bytes)) = command.texture() {
-                    let texture = batch.texture_rgba8([width, 1], bytes.to_vec())?;
-                    bindings.push((3, texture));
-                }
-            }
-            // SAFETY: the shared probe/scatter validators prove every address and
-            // exclusive destination range, including rounded-up workgroup tails.
-            unsafe {
-                batch.dispatch(command.entry(), &bindings, [command.workgroups(), 1, 1])?;
-            }
-            batch.readback(destination)?;
-        }
-        self.submit_compute(&batch)
+        self.submit_compute(&super::program::record_batch(commands)?)
     }
     pub fn is_complete(&mut self, ticket: &Ticket) -> Result<bool> {
         if self.failed {

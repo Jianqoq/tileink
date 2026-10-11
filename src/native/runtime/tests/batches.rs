@@ -1,5 +1,6 @@
 //! Conformance checks exercise the production ComputeBatch, not an alternate
 //! encoder/uniform-arena model that the renderer never submits.
+use super::probe_cases as cases;
 use crate::native::runtime::{
     Result,
     adapter::Adapter,
@@ -104,5 +105,44 @@ fn rejected_compute_work_preserves_device_and_receipts_pin_the_context() -> Resu
     receipt.assert_valid()?;
     other.check_validation()?;
     recreated.assert_valid()?;
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn mixed_verification_programs_share_compute_recording_and_ordered_readbacks() -> Result<()> {
+    use super::program::{Scatter, record_batch};
+    let context = context()?;
+    let cases = cases::cases();
+    // Include texture and raw-buffer sampling together, zero counts and rounded
+    // tails. The same batch also contains a scatter with no uniform and no work.
+    let mut commands: Vec<_> = cases
+        .iter()
+        .map(|case| case.dispatch.clone().into())
+        .collect();
+    let mut expected: Vec<_> = cases.iter().map(|case| case.expected.clone()).collect();
+    for (source, destination, result) in [
+        (vec![4u32, 0, 0, 0], vec![0xa5; 12], vec![0xa5; 12]),
+        (
+            vec![8u32, 1, 0, 0, 1, 0, 2, 0, 17, 29],
+            vec![0xa5; 12],
+            [0xa5a5a5a5u32, 17, 29]
+                .iter()
+                .flat_map(|n| n.to_le_bytes())
+                .collect(),
+        ),
+    ] {
+        commands.push(Scatter::new(bytemuck::cast_slice(&source).to_vec(), destination)?.into());
+        expected.push(result);
+    }
+    let batch = record_batch(&commands)?;
+    let receipt = context
+        .adapter
+        .submit_compute(&batch)
+        .map_err(|e| format!("{e:?}"))?;
+    drop(batch);
+    assert_eq!(receipt.readback()?, expected);
+    assert_eq!(context.adapter.pending_count(), 0);
+    receipt.assert_valid()?;
     Ok(())
 }

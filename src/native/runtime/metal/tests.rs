@@ -1,7 +1,5 @@
-use super::super::program::{Params, Probe};
+use super::super::probe_cases as cases;
 use super::*;
-#[path = "../tests/cases.rs"]
-mod cases;
 #[path = "../tests/scan_cases.rs"]
 mod scan_cases;
 

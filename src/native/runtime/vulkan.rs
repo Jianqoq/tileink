@@ -2,16 +2,12 @@ mod compute;
 pub(super) mod compute_memory;
 mod compute_pipeline;
 mod context;
-mod frame;
 mod limits;
-mod pipeline;
 mod staging;
 mod upload;
 mod validation;
-mod work;
 use super::submissions::{Pending, Ticket};
-use frame::Frame;
-// Real native Vulkan compute execution for the M2 ABI probes.
+// Native Vulkan execution for renderer and conformance workloads.
 use super::{Result, program::Dispatch};
 use ash::{Entry, vk};
 use std::collections::BTreeMap;
@@ -28,24 +24,17 @@ pub struct Vulkan {
     device: ash::Device,
     memory: vk::PhysicalDeviceMemoryProperties,
     queue: vk::Queue,
-    bindings: vk::DescriptorSetLayout,
-    layout: vk::PipelineLayout,
-    pipelines: BTreeMap<&'static str, vk::Pipeline>,
-    pending: Pending<work::Work>,
+    pending: Pending<compute::Frame>,
     frame_cache: frame_cache::Cache,
     properties: vk::PhysicalDeviceProperties,
     compute_pipelines: BTreeMap<String, compute_pipeline::Pipeline>,
     family: u32,
-    max_storage_buffer_bytes: u32,
-    max_image_width: u32,
     failed: bool,
     texture_tables: bool,
     timeline_semaphores: bool,
     families: Vec<vk::QueueFamilyProperties>,
     #[cfg(test)]
     injected_submit_error: Option<vk::Result>,
-    #[cfg(test)]
-    inject_probe_init_failure: bool,
 }
 
 impl Vulkan {
@@ -106,31 +95,7 @@ impl Vulkan {
     }
 
     pub fn submit_batch(&mut self, commands: &[Dispatch]) -> Result<Ticket> {
-        if self.failed {
-            return Err("Vulkan context failed".into());
-        }
-        super::program::validate_batch(commands)?;
-        for command in commands {
-            limits::validate(command, self.max_storage_buffer_bytes, self.max_image_width)?;
-        }
-        if !commands.is_empty() {
-            pipeline::ensure(self)?;
-        }
-        let frames = commands
-            .iter()
-            .map(|command| {
-                Frame::record(
-                    &self.device,
-                    self.memory,
-                    self.family,
-                    self.bindings,
-                    self.layout,
-                    self.pipelines[command.entry()],
-                    command,
-                )
-            })
-            .collect::<Result<Vec<_>>>()?;
-        self.submit_work(work::Work::Probes(frames))
+        self.submit_compute(&super::program::record_batch(commands)?)
     }
     pub fn submit_compute(&mut self, batch: &super::compute::ComputeBatch) -> Result<Ticket> {
         if self.failed {
@@ -185,14 +150,11 @@ impl Vulkan {
             &self.compute_pipelines,
             &mut self.frame_cache,
         )?;
-        self.submit_work(work::Work::Compute(Box::new(frame)))
+        self.submit_work(frame)
     }
-    fn submit_work(&mut self, work: work::Work) -> Result<Ticket> {
-        let buffers = work.commands();
-        let synchronization = match &work {
-            work::Work::Compute(frame) => frame.synchronization.clone(),
-            _ => None,
-        };
+    fn submit_work(&mut self, work: compute::Frame) -> Result<Ticket> {
+        let buffers = [work.commands.command];
+        let synchronization = work.synchronization.clone();
         let waits: Vec<_> = synchronization
             .iter()
             .flat_map(|sync| sync.waits.iter().map(|wait| wait.semaphore.handle()))
@@ -240,7 +202,7 @@ impl Vulkan {
         if timeline {
             info = info.push_next(&mut values);
         }
-        let fence = work.fence()?;
+        let fence = work.commands.fence;
         let ticket = self.pending.track(work)?;
         unsafe {
             let submit = || self.device.queue_submit(self.queue, &[info], fence);
@@ -277,7 +239,7 @@ impl Vulkan {
     }
 
     pub fn readback_batch(&mut self, ticket: &Ticket) -> Result<Vec<Vec<u8>>> {
-        let fence = self.pending.get(ticket)?.fence()?;
+        let fence = self.pending.get(ticket)?.commands.fence;
         if self.failed {
             return Err("Vulkan context failed".into());
         }
@@ -291,15 +253,13 @@ impl Vulkan {
         let result = work.readback();
         // Only a successfully waited fence permits reuse. Never recycle on Drop,
         // rejection, timeout or unknown completion (device-loss quarantine).
-        if let work::Work::Compute(frame) = work {
-            if let Some(staging) = frame.upload {
-                self.frame_cache.staging.push(staging);
-            }
-            if let Some(arena) = frame.gpu {
-                self.frame_cache.retire_storage(arena);
-            }
-            self.frame_cache.commands.push(frame.commands);
+        if let Some(staging) = work.upload {
+            self.frame_cache.staging.push(staging);
         }
+        if let Some(arena) = work.gpu {
+            self.frame_cache.retire_storage(arena);
+        }
+        self.frame_cache.commands.push(work.commands);
         result
     }
     #[cfg(test)]
@@ -320,7 +280,7 @@ impl Vulkan {
     }
 
     pub fn is_complete(&mut self, ticket: &Ticket) -> Result<bool> {
-        let fence = self.pending.get(ticket)?.fence()?;
+        let fence = self.pending.get(ticket)?.commands.fence;
         if self.failed {
             return Err("Vulkan context failed".into());
         }
@@ -341,7 +301,7 @@ impl Drop for Vulkan {
                 let fences: Vec<_> = self
                     .pending
                     .values()
-                    .filter_map(|work| work.fence().ok())
+                    .map(|work| work.commands.fence)
                     .collect();
                 if fences.is_empty() {
                     Ok(())
@@ -371,12 +331,6 @@ impl Drop for Vulkan {
             self.pending.clear_after_completion();
             self.frame_cache = Default::default();
             self.compute_pipelines.clear();
-            for pipeline in self.pipelines.values() {
-                self.device.destroy_pipeline(*pipeline, None);
-            }
-            self.device.destroy_pipeline_layout(self.layout, None);
-            self.device
-                .destroy_descriptor_set_layout(self.bindings, None);
             if self.host_owner.is_none() {
                 self.device.destroy_device(None);
             }

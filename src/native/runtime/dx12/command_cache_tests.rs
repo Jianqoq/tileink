@@ -38,9 +38,7 @@ fn completed_descriptor_heaps_are_reused_without_in_flight_aliasing() -> Result<
         Ok(batch)
     };
     let heaps = |device: &Dx12, ticket: &super::super::submissions::Ticket| {
-        let work::Work::Compute(frame) = device.gpu.pending.get(ticket).unwrap() else {
-            unreachable!()
-        };
+        let frame = device.gpu.pending.get(ticket).unwrap();
         frame.descriptor_heaps()
     };
     let first = device.submit_compute(&batch(4, 0xff112233)?)?;
@@ -48,13 +46,9 @@ fn completed_descriptor_heaps_are_reused_without_in_flight_aliasing() -> Result<
     let second = device.submit_compute(&batch(4, 0xff445566)?)?;
     let a = heaps(&device, &first);
     let b = heaps(&device, &second);
-    let work::Work::Compute(frame) = device.gpu.pending.get(&first).unwrap() else {
-        unreachable!()
-    };
+    let frame = device.gpu.pending.get(&first).unwrap();
     let first_list = frame.list.clone();
-    let work::Work::Compute(frame) = device.gpu.pending.get(&empty).unwrap() else {
-        unreachable!()
-    };
+    let frame = device.gpu.pending.get(&empty).unwrap();
     let empty_list = frame.list.clone();
     assert_ne!(
         a[0].as_raw(),
@@ -67,9 +61,7 @@ fn completed_descriptor_heaps_are_reused_without_in_flight_aliasing() -> Result<
     );
     assert!(device.readback_batch(&empty)?.is_empty());
     let third = device.submit_compute(&batch(2, 0xff778899)?)?;
-    let work::Work::Compute(frame) = device.gpu.pending.get(&third).unwrap() else {
-        unreachable!()
-    };
+    let frame = device.gpu.pending.get(&third).unwrap();
     assert!(
         [first_list.as_raw(), empty_list.as_raw()].contains(&frame.list.as_raw()),
         "completed command list should be reused"

@@ -100,3 +100,55 @@ fn fixed_coordinates_reject_signed_minimum_and_overflowing_products() {
     c.params.value = [16384.0f32.to_bits(), 8192.0f32.to_bits(), 1, 0];
     assert!(c.validate().is_err());
 }
+
+#[test]
+fn verification_programs_have_complete_per_entry_compute_layouts() {
+    use crate::native::shaders::BindingKind;
+    for artifact in crate::NATIVE_SHADER_ARTIFACTS {
+        let expected: &[(u32, BindingKind, u32)] = match artifact.entry {
+            "clear_words" | "layout_words" => {
+                &[(0, BindingKind::Write, 4), (2, BindingKind::Uniform, 32)]
+            }
+            "copy_words" => &[
+                (0, BindingKind::Write, 4),
+                (1, BindingKind::Read, 4),
+                (2, BindingKind::Uniform, 32),
+            ],
+            "sample_words" => &[
+                (0, BindingKind::Write, 4),
+                (1, BindingKind::Read, 4),
+                (2, BindingKind::Uniform, 32),
+                (3, BindingKind::Texture, 4),
+            ],
+            "range_scatter" => &[(0, BindingKind::Write, 4), (1, BindingKind::Read, 4)],
+            _ => continue,
+        };
+        let actual: Vec<_> = artifact
+            .bindings
+            .iter()
+            .map(|b| (b.slot, b.kind, b.size))
+            .collect();
+        assert_eq!(actual, expected, "{}/{}", artifact.format, artifact.entry);
+        assert!(
+            artifact
+                .bindings
+                .iter()
+                .all(|b| b.count == 1 && !b.internal)
+        );
+    }
+}
+
+#[test]
+fn recording_rejects_invalid_later_commands_and_preserves_zero_work_outputs() {
+    let mut bad = command();
+    bad.params.count = 2;
+    assert!(record_batch(&[command().into(), bad.into()]).is_err());
+    let empty = Scatter::new(bytemuck::cast_slice(&[4u32, 0, 0, 0]).to_vec(), vec![9; 4]).unwrap();
+    let batch = record_batch(&[empty.into()]).unwrap();
+    assert!(batch.passes().is_empty());
+    assert_eq!(batch.outputs().len(), 1);
+    let output = batch.outputs()[0];
+    assert!(
+        matches!(&batch.resources()[output.index()], super::super::compute::Resource::Buffer(bytes) if bytes == &[9; 4])
+    );
+}

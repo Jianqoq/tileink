@@ -16,6 +16,37 @@ pub fn validate_batch(commands: &[Dispatch]) -> super::Result<()> {
     }
     Ok(())
 }
+
+/// Verification programs use the renderer's resource, binding and submission
+/// path on every backend. Keeping a second native recorder hid backend bugs from
+/// these conformance tests and required a separate fixed descriptor layout.
+pub fn record_batch(commands: &[Dispatch]) -> super::Result<super::compute::ComputeBatch> {
+    validate_batch(commands)?;
+    let mut batch = super::compute::ComputeBatch::new();
+    for command in commands {
+        let destination = batch.buffer(command.destination().to_vec())?;
+        let mut bindings = vec![(0, destination)];
+        if matches!(
+            command.entry(),
+            "copy_words" | "sample_words" | "range_scatter"
+        ) {
+            bindings.push((1, batch.buffer(command.source().to_vec())?));
+        }
+        if let Some(params) = command.params() {
+            bindings.push((2, batch.buffer(bytemuck::bytes_of(params).to_vec())?));
+        }
+        if let Some((width, bytes)) = command.texture() {
+            bindings.push((3, batch.texture_rgba8([width, 1], bytes.to_vec())?));
+        }
+        // SAFETY: validation proves every address and exclusive destination
+        // range, including rounded-up workgroup tails and scatter descriptors.
+        unsafe {
+            batch.dispatch(command.entry(), &bindings, [command.workgroups(), 1, 1])?;
+        }
+        batch.readback(destination)?;
+    }
+    Ok(batch)
+}
 #[cfg(test)]
 #[path = "tests/program.rs"]
 mod tests;
