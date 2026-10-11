@@ -30,7 +30,7 @@ pub(super) fn outline_glyph_path(
 
         let mut path = BezPath::new();
         for command in outline.path().commands() {
-            push_swash_command(&mut path, command, Point::ORIGIN);
+            push_swash_command(&mut path, command);
         }
         Some(path)
     })
@@ -56,8 +56,8 @@ pub(super) fn append_outline_path(path: &mut BezPath, outline: &BezPath, origin:
     }
 }
 
-fn push_swash_command(path: &mut BezPath, command: SwashPathCommand, origin: Point) {
-    let p = |p: Vector| (origin.x + p.x as f64, origin.y - p.y as f64);
+fn push_swash_command(path: &mut BezPath, command: SwashPathCommand) {
+    let p = |p: Vector| (p.x as f64, -p.y as f64);
     match command {
         SwashPathCommand::MoveTo(to) => path.move_to(p(to)),
         SwashPathCommand::LineTo(to) => path.line_to(p(to)),

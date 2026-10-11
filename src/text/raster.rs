@@ -23,28 +23,50 @@ pub(super) struct RasterGlyphKey {
 
 #[derive(Clone, Debug)]
 pub(crate) struct GlyphRasterImage {
-    pub(crate) content: SwashContent,
+    pub(crate) content: GlyphContent,
     pub(crate) placement: Placement,
     pub(crate) data: Vec<u8>,
 }
 
 impl GlyphRasterImage {
+    /// Swash is used only for alpha masks and color images. LCD coverage comes
+    /// from our three-channel Harmony rasterizer, never Swash's RGBA LCD format.
     pub(super) fn from_swash(image: SwashImage) -> Self {
-        Self {
-            content: image.content,
-            placement: image.placement,
-            data: image.data,
-        }
+        let content = match image.content {
+            SwashContent::Mask => GlyphContent::Mask,
+            SwashContent::Color => GlyphContent::Color,
+            SwashContent::SubpixelMask => unreachable!("Swash LCD rendering is not used"),
+        };
+        Self::new(content, image.placement, image.data)
     }
 
-    #[cfg(test)]
-    pub(crate) fn subpixel_mask(placement: Placement, data: Vec<u8>) -> Self {
+    /// Enforce the byte layout once at image creation; later stages copy the
+    /// canonical data without legacy repacking or malformed-image fallbacks.
+    pub(super) fn new(content: GlyphContent, placement: Placement, data: Vec<u8>) -> Self {
+        let channels = match content {
+            GlyphContent::Mask => 1,
+            GlyphContent::SubpixelMask => 3,
+            GlyphContent::Color => 4,
+        };
+        let byte_len = (placement.width as usize)
+            .checked_mul(placement.height as usize)
+            .and_then(|pixels| pixels.checked_mul(channels))
+            .expect("glyph image byte length overflows");
+        assert_eq!(data.len(), byte_len);
         Self {
-            content: SwashContent::SubpixelMask,
+            content,
             placement,
             data,
         }
     }
+}
+
+/// Byte layouts shared by rasterization, atlas preparation and GPU upload.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum GlyphContent {
+    Mask,
+    Color,
+    SubpixelMask,
 }
 
 pub(super) fn raster_glyph_image(
@@ -53,14 +75,13 @@ pub(super) fn raster_glyph_image(
     cache_key: CacheKey,
     subpixel_mode: TextSubpixelMode,
     embolden: f32,
-) -> Option<SwashImage> {
+) -> Option<GlyphRasterImage> {
     let offset = raster_glyph_offset(cache_key);
     if subpixel_mode != TextSubpixelMode::None
         && let Some(image) = raster_glyph_image_with_sources(
             font_system,
             context,
             cache_key,
-            Format::Alpha,
             embolden,
             offset,
             &[
@@ -87,7 +108,6 @@ pub(super) fn raster_glyph_image(
         font_system,
         context,
         cache_key,
-        Format::Alpha,
         embolden,
         offset,
         &[
@@ -102,20 +122,20 @@ fn raster_glyph_image_with_sources(
     font_system: &mut FontSystem,
     context: &mut ScaleContext,
     cache_key: CacheKey,
-    format: Format,
     embolden: f32,
     offset: Vector,
     sources: &[Source],
-) -> Option<SwashImage> {
+) -> Option<GlyphRasterImage> {
     with_glyph_scaler(font_system, context, cache_key, |scaler| {
         Render::new(sources)
-            .format(format)
+            .format(Format::Alpha)
             .embolden(embolden.max(0.0))
             .offset(offset)
             .transform(fake_italic_transform(cache_key))
             .render(scaler, cache_key.glyph_id)
     })
     .flatten()
+    .map(GlyphRasterImage::from_swash)
 }
 
 fn raster_glyph_offset(cache_key: CacheKey) -> Vector {
@@ -136,7 +156,7 @@ fn raster_harmony_lcd_glyph_image(
     subpixel_mode: TextSubpixelMode,
     embolden: f32,
     offset: Vector,
-) -> Option<SwashImage> {
+) -> Option<GlyphRasterImage> {
     let shifts = harmony_lcd_outline_shifts(subpixel_mode);
     with_glyph_scaler(font_system, context, cache_key, |scaler| {
         let render_channel = |scaler: &mut swash::scale::Scaler<'_>, shift: f32| {
@@ -146,6 +166,7 @@ fn raster_harmony_lcd_glyph_image(
                 .offset(Vector::new(offset.x + shift, offset.y))
                 .transform(fake_italic_transform(cache_key))
                 .render(scaler, cache_key.glyph_id)
+                .map(GlyphRasterImage::from_swash)
         };
 
         let red = render_channel(scaler, shifts[0])?;
@@ -160,7 +181,7 @@ fn raster_harmony_lcd_glyph_image(
 
 pub(super) fn harmony_lcd_outline_shifts(mode: TextSubpixelMode) -> [f32; 3] {
     match mode {
-        TextSubpixelMode::None => [0.0; 3],
+        TextSubpixelMode::None => unreachable!("Harmony LCD requires RGB or BGR"),
         // FreeType Harmony's default geometry is RGB subpixels at -21/64, 0,
         // and +21/64 px. Each channel renders the outline shifted in the
         // opposite direction; the light FIR pass below only damps residual
@@ -170,7 +191,7 @@ pub(super) fn harmony_lcd_outline_shifts(mode: TextSubpixelMode) -> [f32; 3] {
     }
 }
 
-pub(super) fn merge_harmony_lcd_masks(channels: [SwashImage; 3]) -> SwashImage {
+pub(super) fn merge_harmony_lcd_masks(channels: [GlyphRasterImage; 3]) -> GlyphRasterImage {
     // The input always contains three channels, including empty glyph masks.
     // Their union has no missing-channel/default-bounds case.
     let [red, green, blue] = channels.each_ref().map(|image| image.placement);
@@ -187,14 +208,9 @@ pub(super) fn merge_harmony_lcd_masks(channels: [SwashImage; 3]) -> SwashImage {
     let mut data = vec![0; width as usize * height as usize * 3];
 
     for (channel, image) in channels.iter().enumerate() {
-        if image.content != SwashContent::Mask {
-            continue;
-        }
+        assert_eq!(image.content, GlyphContent::Mask);
         let src_width = image.placement.width as usize;
         let src_height = image.placement.height as usize;
-        if image.data.len() != src_width * src_height {
-            continue;
-        }
         let dst_x = (image.placement.left - left) as usize;
         let dst_y = (top - image.placement.top) as usize;
         for y in 0..src_height {
@@ -205,44 +221,37 @@ pub(super) fn merge_harmony_lcd_masks(channels: [SwashImage; 3]) -> SwashImage {
         }
     }
 
-    let mut image = SwashImage::new();
-    image.content = SwashContent::SubpixelMask;
-    image.source = Source::Outline;
-    image.placement = Placement {
-        left,
-        top,
-        width,
-        height,
-    };
-    image.data = data;
-    image
+    GlyphRasterImage::new(
+        GlyphContent::SubpixelMask,
+        Placement {
+            left,
+            top,
+            width,
+            height,
+        },
+        data,
+    )
 }
 
 /// Applies a center-weighted LCD FIR filter to the interleaved RGB coverage
 /// samples. One transparent pixel of horizontal padding preserves both filter
 /// tails instead of clipping them at the glyph bitmap boundary.
-pub(super) fn filter_harmony_lcd_mask(image: &mut SwashImage, mode: TextSubpixelMode) {
-    if image.content != SwashContent::SubpixelMask
-        || mode == TextSubpixelMode::None
-        || image.placement.width == 0
-        || image.placement.height == 0
-    {
+pub(super) fn filter_harmony_lcd_mask(image: &mut GlyphRasterImage, mode: TextSubpixelMode) {
+    assert_eq!(image.content, GlyphContent::SubpixelMask);
+    let physical_to_memory = match mode {
+        TextSubpixelMode::Rgb => [0, 1, 2],
+        TextSubpixelMode::Bgr => [2, 1, 0],
+        TextSubpixelMode::None => unreachable!("Harmony LCD requires RGB or BGR"),
+    };
+    if image.placement.width == 0 || image.placement.height == 0 {
         return;
     }
 
     let input_width = image.placement.width as usize * 3;
-    if image.data.len() != input_width * image.placement.height as usize {
-        return;
-    }
 
     let output_width = input_width + 6;
     let mut filtered = vec![0; output_width * image.placement.height as usize];
     let mut accumulated = vec![0_u32; output_width];
-    let physical_to_memory = match mode {
-        TextSubpixelMode::Rgb => [0, 1, 2],
-        TextSubpixelMode::Bgr => [2, 1, 0],
-        TextSubpixelMode::None => unreachable!(),
-    };
     for row in 0..image.placement.height as usize {
         let input = &image.data[row * input_width..(row + 1) * input_width];
         let output = &mut filtered[row * output_width..(row + 1) * output_width];

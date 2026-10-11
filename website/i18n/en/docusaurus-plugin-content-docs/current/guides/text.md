@@ -15,6 +15,10 @@ renderer.render_with_text(&canvas, &mut fonts, &mut text);
 
 `push_text_layout` records glyph/run data and supports bitmap/color glyphs through the text renderer. `push_text_layout_as_path` converts scalable outlines to ordinary paths and does not require a text-aware render call. `TextRasterOptions` selects subpixel and compositing behavior.
 
+RGB/BGR use Harmony LCD coverage for ordinary outline glyphs; `None` uses a single
+alpha channel. Color fonts retain their color outlines or bitmap strikes in every
+subpixel mode, so changing the mode does not turn color emoji into monochrome glyphs.
+
 If the application already retains a `cosmic_text::Buffer` for measurement or editing, call
 `TextContext::layout_buffer(&mut fonts, &mut buffer)`. It shapes pending changes and reuses the
 buffer's existing layout state, avoiding the allocation and shaping cost of `layout`'s owned

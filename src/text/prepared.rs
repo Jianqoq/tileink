@@ -3,9 +3,7 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-#[cfg(test)]
-use cosmic_text::SwashImage;
-use cosmic_text::{CacheKey, FontSystem, SwashContent};
+use cosmic_text::{CacheKey, FontSystem};
 
 use crate::shared::bounds::Bounds;
 
@@ -13,7 +11,7 @@ use super::{
     context::TextContext,
     layout::{CanvasGlyph, TextRun},
     options::{TextCompositeMode, TextRasterOptions},
-    raster::GlyphRasterImage,
+    raster::{GlyphContent, GlyphRasterImage},
 };
 
 mod reconcile;
@@ -268,7 +266,7 @@ impl PreparedGlyph {
 
 #[derive(Clone, Debug)]
 pub(crate) struct PreparedGlyphImage {
-    pub(crate) content: PreparedGlyphContent,
+    pub(crate) content: GlyphContent,
     pub(crate) composite_mode: TextCompositeMode,
     pub(crate) left: i32,
     pub(crate) top: i32,
@@ -279,82 +277,14 @@ pub(crate) struct PreparedGlyphImage {
 
 impl PreparedGlyphImage {
     pub(super) fn from_raster(image: &GlyphRasterImage, raster_options: TextRasterOptions) -> Self {
-        let content = match image.content {
-            SwashContent::Mask => PreparedGlyphContent::Mask,
-            SwashContent::Color => PreparedGlyphContent::Color,
-            SwashContent::SubpixelMask => PreparedGlyphContent::SubpixelMask,
-        };
-        let pixels = prepared_glyph_image_data(content, image);
         Self {
-            content,
+            content: image.content,
             composite_mode: raster_options.composite_mode,
-            left: pixels.left,
+            left: image.placement.left,
             top: image.placement.top,
-            width: pixels.width,
+            width: image.placement.width,
             height: image.placement.height,
-            data: pixels.data,
+            data: image.data.clone(),
         }
     }
-
-    #[cfg(test)]
-    pub(super) fn from_swash(image: &SwashImage, raster_options: TextRasterOptions) -> Self {
-        Self::from_raster(&GlyphRasterImage::from_swash(image.clone()), raster_options)
-    }
-}
-
-struct PreparedGlyphPixels {
-    left: i32,
-    width: u32,
-    data: Vec<u8>,
-}
-
-fn prepared_glyph_image_data(
-    content: PreparedGlyphContent,
-    image: &GlyphRasterImage,
-) -> PreparedGlyphPixels {
-    if content != PreparedGlyphContent::SubpixelMask {
-        return PreparedGlyphPixels {
-            left: image.placement.left,
-            width: image.placement.width,
-            data: image.data.clone(),
-        };
-    }
-
-    let pixel_count = image.placement.width as usize * image.placement.height as usize;
-    let data = if image.data.len() == pixel_count * 4 {
-        let mut data = Vec::with_capacity(pixel_count * 3);
-        for pixel in image.data.as_chunks::<4>().0 {
-            data.extend_from_slice(&pixel[..3]);
-        }
-        data
-    } else if image.data.len() == pixel_count * 3 {
-        image.data.clone()
-    } else {
-        return PreparedGlyphPixels {
-            left: image.placement.left,
-            width: image.placement.width,
-            data: image.data.clone(),
-        };
-    };
-
-    if image.placement.width == 0 || image.placement.height == 0 {
-        return PreparedGlyphPixels {
-            left: image.placement.left,
-            width: image.placement.width,
-            data,
-        };
-    }
-
-    PreparedGlyphPixels {
-        left: image.placement.left,
-        width: image.placement.width,
-        data,
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum PreparedGlyphContent {
-    Mask,
-    Color,
-    SubpixelMask,
 }

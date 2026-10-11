@@ -12,8 +12,7 @@ use crate::{
         pixel::mul_div255,
     },
     text::{
-        AtlasSignature, PreparedGlyphContent, PreparedTextChanges, PreparedTextData,
-        TextCompositeMode,
+        AtlasSignature, GlyphContent, PreparedTextChanges, PreparedTextData, TextCompositeMode,
     },
 };
 
@@ -135,7 +134,7 @@ impl TextUpload {
         for image in text.images() {
             let data_offset = self.image_data.len() as u32;
             let content = match image.content {
-                PreparedGlyphContent::Mask => {
+                GlyphContent::Mask => {
                     self.image_data
                         .extend(image.data.iter().map(|&alpha| alpha as u32));
                     match image.composite_mode {
@@ -143,7 +142,7 @@ impl TextUpload {
                         TextCompositeMode::Linear => GPU_GLYPH_LINEAR_MASK,
                     }
                 }
-                PreparedGlyphContent::Color => {
+                GlyphContent::Color => {
                     for pixel in image.data.as_chunks::<4>().0 {
                         let a = pixel[3];
                         self.image_data.push(rgba8_pack([
@@ -158,7 +157,7 @@ impl TextUpload {
                         TextCompositeMode::Linear => GPU_GLYPH_LINEAR_COLOR,
                     }
                 }
-                PreparedGlyphContent::SubpixelMask => {
+                GlyphContent::SubpixelMask => {
                     for pixel in image.data.as_chunks::<3>().0 {
                         self.image_data
                             .push(rgba8_pack([pixel[0], pixel[1], pixel[2], 0]));

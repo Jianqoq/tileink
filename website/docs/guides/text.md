@@ -38,6 +38,9 @@ buffer 必须由同一个 font system 创建。
 
 `TextRasterOptions` 控制 composite/subpixel 策略。`TextSubpixelMode` 可选择 none、RGB/BGR 等模式；`TextCompositeMode` 控制 coverage 如何应用到颜色。窗口目标与字体 atlas 参数变化会使相关资源重新准备。
 
+RGB/BGR 对普通轮廓字形使用 Harmony LCD 覆盖率；`None` 使用单通道 alpha。
+彩色字体仍优先使用其彩色轮廓或位图，切换 subpixel 模式不会将彩色 emoji 转成单色。
+
 ## 扁平 Canvas 的 prepared text 复用
 
 连续调用 `render_with_text*` 渲染新记录的扁平 `Canvas` 时，renderer 会复用已准备的

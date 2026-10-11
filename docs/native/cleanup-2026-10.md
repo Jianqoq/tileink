@@ -597,6 +597,56 @@ hashes, are retained in
 [`cleanup-phase16-metal-2026-10-11.json`](benchmarks/cleanup-phase16-metal-2026-10-11.json).
 Temporary snapshot, measurement and validation sources were removed afterward.
 
+## Phase 17: canonical glyph images and direct cache entries
+
+Rasterization, prepared text and GPU upload now share one glyph-content type:
+one-byte alpha, three-byte Harmony LCD and four-byte RGBA color. Swash renders
+only alpha/color images; Harmony owns LCD generation directly. The retired
+Swash RGBA LCD conversion, malformed-data copy/skip defaults, duplicate content
+mapping, temporary pixel wrapper and redundant empty-image preparation branch
+are removed. Image creation verifies the byte contract once with checked size
+arithmetic. Invalid internal content or disabled LCD mode identifies an invariant
+violation instead of silently dropping coverage. Valid empty masks remain empty,
+and color font selection and RGB/BGR filtering retain their existing semantics.
+This permanently removes the alternate image representation and silent defaults.
+
+Glyph image and outline caches use direct entries instead of contains/insert/get
+lookups. Unavailable glyph results remain cached, and explicit cache clearing
+still invalidates prepared atlas generations. Outline conversion no longer
+accepts an origin argument that every caller fixed at zero; actual per-glyph
+translation and Y inversion remain. Text tests now load bundled fonts into an
+empty database, require glyph/color data instead of returning before assertions,
+and live in separate layout, recording, preparation, LCD and cache modules.
+
+Six regressions first reproduced the old silent acceptance/skip behavior. Fourteen
+added tests cover canonical byte layouts, retired format rejection, invalid native
+data/content, RGB/BGR and disabled LCD modes, empty masks, checked byte-size
+arithmetic, cache reuse/options, missing glyph results and outline translation.
+The size-overflow regression caught an issue during review of the new constructor
+and now passes. All 52 focused and 34 broader glyph release tests pass. The full
+single-thread suite, including explicitly enabled GPU/compiler tests, reports
+1021 passing tests and the same three known failures described in phase 12.
+All 11 example tests pass, release Clippy has no new warnings and the backend-free
+library compiles. All 1730 SVG images and seven example images match phase 16
+exactly. No DX12/Vulkan GPU execution is claimed on this Metal host.
+
+Two paired Metal rounds measure nine real workloads against `9b77dbca`, with
+100 warmup pairs and 600 alternating samples per version in each round. Timings
+include layout extraction and Canvas recording for the changing-text cases,
+native submission and GPU completion. Initial, mutated and final pixels match;
+retained nested text also matches independent immediate references. Combined p50
+changes range from -2.77% to +0.35%. RGB/BGR/alpha layout and recording decrease
+by 1.58%/1.95%/1.65%, path-outline recording by 2.77%, color text by 1.51%, and
+cache invalidation by 0.98%. Cached text changes by -0.04%, retained mutations by
+-0.56%, and the nontext control by +0.35%. Layout/path medians decrease in both
+rounds; the small cached/retained/control differences do not establish a general
+renderer speedup. No material regression is identified in these workloads.
+Both complete rounds, raw samples, workload definitions and artifact/source
+hashes are saved in
+[`cleanup-phase17-metal-2026-10-11.json`](benchmarks/cleanup-phase17-metal-2026-10-11.json).
+Temporary measurement, snapshot and validation source is removed after recording
+the results.
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.

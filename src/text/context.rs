@@ -114,11 +114,18 @@ impl TextContext {
             subpixel_mode: self.raster_options.subpixel_mode,
             embolden_bits: self.raster_options.mask_embolden().to_bits(),
         };
-        if !self.image_cache.contains_key(&key) {
-            let image = self.raster_glyph_image(font_system, cache_key);
-            self.image_cache.insert(key, image);
-        }
-        self.image_cache.get(&key).and_then(Option::as_ref)
+        self.image_cache
+            .entry(key)
+            .or_insert_with(|| {
+                raster_glyph_image(
+                    font_system,
+                    &mut self.scale_context,
+                    cache_key,
+                    key.subpixel_mode,
+                    f32::from_bits(key.embolden_bits),
+                )
+            })
+            .as_ref()
     }
 
     /// Builds a vector path for every scalable glyph in `layout`.
@@ -156,11 +163,10 @@ impl TextContext {
         cache_key: CacheKey,
     ) -> Option<&BezPath> {
         let key = outline_cache_key(cache_key);
-        if !self.outline_cache.contains_key(&key) {
-            let outline = outline_glyph_path(font_system, &mut self.scale_context, key);
-            self.outline_cache.insert(key, outline);
-        }
-        self.outline_cache.get(&key).and_then(Option::as_ref)
+        self.outline_cache
+            .entry(key)
+            .or_insert_with(|| outline_glyph_path(font_system, &mut self.scale_context, key))
+            .as_ref()
     }
 
     fn raster_bounds(&mut self, font_system: &mut FontSystem, glyphs: &[TextGlyph]) -> Bounds {
@@ -179,21 +185,6 @@ impl TextContext {
         bounds
     }
 
-    fn raster_glyph_image(
-        &mut self,
-        font_system: &mut FontSystem,
-        cache_key: CacheKey,
-    ) -> Option<GlyphRasterImage> {
-        raster_glyph_image(
-            font_system,
-            &mut self.scale_context,
-            cache_key,
-            self.raster_options.subpixel_mode,
-            self.raster_options.mask_embolden(),
-        )
-        .map(GlyphRasterImage::from_swash)
-    }
-
     /// Clears cached glyph images and outlines after external font database changes.
     pub fn clear_glyph_caches(&mut self) {
         self.image_cache.clear();
@@ -208,3 +199,6 @@ impl Default for TextContext {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests;

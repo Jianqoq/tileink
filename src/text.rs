@@ -23,9 +23,9 @@ pub(crate) use layout::{
 };
 #[cfg(test)]
 pub(crate) use prepared::PreparedGlyphImage;
-pub(crate) use prepared::{
-    AtlasSignature, PreparedGlyphContent, PreparedTextChanges, PreparedTextData,
-};
+pub(crate) use prepared::{AtlasSignature, PreparedTextChanges, PreparedTextData};
+
+pub(crate) use raster::GlyphContent;
 
 #[cfg(test)]
 mod tests;
