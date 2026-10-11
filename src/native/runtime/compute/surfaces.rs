@@ -113,16 +113,15 @@ fn take_unpinned(
 }
 
 impl ComputeBatch {
-    pub(crate) fn context(&self) -> Option<NativeContext> {
+    pub(crate) fn context(&self) -> Result<NativeContext> {
         self.surface_pool
             .as_ref()
             .map(|pool| pool.borrow().context.clone())
+            .ok_or_else(|| "native allocation requires a renderer resource pool".into())
     }
 
-    pub(crate) fn adapter(&self) -> Option<crate::native::runtime::adapter::Adapter> {
-        self.surface_pool
-            .as_ref()
-            .map(|pool| pool.borrow().context.adapter.clone())
+    pub(crate) fn adapter(&self) -> Result<crate::native::runtime::adapter::Adapter> {
+        self.context().map(|context| context.adapter)
     }
 
     /// The preceding renderer batch must have been submitted or discarded. Queue

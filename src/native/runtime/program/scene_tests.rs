@@ -1,4 +1,5 @@
 use super::*;
+use crate::native::runtime::gpu_support;
 use crate::{Radius, RetainedNodeId, canvas::SceneBufferChanges};
 use peniko::{Color, kurbo::Rect};
 
@@ -37,19 +38,9 @@ fn sparse_tile_bin_uploads_only_changed_records_and_pages() {
 }
 
 #[test]
-fn unavailable_native_storage_uses_complete_snapshot() -> Result<()> {
-    let mut cache = super::super::cached_buffer::CachedBuffer::default();
-    let mut batch = ComputeBatch::new();
-    let id = cache.patches_delta(&mut batch, 16, &[(4, &[1, 2, 3, 4])], &[])?;
-    assert_eq!(
-        batch.resources()[id.index()].bytes(),
-        &[0, 0, 0, 0, 1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0]
-    );
-    Ok(())
-}
-
-#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn scene_upload_consumes_tile_dirty_journals_across_retained_updates() -> Result<()> {
+    let context = gpu_support::context()?;
     let mut cache = SceneCache::default();
     for frame in 0..256 {
         let mut canvas = Canvas::new(64, 16, 1.0);
@@ -66,7 +57,7 @@ fn scene_upload_consumes_tile_dirty_journals_across_retained_updates() -> Result
                 ..Default::default()
             });
         }
-        let mut batch = ComputeBatch::new();
+        let mut batch = gpu_support::batch(&context);
         cache.record(&mut batch, &canvas, None, None, 65_535)?;
         // A recorded update consumes its journal. An abandoned batch forces
         // complete GPU initialization on the next recording.
@@ -76,19 +67,29 @@ fn scene_upload_consumes_tile_dirty_journals_across_retained_updates() -> Result
             "frame {frame}: unconsumed upload journal"
         );
         Rc::make_mut(&mut cache.staging.tile_draw_bins).recycle_dirty(records, pages);
-        batch.acceptance().set(frame % 3 != 0);
+        if frame % 3 != 0 {
+            context.submit_compute(&batch)?.wait()?;
+        }
     }
     Ok(())
 }
 
 #[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn filter_candidates_are_spatial_and_keep_recorded_scene_identity() -> Result<()> {
+    let context = gpu_support::context()?;
     use crate::shared::bounds::Bounds;
     let mut cache = SceneCache::default();
     let mut canvas = Canvas::new(128, 16, 1.0);
     canvas.push_rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::ZERO, Color::WHITE);
     canvas.push_rect(Rect::new(96.0, 0.0, 104.0, 8.0), Radius::ZERO, Color::BLACK);
-    let first = cache.record(&mut ComputeBatch::new(), &canvas, None, None, 65535)?;
+    let first = cache.record(
+        &mut gpu_support::batch(&context),
+        &canvas,
+        None,
+        None,
+        65535,
+    )?;
     assert_eq!(
         first.filter_candidates(Bounds::new(0, 0, 16, 16), first.plan()),
         [0]
@@ -102,7 +103,7 @@ fn filter_candidates_are_spatial_and_keep_recorded_scene_identity() -> Result<()
     // physical IDs. Keeping an old scene alive must not attach it to new bins.
     let mut other = Canvas::new(32, 16, 1.0);
     other.push_rect(Rect::new(16.0, 0.0, 24.0, 8.0), Radius::ZERO, Color::BLACK);
-    let second = cache.record(&mut ComputeBatch::new(), &other, None, None, 65535)?;
+    let second = cache.record(&mut gpu_support::batch(&context), &other, None, None, 65535)?;
     assert!(
         second
             .filter_candidates(Bounds::new(0, 0, 16, 16), second.plan())
@@ -120,12 +121,19 @@ fn filter_candidates_are_spatial_and_keep_recorded_scene_identity() -> Result<()
 }
 
 #[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn filter_candidates_keep_offcanvas_sources() -> Result<()> {
+    let context = gpu_support::context()?;
     use crate::shared::bounds::Bounds;
     let mut canvas = Canvas::new(32, 16, 1.0);
     canvas.push_rect(Rect::new(-16.0, 0.0, -8.0, 8.0), Radius::ZERO, Color::WHITE);
-    let scene =
-        SceneCache::default().record(&mut ComputeBatch::new(), &canvas, None, None, 65535)?;
+    let scene = SceneCache::default().record(
+        &mut gpu_support::batch(&context),
+        &canvas,
+        None,
+        None,
+        65535,
+    )?;
     // Offset(+16, 0) can bring these source pixels into the visible output.
     assert_eq!(
         scene.filter_candidates(Bounds::new(-16, 0, 16, 16), scene.plan()),

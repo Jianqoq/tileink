@@ -1,4 +1,6 @@
 //! Immutable raster/vector image contents survive until the upload identity changes.
+//! Cache recording requires native storage; it never bypasses retention by
+//! selecting an uncached CPU upload path when the renderer pool is missing.
 use super::{Images, SceneImages};
 use crate::Canvas;
 use crate::native::{
@@ -28,9 +30,7 @@ impl<'a> Images<'a> {
             &Rc<Canvas>,
         ) -> Result<crate::native::runtime::compute::ResourceId>,
     ) -> Result<Self> {
-        if batch.context().is_none() {
-            return Self::record_with_vectors(batch, upload, render);
-        }
+        batch.context()?;
         if cache
             .as_ref()
             .is_none_or(|cached| cached.signature != signature || !cached.accepted.get())
@@ -69,5 +69,31 @@ impl<'a> Images<'a> {
             sampler: batch.sampler(SamplerFilter::Linear)?,
         };
         Ok(Self { upload, textures })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_pool_cannot_bypass_image_caching_or_record_partial_resources() {
+        let resources = crate::shared::image_resource::ImageResourceStore::default();
+        let signature = resources.upload_signature(&resources, 32, 4, 0);
+        let mut batch = ComputeBatch::new();
+        let mut cache = None;
+        assert!(
+            Images::record_cached(
+                &mut batch,
+                &Default::default(),
+                &mut cache,
+                signature,
+                |_, _| panic!("empty vector resources"),
+            )
+            .is_err()
+        );
+        assert!(cache.is_none());
+        assert!(batch.resources().is_empty());
+        assert!(batch.commands().is_empty());
     }
 }

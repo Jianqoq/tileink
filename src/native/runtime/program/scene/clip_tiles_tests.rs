@@ -1,6 +1,6 @@
 use super::super::SceneCache;
 use super::*;
-use crate::native::runtime::compute::ComputeBatch;
+use crate::native::runtime::gpu_support;
 use peniko::kurbo::{Affine, Rect, Shape};
 
 fn active_tiles(canvas: &Canvas, tiles: &[u32]) -> DamageTiles {
@@ -19,7 +19,9 @@ fn active_tiles(canvas: &Canvas, tiles: &[u32]) -> DamageTiles {
 }
 
 #[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn opacity_only_stacks_need_no_clip_dispatch() -> super::super::Result<()> {
+    let context = gpu_support::context()?;
     let mut canvas = Canvas::new(64, 64, 1.0);
     let rect = Rect::new(0.0, 0.0, 64.0, 64.0);
     for _ in 0..128 {
@@ -28,7 +30,13 @@ fn opacity_only_stacks_need_no_clip_dispatch() -> super::super::Result<()> {
         canvas.pop_layer();
     }
     let mut cache = SceneCache::default();
-    let scene = cache.record(&mut ComputeBatch::new(), &canvas, None, None, 65535)?;
+    let scene = cache.record(
+        &mut gpu_support::batch(&context),
+        &canvas,
+        None,
+        None,
+        65535,
+    )?;
     assert_eq!(
         crate::shared::gpu_plan::plan_stack_depths(scene.plan()).0,
         0
@@ -41,7 +49,9 @@ fn opacity_only_stacks_need_no_clip_dispatch() -> super::super::Result<()> {
 
 #[test]
 #[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn broad_clip_only_schedules_tiles_with_child_draws() -> super::super::Result<()> {
+    let context = gpu_support::context()?;
     let mut canvas = Canvas::new(512, 512, 1.0);
     canvas.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 512.0, 512.0), crate::Radius::ZERO);
     for rect in [
@@ -52,7 +62,13 @@ fn broad_clip_only_schedules_tiles_with_child_draws() -> super::super::Result<()
     }
     canvas.pop_layer();
     let mut cache = SceneCache::default();
-    let scene = cache.record(&mut ComputeBatch::new(), &canvas, None, None, 65535)?;
+    let scene = cache.record(
+        &mut gpu_support::batch(&context),
+        &canvas,
+        None,
+        None,
+        65535,
+    )?;
     let dispatch = ClipDispatch::new(
         &canvas,
         scene.plan(),
@@ -149,7 +165,9 @@ fn broad_clip_keeps_dense_binning() {
 
 #[test]
 #[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn broad_pure_clip_uses_one_preallocated_dense_emit() -> super::super::Result<()> {
+    let context = gpu_support::context()?;
     let mut canvas = Canvas::new(512, 512, 1.0);
     canvas.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 384.0, 512.0), crate::Radius::ZERO);
     canvas.push_rect(
@@ -159,7 +177,7 @@ fn broad_pure_clip_uses_one_preallocated_dense_emit() -> super::super::Result<()
     );
     canvas.pop_layer();
     let mut cache = SceneCache::default();
-    let mut batch = ComputeBatch::new();
+    let mut batch = gpu_support::batch(&context);
     let scene = cache.record(&mut batch, &canvas, None, None, 65535)?;
     assert!(scene.clip_dispatch.ranges.is_empty());
     assert!(scene.clip_dispatch.preallocated);
@@ -172,8 +190,10 @@ fn broad_pure_clip_uses_one_preallocated_dense_emit() -> super::super::Result<()
 
 #[test]
 #[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn fixed_clip_slots_are_disjoint_bounded_and_drop_out_for_mixed_passes() -> super::super::Result<()>
 {
+    let context = gpu_support::context()?;
     let mut canvas = Canvas::new(64, 64, 1.0);
     for _ in 0..6 {
         canvas.push_clip_sdf_rect_layer(Rect::new(17.25, 17.25, 46.75, 46.75), crate::Radius::ZERO);
@@ -187,7 +207,7 @@ fn fixed_clip_slots_are_disjoint_bounded_and_drop_out_for_mixed_passes() -> supe
         canvas.pop_layer();
     }
     let mut cache = SceneCache::default();
-    let mut batch = ComputeBatch::new();
+    let mut batch = gpu_support::batch(&context);
     let scene = cache.record(&mut batch, &canvas, None, None, 65535)?;
     assert!(scene.clip_dispatch.preallocated);
     let slots = ClipDispatch::new(
@@ -230,7 +250,13 @@ fn fixed_clip_slots_are_disjoint_bounded_and_drop_out_for_mixed_passes() -> supe
         peniko::Color::BLACK,
     );
     canvas.pop_layer();
-    let mixed = cache.record(&mut ComputeBatch::new(), &canvas, None, None, 65535)?;
+    let mixed = cache.record(
+        &mut gpu_support::batch(&context),
+        &canvas,
+        None,
+        None,
+        65535,
+    )?;
     assert!(!mixed.clip_dispatch.preallocated);
     Ok(())
 }
@@ -255,7 +281,9 @@ fn nested_disjoint_clips_have_no_tiles() {
 
 #[test]
 #[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn clip_emit_dispatch_covers_both_sides_of_a_scalar_workgroup() -> super::super::Result<()> {
+    let context = gpu_support::context()?;
     // 255, 256 and 272 selected tiles: the last scalar group must cover its tail.
     for (width, height, groups) in [(240.0, 272.0, 255), (256.0, 256.0, 1), (272.0, 256.0, 2)] {
         let mut canvas = Canvas::new(512, 512, 1.0);
@@ -267,7 +295,7 @@ fn clip_emit_dispatch_covers_both_sides_of_a_scalar_workgroup() -> super::super:
         );
         canvas.pop_layer();
         let mut cache = SceneCache::default();
-        let mut batch = ComputeBatch::new();
+        let mut batch = gpu_support::batch(&context);
         let scene = cache.record(&mut batch, &canvas, None, None, 65535)?;
         assert!(scene.clip_dispatch.preallocated);
         let before = batch.passes().len();

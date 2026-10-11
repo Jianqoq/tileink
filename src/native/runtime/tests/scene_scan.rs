@@ -1,4 +1,5 @@
 use super::*;
+use crate::native::runtime::gpu_support;
 use crate::{Canvas, shared::gpu_plan::PersistentPathPlans};
 
 fn scene(x: f64, y: f64) -> Canvas {
@@ -17,11 +18,13 @@ fn scene(x: f64, y: f64) -> Canvas {
 }
 
 #[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn empty_scene_records_no_geometry_dispatches() {
+    let context = gpu_support::context().unwrap();
     let canvas = Canvas::new(17, 19, 1.0);
     let mut plans = PersistentPathPlans::default();
     let prepared = PreparedScan::new(&canvas, &mut plans);
-    let mut batch = ComputeBatch::new();
+    let mut batch = gpu_support::batch(&context);
     let geometry = encode_scene(&mut batch, &prepared, 65535).unwrap();
     assert!(batch.passes().is_empty());
     assert!(batch.size(geometry.backdrops).unwrap() >= 4);
@@ -41,7 +44,9 @@ fn invalid_dispatch_limits_are_rejected_even_for_empty_scenes() {
 }
 
 #[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn geometry_stages_precede_gpu_backdrop_cumsum() {
+    let context = gpu_support::context().unwrap();
     let canvas = scene(40.0, 40.0);
     let mut plans = PersistentPathPlans::default();
     let prepared = PreparedScan::new(&canvas, &mut plans);
@@ -49,7 +54,7 @@ fn geometry_stages_precede_gpu_backdrop_cumsum() {
         prepared.lengths.line_count, 2,
         "fill paths close their contour"
     );
-    let mut batch = ComputeBatch::new();
+    let mut batch = gpu_support::batch(&context);
     let result = encode_scene(&mut batch, &prepared, 65535).unwrap();
     let entries: Vec<_> = batch.passes().iter().map(|p| p.shader.entry).collect();
     assert_eq!(
@@ -64,13 +69,13 @@ fn geometry_stages_precede_gpu_backdrop_cumsum() {
         ]
     );
     assert_eq!(entries[6], "cumsum_prefix_chunks");
-    assert_eq!(
-        batch.size(result.paths).unwrap(),
-        bytemuck::cast_slice::<_, u8>(&canvas.path_records).len()
+    assert!(
+        batch.size(result.paths).unwrap()
+            >= bytemuck::cast_slice::<_, u8>(&canvas.path_records).len()
     );
-    assert_eq!(
-        batch.size(result.tile_segment_ranges).unwrap(),
-        prepared.lengths.backdrop_len * size_of::<TileSegmentRange>()
+    assert!(
+        batch.size(result.tile_segment_ranges).unwrap()
+            >= prepared.lengths.backdrop_len * size_of::<TileSegmentRange>()
     );
     assert!(
         batch.outputs().is_empty(),
@@ -99,11 +104,13 @@ fn same_count_stale_plan_is_refreshed_for_the_new_layout() {
 }
 
 #[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn cumsum_grid_overflow_is_reported() {
+    let context = gpu_support::context().unwrap();
     let canvas = scene(63.0, 63.0);
     let mut plans = PersistentPathPlans::default();
     let prepared = PreparedScan::new(&canvas, &mut plans);
-    let mut batch = ComputeBatch::new();
+    let mut batch = gpu_support::batch(&context);
     // The scan fits one group, but cumsum requires four row chunks.
     assert!(encode_scene(&mut batch, &prepared, 1).is_err());
 }

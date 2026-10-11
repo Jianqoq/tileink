@@ -1,4 +1,6 @@
 //! Shared dirty-range policy backed by persistent, queue-ordered native storage.
+//! A renderer resource pool is required. Missing native storage is a recording
+//! error, not a request to select a separate CPU snapshot implementation.
 use crate::native::runtime::{
     Result,
     buffer::Buffer,
@@ -19,7 +21,7 @@ pub(crate) struct CachedBuffer {
     cached_upload: Vec<u8>,
 }
 
-#[cfg(all(test, any(feature = "dx12", feature = "vulkan")))]
+#[cfg(test)]
 #[path = "cached_buffer_tests.rs"]
 mod tests;
 impl CachedBuffer {
@@ -36,10 +38,8 @@ impl CachedBuffer {
         self.patches(batch, size, &[])
     }
 
-    fn reserve(&mut self, batch: &ComputeBatch, needed: usize) -> Result<bool> {
-        let Some(adapter) = batch.adapter() else {
-            return Ok(false);
-        };
+    fn reserve(&mut self, batch: &ComputeBatch, needed: usize) -> Result<()> {
+        let adapter = batch.adapter()?;
         if self
             .buffer
             .as_ref()
@@ -52,7 +52,7 @@ impl CachedBuffer {
                     .ok_or("native buffer capacity overflow")?,
             )?);
         }
-        Ok(true)
+        Ok(())
     }
 
     /// Upload CPU-owned regions while preserving GPU-owned work between frames.
@@ -76,12 +76,9 @@ impl CachedBuffer {
         full_updates: &[(usize, &[u8])],
         dirty_updates: &[(usize, &[u8])],
     ) -> Result<ResourceId> {
-        let native = self.reserve(batch, size.max(4))?;
-        let full = !native
-            || self
-                .buffer
-                .as_ref()
-                .is_none_or(|buffer| !buffer.state.initialized.get())
+        self.reserve(batch, size.max(4))?;
+        let buffer = self.buffer.as_ref().expect("reserved native buffer");
+        let full = !buffer.state.initialized.get()
             || self
                 .accepted
                 .as_ref()
@@ -103,22 +100,16 @@ impl CachedBuffer {
             previous_end = end;
         }
         let id = if full {
-            let capacity = self
-                .buffer
-                .as_ref()
-                .map_or(size.max(4), |buffer| buffer.state.size);
+            let capacity = buffer.state.size;
             let mut complete = Vec::new();
             complete.try_reserve_exact(capacity)?;
             complete.resize(capacity, 0);
             for &(offset, bytes) in updates {
                 complete[offset..offset + bytes.len()].copy_from_slice(bytes);
             }
-            if !native {
-                return batch.buffer(complete);
-            }
-            batch.import_buffer(self.buffer.as_ref().unwrap(), &[(0, &complete)])?
+            batch.import_buffer(buffer, &[(0, &complete)])?
         } else {
-            batch.import_buffer(self.buffer.as_ref().unwrap(), updates)?
+            batch.import_buffer(buffer, updates)?
         };
         let Resource::PersistentBuffer(upload) = &batch.resources()[id.index()] else {
             unreachable!("persistent import")
@@ -136,9 +127,7 @@ impl CachedBuffer {
     ) -> Result<ResourceId> {
         let bytes: &[u8] = bytemuck::cast_slice(data);
         let needed = bytes.len().max(4);
-        if !self.reserve(batch, needed)? {
-            return super::resources::upload(batch, data);
-        }
+        self.reserve(batch, needed)?;
         let buffer = self.buffer.as_ref().unwrap();
         // CPU preparation may have advanced before recording/submit failed. Only
         // accepted uploads allow the next dirty delta to depend on prior contents.

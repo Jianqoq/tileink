@@ -67,15 +67,20 @@ fn scatter_and_cumsum_cover_tail_chunks_signed_carries_and_padded_groups() -> Re
         vec![2, 5],
         values.len(),
     )?;
-    let mut batch = ComputeBatch::new();
+    let context = super::super::gpu_support::context()?;
+    let mut batch = super::super::gpu_support::batch(&context);
     let backdrops = batch.buffer(bytemuck::cast_slice(&values).to_vec())?;
     plan.encode(&mut batch, backdrops, 3)?;
     batch.readback(backdrops)?;
-    let ticket = device.submit_compute(&batch)?;
+    let receipt = context
+        .adapter
+        .submit_compute(&batch)
+        .map_err(|error| format!("{error:?}"))?;
     assert_eq!(
-        device.readback_batch(&ticket)?,
+        receipt.readback()?,
         vec![bytemuck::cast_slice::<i32, u8>(&expected).to_vec()]
     );
+    context.check_validation()?;
     device.assert_valid()
 }
 

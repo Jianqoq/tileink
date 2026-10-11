@@ -33,10 +33,7 @@ impl ComputeBatch {
         }
         #[cfg(feature = "metal")]
         {
-            let texture = self
-                .context()
-                .ok_or("native snapshot needs a renderer context")?
-                .create_texture_kind(size, layers, array)?;
+            let texture = self.context()?.create_texture_kind(size, layers, array)?;
             // This private import never exposes an undefined array for sampling: its
             // next command covers every layer. Acceptance alone publishes initialization.
             let destination = self.import_texture_inner(&texture, false)?;

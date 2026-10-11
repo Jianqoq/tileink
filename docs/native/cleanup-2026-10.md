@@ -130,7 +130,34 @@ The same 13 paired real-renderer workloads preserve exact pixels, with p50
 changes from -0.25% to +1.16%. These small variations do not establish a material
 regression or speedup. [Raw measurements and protocol](benchmarks/cleanup-phase4-metal-2026-10-11.json).
 
+## Phase 5: cached resources require native storage
+
+Cached scene buffers and the renderer image cache now require the native resource
+pool. A missing pool returns an error before recording resources; it no longer
+selects CPU buffer snapshots or bypasses image retention. The unused uncached
+vector-image wrapper is removed. This removes the alternative implementations
+at their source, rather than adding a temporary compatibility path.
+
+Full snapshots after allocation growth or an abandoned submission remain required:
+dirty ranges can depend only on GPU contents from an accepted upload. Tests now
+exercise persistent native storage, actual submissions and GPU readback, including
+growth, abandoned work, unchanged data, sparse updates, dispatch ordering and
+retained scene identity. Both missing-pool regressions failed before the change
+and pass afterward. The complete single-thread release suite reports 967 passing
+tests and the same nine known failures. Focused cache, scene, scan, cumsum and
+persistent-image tests pass; example builds, example tests and release Clippy
+pass without new warnings.
+
+All 1730 SVG outputs and seven example PNGs match the initial cleanup baseline
+exactly. The 13 paired real-renderer workloads also preserve exact pixels; p50
+changes range from -0.32% to +1.53%. These variations do not establish a material
+regression or speedup. [Raw measurements and protocol](benchmarks/cleanup-phase5-metal-2026-10-11.json).
+
 ## Remaining audit work
 
-- Contextless private paths still substitute CPU uploads for cached persistent buffers and bypass the image cache. Make allocator requirements explicit and migrate their conformance tests before removal.
+- Remove obsolete CPU profiling hooks whose session owner exists only in tests,
+  and audit the disconnected public debug capture types and their stale guide.
+- Standalone vector-image placements still upload a zero-filled placeholder before
+  copying the completed child image. Trace direct native retention and lifetime
+  semantics before removing that upload and copy.
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.

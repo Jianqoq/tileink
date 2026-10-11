@@ -1,10 +1,5 @@
-use super::super::{
-    Result,
-    compute::{ComputeBatch, ResourceId},
-    program::scene::SceneImages,
-};
-use crate::{Canvas, shared::image_resource::GpuImageResourceUpload};
-use std::rc::Rc;
+use super::super::{Result, compute::ComputeBatch, program::scene::SceneImages};
+use crate::shared::image_resource::GpuImageResourceUpload;
 
 /// The placement upload and its GPU images cannot be supplied independently to
 /// frame execution. This fixes the association invariant at the safe boundary.
@@ -21,16 +16,6 @@ impl<'a> Images<'a> {
         Ok(Self {
             upload,
             textures: SceneImages::record(batch, upload)?,
-        })
-    }
-    pub(crate) fn record_with_vectors(
-        batch: &mut ComputeBatch,
-        upload: &'a GpuImageResourceUpload,
-        render: impl FnMut(&mut ComputeBatch, &Rc<Canvas>) -> Result<ResourceId>,
-    ) -> Result<Self> {
-        Ok(Self {
-            upload,
-            textures: SceneImages::record_with_vectors(batch, upload, render)?,
         })
     }
     pub(super) fn upload(&self) -> &GpuImageResourceUpload {

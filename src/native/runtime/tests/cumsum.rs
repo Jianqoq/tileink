@@ -1,7 +1,10 @@
 use super::*;
+use crate::native::runtime::gpu_support;
 
 #[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn borrowed_cumsum_metadata_preserves_validation_and_dispatches() {
+    let context = gpu_support::context().unwrap();
     let ordered = crate::shared::gpu_plan::GpuCumsumPlan {
         chunk_backdrop_offsets: vec![0, 1],
         chunk_lens: vec![1, 1],
@@ -25,7 +28,7 @@ fn borrowed_cumsum_metadata_preserves_validation_and_dispatches() {
     )
     .unwrap();
     let passes = |plan: &CumsumPlan<'_>| {
-        let mut batch = ComputeBatch::new();
+        let mut batch = gpu_support::batch(&context);
         let backdrops = batch.buffer(vec![0; 16]).unwrap();
         plan.encode(&mut batch, backdrops, 65535).unwrap();
         batch
@@ -57,9 +60,11 @@ fn cumsum_metadata_rejects_overlapping_writes_missing_rows_and_long_chunks() {
     assert!(CumsumPlan::new(vec![], vec![], vec![], vec![], 0).is_ok());
 }
 #[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn cumsum_encodes_ordered_stages_and_guards_padded_two_dimensional_groups() {
+    let context = gpu_support::context().unwrap();
     let plan = CumsumPlan::new(vec![0, 1, 2, 3, 4], vec![1; 5], vec![0], vec![5], 5).unwrap();
-    let mut batch = ComputeBatch::new();
+    let mut batch = gpu_support::batch(&context);
     let backdrops = batch.buffer(vec![0; 20]).unwrap();
     let output = plan.encode(&mut batch, backdrops, 3).unwrap().unwrap();
     assert_eq!(
@@ -78,14 +83,16 @@ fn cumsum_encodes_ordered_stages_and_guards_padded_two_dimensional_groups() {
     assert_eq!(batch.size(output.totals).unwrap(), 20);
     assert_eq!(batch.size(output.offsets).unwrap(), 20);
     let plan = CumsumPlan::new(vec![0, 1], vec![1; 2], vec![0, 1], vec![1, 2], 2).unwrap();
-    let mut batch = ComputeBatch::new();
+    let mut batch = gpu_support::batch(&context);
     let backdrops = batch.buffer(vec![0; 8]).unwrap();
     plan.encode(&mut batch, backdrops, 65535).unwrap();
     assert_eq!(batch.passes().len(), 1);
 }
 
 #[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn cumsum_accepts_empty_arena_rows_and_unowned_empty_chunks() {
+    let context = gpu_support::context().unwrap();
     let plan = CumsumPlan::new(
         vec![0, 0, 1, 0],
         vec![0, 1, 1, 0],
@@ -94,7 +101,7 @@ fn cumsum_accepts_empty_arena_rows_and_unowned_empty_chunks() {
         2,
     )
     .unwrap();
-    let mut batch = ComputeBatch::new();
+    let mut batch = gpu_support::batch(&context);
     let backdrops = batch.buffer(vec![0; 8]).unwrap();
     plan.encode(&mut batch, backdrops, 65535).unwrap();
     assert_eq!(
@@ -103,7 +110,7 @@ fn cumsum_accepts_empty_arena_rows_and_unowned_empty_chunks() {
         "equal table lengths do not imply one chunk per live row"
     );
     let empty = CumsumPlan::new(vec![0], vec![0], vec![], vec![], 0).unwrap();
-    let mut batch = ComputeBatch::new();
+    let mut batch = gpu_support::batch(&context);
     let backdrops = batch.buffer(vec![0; 4]).unwrap();
     empty.encode(&mut batch, backdrops, 65535).unwrap();
     assert_eq!(batch.passes().len(), 1);

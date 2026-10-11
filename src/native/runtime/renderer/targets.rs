@@ -58,9 +58,7 @@ impl Surface {
     }
 
     pub(crate) fn image_in(&self, batch: &mut ComputeBatch) -> Result<ResourceId> {
-        let adapter = batch
-            .adapter()
-            .ok_or("native surfaces require a renderer resource pool")?;
+        let adapter = batch.adapter()?;
         if !adapter.same_device(&self.texture.context.adapter) {
             return Err("native surface belongs to another logical device".into());
         }
