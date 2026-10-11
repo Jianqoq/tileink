@@ -89,12 +89,10 @@ impl Canvas {
                     }
                     Command::Layer {
                         retained,
-                        draw,
                         layer,
                         children,
                     } => {
                         hasher.write_u8(2);
-                        hasher.write_usize(*draw);
                         hasher.write_usize(*children);
                         if let Some(retained) = retained {
                             hasher.write_u64(retained.id.owner);
@@ -183,7 +181,6 @@ impl Canvas {
                 }
                 Command::Layer {
                     retained,
-                    draw,
                     layer,
                     children,
                 } => {
@@ -195,7 +192,7 @@ impl Canvas {
                             branch: RetainedBatchBranch::Content,
                         })
                         .or(batch_owner);
-                    match self.compile_layer(layer, *draw, *children) {
+                    match self.compile_layer(layer, *children) {
                         LayerExecution::Fused(entry) => {
                             // Every fused group has the same traversal. Hidden SDF/path clip
                             // draws remain analytic through the batch's stack snapshot.
@@ -338,12 +335,14 @@ impl Canvas {
 
     pub(crate) fn can_fuse(&self, layer: &Layer, children: CommandListId) -> bool {
         match layer {
-            Layer::Clip => true,
+            Layer::Clip { .. } => true,
             Layer::ClipSdf { .. } => true,
             // Group opacity and blend must wrap the composited child subtree.
             // If a child opens its own offscreen layer, keeping the group fused
             // would apply it to separate fragments before they are combined.
-            Layer::Opacity(_) | Layer::Blend(_) => !self.command_list_contains_offscreen(children),
+            Layer::Opacity { .. } | Layer::Blend { .. } => {
+                !self.command_list_contains_offscreen(children)
+            }
             _ => false,
         }
     }
@@ -362,7 +361,10 @@ impl Canvas {
                 } => {
                     !matches!(
                         layer,
-                        Layer::Clip | Layer::ClipSdf { .. } | Layer::Opacity(_) | Layer::Blend(_)
+                        Layer::Clip { .. }
+                            | Layer::ClipSdf { .. }
+                            | Layer::Opacity { .. }
+                            | Layer::Blend { .. }
                     ) || self.command_list_contains_offscreen(*children)
                 }
                 Command::MaskLayer { .. } => true,

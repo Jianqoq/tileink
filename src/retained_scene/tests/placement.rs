@@ -49,9 +49,9 @@ fn reusing_a_node_id_between_scene_and_layer_refreshes_placement() {
     assert!(matches!(
         &materializer.chunks[&child].canvas.command_lists[0].commands[0],
         Command::Layer {
-            layer: crate::shared::layer::Layer::Opacity(value),
+            layer: crate::shared::layer::Layer::Opacity { opacity: 0.75, .. },
             ..
-        } if value.opacity == 0.75
+        }
     ));
 
     let transform = Affine::translate((24.0, 12.0));

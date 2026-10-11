@@ -62,13 +62,13 @@ impl Canvas {
         children
     }
 
-    pub(super) fn push_layer_command(&mut self, draw: usize, layer: Layer) {
+    pub(super) fn push_layer_command(&mut self, layer: Layer) {
         let kind = match &layer {
-            Layer::Clip => LayerKind::Clip,
+            Layer::Clip { .. } => LayerKind::Clip,
             Layer::ClipSdf { .. } => LayerKind::ClipSdf,
-            Layer::Isolate => LayerKind::Isolate,
-            Layer::Opacity(_) => LayerKind::Opacity,
-            Layer::Blend(_) => LayerKind::Blend,
+            Layer::Isolate { .. } => LayerKind::Isolate,
+            Layer::Opacity { .. } => LayerKind::Opacity,
+            Layer::Blend { .. } => LayerKind::Blend,
             Layer::Filter { .. } => LayerKind::Filter,
             Layer::Backdrop { .. } => LayerKind::Backdrop,
         };
@@ -77,7 +77,6 @@ impl Canvas {
             .commands
             .push(Command::Layer {
                 retained: None,
-                draw,
                 layer,
                 children,
             });

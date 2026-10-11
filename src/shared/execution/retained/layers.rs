@@ -13,37 +13,56 @@ impl ExecPlan {
         match (old, new) {
             (
                 Command::Layer {
-                    draw: old_draw,
-                    layer: old_layer,
-                    ..
+                    layer: old_layer, ..
                 },
                 Command::Layer {
-                    draw: new_draw,
-                    layer: new_layer,
-                    ..
+                    layer: new_layer, ..
                 },
             ) => {
                 let entry = match (old_layer, new_layer) {
-                    (Layer::Clip | Layer::ClipSdf { .. }, Layer::Clip | Layer::ClipSdf { .. }) => {
-                        Some(LayerStackEntry::Clip {
+                    (
+                        Layer::Clip { draw: old_draw } | Layer::ClipSdf { draw: old_draw },
+                        Layer::Clip { draw: new_draw } | Layer::ClipSdf { draw: new_draw },
+                    ) => Some((
+                        old_draw,
+                        new_draw,
+                        LayerStackEntry::Clip {
                             draw: *new_draw as u32,
-                        })
-                    }
-                    (Layer::Opacity(_), Layer::Opacity(value)) => Some(LayerStackEntry::Opacity {
-                        draw: *new_draw as u32,
-                        opacity: value.opacity,
-                    }),
-                    (Layer::Blend(_), Layer::Blend(value)) => Some(LayerStackEntry::Blend {
-                        draw: *new_draw as u32,
-                        mode: value.mode,
-                    }),
+                        },
+                    )),
+                    (
+                        Layer::Opacity { draw: old_draw, .. },
+                        Layer::Opacity {
+                            draw: new_draw,
+                            opacity,
+                        },
+                    ) => Some((
+                        old_draw,
+                        new_draw,
+                        LayerStackEntry::Opacity {
+                            draw: *new_draw as u32,
+                            opacity: *opacity,
+                        },
+                    )),
+                    (
+                        Layer::Blend { draw: old_draw, .. },
+                        Layer::Blend {
+                            draw: new_draw,
+                            mode,
+                        },
+                    ) => Some((
+                        old_draw,
+                        new_draw,
+                        LayerStackEntry::Blend {
+                            draw: *new_draw as u32,
+                            mode: *mode,
+                        },
+                    )),
                     _ => None,
                 };
-                // Opacity/blend with offscreen children have no fused entry.
-                // Filters have no hidden draw at all: their placeholder must
-                // never remove another layer's index. Index presence identifies
-                // the actual compiled representation, including empty groups.
-                if let Some(entry) = entry
+                // Only real fused entries own stack locations. Opacity/blend
+                // with offscreen children patch their surface descriptor instead.
+                if let Some((old_draw, new_draw, entry)) = entry
                     && let Some(locations) = self.layer_stack_locations.remove(&(*old_draw as u32))
                 {
                     for &index in &locations {
@@ -69,20 +88,32 @@ fn patch_retained_layer_ops(ops: &mut [ExecOp], id: RetainedNodeId, new: &Comman
                     retained_id, layer, ..
                 },
                 Command::Layer {
-                    draw: new_draw,
-                    layer: replacement,
-                    ..
+                    layer: replacement, ..
                 },
             ) if retained_id.is_some_and(|surface| surface.node == id) => {
                 match (layer, replacement) {
-                    (OffscreenLayer::Isolate { draw }, Layer::Isolate) => *draw = *new_draw,
-                    (OffscreenLayer::Opacity { draw, opacity }, Layer::Opacity(value)) => {
-                        *draw = *new_draw;
-                        *opacity = value.opacity;
+                    (OffscreenLayer::Isolate { draw }, Layer::Isolate { draw: new_draw }) => {
+                        *draw = *new_draw
                     }
-                    (OffscreenLayer::Blend { draw, mode }, Layer::Blend(value)) => {
+                    (
+                        OffscreenLayer::Opacity { draw, opacity },
+                        Layer::Opacity {
+                            draw: new_draw,
+                            opacity: value,
+                        },
+                    ) => {
                         *draw = *new_draw;
-                        *mode = value.mode;
+                        *opacity = *value;
+                    }
+                    (
+                        OffscreenLayer::Blend { draw, mode },
+                        Layer::Blend {
+                            draw: new_draw,
+                            mode: value,
+                        },
+                    ) => {
+                        *draw = *new_draw;
+                        *mode = *value;
                     }
                     (
                         OffscreenLayer::Filter {

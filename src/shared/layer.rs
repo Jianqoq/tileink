@@ -1,25 +1,31 @@
-pub(crate) mod blend;
+//! Recording descriptors reference encoded geometry only for geometric layers.
+//! SDF geometry and bounds belong to the scene buffers, not the execution topology.
 pub mod filter;
 pub mod mask;
-pub(crate) mod opacity;
 pub mod region;
 
-use crate::shared::{
-    bounds::Bounds,
-    layer::{blend::Blend, filter::Filter, opacity::Opacity, region::Region},
-    sdf::Sdf,
-};
+use crate::shared::layer::{filter::Filter, region::Region};
+use peniko::BlendMode;
 
 #[derive(Clone, Debug)]
-pub enum Layer {
-    Clip,
-    ClipSdf {
-        sdf: Sdf,
-        bounds: Bounds,
+pub(crate) enum Layer {
+    Clip {
+        draw: usize,
     },
-    Isolate,
-    Opacity(Opacity),
-    Blend(Blend),
+    ClipSdf {
+        draw: usize,
+    },
+    Isolate {
+        draw: usize,
+    },
+    Opacity {
+        draw: usize,
+        opacity: f32,
+    },
+    Blend {
+        draw: usize,
+        mode: BlendMode,
+    },
     Filter {
         filter: Filter,
         sample_region: Region,
@@ -28,6 +34,32 @@ pub enum Layer {
         filter: Filter,
         sample_region: Region,
     },
+}
+
+impl Layer {
+    /// Effects have no geometry arena slot or fused-stack dependency.
+    pub(crate) fn hidden_draw(&self) -> Option<usize> {
+        match self {
+            Self::Clip { draw }
+            | Self::ClipSdf { draw }
+            | Self::Isolate { draw }
+            | Self::Opacity { draw, .. }
+            | Self::Blend { draw, .. } => Some(*draw),
+            Self::Filter { .. } | Self::Backdrop { .. } => None,
+        }
+    }
+
+    pub(crate) fn remap_draw(mut self, offset: usize) -> Self {
+        match &mut self {
+            Self::Clip { draw }
+            | Self::ClipSdf { draw }
+            | Self::Isolate { draw }
+            | Self::Opacity { draw, .. }
+            | Self::Blend { draw, .. } => *draw += offset,
+            Self::Filter { .. } | Self::Backdrop { .. } => {}
+        }
+        self
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

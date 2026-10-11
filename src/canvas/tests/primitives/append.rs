@@ -132,7 +132,7 @@ fn append_directly_remaps_root_commands_after_nested_lists() {
     assert!(matches!(
         parent.command_lists[0].commands[1],
         Command::Layer {
-            draw: 1,
+            layer: Layer::Opacity { draw: 1, .. },
             children: 1,
             ..
         }

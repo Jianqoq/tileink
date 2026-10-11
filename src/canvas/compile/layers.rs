@@ -1,5 +1,5 @@
 //! Resolve fusion while the source layer and its child topology are available.
-//! The resulting offscreen type cannot carry clips or a filter's dummy draw.
+//! Only geometric recording variants carry a draw; offscreen variants exclude clips.
 use super::*;
 
 #[expect(
@@ -12,36 +12,35 @@ pub(super) enum LayerExecution {
 }
 
 impl Canvas {
-    pub(super) fn compile_layer(
-        &self,
-        layer: &Layer,
-        draw: usize,
-        children: CommandListId,
-    ) -> LayerExecution {
+    pub(super) fn compile_layer(&self, layer: &Layer, children: CommandListId) -> LayerExecution {
         match layer {
-            Layer::Clip | Layer::ClipSdf { .. } => {
-                LayerExecution::Fused(LayerStackEntry::Clip { draw: draw as u32 })
+            Layer::Clip { draw } | Layer::ClipSdf { draw } => {
+                LayerExecution::Fused(LayerStackEntry::Clip { draw: *draw as u32 })
             }
-            Layer::Opacity(value) if self.can_fuse(layer, children) => {
+            Layer::Opacity { draw, opacity } if self.can_fuse(layer, children) => {
                 LayerExecution::Fused(LayerStackEntry::Opacity {
-                    draw: draw as u32,
-                    opacity: value.opacity,
+                    draw: *draw as u32,
+                    opacity: *opacity,
                 })
             }
-            Layer::Blend(value) if self.can_fuse(layer, children) => {
+            Layer::Blend { draw, mode } if self.can_fuse(layer, children) => {
                 LayerExecution::Fused(LayerStackEntry::Blend {
-                    draw: draw as u32,
-                    mode: value.mode,
+                    draw: *draw as u32,
+                    mode: *mode,
                 })
             }
-            Layer::Isolate => LayerExecution::Offscreen(OffscreenLayer::Isolate { draw }),
-            Layer::Opacity(value) => LayerExecution::Offscreen(OffscreenLayer::Opacity {
-                draw,
-                opacity: value.opacity,
-            }),
-            Layer::Blend(value) => LayerExecution::Offscreen(OffscreenLayer::Blend {
-                draw,
-                mode: value.mode,
+            Layer::Isolate { draw } => {
+                LayerExecution::Offscreen(OffscreenLayer::Isolate { draw: *draw })
+            }
+            Layer::Opacity { draw, opacity } => {
+                LayerExecution::Offscreen(OffscreenLayer::Opacity {
+                    draw: *draw,
+                    opacity: *opacity,
+                })
+            }
+            Layer::Blend { draw, mode } => LayerExecution::Offscreen(OffscreenLayer::Blend {
+                draw: *draw,
+                mode: *mode,
             }),
             Layer::Filter {
                 filter,

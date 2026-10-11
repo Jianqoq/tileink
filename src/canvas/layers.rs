@@ -24,7 +24,7 @@ impl Canvas {
             return;
         }
         let draw = self.push_layer_path(DrawTag::Clip, path, transform, rule, tolerance);
-        self.push_layer_command(draw, Layer::Clip);
+        self.push_layer_command(Layer::Clip { draw });
     }
 
     /// Adds a rounded/sharp rectangle clip that is rasterized directly from an SDF.
@@ -68,15 +68,13 @@ impl Canvas {
     /// SDF bounds, so future SDF primitives automatically work as clip layers.
     pub fn push_clip_sdf_layer(&mut self, sdf: Sdf) {
         let sdf = self.physical_sdf(sdf);
-        let bounds = sdf.bounds();
         let draw = self.push_physical_sdf_record(
             sdf,
             Brush::Solid(Color::TRANSPARENT),
             DrawTag::Clip,
             false,
         );
-        let layer = Layer::ClipSdf { bounds, sdf };
-        self.push_layer_command(draw, layer);
+        self.push_layer_command(Layer::ClipSdf { draw });
     }
 
     /// Adds an affine-transformed clip while preserving the SDF as local GPU geometry.
@@ -100,14 +98,7 @@ impl Canvas {
         record.transform = transform;
         record.inverse_transform = inverse_transform;
         record.pixel_bounds = transform.transform_bounds(record.local_pixel_bounds);
-        let bounds = record.pixel_bounds;
-        self.push_layer_command(
-            draw,
-            Layer::ClipSdf {
-                bounds: Bounds::new(bounds.x0, bounds.y0, bounds.x1, bounds.y1),
-                sdf,
-            },
-        );
+        self.push_layer_command(Layer::ClipSdf { draw });
         true
     }
 
@@ -125,7 +116,7 @@ impl Canvas {
             FillRule::NonZero,
             tolerance,
         );
-        self.push_layer_command(draw, Layer::Isolate);
+        self.push_layer_command(Layer::Isolate { draw });
     }
 
     pub fn push_opacity_layer(
@@ -142,8 +133,7 @@ impl Canvas {
             FillRule::NonZero,
             tolerance,
         );
-        let layer = Layer::Opacity(Opacity { opacity });
-        self.push_layer_command(draw, layer);
+        self.push_layer_command(Layer::Opacity { draw, opacity });
     }
 
     pub fn push_blend_layer(
@@ -161,8 +151,10 @@ impl Canvas {
             FillRule::NonZero,
             tolerance,
         );
-        let layer = Layer::Blend(Blend::new(mix, compose));
-        self.push_layer_command(draw, layer);
+        self.push_layer_command(Layer::Blend {
+            draw,
+            mode: BlendMode::new(mix, compose),
+        });
     }
 
     /// Starts a masked group using `mask_scene` as the mask source.
@@ -191,13 +183,10 @@ impl Canvas {
             !filter.contains_rect_liquid_glass(),
             "RectLiquidGlass is a rounded-rectangle backdrop effect; use push_backdrop_layer with Region::Rect"
         );
-        self.push_layer_command(
-            0,
-            Layer::Filter {
-                filter,
-                sample_region,
-            },
-        );
+        self.push_layer_command(Layer::Filter {
+            filter,
+            sample_region,
+        });
     }
 
     /// Adds a backdrop filter group sampled from the already-rendered target.
@@ -214,13 +203,10 @@ impl Canvas {
                 "RectLiquidGlass requires Region::Rect because it uses rounded-rectangle SDF normals"
             );
         }
-        self.push_layer_command(
-            0,
-            Layer::Backdrop {
-                filter,
-                sample_region,
-            },
-        );
+        self.push_layer_command(Layer::Backdrop {
+            filter,
+            sample_region,
+        });
     }
 
     pub fn pop_layer(&mut self) -> Option<LayerKind> {

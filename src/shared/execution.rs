@@ -58,7 +58,6 @@ pub(crate) enum Command {
     },
     Layer {
         retained: Option<PersistentLayerKey>,
-        draw: usize,
         layer: Layer,
         children: CommandListId,
     },

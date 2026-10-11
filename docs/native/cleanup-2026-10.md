@@ -2584,9 +2584,77 @@ JSON/gzip files parse and npm root declarations match package.json. All 977
 current implementation files are fully read; the remaining producer proofs and
 platform execution work continue separately.
 
+## Phase 50: record only real geometry dependencies
+
+Recording commands now carry geometry references inside the five geometric layer
+variants. Filter and backdrop variants contain only their filter and sample
+region. Append and retained arena remapping update actual draw references;
+effect-only commands no longer manufacture, remap or special-case draw zero.
+The old one-field opacity and blend wrappers are removed. This finishes the
+recording representation cleanup left separate in phase 49.
+
+A regression first reproduces an unnecessary GPU upload: updating an empty
+retained filter beneath a clip marks that unrelated clip's stack range dirty
+through the effect's dummy draw. Dirty stack ranges now come only from real
+geometry references. Tests cover filters/backdrops, empty/nonempty content and
+multiple parameter updates, and still require uploads for actual fused group
+changes. This fixes the dependency cause, without suppressing valid changes.
+
+SDF clip geometry and bounds were also duplicated in recording descriptors,
+although rendering already uses their encoded draw and SDF buffers. A topology
+regression first fails because changing only that duplicate geometry changes
+the execution fingerprint. Removing the unused copies preserves the intended
+geometry-independent fingerprint. Immediate and retained GPU regressions compare
+reused renderers with fresh ones and analytic pixels for clip expansion,
+contraction, empty/full coverage and restoration, both inside and outside an
+offset filter. These tests pass before and after removing the duplicates.
+
+Owned command translation moves filter/mask payloads instead of deep-cloning
+them again after append's required source clone. Retained placement translation
+also consumes its command vector. The translation implementation moves out of
+the large Canvas module, keeping the recording container and coordinate
+operations separate. These are permanent representation and ownership changes;
+public recording APIs and shader kernels do not change.
+
+Focused single-thread release checks pass 68 layer tests and both clip geometry
+GPU tests. Full release tests with ignored tests enabled pass 1132 cases, zero
+failures and zero ignored. The original two pinned-DXC tests and turbulence
+comparison are also rechecked independently: all ten compiler/reference tests
+pass. All 1730 SVG PNGs, seven image examples and nine application screenshots
+match baseline bytes. Native presentation completes eight frames at both expected
+sizes. Formatting, release clippy, backend-free compilation, all examples and
+both Windows backend all-target checks pass. Existing lint warnings are unchanged.
+The 84-entry DXIL and SPIR-V manifests and pinned DXC library identities remain
+unchanged; actual Windows GPU execution remains separate work. Both website
+architecture guides document the recording and ownership changes.
+
+The [application report](benchmarks/cleanup-phase50-metal-2026-10-12.json) retains
+144 sequential observations with two warmups per label, ten alternating pairs
+and interleaved identical-current controls. The 1280x720 application renders
+48 cards through plain append, translated append and general affine append,
+including genuine fractional path clips and SDF clips, then updates 48 retained
+filter/backdrop descriptors every frame. Each process renders 48 frames across
+three parameter phases. SVG medians change 4259.296 to 4256.626 ms (-0.063%),
+control -0.432%; application medians change 742.278 to 749.966 ms (+1.036%),
+control -0.691%; window medians change 233.315 to 235.275 ms (+0.840%), control
+-0.079%. Paired median descriptive bootstrap intervals include zero and overlap
+the controls. No stable material timing regression or isolated speedup is
+identified. The redundant-upload regression is covered separately by the
+retained dirty-range test; the application timing is not an empty-effect
+microbenchmark.
+
+API validation is enabled for correctness and disabled for timing. Verification
+after every stopped timer checks 83040 SVG PNG hashes, 432 application PNG
+hashes, 2304 application frames and 384 window frames. SVG sources stay unchanged.
+Final executable hashes match the timed versions. Temporary measurement source
+and copied/compiled application executables are removed. All 56 benchmark
+JSON/gzip files parse and npm root declarations match package.json. All 978
+current implementation files have one audit owner and are fully read; the
+remaining producer proofs and platform execution work continue separately.
+
 ## Remaining audit work
 
-- All current implementation files are fully read. The progressive/glass shader, SVG lowering, filter distance, text coordinate, retained layer descriptor and typed offscreen cleanup are implemented and verified on Metal. Prove coarse stack emitter inputs, retained compiled membership bounds and other plan eligibility before removing their remaining substitutes. Test DX12 lock-poison policy and prove packed uniform handle presence. Trace exact retained metadata patching for clip-bound updates inside filters. Remove the recording command's filter/backdrop dummy draw after tracing its append, fingerprint and retained producers. Continue checking current Cargo/module reachability for retired code after the orphan example removal. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
+- All current implementation files are fully read. The progressive/glass shader, SVG lowering, filter distance, text coordinate, retained layer descriptor, typed offscreen and recording geometry cleanup are implemented and verified on Metal. Prove coarse stack emitter inputs, retained compiled membership bounds and other plan eligibility before removing their remaining substitutes. Test DX12 lock-poison policy and prove packed uniform handle presence. Clip geometry replacement inside/outside filters has fresh-renderer and analytic GPU coverage; continue tracing the wider retained metadata patching rules. Continue checking current Cargo/module reachability for retired code after the orphan example removal. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
 - Execute the HLSL editor test against the actual ShaderTools language server; local protocol regressions pass, but the server is unavailable locally.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

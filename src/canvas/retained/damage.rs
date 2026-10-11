@@ -138,13 +138,9 @@ fn list_visual_bounds(canvas: &Canvas, list_id: usize, offset: SceneOffset) -> B
                     list_visual_bounds(canvas, *children, offset)
                 }
                 Command::Layer {
-                    draw,
-                    layer,
-                    children,
-                    ..
+                    layer, children, ..
                 } => layer_bounds(
                     canvas,
-                    *draw,
                     layer,
                     list_visual_bounds(canvas, *children, offset),
                     offset,
@@ -159,18 +155,17 @@ fn list_visual_bounds(canvas: &Canvas, list_id: usize, offset: SceneOffset) -> B
 
 fn layer_bounds(
     canvas: &Canvas,
-    draw: usize,
     layer: &Layer,
     child_bounds: Bounds,
     offset: SceneOffset,
 ) -> Bounds {
     match layer {
-        Layer::Clip
-        | Layer::ClipSdf { .. }
-        | Layer::Isolate
-        | Layer::Opacity(_)
-        | Layer::Blend(_) => child_bounds
-            .intersect(offset.bounds(pixel_bounds(canvas.draw_records[draw].pixel_bounds))),
+        Layer::Clip { draw }
+        | Layer::ClipSdf { draw }
+        | Layer::Isolate { draw }
+        | Layer::Opacity { draw, .. }
+        | Layer::Blend { draw, .. } => child_bounds
+            .intersect(offset.bounds(pixel_bounds(canvas.draw_records[*draw].pixel_bounds))),
         Layer::Filter {
             filter: value,
             sample_region,
@@ -235,7 +230,7 @@ fn propagate_list_damage(
                 // Fused clip coverage changes the pixels drawn before a descendant
                 // backdrop samples them. Group/filter parameters affect only their
                 // completed output and must remain after the child traversal.
-                if matches!(layer, Layer::Clip | Layer::ClipSdf { .. })
+                if matches!(layer, Layer::Clip { .. } | Layer::ClipSdf { .. })
                     && let Some(key) = retained
                 {
                     append_node_damage(pending, key.id, damage);
@@ -295,7 +290,7 @@ fn propagate_list_damage(
                         );
                         damage.finish_scope(scope);
                     }
-                    Layer::Isolate | Layer::Opacity(_) | Layer::Blend(_)
+                    Layer::Isolate { .. } | Layer::Opacity { .. } | Layer::Blend { .. }
                         if !canvas.can_fuse(layer, *children) =>
                     {
                         // Use the compiler's actual offscreen boundary. Outside

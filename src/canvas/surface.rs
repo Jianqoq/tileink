@@ -110,9 +110,10 @@ impl Canvas {
             };
             if !offset.is_zero() {
                 for list in &mut self.command_lists {
-                    for command in &mut list.commands {
-                        offset.command(command);
-                    }
+                    list.commands = std::mem::take(&mut list.commands)
+                        .into_iter()
+                        .map(|command| offset.command(command))
+                        .collect();
                 }
             }
         }

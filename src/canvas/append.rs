@@ -445,13 +445,11 @@ impl Canvas {
             },
             Command::Layer {
                 retained,
-                draw,
                 layer,
                 children,
             } => Command::Layer {
                 retained,
-                draw: draw + draw_offset,
-                layer,
+                layer: layer.remap_draw(draw_offset),
                 children: children + child_list_offset,
             },
             Command::MaskLayer {
@@ -496,10 +494,12 @@ impl Canvas {
         child_list_offset: usize,
         offset: SceneOffset,
     ) -> Command {
-        let mut command = command.clone();
-        if !offset.is_zero() {
-            offset.command(&mut command);
-        }
+        let command = command.clone();
+        let command = if offset.is_zero() {
+            command
+        } else {
+            offset.command(command)
+        };
         Self::remap_command(command, draw_offset, child_list_offset)
     }
 

@@ -176,6 +176,81 @@ fn filter_updates_do_not_remove_an_unrelated_fused_layer_index() {
 }
 
 #[test]
+fn effect_parameter_updates_do_not_upload_unmodified_clip_stacks() {
+    for backdrop in [false, true] {
+        for empty in [false, true] {
+            let effect = |value| {
+                let sample_region = Region::rect(Rect::new(0.0, 0.0, 64.0, 64.0), Radius::ZERO);
+                if backdrop {
+                    RetainedLayerDescriptor::Backdrop {
+                        filter: Filter::Opacity(value),
+                        sample_region,
+                    }
+                } else {
+                    RetainedLayerDescriptor::Filter {
+                        filter: Filter::Opacity(value),
+                        sample_region,
+                    }
+                }
+            };
+            let mut scene = scene(RetainedLayerDescriptor::ClipSdf {
+                sdf: crate::Sdf::Rect(crate::SdfRect {
+                    start: Point::ZERO,
+                    end: Point::new(64.0, 64.0),
+                    radius: Radius::ZERO,
+                }),
+                transform: Affine::IDENTITY,
+            });
+            scene
+                .transaction()
+                .update_layer(FILTER, effect(1.0))
+                .commit()
+                .unwrap();
+            if empty {
+                scene
+                    .transaction()
+                    .remove_subtree(RetainedNodeId::for_owner(71_003))
+                    .commit()
+                    .unwrap();
+            }
+            let mut materializer = PersistentSceneMaterializer::new(&scene);
+            let stack = materializer
+                .canvas
+                .compiled_plan
+                .as_ref()
+                .unwrap()
+                .layer_stack_data
+                .clone();
+            assert!(!stack.is_empty());
+            for value in [0.5, 0.0, 1.0] {
+                scene
+                    .transaction()
+                    .update_layer(FILTER, effect(value))
+                    .commit()
+                    .unwrap();
+                assert!(update_materializer(&mut materializer, &scene));
+                assert_eq!(
+                    materializer
+                        .canvas
+                        .compiled_plan
+                        .as_ref()
+                        .unwrap()
+                        .layer_stack_data,
+                    stack
+                );
+                let changes = materializer.canvas.buffer_changes.as_ref().unwrap();
+                assert!(changes.plan_structure_reused);
+                assert!(
+                    changes.plan_layer_stack.is_empty(),
+                    "backdrop={backdrop}, empty={empty}: {:?}",
+                    changes.plan_layer_stack
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn empty_fused_groups_keep_real_stack_entries_when_updated() {
     for (before, after, expected) in [
         (opacity(0.25), opacity(0.75), 0.75),
@@ -195,6 +270,15 @@ fn empty_fused_groups_keep_real_stack_entries_when_updated() {
         let plan = materializer.canvas.compiled_plan.as_ref().unwrap();
         assert!(Rc::ptr_eq(&original.draw_order, &plan.draw_order));
         assert_eq!(plan.layer_stack_locations, original.layer_stack_locations);
+        assert!(
+            !materializer
+                .canvas
+                .buffer_changes
+                .as_ref()
+                .unwrap()
+                .plan_layer_stack
+                .is_empty()
+        );
         assert!(plan.layer_stack_data.iter().all(|entry| match entry {
             crate::shared::execution::LayerStackEntry::Opacity { opacity, .. } =>
                 *opacity == expected,

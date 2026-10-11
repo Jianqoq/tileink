@@ -107,13 +107,11 @@ impl PersistentSceneMaterializer {
                     .first()
                     .expect("layer chunk has one root command")
                     .clone();
-                let has_draws = !chunk.canvas.draw_records.is_empty();
                 let children = self.push_command_list();
                 self.append_children(scene, id, RetainedChildBranch::Content, children);
-                let Command::Layer { draw, layer, .. } = template else {
+                let Command::Layer { layer, .. } = template else {
                     unreachable!("non-mask layer chunk has a layer command")
                 };
-                let draw = if !has_draws { 0 } else { draw_base + draw };
                 let command_index = Rc::make_mut(&mut self.canvas).command_lists[target]
                     .commands
                     .len();
@@ -124,8 +122,7 @@ impl PersistentSceneMaterializer {
                             id,
                             NodeGeneration::new(node.generation),
                         )),
-                        draw,
-                        layer,
+                        layer: layer.remap_draw(draw_base),
                         children,
                     });
                 self.layer_command_locations.insert(
@@ -249,13 +246,12 @@ impl PersistentSceneMaterializer {
                 let chunk = &self.chunks[&id];
                 let draw_base = self.arenas.draws.range(chunk.draws).start;
                 let template = chunk.canvas.command_lists[ROOT_COMMAND_LIST_ID].commands[0].clone();
-                let Command::Layer { draw, layer, .. } = template else {
+                let Command::Layer { layer, .. } = template else {
                     unreachable!("non-mask retained layer chunk has one layer command")
                 };
                 Command::Layer {
                     retained: Some(PersistentLayerKey::new(id, generation)),
-                    draw: draw_base + draw,
-                    layer,
+                    layer: layer.remap_draw(draw_base),
                     children,
                 }
             }

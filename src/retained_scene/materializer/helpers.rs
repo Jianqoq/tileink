@@ -380,13 +380,12 @@ pub(super) fn chunk_layer_influence_bounds(chunk: &SceneChunk) -> Bounds {
     let command = &chunk.canvas.command_lists[ROOT_COMMAND_LIST_ID].commands[0];
     match command {
         Command::Layer {
-            draw,
             layer:
-                crate::shared::layer::Layer::Clip
-                | crate::shared::layer::Layer::ClipSdf { .. }
-                | crate::shared::layer::Layer::Isolate
-                | crate::shared::layer::Layer::Opacity(_)
-                | crate::shared::layer::Layer::Blend(_),
+                Layer::Clip { draw }
+                | Layer::ClipSdf { draw }
+                | Layer::Isolate { draw }
+                | Layer::Opacity { draw, .. }
+                | Layer::Blend { draw, .. },
             ..
         } => {
             let bounds = chunk.canvas.draw_records[*draw].pixel_bounds;

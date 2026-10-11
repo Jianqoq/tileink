@@ -1,5 +1,6 @@
 use super::*;
 
+mod clip_geometry;
 mod fragment_membership;
 mod incremental;
 mod layer_updates;

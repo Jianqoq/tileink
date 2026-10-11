@@ -620,9 +620,10 @@ impl PersistentSceneMaterializer {
                 .is_some_and(|plan| {
                     let plan = Rc::make_mut(plan);
                     for (id, old, new) in &layer_plan_patches {
-                        if let Command::Layer { draw, .. } = old {
-                            plan_layer_stack_changes
-                                .extend(plan.layer_stack_ranges_for_draw(*draw));
+                        if let Command::Layer { layer, .. } = old
+                            && let Some(draw) = layer.hidden_draw()
+                        {
+                            plan_layer_stack_changes.extend(plan.layer_stack_ranges_for_draw(draw));
                         }
                         if !plan.patch_retained_layer(*id, old, new) {
                             return false;

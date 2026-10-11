@@ -33,3 +33,5 @@ flowchart TD
 `push_clip_*`、`push_opacity_layer`、`push_blend_layer`、`push_filter_layer`、`push_backdrop_layer` 与 `push_mask_layer` 创建嵌套 command lists。每个成功 push 都必须有一个对应 `pop_layer()`；未关闭 Canvas 不能被 append 或插入 retained scene。
 
 编译后的 clip 只进入绘制批次的融合栈。离屏描述只允许 Isolate、Opacity、Blend、Filter 和 Backdrop；只有几何组保存隐藏 draw，Filter／Backdrop 不再保存占位 draw。进入临时表面时，整数边界平移按有符号坐标域饱和，路径坐标先转浮点再取反，避免负原点和极大 clip 导致回绕、内容消失。
+
+记录阶段也只有几何 layer 保存 draw 引用；Filter／Backdrop 只保存 filter 和采样区域，因此参数更新不会触发无关 clip 栈上传。SDF clip 的几何和边界统一保存在场景缓冲中，修改它们可以复用相同的执行拓扑。append 平移消费已取得所有权的 command，避免再次深拷贝 filter 和 mask 描述。

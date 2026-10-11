@@ -27,6 +27,7 @@ fn assert_layer_stack(plan: &ExecPlan, layer_stack: Range<usize>, expected: &[La
 mod append_bounds;
 mod compile;
 mod filters;
+mod layer_commands;
 mod offscreen_clips;
 mod paths;
 mod primitives;
