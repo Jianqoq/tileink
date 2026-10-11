@@ -1259,6 +1259,66 @@ Rust measurement program was added, and the copied baseline executable is
 removed after validation. Actual DXC/ShaderTools and DX12/Vulkan GPU execution
 remain unavailable. Whole-repository auditing continues.
 
+## Phase 30: remove duplicate fused-layer operation markers
+
+`ExecOp` now contains only draw batches and the two offscreen operations. The six
+CPU Begin/End clip, opacity and blend variants were emitted by compilation and
+copied during offscreen localization, but the executor ignored them. Their state
+already lives in each batch's ordered `LayerStackEntry` snapshot. The obsolete
+variants, emission/copying/no-op branches and fifteen newly unreachable wildcard
+arms are removed. This deletes the duplicate representation permanently.
+GPU coarse/fine begin/end particles still implement the actual raster semantics.
+
+Clip, opacity and blend compilation now share one push/recurse/pop traversal.
+Empty fused groups no longer obstruct coalescing adjacent batches with the same
+stack. Painter order, hidden draw references and retained branch membership
+remain in the existing batch metadata. Tests check nested group stacks and empty
+groups through the meaningful state instead of asserting obsolete marker tokens.
+
+Fixed clip slots previously used marker kinds to reject opacity/blend schedules.
+That decision now examines the actual stack entries and requires a draw-only,
+pure-clip plan. Group compositing needs particles beyond the pure-clip slot
+reservation. New native tests cover both nested and sequential opacity/blend
+stacks; all four combinations remain excluded. Both new semantic preservation
+tests passed before the removal, then passed with the simplified representation.
+
+The 1138-line execution file is split into types, batching/indexes, fragment
+relocation, layer-stack storage, retained offscreen identity, layer patches and
+surface patches. Each resulting file is below 300 lines. A token-level review
+checks all 42 moved function bodies against the previous commit; they are
+identical after removing comments, formatting and obsolete exhaustive-match
+wildcard arms. A contradictory append/insert comment is simplified as well.
+
+Focused serial release selections pass: 17 Canvas compilation tests, 13 clip
+scheduling tests, 163 retained tests and six operation traversal tests. These
+selections can overlap and are not reported as a distinct-test total. The full
+`--all-targets` release suite, including ignored tests, reports 1056 passes and
+the same three known failures documented in phase 12; all twelve example tests
+pass. Formatting, backend-free checking, release Clippy and example builds pass,
+with the existing 1/8 library/library-test warnings and no new ones. All 1730 SVG
+images and seven example PNGs exactly match their immutable baseline. Both active
+Metal manifests are byte-identical. With Metal validation enabled, the native
+window completes eight frames and its 640x360 to 480x270 resize.
+
+The [application measurements](benchmarks/cleanup-phase30-metal-2026-10-12.json)
+retain every observation from 48 real SVG rendering processes: baseline/current
+and identical-current controls, each with two warmups per label and ten timed
+alternating pairs. Every process renders, reads back and saves all 1730 fixtures
+at 300px, and every resulting PNG matches the immutable baseline. Whole-process
+medians change from 4285.493 ms to 4263.504 ms (-0.51%); the identical-current
+control changes by +0.48%. This preserves the measured application workload.
+Initialization, SVG loading, planning, GPU completion, readback, PNG writes and
+teardown are included, so these numbers do not establish isolated GPU or frame
+time improvements. Validation is disabled for timing and enabled separately for
+the full tests/renders. No Rust measurement program was added; the copied
+baseline executable and temporary measurement scripts are removed afterward.
+
+Additional complete reads cover Canvas draw/layer/path recording and related
+tests. Repeated command-root repair, an empty-stack substitute and redundant
+forwarders/extrema scans are traced for the next cleanup. The audit remains in
+progress with 438 current implementation files unread. Actual DXC/ShaderTools
+and DX12/Vulkan GPU execution remain unavailable on this host.
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.

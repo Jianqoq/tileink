@@ -189,6 +189,51 @@ fn broad_pure_clip_uses_one_preallocated_dense_emit() -> super::super::Result<()
 }
 
 #[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn clip_slots_reject_nonempty_opacity_and_blend_stacks() -> super::super::Result<()> {
+    let context = gpu_support::context()?;
+    for nested in [false, true] {
+        for blend in [false, true] {
+            let mut canvas = Canvas::new(64, 64, 1.0);
+            let rect = Rect::new(0.0, 0.0, 64.0, 64.0);
+            canvas.push_clip_sdf_rect_layer(rect, crate::Radius::ZERO);
+            if !nested {
+                canvas.push_rect(rect, crate::Radius::ZERO, peniko::Color::BLACK);
+                canvas.pop_layer();
+            }
+            if blend {
+                canvas.push_blend_layer(
+                    rect.to_path(0.1),
+                    Affine::IDENTITY,
+                    0.1,
+                    peniko::Mix::Multiply,
+                    peniko::Compose::SrcOver,
+                );
+            } else {
+                canvas.push_opacity_layer(rect.to_path(0.1), Affine::IDENTITY, 0.1, 0.5);
+            }
+            canvas.push_rect(rect, crate::Radius::ZERO, peniko::Color::BLACK);
+            canvas.pop_layer();
+            if nested {
+                canvas.pop_layer();
+            }
+            let scene = SceneCache::default().record(
+                &mut gpu_support::batch(&context),
+                &canvas,
+                None,
+                None,
+                65535,
+            )?;
+            assert!(
+                !scene.clip_dispatch.preallocated,
+                "nested={nested}, blend={blend}"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
 #[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn fixed_clip_slots_are_disjoint_bounded_and_drop_out_for_mixed_passes() -> super::super::Result<()>

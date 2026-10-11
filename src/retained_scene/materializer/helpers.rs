@@ -157,7 +157,6 @@ pub(super) fn exec_ops_have_batches(ops: &[crate::shared::execution::ExecOp]) ->
         crate::shared::execution::ExecOp::OffscreenMaskLayer { content, mask, .. } => {
             exec_ops_have_batches(content) || exec_ops_have_batches(mask)
         }
-        _ => false,
     })
 }
 

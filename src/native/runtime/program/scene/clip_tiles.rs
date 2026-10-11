@@ -143,7 +143,6 @@ fn collect_stacks(
                 collect_stacks(content, canvas, ranges, content_bounds, include_content);
                 collect_stacks(mask, canvas, ranges, content_bounds, include_content);
             }
-            _ => {}
         }
     }
 }
@@ -216,12 +215,10 @@ impl ClipDispatch {
         // each small clip count, allocate, and draw the full viewport again.
         let fixed = !lengths.text_enabled
             && !ranges.is_empty()
-            && plan.ops.iter().all(|op| {
-                matches!(
-                    op,
-                    ExecOp::DrawBatch { .. } | ExecOp::BeginClip | ExecOp::EndClip
-                )
-            });
+            && plan.ops.iter().all(|op| matches!(op, ExecOp::DrawBatch { .. }))
+            // Opacity/blend markers no longer exist: validate the actual stack.
+            // Those groups require more particles than pure-clip slots reserve.
+            && plan.layer_stack_data.iter().all(|entry| matches!(entry, LayerStackEntry::Clip { .. }));
         if fixed {
             result.preallocated = true;
             let mut cursor = 0u32;

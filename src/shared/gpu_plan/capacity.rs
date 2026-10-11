@@ -229,7 +229,6 @@ fn plan_stack_depths_for_ops(ops: &[ExecOp], plan: &ExecPlan) -> (usize, usize) 
                     .max(content_group_depth)
                     .max(mask_group_depth);
             }
-            _ => {}
         }
     }
     (max_clip_depth, max_group_depth)

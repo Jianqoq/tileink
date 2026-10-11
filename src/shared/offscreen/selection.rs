@@ -137,12 +137,6 @@ fn collect_local_plan_draws<'a>(
                 collect_local_plan_draws(content, layer_stacks, bounds, batches, hidden);
                 collect_local_plan_draws(mask, layer_stacks, bounds, batches, hidden);
             }
-            ExecOp::BeginClip
-            | ExecOp::EndClip
-            | ExecOp::BeginOpacity
-            | ExecOp::EndOpacity
-            | ExecOp::BeginBlend
-            | ExecOp::EndBlend => {}
         }
     }
 }

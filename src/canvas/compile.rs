@@ -184,69 +184,35 @@ impl Canvas {
                         })
                         .or(batch_owner);
                     if self.can_fuse(layer, *children) {
-                        match layer {
+                        // Every fused group has the same traversal. Hidden SDF/path clip
+                        // draws remain analytic through the batch's stack snapshot.
+                        let entry = match layer {
                             Layer::Clip | Layer::ClipSdf { .. } => {
-                                // SDF clips stay analytic by using their hidden
-                                // draw record as the same layer-stack entry as
-                                // path clips, instead of materializing a mask.
-                                ops.push(ExecOp::BeginClip);
-                                layer_stack.push(LayerStackEntry::Clip { draw: *draw as u32 });
-                                self.compile_into(
-                                    *children,
-                                    ops,
-                                    plan,
-                                    layer_stack,
-                                    CompileOwners {
-                                        retained: retained_owner,
-                                        batch: child_batch_owner,
-                                    },
-                                    surface_slots,
-                                );
-                                layer_stack.pop();
-                                ops.push(ExecOp::EndClip);
+                                LayerStackEntry::Clip { draw: *draw as u32 }
                             }
-                            Layer::Opacity(opacity) => {
-                                ops.push(ExecOp::BeginOpacity);
-                                layer_stack.push(LayerStackEntry::Opacity {
-                                    draw: *draw as u32,
-                                    opacity: opacity.opacity,
-                                });
-                                self.compile_into(
-                                    *children,
-                                    ops,
-                                    plan,
-                                    layer_stack,
-                                    CompileOwners {
-                                        retained: retained_owner,
-                                        batch: child_batch_owner,
-                                    },
-                                    surface_slots,
-                                );
-                                layer_stack.pop();
-                                ops.push(ExecOp::EndOpacity);
-                            }
-                            Layer::Blend(blend) => {
-                                ops.push(ExecOp::BeginBlend);
-                                layer_stack.push(LayerStackEntry::Blend {
-                                    draw: *draw as u32,
-                                    mode: blend.mode,
-                                });
-                                self.compile_into(
-                                    *children,
-                                    ops,
-                                    plan,
-                                    layer_stack,
-                                    CompileOwners {
-                                        retained: retained_owner,
-                                        batch: child_batch_owner,
-                                    },
-                                    surface_slots,
-                                );
-                                layer_stack.pop();
-                                ops.push(ExecOp::EndBlend);
-                            }
+                            Layer::Opacity(opacity) => LayerStackEntry::Opacity {
+                                draw: *draw as u32,
+                                opacity: opacity.opacity,
+                            },
+                            Layer::Blend(blend) => LayerStackEntry::Blend {
+                                draw: *draw as u32,
+                                mode: blend.mode,
+                            },
                             _ => unreachable!(),
-                        }
+                        };
+                        layer_stack.push(entry);
+                        self.compile_into(
+                            *children,
+                            ops,
+                            plan,
+                            layer_stack,
+                            CompileOwners {
+                                retained: retained_owner,
+                                batch: child_batch_owner,
+                            },
+                            surface_slots,
+                        );
+                        layer_stack.pop();
                     } else {
                         let stack_start = plan.layer_stack_data.len();
                         plan.layer_stack_data.extend_from_slice(layer_stack);
@@ -416,7 +382,6 @@ fn exec_ops_contain_owner(ops: &[ExecOp], owner: RetainedBatchOwner) -> bool {
         ExecOp::OffscreenMaskLayer { content, mask, .. } => {
             exec_ops_contain_owner(content, owner) || exec_ops_contain_owner(mask, owner)
         }
-        _ => false,
     })
 }
 struct HasherWriter<'a, H>(&'a mut H);

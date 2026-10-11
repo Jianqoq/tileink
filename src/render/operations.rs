@@ -1,6 +1,6 @@
 //! Shared painter-order traversal of the prepared execution plan.
 //!
-//! Fused stack markers are already represented in draw-batch layer metadata.
+//! Fused layer state lives only in draw-batch metadata; there are no CPU markers.
 //! Offscreen operations retain their own cache, damage and resource-cursor policy;
 //! a root active-batch list must not suppress those effects or filter descendants.
 
@@ -85,12 +85,6 @@ pub(crate) fn execute_ops<A: OperationAdapter>(
                     target,
                 )?;
             }
-            ExecOp::BeginClip
-            | ExecOp::EndClip
-            | ExecOp::BeginOpacity
-            | ExecOp::EndOpacity
-            | ExecOp::BeginBlend
-            | ExecOp::EndBlend => {}
             ExecOp::OffscreenLayer {
                 retained_id,
                 draw,

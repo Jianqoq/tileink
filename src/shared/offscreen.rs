@@ -213,12 +213,6 @@ fn translate_exec_ops_to_local(
                 layer_stack: layer_stack.clone(),
                 owners: owners.clone(),
             },
-            ExecOp::BeginClip => ExecOp::BeginClip,
-            ExecOp::EndClip => ExecOp::EndClip,
-            ExecOp::BeginOpacity => ExecOp::BeginOpacity,
-            ExecOp::EndOpacity => ExecOp::EndOpacity,
-            ExecOp::BeginBlend => ExecOp::BeginBlend,
-            ExecOp::EndBlend => ExecOp::EndBlend,
             ExecOp::OffscreenLayer {
                 retained_id,
                 draw,
