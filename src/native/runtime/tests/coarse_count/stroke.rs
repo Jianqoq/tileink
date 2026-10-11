@@ -85,7 +85,7 @@ fn native_routes_coarse_stroke_proof_preserves_glyph_priority() -> Result<()> {
         scene.config[10] = 1;
         scene.config[11] = 1;
         scene.config[15] = 1;
-        scene.text = vec![0, 1, 0, 0, 0, 0, 0, 8, 8, 0, 0];
+        scene.text = super::glyphs::bitmap_text(&[0]);
         scene.expect_counts(2, 1);
         for entry in ["coarse_count", "coarse_count_bins"] {
             routes.check(&scene.batch(entry)?, &[bytes(&scene.expected)], entry)?;

@@ -381,6 +381,34 @@ verify Windows GPU execution or shader compilation. This batch permanently
 replaces the broken verification chain; it does not change application rendering
 operations or make a performance improvement claim.
 
+## Phase 12: remove nearest-sampling glyph expectations
+
+Five native coarse tests still computed glyph candidates using the nearest-
+sampling bounds that preceded fractional glyph motion. The current Metal and
+HLSL shaders deliberately expand bitmap candidate bounds by one local pixel for
+bilinear sampling. Consequently the glyph at x=16 belongs in the first tile's
+candidate list; the old tests expected only two of the three authored glyphs.
+The renderer behavior is correct, and no shader or production rendering logic
+changes in this batch.
+
+The obsolete expectations are replaced with the current sampling contract across
+count, scalar/parallel emission, paged lists and the chunk count/offset/emission
+chain. Tests retain exact stream ordering, sentinels, truncated logical ranges
+and physical capacity guards. Additional positive/negative fractional positions
+and strict contact with the expanded boundary distinguish actual candidate
+overlap from boundary-only contact. Typed glyph/run/image metadata replaces
+duplicated raw text fixtures, and glyph page fixtures live in a separate module.
+A focused host regression first reproduced the two-versus-three discrepancy.
+
+All 29 Metal coarse focused release tests pass. The full single-thread release
+suite reports 989 passing tests and three remaining known failures: the two
+tests requiring an explicitly pinned DXC executable, and the 1600-pixel canonical
+turbulence comparison. The five coarse failures are resolved without dropping
+their assertions. Release Clippy and example builds/tests pass without new
+warnings; all 1730 SVG images and seven example PNGs remain byte-identical to the
+initial cleanup baseline. This permanently corrects stale test semantics; it
+does not change application execution or claim a performance improvement.
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.

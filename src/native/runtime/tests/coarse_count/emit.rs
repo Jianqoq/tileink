@@ -1,4 +1,5 @@
 use super::emit_scene::*;
+use super::glyphs::glyph_page_scene;
 use super::*;
 
 #[test]

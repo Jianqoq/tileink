@@ -63,7 +63,7 @@ fn native_routes_coarse_emit_chunks_classifies_paint_and_keeps_glyph_destination
         let base = stale_refs(&mut scene);
         scene.expected[base + 2] = 1;
         scene.expected[base + 3] = 0;
-        scene.expected[base + 4] = if (14..=16).contains(&mode) { 2 } else { 0 };
+        scene.expected[base + 4] = if (14..=16).contains(&mode) { 3 } else { 0 };
         scene.expected[base + 5] = 0;
         scene.expected[base + 6] = [4, 0, 1, 2, 3][kind as usize];
         routes.check(
@@ -81,10 +81,11 @@ fn native_routes_coarse_emit_chunks_classifies_paint_and_keeps_glyph_destination
 fn native_routes_coarse_emit_chunks_chain_carries_glyphs_and_nonzero_tile_ranges() -> Result<()> {
     let routes = Routes::new()?;
     for linked in [false, true] {
-        let mut scene = super::emit_scene::glyph_page_scene(linked, false);
+        let mut scene = super::glyphs::glyph_page_scene(linked, false);
         let base = stale_refs(&mut scene);
-        scene.expected[base + 2..base + 7].copy_from_slice(&[256, 0, 512, 0, 4]);
-        scene.expected[base + 9..base + 14].copy_from_slice(&[1, 256, 2, 512, 4]);
+        let glyphs = COARSE_WORKGROUP_SIZE * 3;
+        scene.expected[base + 2..base + 7].copy_from_slice(&[256, 0, glyphs, 0, 4]);
+        scene.expected[base + 9..base + 14].copy_from_slice(&[1, 256, 3, glyphs, 4]);
         routes.check(
             &scene.emit_chunks_batch()?,
             &[bytes(&scene.expected)],

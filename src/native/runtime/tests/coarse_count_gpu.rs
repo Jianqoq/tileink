@@ -34,15 +34,16 @@ fn native_routes_coarse_count_preserves_paged_draw_and_stack_semantics() -> Resu
 fn native_routes_coarse_count_checks_glyph_bounds_and_analytic_clip_proofs() -> Result<()> {
     let routes = Routes::new()?;
     let mut scenes = Vec::new();
-    // Bitmap glyph cases: translated, boundary-touching, mirrored, empty and invalid images.
-    for mode in 0..8 {
+    // Bilinear sampling extends the candidate bounds by one local pixel.
+    // Include both sides of that guard, strict boundary contact and fractional motion.
+    for mode in 0..12 {
         let mut scene = count_scene(1, false, 0);
         scene.config[10] = 1;
         scene.config[11] = 1;
         scene.config[15] = 1;
         scene.draws[1] = 0;
         scene.draws[2] = u32::MAX;
-        scene.text = vec![0, 1, 0, 0, 0, 0, 0, 8, 8, 0, 0];
+        scene.text = glyphs::bitmap_text(&[0]);
         match mode {
             1 => scene.draws[23] = 16f32.to_bits(),
             2 => scene.draws[23] = (-7.5f32).to_bits(),
@@ -54,9 +55,13 @@ fn native_routes_coarse_count_checks_glyph_bounds_and_analytic_clip_proofs() -> 
             5 => scene.text[2] = u32::MAX,
             6 => scene.draws[8] = 1,
             7 => scene.config[15] = 0,
+            8 => scene.draws[23] = 17f32.to_bits(),
+            9 => scene.draws[23] = 16.5f32.to_bits(),
+            10 => scene.draws[23] = (-9f32).to_bits(),
+            11 => scene.draws[23] = (-8.5f32).to_bits(),
             _ => (),
         }
-        let hit = matches!(mode, 0 | 2 | 3 | 7);
+        let hit = matches!(mode, 0 | 1 | 2 | 3 | 7 | 9 | 11);
         scene.expect_counts(if hit { 2 } else { 0 }, u32::from(hit && mode != 7));
         scenes.push(scene);
     }
@@ -212,6 +217,9 @@ mod emit_chunks;
 
 #[path = "coarse_count/emit_scene.rs"]
 mod emit_scene;
+
+#[path = "coarse_count/glyphs.rs"]
+mod glyphs;
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]

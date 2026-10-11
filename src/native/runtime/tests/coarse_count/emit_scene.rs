@@ -140,8 +140,8 @@ pub(super) fn paint_scene(mode: u32, bins: bool) -> CountScene {
             scene.config[10] = 1;
             scene.config[11] = 3;
             scene.config[15] = 1;
-            scene.text = vec![0, 3, 0, 0, 0, 0, 16, 0, 0, 4, 0, 0, 0, 8, 8, 0, 0];
-            record = [10, 0, 0, 1, 3, 0];
+            scene.text = super::glyphs::bitmap_text(&[0, 16, 4]);
+            record = [10, 0, 0, 1, 4, 0];
             kind = 0;
         }
         18 => {
@@ -171,9 +171,9 @@ pub(super) fn paint_scene(mode: u32, bins: bool) -> CountScene {
         2,
         1,
         3,
-        if (14..=16).contains(&mode) { 2 } else { 0 },
+        if (14..=16).contains(&mode) { 3 } else { 0 },
         1,
-        if mode == 15 { 2 } else { 3 },
+        if mode == 15 { 2 } else { 4 },
     ]);
     scene.expected = scene.work.clone();
     scene.expected[12..18].copy_from_slice(&record);
@@ -182,54 +182,12 @@ pub(super) fn paint_scene(mode: u32, bins: bool) -> CountScene {
         let glyph_base = 6 + scene.config[7] as usize * 6;
         scene.expected[glyph_base + 1] = 0;
         if mode == 14 {
-            scene.expected[glyph_base + 2] = 2;
+            scene.expected[glyph_base + 2] = 1;
+            scene.expected[glyph_base + 3] = 2;
         }
     }
     if bins {
         scene.expected[scene.kind_base] = kind;
-    }
-    scene
-}
-
-pub(super) fn glyph_page_scene(linked: bool, bins: bool) -> CountScene {
-    let mut scene = count_scene(257, linked, 0);
-    scene.reserve_streams(260, 520);
-    let paint = paint_scene(14, false);
-    scene.draws = paint.draws;
-    scene.sdf = paint.sdf;
-    scene.text = paint.text;
-    scene.config[10] = 1;
-    scene.config[11] = 3;
-    scene.config[14] = 12;
-    scene.config[15] = 1;
-    let index_base = 6 + 260 * 6 + 520 + 2;
-    for index in 0..257usize {
-        let word = if linked {
-            index / 256 * 257 + 1 + index % 256
-        } else {
-            index
-        };
-        scene.work[index_base + word] = 0;
-    }
-    scene.work[..6].copy_from_slice(&[258, 1, 259, 514, 1, 515]);
-    scene.expected = scene.work.clone();
-    for index in 0..257usize {
-        let glyph = 1 + index * 2;
-        scene.expected[12 + index * 6..18 + index * 6].copy_from_slice(&[
-            10,
-            0,
-            0,
-            glyph as u32,
-            glyph as u32 + 2,
-            0,
-        ]);
-        let base = 6 + 260 * 6 + glyph;
-        scene.expected[base] = 0;
-        scene.expected[base + 1] = 2;
-    }
-    scene.expected[12 + 257 * 6..18 + 257 * 6].fill(0);
-    if bins {
-        scene.expected[scene.kind_base] = 0;
     }
     scene
 }
