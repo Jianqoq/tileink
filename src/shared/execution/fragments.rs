@@ -88,7 +88,7 @@ impl ExecPlan {
         id: RetainedNodeId,
         mut fragment: ExecPlan,
     ) -> Option<Vec<(usize, u32)>> {
-        if fragment.ops.len() != 1 || !find_retained_offscreen(&fragment.ops, id) {
+        if fragment.ops.len() != 1 || find_retained_offscreen(&fragment.ops, id).is_none() {
             return None;
         }
         let stack_base = self.layer_stack_data.len();

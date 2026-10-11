@@ -20,6 +20,16 @@ impl Canvas {
     }
 
     pub(super) fn compile_uncached(&self, list_id: CommandListId) -> ExecPlan {
+        self.compile_with_layer_stack(list_id, Vec::new())
+    }
+
+    /// Retained offscreen fragments keep their ancestor clips when recompiled.
+    /// Backdrop children also inherit this stack, just as in a full compilation.
+    pub(crate) fn compile_with_layer_stack(
+        &self,
+        list_id: CommandListId,
+        mut layer_stack: Vec<LayerStackEntry>,
+    ) -> ExecPlan {
         let mut ops = Vec::new();
         let mut plan = ExecPlan {
             ops: Vec::new(),
@@ -30,7 +40,6 @@ impl Canvas {
             layer_stack_locations: std::collections::HashMap::new(),
             direct_root_batch_ops: None,
         };
-        let mut layer_stack = Vec::new();
         let mut surface_slots = std::collections::HashMap::new();
         self.compile_into(
             list_id,

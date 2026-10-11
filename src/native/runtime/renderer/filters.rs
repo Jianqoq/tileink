@@ -129,7 +129,7 @@ impl FilterAdapter for Execution<'_> {
         c.layer_stack_start = u32::try_from(stack.start)?;
         c.layer_stack_end = u32::try_from(stack.end)?;
         let source = source.image_in(self.batch)?;
-        self.scene.scanned().filter_stack().encode(
+        self.scene.scanned().filter_clip_stack().encode(
             self.batch,
             Composite::Surface,
             c,

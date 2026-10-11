@@ -1,6 +1,6 @@
 //! Filter consumers share the scene-owned scan and layer buffers.
 use super::Scene;
-use crate::native::runtime::program::filter::{layer::Geometry, stack::Stack};
+use crate::native::runtime::program::filter::{layer::Geometry, stack::ClipStack};
 
 impl Scene {
     pub(crate) fn filter_geometry(&self) -> Geometry {
@@ -17,9 +17,10 @@ impl Scene {
         }
     }
 
-    pub(crate) fn filter_stack(&self) -> Stack {
+    pub(crate) fn filter_clip_stack(&self) -> ClipStack {
         // SAFETY: shared LayerStackRecord conversion and plan preparation bound
-        // draw indices and quantize opacity. Upload checked its byte capacity.
-        unsafe { Stack::from_gpu(self.filter_geometry(), self.layers, self.layer_count) }
+        // draw indices. Offscreen ranges contain only ancestor clips; fused groups
+        // remain in draw-batch ranges. Upload checked the full buffer capacity.
+        unsafe { ClipStack::from_gpu(self.filter_geometry(), self.layers, self.layer_count) }
     }
 }

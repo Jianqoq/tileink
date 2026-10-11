@@ -185,6 +185,15 @@ impl PersistentSceneMaterializer {
         scene: &RetainedScene,
         id: RetainedNodeId,
     ) -> bool {
+        let Some(outer_stack) = self
+            .canvas
+            .compiled_plan
+            .as_ref()
+            .and_then(|plan| plan.retained_offscreen_stack(id))
+            .map(<[_]>::to_vec)
+        else {
+            return false;
+        };
         let old_location = self.layer_command_locations[&id];
         let temporary = self.push_command_list();
         self.append_node_commands(scene, id, temporary);
@@ -193,7 +202,7 @@ impl PersistentSceneMaterializer {
             .first()
             .cloned()
             .expect("offscreen fragment root command");
-        let fragment = Rc::make_mut(&mut self.canvas).compile(temporary);
+        let fragment = self.canvas.compile_with_layer_stack(temporary, outer_stack);
         let Some(plan) = Rc::make_mut(&mut self.canvas).compiled_plan.as_mut() else {
             return false;
         };

@@ -20,16 +20,18 @@ pub struct Textures {
     pub target: ResourceId,
 }
 
-/// Validated layer references, independent of source surfaces and per-pass regions.
-pub struct Stack {
+/// Scene-owned records for offscreen ancestor clips. Per-pass ranges must come
+/// from ExecOp::outer_stack; fused opacity/blend stacks belong to fine rasterization.
+pub struct ClipStack {
     geometry: Geometry,
     layers: ResourceId,
     count: u32,
 }
-impl Stack {
+impl ClipStack {
     /// # Safety
-    /// `layers` must contain `count` valid records for this geometry, with byte
-    /// opacity payloads and bounded draw indices, in the geometry's batch.
+    /// `layers` must contain `count` valid records for this geometry, with
+    /// bounded draw indices, in the geometry's batch. Selected composite ranges
+    /// must contain clips only; other scene ranges may contain fused groups.
     pub(in crate::native::runtime::program) unsafe fn from_gpu(
         geometry: Geometry,
         layers: ResourceId,

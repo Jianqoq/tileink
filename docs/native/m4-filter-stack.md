@@ -1,32 +1,33 @@
 # M4 filter stack composition
 
-The maintained HLSL stack kernels implement ordinary, blend and translated-surface
-composition using explicit scene buffers. Path and transformed analytic SDF coverage
-share the layer geometry helpers. Nested opacity/blend groups preserve the production
-WGSL clip inheritance, integer alpha rounding and overflow behavior.
+The Metal and HLSL kernels implement ordinary, blend and translated-surface
+composition through ancestor clips. Path and transformed analytic SDF coverage
+share the layer geometry helpers and integer alpha rounding.
 
-`Stack` owns validated logical layer references; `Geometry` owns immutable scene
-bindings. Upload rejects opacity outside 0–255 before integer pixel arithmetic and
-canonicalizes invalid draw references. Encoding validates logical subranges and
-signed surface coordinates. Over derives mask presence from the optional auxiliary
-texture, binding the read-only source to the unused descriptor when absent. Blend
-requires its auxiliary texture; Surface uses signed translation and logical extent.
-These are host-boundary fixes, not shader fallbacks or temporary workarounds.
+`Canvas::can_fuse` gives opacity/blend groups containing offscreen descendants
+their own surfaces. Consequently `ExecOp::outer_stack` contains clips only;
+fused groups remain in draw-batch stacks for fine rasterization. The old fixed
+64-group composite evaluator and overflow-skipping branch are deleted rather
+than retained as a second implementation.
 
-The group capacity is defined once in `shared/stack_constants.hlsli`. Build-time
-WGSL and Rust test declarations derive from that definition; no ABI JSON is used.
+`Scene::filter_clip_stack` borrows the owning scene's uploaded layer records and
+scan geometry. Composite ranges must come from offscreen `outer_stack` ranges.
+Encoding validates logical subranges, resource ownership and signed coordinates.
+Over derives mask presence from the optional auxiliary texture, binding its
+read-only source to the unused descriptor when absent. Blend requires its mask;
+Surface uses signed translation and logical extent. Actual offscreen blending
+and mask coverage retain their existing semantics.
 
-Tests cover independent integer oracles, nested opacity/blends, capacity overflow,
-clips following overflow, poisoned records outside a nonzero subrange, stale mask
-flags, absent masks, transformed SDF clips, all blend modes, translated surfaces,
-compact tile lists, target padding and repeated writes. Both host regressions were
-observed failing before their fixes.
+Retained fragment recompilation explicitly receives the original ancestor clip
+stack. Previously compiling a subtree as a fresh root discarded its clips;
+backdrop children also lost the clip inheritance that a full compile supplies.
+This permanently fixes the compiler's missing input, without a post-render mask
+or a full-scene recompile substitute.
 
-Validation passes: 987 ordinary release tests, 131 native runtime tests, strict
-Clippy, Shader Tools, shader artifact/inventory integration and 74 SPIR-V modules.
-Both GPU tests replay without DXC and hit disk pipeline caches. Full SVG/examples
-have no new differences across 3,471 PNGs beyond the accepted turbulence image.
-Standards and Spec reviews are closed.
-
-The three entries add twelve validated variants, reaching 159/179. M4 remains open
-for remaining effects, fine rendering and NativeRenderer/Canvas integration.
+Tests cover clip depths 0, 1, 63, 64, 65 and 128, mixed fused/offscreen groups,
+masks, backdrops, local coordinate remapping and retained descriptor/topology/
+surface updates. Pinned GPU tests verify deep composition pixels and incremental
+filter/backdrop/mask insertion/removal against a fresh renderer. The retained
+clip regression fails before the compiler fix. Full validation and measured
+application timings are recorded in the
+[cleanup audit](cleanup-2026-10.md#phase-36-offscreen-clip-composition).

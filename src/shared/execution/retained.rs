@@ -5,7 +5,14 @@ use super::*;
 
 impl ExecPlan {
     pub(crate) fn contains_retained_offscreen(&self, id: RetainedNodeId) -> bool {
-        find_retained_offscreen(&self.ops, id)
+        find_retained_offscreen(&self.ops, id).is_some()
+    }
+
+    pub(crate) fn retained_offscreen_stack(
+        &self,
+        id: RetainedNodeId,
+    ) -> Option<&[LayerStackEntry]> {
+        find_retained_offscreen(&self.ops, id).map(|range| &self.layer_stack_data[range.clone()])
     }
 
     pub(crate) fn retained_offscreen_ancestor_of(
@@ -52,27 +59,34 @@ impl ExecPlan {
     }
 }
 
-pub(super) fn find_retained_offscreen(ops: &[ExecOp], id: RetainedNodeId) -> bool {
-    ops.iter().any(|op| match op {
+pub(super) fn find_retained_offscreen(ops: &[ExecOp], id: RetainedNodeId) -> Option<&Range<usize>> {
+    ops.iter().find_map(|op| match op {
         ExecOp::OffscreenLayer {
             retained_id,
+            outer_stack,
             children,
             ..
         } => {
-            retained_id.is_some_and(|retained| retained.node == id)
-                || find_retained_offscreen(children, id)
+            if retained_id.is_some_and(|retained| retained.node == id) {
+                Some(outer_stack)
+            } else {
+                find_retained_offscreen(children, id)
+            }
         }
         ExecOp::OffscreenMaskLayer {
             retained_id,
+            outer_stack,
             content,
             mask,
             ..
         } => {
-            retained_id.is_some_and(|retained| retained.node == id)
-                || find_retained_offscreen(content, id)
-                || find_retained_offscreen(mask, id)
+            if retained_id.is_some_and(|retained| retained.node == id) {
+                Some(outer_stack)
+            } else {
+                find_retained_offscreen(content, id).or_else(|| find_retained_offscreen(mask, id))
+            }
         }
-        _ => false,
+        _ => None,
     })
 }
 

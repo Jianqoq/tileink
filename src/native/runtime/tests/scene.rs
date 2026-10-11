@@ -110,7 +110,7 @@ fn scene_filters_reuse_scan_buffers_and_reject_foreign_batches() -> Result<()> {
     let mut batch = gpu_support::batch(&context);
     let scene = SceneCache::default().record(&mut batch, &canvas(32, 32), None, None, 65535)?;
     let geometry = scene.filter_geometry();
-    let stack = scene.filter_stack();
+    let stack = scene.filter_clip_stack();
     let target = batch.texture_rgba8([32, 32], vec![0; 32 * 32 * 4])?;
     let config = FilterConfig {
         width: 32,
@@ -212,7 +212,7 @@ fn scene_layer_bounds_follow_uploaded_records_not_replaced_metadata() -> Result<
     let target = batch.texture_rgba8([32, 32], vec![0; 32 * 32 * 4])?;
     assert!(
         scene
-            .filter_stack()
+            .filter_clip_stack()
             .encode(
                 &mut batch,
                 Composite::Over,

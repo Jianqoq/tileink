@@ -1659,6 +1659,61 @@ Retained edits, fragment replacement and filter localization still need semantic
 invariant tests before simplifying that shader. Actual DXC/ShaderTools and
 DX12/Vulkan execution remain unavailable; independent auditing continues.
 
+## Phase 36: offscreen clip composition
+
+Complete producer tracing confirms offscreen `outer_stack` ranges contain only
+clips. `Canvas::can_fuse` places opacity/blend ancestors with offscreen descendants
+on their own surfaces, and retained patches preserve entry kinds. Fragment
+relocation and local filter remapping also preserve this contract. The new semantic
+tests cover depths 0, 1, 63, 64, 65 and 128 across filters, backdrops, masks,
+isolates and mixed fused groups; producer tests pass before production changes.
+
+Delete both shaders' dormant CompositeGroup evaluator, fixed 64-slot arrays,
+group unwind and capacity-skipping branch, and remove the unused HLSL constant
+header. Native ownership views are named ClipStack/filter_clip_stack and document
+their offscreen range contract. Each composite reads the clip's draw index directly.
+Actual offscreen blend, masks and fused fine-raster groups retain their semantics.
+This is permanent removal of a second implementation with no production producer.
+
+Tracing also exposes a real retained clipping bug: independent subtree compilation
+started with an empty stack. The focused regression fails before the fix with
+incremental depth zero versus fresh depth one. Recompilation now receives the
+original ancestor stack at the compiler input; backdrop children inherit it during
+the same traversal. This fixes the missing compiler context rather than applying
+a post-render mask or a full-scene recompile substitute. Pinned GPU tests compare
+nested insert/remove results for filter/backdrop/mask layers against fresh renders
+and independently check outside transparency. Deep filter/mask/group pixels are
+also verified through 128 clips.
+
+Five focused release tests pass. The serial full all-target run passes 1072 tests,
+with the same three known failures: two unavailable pinned-DXC checks and the
+1600-pixel turbulence canonical mismatch. Formatting, release clippy, backend-free
+compilation and all example builds pass; existing one library/eight test clippy
+warnings remain. Metal validation is enabled for correctness. All 1730 SVG fixture
+images and seven example outputs match their immutable baseline pixels exactly;
+native presentation completes eight frames and its 640x360 to 480x270 resize.
+Both Metal manifests change only the filter-stack artifact's two source files,
+with ABI, bindings, compiler settings and all other artifacts unchanged. HLSL
+execution remains unverified without the pinned DXC/Windows GPU environment.
+
+The [actual application measurements](benchmarks/cleanup-phase36-metal-2026-10-12.json)
+retain 48 whole-process observations across baseline/current and identical-current
+control series, with two warmups per label and ten alternating timed pairs.
+SVG medians change 4270.954 to 4280.525 ms (+0.22%), compared with +0.11% in the
+same-version control. Central timings show no material regression in this
+1730-fixture application, which measures initialization, parsing, rendering/completion,
+readback, PNG saving and teardown; it does not isolate shader stage cost or establish
+every retained-edit workload's performance. Nearest-rank p95 is the maximum of ten
+observations; raw values and both tails remain in the report. All 83040 measured
+PNG hashes match the immutable baseline. Timing disables Metal validation, and
+the example uses the default device on the freshly verified single-GPU Apple M5
+host. The fixture source manifest is also unchanged.
+
+Temporary validation scripts and copied executables are removed. The audit has
+read 573 of 962 current implementation files, leaving 389 across six groups.
+Actual DXC/ShaderTools and
+DX12/Vulkan execution remain unavailable; independent auditing continues.
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.

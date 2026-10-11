@@ -23,7 +23,7 @@ impl Execution<'_> {
         if let Some(mode) = blend {
             config.blend_mode = mode.mix as u32 | ((mode.compose as u32) << 8);
         }
-        self.scene.scanned().filter_stack().encode(
+        self.scene.scanned().filter_clip_stack().encode(
             self.batch,
             if blend.is_some() {
                 Composite::Blend
