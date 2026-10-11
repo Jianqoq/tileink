@@ -14,6 +14,24 @@ fn native_persistent_buffers_patch_ranges_and_keep_inflight_allocations_alive() 
         validation: true,
     };
     let context = NativeContext::new(backend, &options)?;
+    for size in [0, 1, 3, u32::MAX as usize, usize::MAX] {
+        assert_eq!(
+            Buffer::new(&context.adapter, size)
+                .err()
+                .unwrap()
+                .to_string(),
+            "invalid persistent native buffer size"
+        );
+    }
+    if let Some(size) = (u32::MAX as usize).checked_add(1) {
+        assert_eq!(
+            Buffer::new(&context.adapter, size)
+                .err()
+                .unwrap()
+                .to_string(),
+            "invalid persistent native buffer size"
+        );
+    }
     let buffer = Buffer::new(&context.adapter, 16)?;
     let initial: Vec<u8> = [11u32, 23, 37, 51]
         .into_iter()

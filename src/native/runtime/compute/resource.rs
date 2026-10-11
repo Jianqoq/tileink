@@ -20,7 +20,7 @@ impl Resource {
     }
     pub fn byte_len(&self) -> usize {
         match self {
-            Self::PersistentBuffer(upload) => upload.buffer.state.size,
+            Self::PersistentBuffer(upload) => upload.buffer.state.size as usize,
             Self::Texture(texture) => {
                 texture.size[0] as usize
                     * texture.size[1] as usize

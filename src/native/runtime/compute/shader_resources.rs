@@ -49,7 +49,7 @@ impl ShaderResourcePool {
         if let Some(b) = self
             .buffers
             .iter()
-            .find(|b| b.state.size == size && Rc::strong_count(&b.state) == 1)
+            .find(|b| b.state.size as usize == size && Rc::strong_count(&b.state) == 1)
         {
             return Ok(b.clone());
         }

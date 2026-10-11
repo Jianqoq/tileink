@@ -14,9 +14,8 @@ pub(super) struct Packet {
 
 pub(super) fn packet(upload: &Upload) -> Option<Packet> {
     let count = upload.copy_count;
-    if !(MIN_SCATTER_COPIES..=MAX_SCATTER_COPIES).contains(&count)
-        || upload.destination_size > u32::MAX as usize
-    {
+    // Upload's destination capacity comes from the allocation's u32 byte extent.
+    if !(MIN_SCATTER_COPIES..=MAX_SCATTER_COPIES).contains(&count) {
         return None;
     }
     // This is the existing range_scatter wire format: four header words,
@@ -122,14 +121,10 @@ mod tests {
     }
 
     #[test]
-    fn small_or_unaddressable_uploads_keep_the_copy_path() {
+    fn small_uploads_keep_the_copy_path() {
         let data = [0; 4];
         let updates = [(0, data.as_slice())];
         assert!(packet(&Upload::new(4, &updates).unwrap()).is_none());
-        let updates: Vec<_> = (0..16).map(|i| (i * 12, data.as_slice())).collect();
-        if let Some(size) = (u32::MAX as usize).checked_add(1) {
-            assert!(packet(&Upload::new(size, &updates).unwrap()).is_none());
-        }
     }
 
     #[test]
@@ -137,10 +132,38 @@ mod tests {
         let data = [0; 4];
         for count in [15, 16, 65_535, 65_536] {
             let updates: Vec<_> = (0..count).map(|i| (i * 8, data.as_slice())).collect();
-            let upload = Upload::new(count * 8, &updates).unwrap();
+            let upload = Upload::new((count * 8) as u32, &updates).unwrap();
             assert_eq!(packet(&upload).is_some(), (16..=65_535).contains(&count));
         }
         let updates: Vec<_> = (0..32).map(|i| (i * 4, data.as_slice())).collect();
         assert!(packet(&Upload::new(128, &updates).unwrap()).is_none());
+    }
+
+    #[test]
+    fn scatter_preserves_high_destination_addresses_without_large_allocations() {
+        let limit = u32::MAX - 3;
+        let data = [1, 2, 3, 4];
+        let updates: Vec<_> = (0..16)
+            .map(|i| ((limit - 4 - (15 - i) * 8) as usize, data.as_slice()))
+            .collect();
+        let upload = Upload::new(limit, &updates).unwrap();
+        let packet = packet(&upload).unwrap();
+        assert_eq!(packet.groups, 16);
+        let words: Vec<_> = packet
+            .bytes
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .copied()
+            .map(u32::from_le_bytes)
+            .collect();
+        assert_eq!(&words[..4], &[68, 16, 0, 0]);
+        for (i, &(offset, _)) in updates.iter().enumerate() {
+            assert_eq!(
+                &words[4 + i * 4..8 + i * 4],
+                &[offset as u32 / 4, i as u32, 1, 0]
+            );
+        }
+        assert_eq!(&packet.bytes[68 * 4..], data.repeat(16));
     }
 }

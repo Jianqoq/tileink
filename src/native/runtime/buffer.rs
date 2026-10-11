@@ -12,7 +12,8 @@ pub enum Allocation {
 }
 pub struct State {
     pub allocation: Allocation,
-    pub size: usize,
+    /// Byte-addressable extent, validated once when the allocation is created.
+    pub size: u32,
     pub initialized: Cell<bool>,
 }
 #[derive(Clone)]
@@ -28,7 +29,7 @@ impl Buffer {
         Ok(Self {
             state: Rc::new(State {
                 allocation: adapter.allocate_buffer(size)?,
-                size,
+                size: size as u32,
                 initialized: Cell::new(false),
             }),
             adapter: adapter.clone(),

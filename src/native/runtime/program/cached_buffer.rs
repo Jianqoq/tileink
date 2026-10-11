@@ -43,7 +43,7 @@ impl CachedBuffer {
         if self
             .buffer
             .as_ref()
-            .is_none_or(|buffer| buffer.state.size < needed)
+            .is_none_or(|buffer| (buffer.state.size as usize) < needed)
         {
             self.buffer = Some(Buffer::new(
                 &adapter,
@@ -100,7 +100,7 @@ impl CachedBuffer {
             previous_end = end;
         }
         let id = if full {
-            let capacity = buffer.state.size;
+            let capacity = buffer.state.size as usize;
             let mut complete = Vec::new();
             complete.try_reserve_exact(capacity)?;
             complete.resize(capacity, 0);
@@ -140,7 +140,7 @@ impl CachedBuffer {
         let id = if unchanged {
             batch.import_buffer(buffer, &[])?
         } else if !reusable || dirty.is_none() {
-            let mut complete = vec![0; buffer.state.size];
+            let mut complete = vec![0; buffer.state.size as usize];
             complete[..bytes.len()].copy_from_slice(bytes);
             batch.import_buffer(buffer, &[(0, &complete)])?
         } else if dirty.is_some_and(|ranges| {

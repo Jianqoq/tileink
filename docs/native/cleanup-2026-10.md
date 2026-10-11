@@ -871,9 +871,50 @@ has a median change of -0.09%, with two warmup and ten timed pairs. This does no
 isolate sampler recording or establish a GPU throughput improvement. Temporary
 measurement artifacts are removed; raw timings remain in the benchmark record.
 
+## Phase 23: represent native buffer byte limits once
+
+Persistent buffer construction already rejects zero, unaligned and above-u32
+byte extents before native allocation. Its owned state now stores that extent as
+`u32`, and upload packing accepts the same type. CPU allocation/indexing converts
+it losslessly to `usize`. The upload no longer stores another destination-size
+field, and scatter no longer declines an impossible above-u32 destination. The
+private oversized-destination test is removed with that unreachable branch.
+This permanently represents the existing addressing contract; public APIs and
+the range-scatter shader wire format are unchanged.
+
+Two new tests passed before and after the representation change. They exercise
+the highest aligned destination bytes, adjacent-range coalescing, range overruns,
+host addition overflow, and scatter descriptors/payloads near the address limit,
+without allocating a multi-gigabyte destination. The real Metal persistent-buffer
+test additionally verifies that invalid sizes report the original validation
+error before allocating. Copy/scatter fragmentation thresholds, packed source
+size checks, upload ordering, holes, ownership and queued readbacks remain covered.
+
+All 24 focused serial release tests pass. The full suite including ignored tests
+reports 1049 passes and the same three known failures described in phase 12.
+All 12 example tests pass, as do the backend-free check, formatting and release
+Clippy with no new warnings. After simplifying two test constants flagged by
+Clippy, all ten upload-packing/scatter tests pass again. Windows DX12/Vulkan
+library/test/example type checks pass; actual DXC and those GPU runtimes remain
+unavailable. The temporary type-only harness is removed.
+
+All 1730 SVG images and seven example PNGs match phase 22 exactly; the shader
+manifest is unchanged. The validated Metal window completes eight frames and
+the 640x360 to 480x270 resize. Its actual retained-rendering
+[whole-process measurement](benchmarks/cleanup-phase23-metal-2026-10-11.json)
+changes the median by -1.09% across two warmup and ten alternating timed pairs.
+This application check does not isolate sparse-upload recording or GPU throughput;
+no rendering speedup is claimed. Temporary measurement copies are removed.
+
+The audit also reads the website configuration, homepage and translation data,
+plus the independent native artifact/scatter/retirement tests. They use current
+native APIs and contain no retired execution path. The HLSL editor test's generic
+successful reply to incoming client requests is recorded for a focused protocol
+followup. The whole-repository audit remains in progress.
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
-- Simplify upload scatter's redundant destination-size state: persistent buffers already enforce the 32-bit byte-address limit. Preserve the current copy/scatter size and fragmentation selection, with boundary tests before changing its representation.
+- Trace the HLSL editor test's supported incoming client requests and test explicit responses; the actual ShaderTools language server is unavailable locally.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

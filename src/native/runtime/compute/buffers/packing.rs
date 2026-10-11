@@ -5,8 +5,6 @@ pub(super) struct Upload<'a> {
     updates: &'a [(usize, &'a [u8])],
     pub(super) byte_len: usize,
     pub(super) copy_count: usize,
-    #[cfg(any(feature = "dx12", feature = "metal", test))]
-    pub(super) destination_size: usize,
 }
 
 #[derive(Default)]
@@ -16,7 +14,7 @@ pub(super) struct PackedUpdates {
 }
 
 impl<'a> Upload<'a> {
-    pub(super) fn new(size: usize, updates: &'a [(usize, &'a [u8])]) -> Result<Self> {
+    pub(super) fn new(size: u32, updates: &'a [(usize, &'a [u8])]) -> Result<Self> {
         let mut byte_len = 0;
         let mut copy_count = 0;
         let mut end = 0;
@@ -27,7 +25,7 @@ impl<'a> Upload<'a> {
                 || !values.len().is_multiple_of(4)
                 || offset
                     .checked_add(values.len())
-                    .is_none_or(|end| end > size)
+                    .is_none_or(|end| end > size as usize)
             {
                 return Err("invalid or overlapping native buffer upload range".into());
             }
@@ -42,8 +40,6 @@ impl<'a> Upload<'a> {
             updates,
             byte_len,
             copy_count,
-            #[cfg(any(feature = "dx12", feature = "metal", test))]
-            destination_size: size,
         })
     }
 
@@ -130,7 +126,9 @@ mod tests {
                 (destination, word.as_slice())
             })
             .collect();
-        let packed = Upload::new(offset + 16, &updates).unwrap().into_packed();
+        let packed = Upload::new((offset + 16) as u32, &updates)
+            .unwrap()
+            .into_packed();
         let mut expected = vec![0xa5; offset + 16];
         for &(destination, bytes) in &updates {
             expected[destination..destination + bytes.len()].copy_from_slice(bytes);
@@ -163,5 +161,21 @@ mod tests {
         }
         let empty = Upload::new(16, &[]).unwrap().into_packed();
         assert!(empty.bytes.is_empty() && empty.copies.is_empty());
+    }
+
+    #[test]
+    fn uploads_preserve_the_highest_aligned_byte_addresses_and_reject_overruns() {
+        let limit = u32::MAX - 3;
+        let data = [1, 2, 3, 4];
+        let updates = [
+            ((limit - 8) as usize, data.as_slice()),
+            ((limit - 4) as usize, data.as_slice()),
+        ];
+        let packed = Upload::new(limit, &updates).unwrap().into_packed();
+        assert_eq!(packed.copies, [[0, (limit - 8) as u64, 8]]);
+        assert_eq!(packed.bytes, data.repeat(2));
+        for offset in [limit as usize, usize::MAX - 3] {
+            assert!(Upload::new(limit, &[(offset, &data)]).is_err());
+        }
     }
 }

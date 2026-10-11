@@ -29,7 +29,9 @@ impl ComputeBatch {
             return Err("persistent buffer already imported in this batch".into());
         }
         if !(buffer.state.initialized.get()
-            || updates.len() == 1 && updates[0].0 == 0 && updates[0].1.len() == buffer.state.size)
+            || updates.len() == 1
+                && updates[0].0 == 0
+                && updates[0].1.len() == buffer.state.size as usize)
         {
             return Err("new persistent buffer requires a complete upload".into());
         }
