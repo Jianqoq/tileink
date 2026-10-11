@@ -6,11 +6,9 @@ use crate::render::{
     filters::{FilterAdapter, FilterPlacement},
 };
 use crate::shared::{execution::ExecPlan, layer::filter::Filter};
-use std::rc::Rc;
 
 pub(crate) struct LocalState {
-    scene: Option<Scene>,
-    pending_plan: Option<Rc<ExecPlan>>,
+    scene: SceneState,
     filters: filter_resources::FilterResources,
     targets: Targets,
     paths: Option<path_mask::Paths>,
@@ -48,17 +46,11 @@ impl FilterPassAdapter for Execution<'_> {
     ) -> Result<()> {
         self.apply_filter(target, bounds, filter, None, cursors)
     }
-    fn prepare_filter_output_work(&mut self) -> Result<()> {
-        Ok(())
-    }
 }
 impl FilterAdapter for Execution<'_> {
     type LocalState = LocalState;
     fn filter_candidates(&self, bounds: Bounds, plan: &ExecPlan) -> Vec<u32> {
-        self.scene
-            .as_ref()
-            .expect("scanned filter parent")
-            .filter_candidates(bounds, plan)
+        self.scene.scanned().filter_candidates(bounds, plan)
     }
     fn begin_filter_scene(
         &mut self,
@@ -76,12 +68,11 @@ impl FilterAdapter for Execution<'_> {
         let filters =
             filter_resources::FilterResources::record(self.batch, plan, Some(filter), self.images)?;
         let paths = prepare_paths(self.batch, plan)?;
-        let pending_plan = Some(Rc::new(plan.clone()));
+        let scene = SceneState::Pending(Rc::new(plan.clone()));
         let damage = self.retained.active_tiles().cloned();
         self.retained.set_active_tiles(None);
         Ok(LocalState {
-            scene: self.scene.take(),
-            pending_plan: std::mem::replace(&mut self.pending_plan, pending_plan),
+            scene: std::mem::replace(&mut self.scene, scene),
             targets: std::mem::replace(&mut self.targets, targets),
             filters: std::mem::replace(&mut self.filters, filters),
             paths: std::mem::replace(&mut self.paths, paths),
@@ -91,26 +82,21 @@ impl FilterAdapter for Execution<'_> {
     }
     fn end_filter_scene(&mut self, state: LocalState) {
         self.scene = state.scene;
-        self.pending_plan = state.pending_plan;
         self.targets = state.targets;
         self.filters = state.filters;
         self.paths = state.paths;
         self.origin = state.origin;
         self.retained.set_active_tiles(state.damage);
     }
-    fn prepare_filter_source_work(&mut self) -> Result<()> {
-        Ok(())
-    }
     fn scan_filter_scene(&mut self, canvas: &Canvas) -> Result<()> {
-        let plan = self
-            .pending_plan
-            .take()
-            .ok_or("native filter scene already scanned")?;
+        let SceneState::Pending(plan) = &self.scene else {
+            unreachable!("filter scan follows context preparation");
+        };
         // SAFETY: begin_filter_scene receives the matched Canvas/plan from the
         // shared PreparedFilterScene and neither is changed before scan.
         // Localized draws retain root glyph/run indices, so they must use the
         // same prepared text data rather than rebuilding a local glyph atlas.
-        self.scene = Some(unsafe {
+        let scene = unsafe {
             self.filter_scenes.next().record_with_plan(
                 self.batch,
                 canvas,
@@ -120,9 +106,10 @@ impl FilterAdapter for Execution<'_> {
                     limit: self.limit,
                     active: self.retained.active_tiles(),
                 },
-                plan,
+                Rc::clone(plan),
             )?
-        });
+        };
+        self.scene = SceneState::Scanned(scene);
         Ok(())
     }
     fn composite_filter(
@@ -142,22 +129,18 @@ impl FilterAdapter for Execution<'_> {
         c.layer_stack_start = u32::try_from(stack.start)?;
         c.layer_stack_end = u32::try_from(stack.end)?;
         let source = source.image_in(self.batch)?;
-        self.scene
-            .as_ref()
-            .ok_or("native parent scene missing")?
-            .filter_stack()
-            .encode(
-                self.batch,
-                Composite::Surface,
-                c,
-                self.retained
-                    .active_tiles()
-                    .map(crate::render::damage_tiles::DamageTiles::list),
-                Textures {
-                    source,
-                    auxiliary: None,
-                    target: self.targets.get(target)?.image(),
-                },
-            )
+        self.scene.scanned().filter_stack().encode(
+            self.batch,
+            Composite::Surface,
+            c,
+            self.retained
+                .active_tiles()
+                .map(crate::render::damage_tiles::DamageTiles::list),
+            Textures {
+                source,
+                auxiliary: None,
+                target: self.targets.get(target)?.image(),
+            },
+        )
     }
 }

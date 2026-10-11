@@ -3,8 +3,8 @@ use std::rc::Rc;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Failure {
-    Coarse(u32),
-    Fine(u32),
+    Start(u32),
+    Paint(u32),
 }
 
 struct MemoryAdapter {
@@ -12,8 +12,7 @@ struct MemoryAdapter {
     scratch: [u32; 4],
     partial: bool,
     stats: IncrementalRenderStats,
-    coarse_batches: Vec<u32>,
-    last_batch: u32,
+    draw_batches: Vec<u32>,
     fail: Option<Failure>,
 }
 
@@ -24,20 +23,19 @@ impl MemoryAdapter {
             scratch: [7, 8, 9, 10],
             partial,
             stats: IncrementalRenderStats::default(),
-            coarse_batches: Vec::new(),
-            last_batch: 0,
+            draw_batches: Vec::new(),
             fail: None,
         }
     }
 
     // Noncommutative painter composition exposes order and stale-source errors.
     // Sparse dispatch leaves the other pixels untouched, just as a dirty tile does.
-    fn paint(&self, source: [u32; 4], target: &mut [u32; 4]) -> Result<(), Failure> {
+    fn paint(&self, batch_id: u32, source: [u32; 4], target: &mut [u32; 4]) -> Result<(), Failure> {
         for pixel in 0..4 {
             if !self.partial || pixel % 2 == 0 {
-                target[pixel] = source[pixel] * 10 + self.last_batch + 1;
-                if self.fail == Some(Failure::Fine(self.last_batch)) {
-                    return Err(Failure::Fine(self.last_batch));
+                target[pixel] = source[pixel] * 10 + batch_id + 1;
+                if self.fail == Some(Failure::Paint(batch_id)) {
+                    return Err(Failure::Paint(batch_id));
                 }
             }
         }
@@ -52,24 +50,24 @@ impl DrawBatchAdapter for MemoryAdapter {
         &mut self.stats
     }
 
-    fn coarse(&mut self, batches: Range<u32>, _: Range<u32>) -> Result<(), Failure> {
+    fn draw(
+        &mut self,
+        batches: Range<u32>,
+        _: Range<u32>,
+        target: RenderTargetId,
+    ) -> Result<(), Failure> {
         let batch_id = batches.start;
         assert_eq!(batches.end, batch_id.saturating_add(1));
-        self.coarse_batches.push(batch_id);
-        self.last_batch = batch_id;
-        if self.fail == Some(Failure::Coarse(batch_id)) {
-            Err(Failure::Coarse(batch_id))
-        } else {
-            Ok(())
+        self.draw_batches.push(batch_id);
+        if self.fail == Some(Failure::Start(batch_id)) {
+            return Err(Failure::Start(batch_id));
         }
-    }
 
-    fn fine(&mut self, target: RenderTargetId) -> Result<(), Failure> {
         let mut pixels = match target {
             RenderTargetId::Main => self.main,
             RenderTargetId::Scratch(_) => self.scratch,
         };
-        let result = self.paint(pixels, &mut pixels);
+        let result = self.paint(batch_id, pixels, &mut pixels);
         match target {
             RenderTargetId::Main => self.main = pixels,
             RenderTargetId::Scratch(_) => self.scratch = pixels,
@@ -97,7 +95,7 @@ fn plan_order_skips_dead_batches_and_preserves_painter_order() {
     let mut adapter = MemoryAdapter::new(false);
     execute_in_place_root_batches(&mut adapter, &canvas, &ops(), &[2, 1, 0]).unwrap();
     assert_eq!(adapter.main, [131, 231, 331, 431]);
-    assert_eq!(adapter.coarse_batches, [2, 0]);
+    assert_eq!(adapter.draw_batches, [2, 0]);
     assert_eq!(adapter.stats.draw_batches, 2);
     assert_eq!(adapter.stats.root_draw_batches, 2);
 }
@@ -125,22 +123,30 @@ fn empty_and_dead_batches_do_no_work() {
         let mut adapter = MemoryAdapter::new(true);
         execute_in_place_root_batches(&mut adapter, &canvas, &ops(), indices).unwrap();
         assert_eq!(adapter.main, [1, 2, 3, 4]);
-        assert!(adapter.coarse_batches.is_empty());
+        assert!(adapter.draw_batches.is_empty());
         assert_eq!(adapter.stats.draw_batches, 0);
     }
 }
 
 #[test]
-fn a_failed_coarse_or_fine_stops_successors() {
+fn a_failed_draw_before_or_after_writing_stops_successors() {
     let canvas = Canvas::new(17, 19, 1.0);
-    for failure in [Failure::Coarse(0), Failure::Fine(0)] {
+    for failure in [Failure::Start(0), Failure::Paint(0)] {
         let mut adapter = MemoryAdapter::new(false);
         adapter.fail = Some(failure);
         assert_eq!(
             execute_in_place_root_batches(&mut adapter, &canvas, &ops(), &[2, 0, 1]),
             Err(failure)
         );
-        assert_eq!(adapter.coarse_batches, [2, 0]);
+        assert_eq!(adapter.draw_batches, [2, 0]);
+        assert_eq!(
+            adapter.main,
+            match failure {
+                Failure::Start(_) => [13, 23, 33, 43],
+                Failure::Paint(_) => [131, 23, 33, 43],
+            }
+        );
+        assert_eq!(adapter.stats.draw_batches, 2);
     }
 }
 

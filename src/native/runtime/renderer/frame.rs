@@ -47,14 +47,7 @@ pub(super) fn record<'gpu>(
             execution.targets.get(RenderTargetId::Main)?.image(),
         )?;
     }
-    let active = partial.then(|| {
-        execution
-            .scene
-            .as_ref()
-            .expect("prepared native scene")
-            .active_batches
-            .clone()
-    });
+    let active = partial.then(|| execution.scene.scanned().active_batches.clone());
     let direct = active.as_ref().map_or_else(
         || plan.all_direct_root_ops(),
         |selected| plan.active_direct_root_ops(selected),

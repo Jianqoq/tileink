@@ -14,7 +14,6 @@ enum Event {
 struct TraceAdapter {
     events: Vec<Event>,
     stats: IncrementalRenderStats,
-    batch: u32,
     fail_draw: Option<u32>,
     fail_layer: bool,
 }
@@ -24,13 +23,14 @@ impl DrawBatchAdapter for TraceAdapter {
     fn stats_mut(&mut self) -> &mut IncrementalRenderStats {
         &mut self.stats
     }
-    fn coarse(&mut self, batches: Range<u32>, _: Range<u32>) -> Result<(), Self::Error> {
-        self.batch = batches.start;
-        Ok(())
-    }
-    fn fine(&mut self, target: RenderTargetId) -> Result<(), Self::Error> {
-        self.events.push(Event::Draw(self.batch, target));
-        if self.fail_draw == Some(self.batch) {
+    fn draw(
+        &mut self,
+        batches: Range<u32>,
+        _: Range<u32>,
+        target: RenderTargetId,
+    ) -> Result<(), Self::Error> {
+        self.events.push(Event::Draw(batches.start, target));
+        if self.fail_draw == Some(batches.start) {
             Err("draw")
         } else {
             Ok(())

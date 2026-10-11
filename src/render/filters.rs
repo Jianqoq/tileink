@@ -54,7 +54,6 @@ pub(crate) trait FilterAdapter: FilterPassAdapter {
     /// Release all logical local scratch slots and restore the previous context.
     /// Submitted physical resources must remain pinned by the GPU adapter.
     fn end_filter_scene(&mut self, state: Self::LocalState);
-    fn prepare_filter_source_work(&mut self) -> Result<(), Self::Error>;
     fn scan_filter_scene(&mut self, canvas: &Canvas) -> Result<(), Self::Error>;
     fn composite_filter(
         &mut self,
@@ -171,7 +170,6 @@ pub(crate) fn execute<A: FilterAdapter>(
                         .expect("partial filter reads a local neighbourhood"),
                 ),
             ));
-            adapter.prepare_filter_source_work()?;
             adapter.clear_region(source, local_bounds)?;
             Some((filtered, update, damage))
         } else {

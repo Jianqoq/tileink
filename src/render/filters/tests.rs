@@ -55,9 +55,6 @@ impl FilterAdapter for Adapter {
         self.filter_ends += 1;
         self.events.push(Event::EndFilter);
     }
-    fn prepare_filter_source_work(&mut self) -> Result<(), Self::Error> {
-        self.record(Event::SourceWork, "source-work")
-    }
     fn scan_filter_scene(&mut self, _: &Canvas) -> Result<(), Self::Error> {
         self.record(Event::ScanFilter, "scan")
     }
@@ -241,11 +238,9 @@ fn every_recording_error_restores_context_drops_invalid_cache_and_allows_retry()
         (false, "filter", 0),
         (false, "copy", 0),
         (false, "apply", 0),
-        (true, "source-work", 0),
         (true, "clear", 0),
         (true, "copy", 0),
         (true, "apply", 0),
-        (true, "output-work", 0),
         (true, "copy", 1),
     ] {
         let (canvas, plan) = fixture();

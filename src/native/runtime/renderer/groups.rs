@@ -30,17 +30,13 @@ impl GroupAdapter for Execution<'_> {
             return Ok(());
         };
         config.draw_ix = draw;
-        self.scene
-            .as_ref()
-            .ok_or("native scene has not been scanned")?
-            .filter_geometry()
-            .mask(
-                self.batch,
-                config,
-                self.retained
-                    .active_tiles()
-                    .map(crate::render::damage_tiles::DamageTiles::list),
-                self.targets.get(target)?.image(),
-            )
+        self.scene.scanned().filter_geometry().mask(
+            self.batch,
+            config,
+            self.retained
+                .active_tiles()
+                .map(crate::render::damage_tiles::DamageTiles::list),
+            self.targets.get(target)?.image(),
+        )
     }
 }

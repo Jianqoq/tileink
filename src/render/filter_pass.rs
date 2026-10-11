@@ -33,7 +33,6 @@ pub(crate) trait FilterPassAdapter: SurfaceAdapter {
         filter: &Filter,
         cursors: &mut FilterCursors,
     ) -> Result<(), Self::Error>;
-    fn prepare_filter_output_work(&mut self) -> Result<(), Self::Error>;
 }
 
 pub(crate) fn execute<A: FilterPassAdapter>(
@@ -69,10 +68,8 @@ pub(crate) fn execute<A: FilterPassAdapter>(
             // Source dependencies include halo tiles. Always restore the output
             // worklist before updating retained history, including failed recording.
             adapter.retained_mut().set_active_tiles(Some(damage));
-            let output_work = adapter.prepare_filter_output_work();
-            let result = filtering
-                .and(output_work)
-                .and_then(|()| adapter.copy_filter_region(temp, filtered, update));
+            let result =
+                filtering.and_then(|()| adapter.copy_filter_region(temp, filtered, update));
             // Every fallible recording step above shares this ownership boundary.
             // The adapter separately pins submitted physical allocations.
             adapter.release_scratch(temp);

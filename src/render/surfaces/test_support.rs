@@ -46,10 +46,8 @@ pub(crate) enum Event {
     RectBackdrop(u32),
     Copy(RenderTargetId, RenderTargetId, Bounds),
     FilterPass(RenderTargetId, Bounds),
-    OutputDamage,
     BeginFilter((u32, u32), (i32, i32), bool),
     EndFilter,
-    SourceWork,
     ScanFilter,
     Opacity(f32),
     Mask(u32),
@@ -81,7 +79,6 @@ pub(crate) struct Adapter {
     pub(crate) scratch_limit: usize,
     pub(crate) expected_stack: Range<usize>,
     kind: RetainedSurfaceKind,
-    last_batch: u32,
     pub(crate) draw_batches: Vec<(u32, RenderTargetId)>,
     pub(crate) filters: Vec<u32>,
     pub(crate) filter_transfer_indices: Vec<u32>,
@@ -103,7 +100,6 @@ impl Adapter {
             candidate_draws: (0..canvas.draw_records.len() as u32).collect(),
             retained,
             kind,
-            last_batch: 0,
             draw_batches: Vec::new(),
             filters: Vec::new(),
             filter_transfer_indices: Vec::new(),
@@ -164,12 +160,13 @@ impl DrawBatchAdapter for Adapter {
     fn stats_mut(&mut self) -> &mut IncrementalRenderStats {
         self.retained.stats_mut()
     }
-    fn coarse(&mut self, batches: Range<u32>, _: Range<u32>) -> Result<(), Self::Error> {
-        self.last_batch = batches.start;
-        Ok(())
-    }
-    fn fine(&mut self, target: RenderTargetId) -> Result<(), Self::Error> {
-        self.draw_batches.push((self.last_batch, target));
+    fn draw(
+        &mut self,
+        batches: Range<u32>,
+        _: Range<u32>,
+        target: RenderTargetId,
+    ) -> Result<(), Self::Error> {
+        self.draw_batches.push((batches.start, target));
         self.record(Event::Draw(target), "children")
     }
 }
@@ -394,8 +391,5 @@ impl crate::render::filter_pass::FilterPassAdapter for Adapter {
         }
         cursors.advance_filter(filter);
         Ok(())
-    }
-    fn prepare_filter_output_work(&mut self) -> Result<(), Self::Error> {
-        self.record(Event::OutputDamage, "output-work")
     }
 }

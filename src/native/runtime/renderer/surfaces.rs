@@ -23,27 +23,23 @@ impl Execution<'_> {
         if let Some(mode) = blend {
             config.blend_mode = mode.mix as u32 | ((mode.compose as u32) << 8);
         }
-        self.scene
-            .as_ref()
-            .ok_or("native scene has not been scanned")?
-            .filter_stack()
-            .encode(
-                self.batch,
-                if blend.is_some() {
-                    Composite::Blend
-                } else {
-                    Composite::Over
-                },
-                config,
-                self.retained
-                    .active_tiles()
-                    .map(crate::render::damage_tiles::DamageTiles::list),
-                Textures {
-                    source,
-                    auxiliary: mask,
-                    target,
-                },
-            )
+        self.scene.scanned().filter_stack().encode(
+            self.batch,
+            if blend.is_some() {
+                Composite::Blend
+            } else {
+                Composite::Over
+            },
+            config,
+            self.retained
+                .active_tiles()
+                .map(crate::render::damage_tiles::DamageTiles::list),
+            Textures {
+                source,
+                auxiliary: mask,
+                target,
+            },
+        )
     }
 }
 

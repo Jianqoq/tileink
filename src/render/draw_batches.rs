@@ -37,29 +37,14 @@ impl<'a> DrawBatch<'a> {
 pub(crate) trait DrawBatchAdapter {
     type Error;
     fn stats_mut(&mut self) -> &mut IncrementalRenderStats;
-    fn coarse(&mut self, batches: Range<u32>, layers: Range<u32>) -> Result<(), Self::Error>;
-    fn fine(&mut self, target: RenderTargetId) -> Result<(), Self::Error>;
-}
-
-fn prepare_draw_batch<A: DrawBatchAdapter>(
-    adapter: &mut A,
-    canvas: &Canvas,
-    batch: DrawBatch<'_>,
-    target: RenderTargetId,
-) -> Result<bool, A::Error> {
-    if !draw_batch_is_live(canvas, batch.draws, batch.id) {
-        return Ok(false);
-    }
-    let stats = adapter.stats_mut();
-    stats.draw_batches = stats.draw_batches.saturating_add(1);
-    if target == RenderTargetId::Main {
-        stats.root_draw_batches = stats.root_draw_batches.saturating_add(1);
-    }
-    adapter.coarse(
-        batch.id..batch.id.saturating_add(1),
-        batch.layers.start as u32..batch.layers.end as u32,
-    )?;
-    Ok(true)
+    /// Record the complete draw before returning; transient coarse results belong
+    /// to this call and cannot leak into another target or nested scene.
+    fn draw(
+        &mut self,
+        batches: Range<u32>,
+        layers: Range<u32>,
+        target: RenderTargetId,
+    ) -> Result<(), Self::Error>;
 }
 
 pub(crate) fn execute_draw_batch<A: DrawBatchAdapter>(
@@ -68,10 +53,19 @@ pub(crate) fn execute_draw_batch<A: DrawBatchAdapter>(
     batch: DrawBatch<'_>,
     target: RenderTargetId,
 ) -> Result<(), A::Error> {
-    if prepare_draw_batch(adapter, canvas, batch, target)? {
-        adapter.fine(target)?;
+    if !draw_batch_is_live(canvas, batch.draws, batch.id) {
+        return Ok(());
     }
-    Ok(())
+    let stats = adapter.stats_mut();
+    stats.draw_batches = stats.draw_batches.saturating_add(1);
+    if target == RenderTargetId::Main {
+        stats.root_draw_batches = stats.root_draw_batches.saturating_add(1);
+    }
+    adapter.draw(
+        batch.id..batch.id.saturating_add(1),
+        batch.layers.start as u32..batch.layers.end as u32,
+        target,
+    )
 }
 
 /// Execute root batches in painter order, stopping at the first recording error.

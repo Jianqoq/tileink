@@ -14,9 +14,9 @@ use crate::{
         output::RenderTargetId,
         retained::RetainedRenderState,
     },
-    shared::{bounds::Bounds, filter_config::FilterConfig},
+    shared::{bounds::Bounds, execution::ExecPlan, filter_config::FilterConfig},
 };
-use std::ops::Range;
+use std::{ops::Range, rc::Rc};
 
 mod backdrops;
 mod filter_encoding;
@@ -50,14 +50,29 @@ struct FrameResources<'a> {
     retained: &'a mut RetainedRenderState<Surface>,
 }
 
+/// Filter damage is chosen after entering its context and before scan. Store
+/// exactly one stage, so a context can never have both (or neither) plan and scene.
+#[allow(clippy::large_enum_variant)] // Keep the scanned scene inline; avoid per-context heap allocations.
+enum SceneState {
+    Pending(Rc<ExecPlan>),
+    Scanned(Scene),
+}
+
+impl SceneState {
+    fn scanned(&self) -> &Scene {
+        match self {
+            Self::Scanned(scene) => scene,
+            Self::Pending(_) => unreachable!("scene is scanned before drawing or compositing"),
+        }
+    }
+}
+
 /// Records one Canvas in an existing frame batch. Its image placements and scene
 /// stay associated through recursive operations; errors invalidate the whole batch.
 pub(crate) struct Execution<'a> {
     filter_scenes: filter_scenes::FilterScenes<'a>,
     batch: &'a mut ComputeBatch,
-    scene: Option<Scene>,
-    fine_plan: Option<crate::render::fine::FinePlan>,
-    pending_plan: Option<std::rc::Rc<crate::shared::execution::ExecPlan>>,
+    scene: SceneState,
     filters: filter_resources::FilterResources,
     origin: (i32, i32),
     images: &'a Images<'a>,
@@ -135,9 +150,7 @@ impl<'a> Execution<'a> {
         Ok(Self {
             filter_scenes,
             batch,
-            scene: Some(scene),
-            fine_plan: None,
-            pending_plan: None,
+            scene: SceneState::Scanned(scene),
             filters,
             origin: (0, 0),
             images,
@@ -170,32 +183,18 @@ impl DrawBatchAdapter for Execution<'_> {
     fn stats_mut(&mut self) -> &mut IncrementalRenderStats {
         self.retained.stats_mut()
     }
-    fn coarse(&mut self, batches: Range<u32>, layers: Range<u32>) -> Result<()> {
-        self.fine_plan = Some(
-            self.scene
-                .as_ref()
-                .ok_or("native scene has not been scanned")?
-                .encode_coarse(self.batch, batches, layers, self.chunked, self.limit)?,
-        );
-        Ok(())
-    }
-    fn fine(&mut self, target: RenderTargetId) -> Result<()> {
+    fn draw(
+        &mut self,
+        batches: Range<u32>,
+        layers: Range<u32>,
+        target: RenderTargetId,
+    ) -> Result<()> {
+        let scene = self.scene.scanned();
+        let fine = scene.encode_coarse(self.batch, batches, layers, self.chunked, self.limit)?;
         let target = self.targets.get(target)?.image();
-        // SAFETY: record owns the Scene/upload association, and the shared draw
-        // scheduler records coarse immediately before this fine pass.
-        unsafe {
-            self.scene
-                .as_ref()
-                .ok_or("native scene has not been scanned")?
-                .encode_fine(
-                    self.batch,
-                    target,
-                    self.images.textures(),
-                    self.fine_plan
-                        .as_ref()
-                        .ok_or("native fine has no coarse plan")?,
-                )
-        }
+        // SAFETY: this context owns the Scene/upload association, and the local
+        // fine plan comes from the coarse pass recorded immediately above.
+        unsafe { scene.encode_fine(self.batch, target, self.images.textures(), &fine) }
     }
 }
 

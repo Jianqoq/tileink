@@ -1542,6 +1542,72 @@ native execution state and obsolete filter-work callbacks are the next concrete
 cleanup targets. Actual DXC/ShaderTools and DX12/Vulkan GPU execution remain
 unavailable here; independent repository auditing continues.
 
+## Phase 34: remove empty filter hooks and transient execution slots
+
+The shared filter scheduler still exposed source/output work preparation hooks,
+but its sole production adapter returned success without doing any work. Test
+adapters then simulated failures in those nonexistent stages. Remove both hooks,
+their calls, trace events and fake failure cases. Keep halo damage selection before
+scan, unconditional output damage restoration, and the single scratch/context
+ownership boundary for actual copy, filter, scan and allocation failures.
+
+Shared draw scheduling always recorded coarse immediately before fine. The
+adapter now records one complete draw and keeps its FinePlan local to that call.
+Delete the optional FinePlan cache and its missing-coarse error, inline the
+single-caller preparation wrapper, and remove intermediate batch IDs from test
+adapters. Painter order, live membership, partial root updates, attempted-batch
+statistics and stop-on-error behavior retain their existing semantics.
+
+Execution and saved parent contexts now store one SceneState: a pending matched
+plan or a scanned Scene. This replaces two independent optional fields and their
+repeated missing-scene branches. Filter scan still occurs after selecting local
+damage; a successful scan installs the complete Scene. Ready scenes stay inline
+to avoid a heap allocation for each context. Each scan clones one Rc plan handle
+while recording, then releases the pending handle. Failed recording still
+invalidates the command batch; state restoration is not permission to submit it.
+This is permanent removal of obsolete scheduling abstractions at their owners.
+
+Before production edits, the new nested-context semantic test and strengthened
+partial-failure damage test pass on the old implementation. Final tests verify
+nested success/failure restores each parent's plan identity, origin and target,
+and subsequent fine passes bind that target. Context tests move into their own
+181-line module with shared setup. Draw tests cover failure before and after a
+write without retaining coarse/fine scratch state.
+
+Release tests run serially with Rayon limited to one thread. Focused shared
+render tests pass 231 cases, native execution passes seven, and retained-scene
+tests pass 109. The full all-target run passes 1067 tests with the same three
+existing failures: the two unavailable pinned-DXC compiler checks and the
+1600-pixel turbulence canonical comparison. Formatting, release clippy,
+backend-free compilation and all example builds pass; clippy retains its existing
+one library/eight test warnings. Metal validation is enabled for correctness.
+All 1730 SVG fixture images and seven example outputs match their immutable
+baseline pixels exactly. Both Metal artifact manifests match. Native presentation
+completes eight frames and its 640x360 to 480x270 resize.
+
+The [actual application measurements](benchmarks/cleanup-phase34-metal-2026-10-12.json)
+retain 96 whole-process observations across the SVG fixture application and the
+native retained-window example. Each has baseline/current and identical-current
+control series, two warmups per label and ten alternating timed pairs. Window
+medians change 232.742 to 233.304 ms (+0.24%), compared with +0.30% in its
+same-version control. SVG medians change 4276.020 to 4269.695 ms (-0.15%), compared
+with +0.06% in its control. These measured applications show no
+detectable material regression; whole-process timing does not establish an
+isolated GPU/stage improvement or cover all partial-filter workloads. Nearest-rank
+p95 is the maximum of ten observations; a current-SVG outlier raises it from
+4311.691 to 4485.497 ms, so this small sample cannot establish tail behavior.
+Timing includes setup, rendering, completion and teardown; SVG additionally includes parsing, readback and PNG
+saving. All 83040 measured PNG hashes match the immutable baseline, and all 384
+window frames complete with the expected resize. Timing disables Metal validation.
+The window explicitly pins registry ID `0000000100000575`; the SVG application
+uses the system default on this verified single-GPU Apple M5 host.
+
+Temporary measurement/validation scripts and copied executables are removed.
+The audit has read 558 of 959 current implementation files, leaving 401 across
+six groups. Native CPU layer/stack upload helpers have only validation-test callers; their removal and
+an audit of active mask reference semantics are next. Actual DXC/ShaderTools and
+DX12/Vulkan execution remain unavailable; independent auditing continues.
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.

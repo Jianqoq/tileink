@@ -104,7 +104,6 @@ fn partial_filter_processes_dependency_halo_but_updates_only_output_damage() {
             Event::Acquire(temp),
             Event::Copy(source, temp, Bounds::new(14, 14, 32, 32)),
             Event::FilterPass(temp, Bounds::new(14, 14, 32, 32)),
-            Event::OutputDamage,
             Event::Copy(temp, filtered, Bounds::new(16, 16, 32, 32)),
             Event::Release(temp)
         ]
@@ -119,7 +118,7 @@ fn partial_filter_processes_dependency_halo_but_updates_only_output_damage() {
 
 #[test]
 fn partial_failure_releases_temp_and_preserves_both_caller_owned_history_slots() {
-    for (stage, skip) in [("copy", 0), ("apply", 0), ("output-work", 0), ("copy", 1)] {
+    for (stage, skip) in [("copy", 0), ("apply", 0), ("copy", 1)] {
         let mut adapter = adapter();
         adapter.fail = Some(stage);
         adapter.skip_failures = skip;
@@ -129,6 +128,15 @@ fn partial_failure_releases_temp_and_preserves_both_caller_owned_history_slots()
         );
         assert!(adapter.targets[0].is_some() && adapter.targets[1].is_some());
         assert!(adapter.targets[2].is_none());
+        assert_eq!(
+            adapter
+                .retained
+                .active_tiles()
+                .unwrap()
+                .bounds_union((32, 32)),
+            Some(Bounds::new(16, 16, 32, 32)),
+            "failed recording must restore output damage before releasing scratch"
+        );
         assert_eq!(
             adapter
                 .events
