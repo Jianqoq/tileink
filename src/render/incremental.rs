@@ -175,8 +175,6 @@ pub struct IncrementalRenderStats {
     pub cpu_copied_bytes: u64,
     /// Bytes written to scene storage buffers, excluding render targets and transient worklists.
     pub gpu_uploaded_bytes: u64,
-    pub tile_pages_rewritten: u32,
-    pub tile_page_compactions: u64,
     pub arena_live_bytes: u64,
     pub arena_capacity_bytes: u64,
     pub arena_fragmentation: f32,

@@ -4,7 +4,6 @@ pub(crate) mod damage_tiles;
 pub(crate) mod incremental;
 pub(crate) mod upload;
 
-pub(crate) mod binning;
 pub(crate) mod filter_resources;
 pub(crate) mod output;
 pub(crate) mod retained;

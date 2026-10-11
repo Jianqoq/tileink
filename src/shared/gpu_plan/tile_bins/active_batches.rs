@@ -1,6 +1,7 @@
 //! Exact active-batch queries own scratch independently of shared spatial snapshots.
-use super::{Canvas, ExecPlan, TileDrawBins};
+use super::TileDrawBins;
 use crate::render::damage_tiles::DamageTiles;
+use crate::{canvas::Canvas, shared::execution::ExecPlan};
 
 #[derive(Default)]
 pub(crate) struct ActiveBatches {
@@ -132,6 +133,7 @@ impl ActiveBatches {
 mod tests {
     use super::super::*;
     use super::*;
+    use crate::shared::bounds::PixelBounds;
     use crate::{Bounds, Radius};
     use peniko::{Color, kurbo::Rect};
 

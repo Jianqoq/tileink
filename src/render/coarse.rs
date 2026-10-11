@@ -1,8 +1,9 @@
 //! Backend-independent coarse ordering. Both adapters consume the same plan so
 //! binning, prefix allocation and particle emission cannot silently diverge.
 use crate::shared::{
-    gpu_coarse::coarse_work_active_tile_list_word_offset, gpu_constants::COARSE_WORKGROUP_SIZE,
-    gpu_plan::GpuBufferLengths,
+    gpu_coarse::coarse_work_active_tile_list_word_offset,
+    gpu_constants::COARSE_WORKGROUP_SIZE,
+    gpu_plan::{COARSE_BIN_TILES, GpuBufferLengths},
 };
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -86,6 +87,12 @@ impl CoarseProgram {
 pub(crate) struct CoarseDispatch {
     pub(crate) program: CoarseProgram,
     pub(crate) grid: [u32; 3],
+}
+
+fn coarse_bin_count(lengths: GpuBufferLengths) -> u32 {
+    let bins_x = (lengths.tiles_width as u32).div_ceil(COARSE_BIN_TILES);
+    let bins_y = (lengths.tiles_height as u32).div_ceil(COARSE_BIN_TILES);
+    bins_x * bins_y
 }
 
 // Host schedule storage, unrelated to shader workgroup constants.
@@ -189,7 +196,7 @@ impl CoarsePlan {
         } else if incremental {
             active
         } else {
-            super::binning::coarse_bin_count(lengths)
+            coarse_bin_count(lengths)
         };
         if chunked {
             for program in [
@@ -313,11 +320,7 @@ impl CoarsePlan {
             });
             self.len = 0;
             if emit {
-                self.push(
-                    CoarseProgram::EmitBins,
-                    super::binning::coarse_bin_count(lengths),
-                    limit,
-                )?;
+                self.push(CoarseProgram::EmitBins, coarse_bin_count(lengths), limit)?;
             }
             return Ok(());
         }

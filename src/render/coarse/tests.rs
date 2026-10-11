@@ -274,3 +274,11 @@ fn preallocated_sparse_slots_preserve_large_scalar_emission_and_skip_empty_draws
         }
     }
 }
+
+#[test]
+fn coarse_bins_cover_partial_edge_tiles() {
+    for (width, height, expected) in [(1, 1, 1), (256, 256, 1), (257, 256, 2), (257, 257, 4)] {
+        let lengths = GpuBufferLengths::from_scene(&crate::Canvas::new(width, height, 1.0));
+        assert_eq!(coarse_bin_count(lengths), expected);
+    }
+}

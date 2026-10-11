@@ -1001,6 +1001,71 @@ they do not isolate uniform initialization or GPU throughput. No speedup is
 claimed. Temporary measurement executables/output are removed. The repository
 audit has now read 408 files; eight initial file groups remain pending.
 
+## Phase 26: remove retired coarse-cost bookkeeping
+
+`coarse_binning_costs`, `prefer_dense_binning` and `CoarseBinningStats` only
+served tests for a retired kernel-selection policy. Production tile indexing
+still maintained per-bin candidate maxima, rescanned every bin on rebuild and
+tracked/rescanned affected bins on sparse updates. Removing the retired policy,
+three statistics fields and their update traversals permanently removes that
+unconsumed work. The current dense-spatial-change policy, compact/scalar/chunked
+coarse scheduling, painter order and GPU kernels remain unchanged. The live
+partial-edge bin-count helper and its test now belong to the coarse scheduler.
+Four tests specific to the retired statistics/policy are removed.
+
+The almost 3000-line GPU planning file is split into buffer lengths, capacity
+contracts, stable path allocation and tile membership/storage/update modules.
+Active-batch queries live with the tile index whose private state they inspect;
+tests live with their owners. Live algorithm bodies are preserved, apart from
+removing the unused statistics and using the existing page-count accessor.
+The hot update methods remain available for cross-module inlining: exploratory
+measurements and emitted symbols showed that simply moving them changed their
+optimization boundary. No compatibility layer or alternate implementation is
+added.
+
+A new semantic preservation test passes before and after cleanup. It compares
+every tile against a scalar painter-order oracle across partial edge bins,
+more than 256 overlapping draws, sparse motion, off-canvas movement, overlapping
+change ranges and rank changes. The page-compaction test now checks the actual
+compacted allocation, empty free list and exact membership instead of retaining
+an internal counter only for tests. Two public statistics fields that were never
+populated, `tile_pages_rewritten` and `tile_page_compactions`, are removed; the
+English profiling guide no longer advertises the unavailable page count.
+
+All 40 focused planning/coarse tests pass. The final full serial release suite,
+including ignored tests, reports 1047 passes and the same three known failures
+described in phase 12. All twelve example tests, formatting, backend-free
+checking and release Clippy pass with no new warnings. All 1730 SVG images and
+seven example PNGs match the baseline exactly. The validated Metal window
+completes eight frames and its 640x360 to 480x270 resize. The Metal shader manifest
+is unchanged. Actual DXC and DX12/Vulkan GPU runtimes remain unavailable.
+
+The [real-renderer measurements](benchmarks/cleanup-phase26-metal-2026-10-11.json)
+use retained-scene transactions and actual Metal textures, command submission
+and completion for sparse controls, a scrolling grid and a large moving panel.
+Two sets of eight alternating pairs retain 2304 timed frames per variant and
+workload. Their combined complete-frame medians change by -2.73%, +0.07% and
+-0.51%; host submission medians change by -1.17%, +0.21% and -1.08%.
+Frame timing excludes initialization, final readback and PNG writing. All 150
+final readbacks across exploratory, warm, timed and control processes match.
+The existing `native_present metal --smoke` application's whole-process median
+changes from 235.87 to 234.14 ms (-0.73%) across eight alternating pairs.
+No rendering speedup is claimed.
+
+The first final series had a worse large-panel p95, while its prespecified repeat
+reversed that result. Same-executable controls also vary substantially at p95,
+including 15.94 versus 6.63 ms for scrolling. All samples and series are retained;
+latency tails are too unstable to attribute to this cleanup. These measurements
+do not establish universal workload or other-backend performance. Temporary
+measurement source, executable copies and PNG outputs are removed.
+
+The audit inventory now distinguishes removed historical paths, current
+implementation files and generated benchmark/lockfile data. Newly split files
+and previously omitted retained/shared tests are included in the current
+inventory. Nine current file groups remain pending; the repository-wide audit
+is still in progress. Newly confirmed ignored incremental configuration and
+test-only retired planner implementations are recorded for the next cleanup.
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
