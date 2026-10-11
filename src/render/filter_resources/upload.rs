@@ -1,15 +1,11 @@
 //! Collect filter payloads once in execution order. Transfer tables borrow their
 //! original words; seeded lattices and brush records go directly to native upload.
 use crate::shared::{
-    execution::ExecOp,
+    execution::{ExecOp, OffscreenLayer},
     gpu_brush::GpuBrushUpload,
     image_resource::GpuImageResourceUpload,
-    layer::{
-        Layer,
-        filter::{
-            ComponentTransferTable, Filter, FilterPrimitiveKind, TurbulenceLattice,
-            turbulence_lattice,
-        },
+    layer::filter::{
+        ComponentTransferTable, Filter, FilterPrimitiveKind, TurbulenceLattice, turbulence_lattice,
     },
 };
 
@@ -41,15 +37,17 @@ impl<'a> FilterResourceUpload<'a> {
                 ExecOp::OffscreenLayer {
                     layer, children, ..
                 } => match layer {
-                    Layer::Filter { filter, .. } => {
+                    OffscreenLayer::Filter { filter, .. } => {
                         self.collect_ops(children, images);
                         self.collect_filter(filter, images);
                     }
-                    Layer::Backdrop { filter, .. } => {
+                    OffscreenLayer::Backdrop { filter, .. } => {
                         self.collect_filter(filter, images);
                         self.collect_ops(children, images);
                     }
-                    _ => self.collect_ops(children, images),
+                    OffscreenLayer::Isolate { .. }
+                    | OffscreenLayer::Opacity { .. }
+                    | OffscreenLayer::Blend { .. } => self.collect_ops(children, images),
                 },
                 ExecOp::OffscreenMaskLayer { content, mask, .. } => {
                     self.collect_ops(content, images);

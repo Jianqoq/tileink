@@ -16,14 +16,7 @@ impl OperationAdapter for Execution<'_> {
         target: RenderTargetId,
         cursors: &mut FilterCursors,
     ) -> Result<()> {
-        crate::render::layers::execute(self, canvas, plan, op, target, cursors).map_err(|error| {
-            match error {
-                crate::render::layers::LayerError::Adapter(error) => error,
-                crate::render::layers::LayerError::UnexpectedClip => {
-                    "unexpected native offscreen clip".into()
-                }
-            }
-        })
+        crate::render::layers::execute(self, canvas, plan, op, target, cursors)
     }
     fn mask(
         &mut self,

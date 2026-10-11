@@ -11,15 +11,14 @@ use super::{
 };
 use crate::canvas::{Canvas, RetainedSurfaceId};
 use crate::shared::{
-    execution::{ExecOp, ExecPlan},
-    layer::{Layer, mask::Mask},
+    execution::{ExecOp, ExecPlan, OffscreenLayer},
+    layer::mask::Mask,
 };
 use std::ops::Range;
 
 pub(crate) struct Offscreen<'a> {
     pub(crate) retained_id: Option<RetainedSurfaceId>,
-    pub(crate) draw: usize,
-    pub(crate) layer: &'a Layer,
+    pub(crate) layer: &'a OffscreenLayer,
     pub(crate) outer_stack: Range<usize>,
     pub(crate) children: &'a [ExecOp],
 }
@@ -87,7 +86,6 @@ pub(crate) fn execute_ops<A: OperationAdapter>(
             }
             ExecOp::OffscreenLayer {
                 retained_id,
-                draw,
                 layer,
                 outer_stack,
                 children,
@@ -97,7 +95,6 @@ pub(crate) fn execute_ops<A: OperationAdapter>(
                     plan,
                     Offscreen {
                         retained_id: *retained_id,
-                        draw: *draw,
                         layer,
                         outer_stack: outer_stack.clone(),
                         children,

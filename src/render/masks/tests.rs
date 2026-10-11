@@ -352,11 +352,8 @@ fn clean_cached_composite_failure_preserves_images_and_resource_cursors() {
 
 fn mask_fixture() -> (Canvas, ExecPlan) {
     use crate::shared::{
-        execution::ExecOp,
-        layer::{
-            Layer,
-            filter::{COMPONENT_TRANSFER_TABLE_LEN, Filter},
-        },
+        execution::{ExecOp, OffscreenLayer},
+        layer::filter::{COMPONENT_TRANSFER_TABLE_LEN, Filter},
     };
     use std::rc::Rc;
     let (mut canvas, mut plan) = fixture();
@@ -375,7 +372,7 @@ fn mask_fixture() -> (Canvas, ExecPlan) {
     *draws = Rc::new(vec![1]);
     *batch_id = 1;
     let ExecOp::OffscreenLayer {
-        layer: Layer::Filter { filter, .. },
+        layer: OffscreenLayer::Filter { filter, .. },
         ..
     } = &mut mask[1]
     else {

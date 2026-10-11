@@ -6,11 +6,8 @@ use crate::{
     shared::{
         bounds::{Bounds, PixelBounds, TileBbox},
         draw_record::{DrawRecord, DrawTag},
-        execution::{ExecOp, ExecPlan, LayerStackEntry},
-        layer::{
-            Layer,
-            filter::{Filter, FilterInput, FilterPrimitive, FilterPrimitiveKind},
-        },
+        execution::{ExecOp, ExecPlan, LayerStackEntry, OffscreenLayer},
+        layer::filter::{Filter, FilterInput, FilterPrimitive, FilterPrimitiveKind},
     },
     text::PreparedTextData,
 };
@@ -267,12 +264,14 @@ fn max_scratch_for_ops(ops: &[ExecOp], held: usize) -> usize {
                 children,
                 ..
             } => match layer {
-                Layer::Isolate | Layer::Opacity(_) | Layer::Blend(_) => {
+                OffscreenLayer::Isolate { .. }
+                | OffscreenLayer::Opacity { .. }
+                | OffscreenLayer::Blend { .. } => {
                     let source_held = held + 1;
                     max_count = max_count.max(source_held + 1);
                     max_count = max_count.max(max_scratch_for_ops(children, source_held));
                 }
-                Layer::Filter { filter, .. } => {
+                OffscreenLayer::Filter { filter, .. } => {
                     let source_held = held + 1;
                     max_count = max_count.max(source_held + filter_scratch_extra(filter));
                     if !outer_stack.is_empty() {
@@ -280,7 +279,7 @@ fn max_scratch_for_ops(ops: &[ExecOp], held: usize) -> usize {
                     }
                     max_count = max_count.max(max_scratch_for_ops(children, source_held));
                 }
-                Layer::Backdrop { filter, .. } => {
+                OffscreenLayer::Backdrop { filter, .. } => {
                     // Retained backdrops keep both filtered output and the
                     // painter-order source history live while rerendering.
                     let backdrop_held = held + 1 + usize::from(retained_id.is_some());
@@ -288,9 +287,6 @@ fn max_scratch_for_ops(ops: &[ExecOp], held: usize) -> usize {
                     max_count = max_count.max(backdrop_held + 1);
                     let content_held = held + 1;
                     max_count = max_count.max(max_scratch_for_ops(children, content_held));
-                }
-                _ => {
-                    max_count = max_count.max(max_scratch_for_ops(children, held));
                 }
             },
             ExecOp::OffscreenMaskLayer { content, mask, .. } => {

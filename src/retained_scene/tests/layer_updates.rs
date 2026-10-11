@@ -1,5 +1,5 @@
 use super::*;
-use crate::shared::{execution::ExecOp, layer::Layer};
+use crate::shared::execution::{ExecOp, OffscreenLayer};
 use peniko::{BlendMode, Compose, Mix};
 
 const GROUP: RetainedNodeId = RetainedNodeId::for_owner(71_001);
@@ -50,7 +50,7 @@ fn scene(group: RetainedLayerDescriptor) -> RetainedScene {
     scene
 }
 
-fn root_layer(materializer: &PersistentSceneMaterializer) -> &Layer {
+fn root_layer(materializer: &PersistentSceneMaterializer) -> &OffscreenLayer {
     let plan = materializer.canvas.compiled_plan.as_ref().unwrap();
     let ExecOp::OffscreenLayer {
         retained_id: Some(id),
@@ -83,7 +83,7 @@ fn offscreen_opacity_updates_its_compiled_descriptor_without_rebuilding_batches(
             .unwrap();
         assert!(update_materializer(&mut materializer, &scene));
         assert!(
-            matches!(root_layer(&materializer), Layer::Opacity(opacity) if opacity.opacity == value)
+            matches!(root_layer(&materializer), OffscreenLayer::Opacity { opacity, .. } if *opacity == value)
         );
         assert!(Rc::ptr_eq(
             &order,
@@ -116,7 +116,7 @@ fn offscreen_blend_updates_its_compiled_descriptor_without_rebuilding_batches() 
             .unwrap();
         assert!(update_materializer(&mut materializer, &scene));
         assert!(
-            matches!(root_layer(&materializer), Layer::Blend(blend) if blend.mode == BlendMode::new(mix, Compose::SrcOver))
+            matches!(root_layer(&materializer), OffscreenLayer::Blend { mode, .. } if *mode == BlendMode::new(mix, Compose::SrcOver))
         );
         assert!(Rc::ptr_eq(
             &order,
@@ -223,7 +223,10 @@ fn layer_kind_changes_recompile_instead_of_claiming_a_descriptor_patch() {
         .commit()
         .unwrap();
     assert!(update_materializer(&mut materializer, &scene));
-    assert!(matches!(root_layer(&materializer), Layer::Isolate));
+    assert!(matches!(
+        root_layer(&materializer),
+        OffscreenLayer::Isolate { .. }
+    ));
     assert!(!Rc::ptr_eq(
         &original.draw_order,
         &materializer
@@ -271,8 +274,12 @@ fn offscreen_layer_updates_reach_both_mask_branches() {
         } else {
             mask
         };
-        assert!(
-            matches!(&ops[0], ExecOp::OffscreenLayer { layer: Layer::Opacity(value), ..} if value.opacity == 0.75)
-        );
+        assert!(matches!(
+            &ops[0],
+            ExecOp::OffscreenLayer {
+                layer: OffscreenLayer::Opacity { opacity: 0.75, .. },
+                ..
+            }
+        ));
     }
 }

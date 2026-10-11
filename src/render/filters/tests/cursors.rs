@@ -1,6 +1,6 @@
 use super::*;
 use crate::render::filter_resources::{paths::FilterPathUpload, upload::FilterResourceUpload};
-use crate::shared::layer::Layer;
+use crate::shared::execution::OffscreenLayer;
 use crate::shared::layer::filter::COMPONENT_TRANSFER_TABLE_LEN;
 use peniko::kurbo::{Affine, BezPath, Shape};
 
@@ -13,7 +13,7 @@ fn execute_op(
     cursors: &mut FilterCursors,
 ) {
     let ExecOp::OffscreenLayer {
-        layer: Layer::Filter {
+        layer: OffscreenLayer::Filter {
             filter,
             sample_region,
         },
@@ -45,7 +45,7 @@ fn full_canvas_filter_on_scratch_preserves_prefix_resource_indices() {
     let (canvas, mut plan) = fixture();
     let mut second = plan.ops[1].clone();
     let ExecOp::OffscreenLayer {
-        layer: Layer::Filter { filter, .. },
+        layer: OffscreenLayer::Filter { filter, .. },
         ..
     } = &mut second
     else {
@@ -78,7 +78,7 @@ fn cropped_filter_after_prefix_uses_compacted_resource_indices() {
     let (canvas, mut plan) = fixture();
     let mut second = plan.ops[1].clone();
     let ExecOp::OffscreenLayer {
-        layer: Layer::Filter {
+        layer: OffscreenLayer::Filter {
             filter,
             sample_region,
         },
@@ -122,7 +122,7 @@ fn filter_child_paths_follow_full_or_compacted_plan_layout() {
         triangle.line_to((0.0, 32.0));
         triangle.close_path();
         let ExecOp::OffscreenLayer {
-            layer: Layer::Filter { sample_region, .. },
+            layer: OffscreenLayer::Filter { sample_region, .. },
             ..
         } = &mut child
         else {
@@ -131,7 +131,7 @@ fn filter_child_paths_follow_full_or_compacted_plan_layout() {
         *sample_region = Region::path(triangle, Affine::IDENTITY, 0.1);
         let mut parent = plan.ops[1].clone();
         let ExecOp::OffscreenLayer {
-            layer: Layer::Filter { sample_region, .. },
+            layer: OffscreenLayer::Filter { sample_region, .. },
             children,
             ..
         } = &mut parent
@@ -160,7 +160,7 @@ fn filter_child_paths_follow_full_or_compacted_plan_layout() {
             "full={full} {target:?}"
         );
         let ExecOp::OffscreenLayer {
-            layer: Layer::Filter { sample_region, .. },
+            layer: OffscreenLayer::Filter { sample_region, .. },
             ..
         } = &plan.ops[0]
         else {

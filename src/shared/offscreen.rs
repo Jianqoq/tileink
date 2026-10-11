@@ -1,7 +1,9 @@
 mod canvas;
 mod selection;
+mod space;
 use canvas::translated_scene_for_draws;
 use selection::local_draw_selection;
+use space::LocalSpace;
 
 use std::collections::{HashMap, HashSet};
 
@@ -13,10 +15,9 @@ use crate::{
         bounds::{Bounds, PixelBounds, TileBbox},
         brush::{Brush, decode_encoded_brush, push_encoded_brush},
         draw_record::DrawRecord,
-        execution::{ExecOp, ExecPlan},
+        execution::{ExecOp, ExecPlan, OffscreenLayer},
         gpu_sdf::{decode_sdf, decode_sdf_shadow, push_encoded_sdf, push_encoded_sdf_shadow},
         layer::{
-            Layer,
             filter::{Filter, FilterPrimitive, FilterPrimitiveKind, Turbulence},
             mask::Mask,
             region::Region,
@@ -31,124 +32,6 @@ pub(crate) struct LocalOffscreenCanvas {
     pub(crate) canvas: Canvas,
     pub(crate) plan: ExecPlan,
     pub(crate) children: Vec<ExecOp>,
-}
-
-// Offscreen rendering reuses the main canvas data, but filter kernels and scratch
-// images run in a local surface whose origin may be outside the canvas. Keeping the
-// coordinate conversion in one type makes it clear which values move into local
-// space and which values, such as fixed filter regions, stay in buffer space.
-#[derive(Clone, Copy)]
-struct LocalSpace {
-    surface: Bounds,
-}
-
-impl LocalSpace {
-    fn new(surface: Bounds) -> Self {
-        Self { surface }
-    }
-
-    fn line(self, line: Line) -> Line {
-        let dx = -self.surface.x0 as f32;
-        let dy = -self.surface.y0 as f32;
-        Line {
-            path_id: line.path_id,
-            _pad: line._pad,
-            p0: [line.p0[0] + dx, line.p0[1] + dy],
-            p1: [line.p1[0] + dx, line.p1[1] + dy],
-        }
-    }
-
-    fn pixel_bounds(self, bounds: PixelBounds) -> PixelBounds {
-        PixelBounds {
-            x0: bounds.x0 - self.surface.x0,
-            y0: bounds.y0 - self.surface.y0,
-            x1: bounds.x1 - self.surface.x0,
-            y1: bounds.y1 - self.surface.y0,
-        }
-    }
-
-    fn bounds(self, bounds: Bounds) -> Bounds {
-        Bounds::new(
-            bounds.x0 - self.surface.x0,
-            bounds.y0 - self.surface.y0,
-            bounds.x1 - self.surface.x0,
-            bounds.y1 - self.surface.y0,
-        )
-    }
-
-    fn rect(self, rect: Rect) -> Rect {
-        let dx = f64::from(self.surface.x0);
-        let dy = f64::from(self.surface.y0);
-        Rect::new(rect.x0 - dx, rect.y0 - dy, rect.x1 - dx, rect.y1 - dy)
-    }
-
-    fn transform(self, transform: Affine) -> Affine {
-        Affine::translate((-f64::from(self.surface.x0), -f64::from(self.surface.y0))) * transform
-    }
-
-    fn sdf(self, sdf: Sdf) -> Sdf {
-        sdf.translated(self.surface.x0 as f32, self.surface.y0 as f32)
-    }
-
-    fn sdf_shadow(self, sdf_shadow: SdfShadow) -> SdfShadow {
-        sdf_shadow.translated(self.surface.x0 as f32, self.surface.y0 as f32)
-    }
-
-    fn brush(self, brush: Brush) -> Brush {
-        let ox = self.surface.x0 as f32;
-        let oy = self.surface.y0 as f32;
-        match brush {
-            Brush::Solid(_) => brush,
-            Brush::Linear(mut gradient) => {
-                gradient.transform = self.brush_transform(gradient.transform);
-                Brush::Linear(gradient)
-            }
-            Brush::Radial(mut gradient) => {
-                gradient.transform = self.brush_transform(gradient.transform);
-                Brush::Radial(gradient)
-            }
-            Brush::Sweep(mut gradient) => {
-                gradient.center[0] -= ox;
-                gradient.center[1] -= oy;
-                Brush::Sweep(gradient)
-            }
-            Brush::FourCorner(mut gradient) => {
-                gradient.bounds[0] -= ox;
-                gradient.bounds[1] -= oy;
-                gradient.bounds[2] -= ox;
-                gradient.bounds[3] -= oy;
-                Brush::FourCorner(gradient)
-            }
-            Brush::Mesh(mut gradient) => {
-                gradient.transform = self.brush_transform(gradient.transform);
-                Brush::Mesh(gradient)
-            }
-            Brush::Program(mut program) => {
-                program.0.transform = self.brush_transform(program.0.transform);
-                Brush::Program(program)
-            }
-            Brush::Pattern(mut pattern) => {
-                pattern.transform = self.brush_transform(pattern.transform);
-                Brush::Pattern(pattern)
-            }
-        }
-    }
-
-    fn brush_transform(self, transform: [f32; 6]) -> [f32; 6] {
-        let [a, b, c, d, e, f] = transform;
-        let ox = self.surface.x0 as f32;
-        let oy = self.surface.y0 as f32;
-        [a, b, c, d, a * ox + c * oy + e, b * ox + d * oy + f]
-    }
-
-    fn turbulence(self, turbulence: Turbulence) -> FilterPrimitiveKind {
-        let mut turbulence = turbulence;
-        turbulence.transform_x -= self.surface.x0 as f32;
-        turbulence.transform_y -= self.surface.y0 as f32;
-        turbulence.tile_x -= self.surface.x0 as f32;
-        turbulence.tile_y -= self.surface.y0 as f32;
-        FilterPrimitiveKind::Turbulence(turbulence)
-    }
 }
 
 pub(crate) fn local_offscreen_scene(
@@ -215,14 +98,12 @@ fn translate_exec_ops_to_local(
             },
             ExecOp::OffscreenLayer {
                 retained_id,
-                draw,
                 layer,
                 outer_stack,
                 children,
             } => ExecOp::OffscreenLayer {
                 retained_id: *retained_id,
-                draw: layer_draw(layer, *draw).map_or(0, |draw| draw_map[&draw]),
-                layer: translate_layer_to_local(layer, local),
+                layer: translate_layer_to_local(layer, local, draw_map),
                 outer_stack: outer_stack.clone(),
                 children: translate_exec_ops_to_local(children, local, batch_draws, draw_map),
             },
@@ -248,12 +129,7 @@ fn remap_layer_stack_entry(
     draw_map: &HashMap<usize, usize>,
 ) -> crate::shared::execution::LayerStackEntry {
     use crate::shared::execution::LayerStackEntry;
-    let remap = |draw: u32| {
-        draw_map
-            .get(&(draw as usize))
-            .copied()
-            .expect("every used local layer-stack draw must be selected") as u32
-    };
+    let remap = |draw: u32| draw_map[&(draw as usize)] as u32;
     match entry {
         LayerStackEntry::Clip { draw } => LayerStackEntry::Clip { draw: remap(draw) },
         LayerStackEntry::Opacity { draw, opacity } => LayerStackEntry::Opacity {
@@ -267,27 +143,34 @@ fn remap_layer_stack_entry(
     }
 }
 
-fn translate_layer_to_local(layer: &Layer, local: LocalSpace) -> Layer {
+fn translate_layer_to_local(
+    layer: &OffscreenLayer,
+    local: LocalSpace,
+    draw_map: &HashMap<usize, usize>,
+) -> OffscreenLayer {
     match layer {
-        Layer::Clip | Layer::Isolate | Layer::Opacity(_) | Layer::Blend(_) => layer.clone(),
-        Layer::ClipSdf {
-            sdf,
-            bounds: sdf_bounds,
-        } => Layer::ClipSdf {
-            sdf: local.sdf(*sdf),
-            bounds: local.bounds(*sdf_bounds),
+        OffscreenLayer::Isolate { draw } => OffscreenLayer::Isolate {
+            draw: draw_map[draw],
         },
-        Layer::Filter {
+        OffscreenLayer::Opacity { draw, opacity } => OffscreenLayer::Opacity {
+            draw: draw_map[draw],
+            opacity: *opacity,
+        },
+        OffscreenLayer::Blend { draw, mode } => OffscreenLayer::Blend {
+            draw: draw_map[draw],
+            mode: *mode,
+        },
+        OffscreenLayer::Filter {
             filter,
             sample_region,
-        } => Layer::Filter {
+        } => OffscreenLayer::Filter {
             filter: translate_filter_to_local(filter, local),
             sample_region: translate_region_to_local(sample_region, local),
         },
-        Layer::Backdrop {
+        OffscreenLayer::Backdrop {
             filter,
             sample_region,
-        } => Layer::Backdrop {
+        } => OffscreenLayer::Backdrop {
             filter: translate_filter_to_local(filter, local),
             sample_region: translate_region_to_local(sample_region, local),
         },
@@ -395,12 +278,3 @@ fn translate_region_to_local(region: &Region, local: LocalSpace) -> Region {
 
 #[cfg(test)]
 mod tests;
-
-// Filter/backdrop operations have no geometry record; their draw field is unused.
-// Do not turn that sentinel into an additional spatial candidate or layer record.
-fn layer_draw(layer: &Layer, draw: usize) -> Option<usize> {
-    match layer {
-        Layer::Filter { .. } | Layer::Backdrop { .. } => None,
-        _ => Some(draw),
-    }
-}

@@ -1,8 +1,8 @@
 //! Fixed-point path data and range slots shared by filter clipping on every backend.
 
 use crate::shared::{
-    execution::{ExecOp, ExecPlan},
-    layer::{Layer, region::Region},
+    execution::{ExecOp, ExecPlan, OffscreenLayer},
+    layer::region::Region,
     path_flatten::PathFlatten,
 };
 
@@ -75,11 +75,14 @@ fn collect_filter_paths_for_ops(ops: &[ExecOp], upload: &mut FilterPathUpload) {
             ExecOp::OffscreenLayer {
                 layer, children, ..
             } => match layer {
-                Layer::Filter { sample_region, .. } | Layer::Backdrop { sample_region, .. } => {
+                OffscreenLayer::Filter { sample_region, .. }
+                | OffscreenLayer::Backdrop { sample_region, .. } => {
                     upload.push_region(sample_region);
                     collect_filter_paths_for_ops(children, upload);
                 }
-                _ => collect_filter_paths_for_ops(children, upload),
+                OffscreenLayer::Isolate { .. }
+                | OffscreenLayer::Opacity { .. }
+                | OffscreenLayer::Blend { .. } => collect_filter_paths_for_ops(children, upload),
             },
             ExecOp::OffscreenMaskLayer {
                 layer,

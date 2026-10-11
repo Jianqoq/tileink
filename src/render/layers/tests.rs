@@ -3,7 +3,6 @@ use crate::render::{
     retained_surfaces::RetainedSurfaceKind,
     surfaces::test_support::{Adapter, Event, fixture},
 };
-use crate::shared::layer::{blend::Blend, opacity::Opacity};
 use crate::{Filter, Radius, Region};
 use peniko::{BlendMode, Compose, Mix, kurbo::Rect};
 
@@ -11,15 +10,14 @@ fn run(
     adapter: &mut Adapter,
     canvas: &Canvas,
     plan: &ExecPlan,
-    layer: &Layer,
-) -> Result<(), LayerError<&'static str>> {
+    layer: &OffscreenLayer,
+) -> Result<(), &'static str> {
     execute(
         adapter,
         canvas,
         plan,
         Offscreen {
             retained_id: None,
-            draw: 0,
             layer,
             outer_stack: 2..4,
             children: &plan.ops[..1],
@@ -34,13 +32,23 @@ fn group_variants_preserve_opacity_blend_and_children_before_composite() {
     let (canvas, plan) = fixture();
     let multiply = BlendMode::new(Mix::Multiply, Compose::SrcOver);
     for (layer, opacity, blend) in [
-        (Layer::Isolate, None, None),
+        (OffscreenLayer::Isolate { draw: 0 }, None, None),
         (
-            Layer::Opacity(Opacity { opacity: 0.375 }),
+            OffscreenLayer::Opacity {
+                draw: 0,
+                opacity: 0.375,
+            },
             Some(0.375),
             None,
         ),
-        (Layer::Blend(Blend { mode: multiply }), None, Some(multiply)),
+        (
+            OffscreenLayer::Blend {
+                draw: 0,
+                mode: multiply,
+            },
+            None,
+            Some(multiply),
+        ),
     ] {
         let mut adapter = Adapter::new(&canvas, RetainedSurfaceKind::Group);
         run(&mut adapter, &canvas, &plan, &layer).unwrap();
@@ -74,12 +82,12 @@ fn filters_render_local_children_while_backdrops_sample_the_existing_parent_targ
     let region = Region::rect(Rect::new(0.0, 0.0, 32.0, 32.0), Radius::ZERO);
     for backdrop in [false, true] {
         let layer = if backdrop {
-            Layer::Backdrop {
+            OffscreenLayer::Backdrop {
                 filter: Filter::Invert(1.0),
                 sample_region: region.clone(),
             }
         } else {
-            Layer::Filter {
+            OffscreenLayer::Filter {
                 filter: Filter::Invert(1.0),
                 sample_region: region.clone(),
             }
@@ -126,32 +134,6 @@ fn filters_render_local_children_while_backdrops_sample_the_existing_parent_targ
 }
 
 #[test]
-fn fused_clip_in_an_offscreen_operation_is_rejected_before_any_gpu_or_cursor_work() {
-    let (canvas, plan) = fixture();
-    let mut adapter = Adapter::new(&canvas, RetainedSurfaceKind::Group);
-    let mut cursors = FilterCursors::default();
-    assert_eq!(
-        execute(
-            &mut adapter,
-            &canvas,
-            &plan,
-            Offscreen {
-                retained_id: None,
-                draw: 0,
-                layer: &Layer::Clip,
-                outer_stack: 2..4,
-                children: &plan.ops,
-            },
-            RenderTargetId::Main,
-            &mut cursors
-        ),
-        Err(LayerError::UnexpectedClip)
-    );
-    assert!(adapter.events.is_empty());
-    assert_eq!(cursors.next_transfer_index(), 0);
-}
-
-#[test]
 fn shared_layer_dispatch_preserves_the_underlying_recording_error() {
     let (canvas, plan) = fixture();
     let mut adapter = Adapter::new(&canvas, RetainedSurfaceKind::Group);
@@ -160,9 +142,12 @@ fn shared_layer_dispatch_preserves_the_underlying_recording_error() {
         &mut adapter,
         &canvas,
         &plan,
-        &Layer::Opacity(Opacity { opacity: 0.5 }),
+        &OffscreenLayer::Opacity {
+            draw: 0,
+            opacity: 0.5,
+        },
     );
-    assert_eq!(result, Err(LayerError::Adapter("opacity")));
+    assert_eq!(result, Err("opacity"));
     assert!(
         !adapter
             .events

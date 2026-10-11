@@ -2,9 +2,8 @@
 
 use crate::shared::{
     brush::encoded_brush_word_len,
-    execution::ExecOp,
+    execution::{ExecOp, OffscreenLayer},
     layer::{
-        Layer,
         filter::{ConvolveMatrix, Filter, FilterPrimitiveKind},
         region::Region,
     },
@@ -70,11 +69,11 @@ impl FilterCursors {
                 ExecOp::OffscreenLayer {
                     layer, children, ..
                 } => match layer {
-                    Layer::Filter {
+                    OffscreenLayer::Filter {
                         filter,
                         sample_region,
                     } => self.advance_filter_layer(sample_region, children, filter),
-                    Layer::Backdrop {
+                    OffscreenLayer::Backdrop {
                         filter,
                         sample_region,
                     } => {
@@ -82,7 +81,9 @@ impl FilterCursors {
                         self.advance_filter(filter);
                         self.advance_ops(children);
                     }
-                    _ => self.advance_ops(children),
+                    OffscreenLayer::Isolate { .. }
+                    | OffscreenLayer::Opacity { .. }
+                    | OffscreenLayer::Blend { .. } => self.advance_ops(children),
                 },
                 ExecOp::OffscreenMaskLayer {
                     layer,

@@ -39,6 +39,50 @@ fn check_clips(plan: &ExecPlan, ops: &[ExecOp]) -> (usize, usize) {
 }
 
 #[test]
+fn clip_only_and_empty_clips_never_allocate_surfaces() {
+    let rect = Rect::new(0.0, 0.0, 64.0, 64.0);
+    for empty in [false, true] {
+        for path in [false, true] {
+            for depth in [1, 129] {
+                let mut canvas = test_scene();
+                for _ in 0..depth {
+                    if path {
+                        canvas.push_clip_layer(
+                            rect.to_path(0.1),
+                            Affine::translate((0.25, 0.25)),
+                            FillRule::NonZero,
+                            0.1,
+                        );
+                    } else {
+                        canvas.push_clip_sdf_rect_layer(rect, Radius::ZERO);
+                    }
+                }
+                if !empty {
+                    canvas.push_rect(rect, Radius::ZERO, Color::WHITE);
+                }
+                for _ in 0..depth {
+                    canvas.pop_layer();
+                }
+                assert_eq!(canvas.path_records.len(), if path { depth } else { 0 });
+                let plan = canvas.compile(ROOT_COMMAND_LIST_ID);
+                assert_eq!(check_clips(&plan, &plan.ops), (0, 0));
+                assert_eq!(plan.ops.len(), usize::from(!empty));
+                assert_eq!(plan.layer_stack_data.len(), if empty { 0 } else { depth });
+                let local = local_offscreen_scene(
+                    &canvas,
+                    &plan,
+                    &plan.ops,
+                    Bounds::new(-4, -6, 68, 70),
+                    &(0..canvas.draw_records.len() as u32).collect::<Vec<_>>(),
+                );
+                assert_eq!(check_clips(&local.plan, &local.children), (0, 0));
+                assert_eq!(local.children.len(), plan.ops.len());
+            }
+        }
+    }
+}
+
+#[test]
 fn offscreen_clips_survive_deep_groups_masks_backdrops_and_localization() {
     let rect = Rect::new(0.0, 0.0, 64.0, 64.0);
     for depth in [0, 1, 63, 64, 65, 128] {

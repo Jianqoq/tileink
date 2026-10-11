@@ -25,7 +25,7 @@ impl ExecPlan {
 
 #[derive(Clone)]
 enum SurfacePatch {
-    Layer { draw: usize, layer: Layer },
+    Layer { layer: OffscreenLayer },
     Mask { layer: Mask },
 }
 
@@ -38,7 +38,6 @@ fn collect_surface_patches(
         match op {
             ExecOp::OffscreenLayer {
                 retained_id,
-                draw,
                 layer,
                 children,
                 ..
@@ -47,7 +46,6 @@ fn collect_surface_patches(
                     patches.insert(
                         id,
                         SurfacePatch::Layer {
-                            draw: *draw,
                             layer: layer.clone(),
                         },
                     );
@@ -86,17 +84,14 @@ fn patch_surface_ops(
         match op {
             ExecOp::OffscreenLayer {
                 retained_id,
-                draw,
                 layer,
                 children,
                 ..
             } => {
                 if let Some(SurfacePatch::Layer {
-                    draw: replacement_draw,
                     layer: replacement_layer,
                 }) = retained_id.and_then(|id| patches.get(&id))
                 {
-                    *draw = *replacement_draw;
                     *layer = replacement_layer.clone();
                     *patched += 1;
                 }

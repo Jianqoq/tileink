@@ -12,6 +12,123 @@ use std::rc::Rc;
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn retained_clip_and_offscreen_kind_transitions_match_fresh_pixels()
+-> Result<(), Box<dyn std::error::Error>> {
+    let context = context()?;
+    let id = RetainedNodeId::for_owner;
+    let full = Rect::new(0.0, 0.0, 32.0, 32.0);
+    let crop = Rect::new(8.0, 6.0, 24.0, 26.0);
+    let path = full.to_path(0.1);
+    let region = Region::rect(full, Radius::ZERO);
+    let descriptors = [
+        D::ClipPath {
+            path: path.clone(),
+            transform: Affine::translate((0.25, 0.25)),
+            rule: crate::FillRule::NonZero,
+            tolerance: 0.1,
+        },
+        D::ClipSdf {
+            sdf: crate::Sdf::Rect(crate::SdfRect {
+                start: peniko::kurbo::Point::ZERO,
+                end: peniko::kurbo::Point::new(32.0, 32.0),
+                radius: Radius::ZERO,
+            }),
+            transform: Affine::IDENTITY,
+        },
+        D::Isolate {
+            path: path.clone(),
+            transform: Affine::IDENTITY,
+            tolerance: 0.1,
+        },
+        D::Opacity {
+            path: path.clone(),
+            transform: Affine::IDENTITY,
+            tolerance: 0.1,
+            opacity: 0.5,
+        },
+        D::Blend {
+            path: path.clone(),
+            transform: Affine::IDENTITY,
+            tolerance: 0.1,
+            mix: peniko::Mix::Screen,
+            compose: peniko::Compose::SrcOver,
+        },
+        D::Filter {
+            filter: Filter::Opacity(0.75),
+            sample_region: region.clone(),
+        },
+        D::Backdrop {
+            filter: Filter::Opacity(1.0),
+            sample_region: region,
+        },
+        D::Opacity {
+            path,
+            transform: Affine::IDENTITY,
+            tolerance: 0.1,
+            opacity: 0.25,
+        },
+    ];
+    let mut leaf = Canvas::new(32, 32, 1.0);
+    leaf.push_rect(full, Radius::ZERO, Color::WHITE);
+    let mut scene = RetainedScene::new(32, 32, 1.0, id(94_000))?;
+    scene
+        .transaction()
+        .insert_layer(
+            RetainedParent::content(id(94_000)),
+            None,
+            id(94_001),
+            D::ClipPath {
+                path: crop.to_path(0.1),
+                transform: Affine::IDENTITY,
+                rule: crate::FillRule::NonZero,
+                tolerance: 0.1,
+            },
+        )
+        .insert_layer(
+            RetainedParent::content(id(94_001)),
+            None,
+            id(94_002),
+            descriptors[0].clone(),
+        )
+        .insert_layer(
+            RetainedParent::content(id(94_002)),
+            None,
+            id(94_003),
+            D::Filter {
+                filter: Filter::Offset { dx: 0.0, dy: 0.0 },
+                sample_region: Region::rect(full, Radius::ZERO),
+            },
+        )
+        .insert_scene(
+            RetainedParent::content(id(94_003)),
+            None,
+            id(94_004),
+            Rc::new(leaf),
+            Affine::IDENTITY,
+        )
+        .commit()?;
+    let mut renderer = NativeRenderer::with_context(&context, 32, 32)?;
+    for descriptor in descriptors {
+        scene
+            .transaction()
+            .update_layer(id(94_002), descriptor)
+            .commit()?;
+        let actual = renderer.render_retained_to_image(&scene)?.readback()?;
+        let mut fresh = NativeRenderer::with_context(&context, 32, 32)?;
+        let expected = fresh.render_retained_to_image(&scene)?.readback()?;
+        assert_eq!(actual.pixels, expected.pixels);
+        for y in 0..32 {
+            for x in 0..32 {
+                let alpha = actual.pixels[y * 32 + x] >> 24;
+                assert_eq!(alpha != 0, crop.contains((x as f64 + 0.5, y as f64 + 0.5)));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn retained_offscreen_clips_match_fresh_pixels_after_nested_insert_and_remove()
 -> Result<(), Box<dyn std::error::Error>> {
     let context = context()?;

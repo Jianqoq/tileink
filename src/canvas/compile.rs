@@ -1,4 +1,7 @@
 use super::*;
+mod layers;
+use crate::shared::execution::OffscreenLayer;
+use layers::LayerExecution;
 
 impl Canvas {
     pub(crate) fn compile(&self, list_id: CommandListId) -> ExecPlan {
@@ -192,72 +195,60 @@ impl Canvas {
                             branch: RetainedBatchBranch::Content,
                         })
                         .or(batch_owner);
-                    if self.can_fuse(layer, *children) {
-                        // Every fused group has the same traversal. Hidden SDF/path clip
-                        // draws remain analytic through the batch's stack snapshot.
-                        let entry = match layer {
-                            Layer::Clip | Layer::ClipSdf { .. } => {
-                                LayerStackEntry::Clip { draw: *draw as u32 }
-                            }
-                            Layer::Opacity(opacity) => LayerStackEntry::Opacity {
-                                draw: *draw as u32,
-                                opacity: opacity.opacity,
-                            },
-                            Layer::Blend(blend) => LayerStackEntry::Blend {
-                                draw: *draw as u32,
-                                mode: blend.mode,
-                            },
-                            _ => unreachable!(),
-                        };
-                        layer_stack.push(entry);
-                        self.compile_into(
-                            *children,
-                            ops,
-                            plan,
-                            layer_stack,
-                            CompileOwners {
-                                retained: retained_owner,
-                                batch: child_batch_owner,
-                            },
-                            surface_slots,
-                        );
-                        layer_stack.pop();
-                    } else {
-                        let stack_start = plan.layer_stack_data.len();
-                        plan.layer_stack_data.extend_from_slice(layer_stack);
-                        let stack_end = plan.layer_stack_data.len();
-                        ops.push(ExecOp::OffscreenLayer {
-                            retained_id: retained_owner.map(|owner| {
-                                let slot = surface_slots.entry(owner).or_default();
-                                let id = RetainedSurfaceId::new(owner, *slot);
-                                *slot += 1;
-                                id
-                            }),
-                            draw: *draw,
-                            layer: layer.clone(),
-                            outer_stack: stack_start..stack_end,
-                            children: {
-                                let mut child_ops = Vec::new();
-                                let mut child_layer_stack =
-                                    if matches!(layer, Layer::Backdrop { .. }) {
+                    match self.compile_layer(layer, *draw, *children) {
+                        LayerExecution::Fused(entry) => {
+                            // Every fused group has the same traversal. Hidden SDF/path clip
+                            // draws remain analytic through the batch's stack snapshot.
+                            layer_stack.push(entry);
+                            self.compile_into(
+                                *children,
+                                ops,
+                                plan,
+                                layer_stack,
+                                CompileOwners {
+                                    retained: retained_owner,
+                                    batch: child_batch_owner,
+                                },
+                                surface_slots,
+                            );
+                            layer_stack.pop();
+                        }
+                        LayerExecution::Offscreen(layer) => {
+                            let stack_start = plan.layer_stack_data.len();
+                            plan.layer_stack_data.extend_from_slice(layer_stack);
+                            let stack_end = plan.layer_stack_data.len();
+                            let inherit_stack = matches!(layer, OffscreenLayer::Backdrop { .. });
+                            ops.push(ExecOp::OffscreenLayer {
+                                retained_id: retained_owner.map(|owner| {
+                                    let slot = surface_slots.entry(owner).or_default();
+                                    let id = RetainedSurfaceId::new(owner, *slot);
+                                    *slot += 1;
+                                    id
+                                }),
+                                layer,
+                                outer_stack: stack_start..stack_end,
+                                children: {
+                                    let mut child_ops = Vec::new();
+                                    let mut child_layer_stack = if inherit_stack {
                                         layer_stack.clone()
                                     } else {
                                         Vec::new()
                                     };
-                                self.compile_into(
-                                    *children,
-                                    &mut child_ops,
-                                    plan,
-                                    &mut child_layer_stack,
-                                    CompileOwners {
-                                        retained: retained_owner,
-                                        batch: child_batch_owner,
-                                    },
-                                    surface_slots,
-                                );
-                                child_ops
-                            },
-                        });
+                                    self.compile_into(
+                                        *children,
+                                        &mut child_ops,
+                                        plan,
+                                        &mut child_layer_stack,
+                                        CompileOwners {
+                                            retained: retained_owner,
+                                            batch: child_batch_owner,
+                                        },
+                                        surface_slots,
+                                    );
+                                    child_ops
+                                },
+                            });
+                        }
                     }
                 }
                 Command::MaskLayer {

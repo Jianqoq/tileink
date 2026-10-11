@@ -102,17 +102,19 @@ fn collect_local_plan_draws<'a>(
                 collect_layer_stack_draws(layer_stacks, layer_stack.clone(), hidden);
             }
             ExecOp::OffscreenLayer {
-                draw,
                 outer_stack,
                 children,
                 layer,
                 ..
             } => {
-                if let Some(draw) = layer_draw(layer, *draw) {
-                    hidden.insert(draw);
+                if let OffscreenLayer::Isolate { draw }
+                | OffscreenLayer::Opacity { draw, .. }
+                | OffscreenLayer::Blend { draw, .. } = layer
+                {
+                    hidden.insert(*draw);
                 }
                 collect_layer_stack_draws(layer_stacks, outer_stack.clone(), hidden);
-                let source = if let Layer::Filter {
+                let source = if let OffscreenLayer::Filter {
                     filter,
                     sample_region,
                 } = layer

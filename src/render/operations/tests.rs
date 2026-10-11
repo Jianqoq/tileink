@@ -47,11 +47,13 @@ impl OperationAdapter for TraceAdapter {
         _: RenderTargetId,
         cursors: &mut FilterCursors,
     ) -> Result<(), Self::Error> {
-        assert!(matches!(op.layer, Layer::Isolate));
+        let OffscreenLayer::Isolate { draw } = op.layer else {
+            panic!("group fixture")
+        };
         assert_eq!(op.outer_stack, 2..4);
         assert!(op.retained_id.is_none());
         self.events
-            .push(Event::Group(op.draw, cursors.next_transfer_index()));
+            .push(Event::Group(*draw, cursors.next_transfer_index()));
         if self.fail_layer {
             return Err("layer");
         }
@@ -116,8 +118,7 @@ fn draw(id: u32) -> ExecOp {
 fn group(children: Vec<ExecOp>) -> ExecOp {
     ExecOp::OffscreenLayer {
         retained_id: None,
-        draw: 17,
-        layer: Layer::Isolate,
+        layer: OffscreenLayer::Isolate { draw: 17 },
         outer_stack: 2..4,
         children,
     }

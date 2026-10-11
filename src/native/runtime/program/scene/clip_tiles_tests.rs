@@ -450,8 +450,7 @@ fn clip_stack_collection_combines_content_from_every_batch_and_skips_empty_bound
         batch(vec![0], 0..1),
         ExecOp::OffscreenLayer {
             retained_id: None,
-            draw: 0,
-            layer: crate::shared::layer::Layer::Isolate,
+            layer: crate::shared::execution::OffscreenLayer::Isolate { draw: 0 },
             outer_stack: 0..0,
             children: vec![ExecOp::OffscreenMaskLayer {
                 retained_id: None,

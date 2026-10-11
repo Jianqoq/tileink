@@ -13,9 +13,8 @@ use crate::render::{
 use crate::retained_scene::{NodeGeneration, RetainedNodeId};
 use crate::shared::{
     bounds::Bounds,
-    execution::{ExecOp, ExecPlan},
+    execution::{ExecOp, ExecPlan, OffscreenLayer},
     layer::{
-        Layer,
         filter::{COMPONENT_TRANSFER_TABLE_LEN, Filter},
         mask::MaskKind,
         region::Region,
@@ -180,7 +179,7 @@ impl OperationAdapter for Adapter {
         _: RenderTargetId,
         cursors: &mut FilterCursors,
     ) -> Result<(), Self::Error> {
-        let Layer::Filter {
+        let OffscreenLayer::Filter {
             filter,
             sample_region,
         } = op.layer
@@ -342,8 +341,7 @@ pub(crate) fn fixture() -> (Canvas, ExecPlan) {
         },
         ExecOp::OffscreenLayer {
             retained_id: None,
-            draw: 0,
-            layer: Layer::Filter {
+            layer: OffscreenLayer::Filter {
                 filter: Filter::ComponentTransfer(Box::new([11; COMPONENT_TRANSFER_TABLE_LEN])),
                 sample_region: Region::Rect {
                     rect: Rect::new(0.0, 0.0, 32.0, 32.0),

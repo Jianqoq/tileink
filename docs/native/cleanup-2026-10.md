@@ -2511,9 +2511,82 @@ files parse and npm root declarations match. All 974 current implementation
 files are fully read; the remaining producer proofs and platform execution work
 continue separately.
 
+## Phase 49: represent only valid offscreen operations
+
+Compiled offscreen operations now use a dedicated descriptor with five variants:
+isolate, opacity, blend, filter and backdrop. Only the first three own a geometry
+draw; filters and backdrops no longer carry a dummy draw in the execution plan.
+The compiler resolves fusion exhaustively while source topology is available.
+Clips become stack entries and cannot be represented as offscreen descriptors.
+This removes `LayerError`, its native adapter unwrapping, the artificial invalid
+clip test, unused clip localization and the impossible scratch-capacity branch.
+Real adapter failures propagate directly. Recording commands still carry their
+older draw field; tracing that separate producer representation remains audit
+work. The transient compile result deliberately stays on the stack, avoiding an
+extra heap allocation for every offscreen layer.
+
+Localizers, filter resource cursors, capacity planning and retained descriptor
+patching consume the same typed descriptor. Retained updates patch the actual
+variant and recompile when the layer kind changes. Fused-layer eligibility is
+checked once against the old/new pair instead of repeating a kind-shape helper.
+Local coordinate conversion moves to its own module, keeping selection, copying
+and operation localization separate.
+
+Review exposes two actual coordinate bugs. Subtracting a negative surface origin
+from an extreme signed bound wrapped the upper edge to a negative value, turning
+a full clip into an empty one. Integer bound translation now projects onto the
+signed coordinate domain with saturating subtraction. Negating `i32::MIN` before
+casting also wrapped a path translation; conversion now precedes negation. Unit
+regressions fail before both fixes, and a Metal pixel regression first reproduces
+the disappearing content. It covers both origin signs on both axes and actual
+path/SDF clips. Fractional path edges prevent the rectangle recognition optimization
+from silently converting the path cases into SDFs. These changes fix the causes,
+without substitute pixels or compatibility behavior.
+
+New invariants cover empty/nonempty path and SDF clips at depths one and 129,
+including local compilation. A retained GPU test compares fresh and incremental
+pixels across eight clip/group/filter/backdrop descriptor states. Five new tests
+replace the one invalid-plan test. Actual Windows cross-compilation also exposes
+ambiguous generic byte comparisons in two cumsum assertions; explicit `u32` to
+`u8` casts make the existing semantic tests compile on every checked target.
+
+Final single-thread release tests pass 1126 cases, zero failures and zero ignored.
+The focused offscreen suite passes 27 tests and both clip pixel integration tests
+pass. All 1730 SVG PNGs, seven image examples and three card application images
+match baseline bytes. Native presentation completes eight frames with the
+expected resize. Formatting, release clippy, backend-free compilation and all
+examples pass; the existing one library/eight library-test lint warnings remain.
+DX12 and Vulkan Windows all-target release checks pass with the real pinned DXC.
+Their 84-entry DXIL and SPIR-V catalogs pass build-time resource ABI validation.
+This adds compilation/reflection evidence; actual Windows GPU execution remains
+separate work. Metal and backend-free artifact manifests are unchanged, and all
+three final application executables exactly match the hashes used for timing.
+Both website architecture guides document the representation and coordinate fix.
+
+The [application report](benchmarks/cleanup-phase49-metal-2026-10-12.json) retains
+144 whole-process observations with two warmups per label, ten alternating pairs
+per comparison and interleaved identical-current controls. The 1280x720 card
+application renders 48 cards, four clips per card and all offscreen operation
+kinds, plus alpha masks, across three parameter phases and 24 frames per process.
+Its integer rectangle path inputs use the normal SDF recognition optimization;
+the permanent regressions separately exercise actual path clips. SVG medians
+change 4428.213 to 4417.053 ms (-0.252%), control +0.099%; card medians change
+363.523 to 363.670 ms (+0.040%), control -4.086%; window medians change 235.570 to
+232.201 ms (-1.430%), control +0.347%. The paired median 95% descriptive bootstrap
+intervals include zero and overlap the controls. No stable material application
+timing regression is identified, and no isolated speedup is claimed.
+
+Validation is enabled for correctness and disabled for timing. Verification after
+every stopped timer checks 83040 SVG PNG hashes, 144 card PNG hashes, 1152 card
+frames and 384 window frames; SVG sources stay unchanged. Temporary Rust/Python
+measurement code and six copied executables are removed. All 55 benchmark
+JSON/gzip files parse and npm root declarations match package.json. All 977
+current implementation files are fully read; the remaining producer proofs and
+platform execution work continue separately.
+
 ## Remaining audit work
 
-- All current implementation files are fully read. The progressive/glass shader, SVG lowering, filter distance, text coordinate and retained layer descriptor cleanup are implemented and verified on Metal. Prove coarse stack emitter inputs, retained compiled membership bounds and other plan eligibility before removing their remaining substitutes. Test DX12 lock-poison policy and prove packed uniform handle presence. Trace exact retained metadata patching for clip-bound updates inside filters. The offscreen clip producer read proof is complete; add an invariant regression and remove its impossible error wrapper. Continue checking current Cargo/module reachability for retired code after the orphan example removal. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
+- All current implementation files are fully read. The progressive/glass shader, SVG lowering, filter distance, text coordinate, retained layer descriptor and typed offscreen cleanup are implemented and verified on Metal. Prove coarse stack emitter inputs, retained compiled membership bounds and other plan eligibility before removing their remaining substitutes. Test DX12 lock-poison policy and prove packed uniform handle presence. Trace exact retained metadata patching for clip-bound updates inside filters. Remove the recording command's filter/backdrop dummy draw after tracing its append, fingerprint and retained producers. Continue checking current Cargo/module reachability for retired code after the orphan example removal. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
 - Execute the HLSL editor test against the actual ShaderTools language server; local protocol regressions pass, but the server is unavailable locally.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

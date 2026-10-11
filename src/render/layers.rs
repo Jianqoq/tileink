@@ -10,17 +10,9 @@ use super::{
 };
 use crate::{
     Canvas,
-    shared::{execution::ExecPlan, layer::Layer},
+    shared::execution::{ExecPlan, OffscreenLayer},
 };
-
-#[derive(Debug, PartialEq)]
-pub(crate) enum LayerError<E> {
-    UnexpectedClip,
-    Adapter(E),
-}
-
-/// Keep layer semantics independent of the selected API. A fused clip is not a
-/// valid offscreen operation; rejecting it must not draw children or alter cursors.
+/// Execute the compiler's surface-owning operation, preserving adapter errors.
 pub(crate) fn execute<A: GroupAdapter + FilterAdapter + BackdropAdapter>(
     adapter: &mut A,
     canvas: &Canvas,
@@ -28,12 +20,12 @@ pub(crate) fn execute<A: GroupAdapter + FilterAdapter + BackdropAdapter>(
     op: Offscreen<'_>,
     target: RenderTargetId,
     cursors: &mut FilterCursors,
-) -> Result<(), LayerError<A::Error>> {
-    let (opacity, blend) = match op.layer {
-        Layer::Isolate => (None, None),
-        Layer::Opacity(layer) => (Some(layer.opacity), None),
-        Layer::Blend(layer) => (None, Some(layer.mode)),
-        Layer::Filter {
+) -> Result<(), A::Error> {
+    let (draw, opacity, blend) = match op.layer {
+        OffscreenLayer::Isolate { draw } => (*draw, None, None),
+        OffscreenLayer::Opacity { draw, opacity } => (*draw, Some(*opacity), None),
+        OffscreenLayer::Blend { draw, mode } => (*draw, None, Some(*mode)),
+        OffscreenLayer::Filter {
             filter,
             sample_region,
         } => {
@@ -50,10 +42,9 @@ pub(crate) fn execute<A: GroupAdapter + FilterAdapter + BackdropAdapter>(
                 },
                 target,
                 cursors,
-            )
-            .map_err(LayerError::Adapter);
+            );
         }
-        Layer::Backdrop {
+        OffscreenLayer::Backdrop {
             filter,
             sample_region,
         } => {
@@ -70,10 +61,8 @@ pub(crate) fn execute<A: GroupAdapter + FilterAdapter + BackdropAdapter>(
                 },
                 target,
                 cursors,
-            )
-            .map_err(LayerError::Adapter);
+            );
         }
-        Layer::Clip | Layer::ClipSdf { .. } => return Err(LayerError::UnexpectedClip),
     };
     groups::execute(
         adapter,
@@ -81,7 +70,7 @@ pub(crate) fn execute<A: GroupAdapter + FilterAdapter + BackdropAdapter>(
         plan,
         Group {
             retained_id: op.retained_id,
-            draw: op.draw,
+            draw,
             outer_stack: op.outer_stack,
             children: op.children,
             opacity,
@@ -90,7 +79,6 @@ pub(crate) fn execute<A: GroupAdapter + FilterAdapter + BackdropAdapter>(
         target,
         cursors,
     )
-    .map_err(LayerError::Adapter)
 }
 
 #[cfg(test)]

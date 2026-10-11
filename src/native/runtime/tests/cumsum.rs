@@ -88,7 +88,7 @@ fn cumsum_encodes_ordered_stages_and_guards_padded_two_dimensional_groups() {
         .1;
     assert_eq!(
         batch.resources()[config.index()].bytes(),
-        bytemuck::cast_slice(&[1u32, 5, 0, 0])
+        bytemuck::cast_slice::<u32, u8>(&[1, 5, 0, 0])
     );
     assert_eq!(batch.size(output.totals).unwrap(), 20);
     assert_eq!(batch.size(output.offsets).unwrap(), 20);
@@ -132,6 +132,6 @@ fn cumsum_accepts_empty_arena_rows_and_unowned_empty_chunks() {
         .1;
     assert_eq!(
         batch.resources()[config.index()].bytes(),
-        bytemuck::cast_slice(&[0u32, 1, 0, 0])
+        bytemuck::cast_slice::<u32, u8>(&[0, 1, 0, 0])
     );
 }

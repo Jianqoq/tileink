@@ -1,4 +1,5 @@
 use super::*;
+use crate::shared::execution::OffscreenLayer;
 use crate::shared::layer::mask::MaskKind;
 use peniko::{BlendMode, Compose, Mix};
 
@@ -538,18 +539,17 @@ fn compile_keeps_opacity_with_offscreen_child_isolated() {
     match &plan.ops[0] {
         ExecOp::OffscreenLayer {
             retained_id: _,
-            draw,
-            layer: Layer::Opacity(opacity),
+            layer: OffscreenLayer::Opacity { draw, opacity },
             outer_stack,
             children,
         } => {
             assert_eq!(*draw, 0);
-            assert_eq!(opacity.opacity, 0.5);
+            assert_eq!(*opacity, 0.5);
             assert!(outer_stack.is_empty());
             assert!(matches!(
                 children.as_slice(),
                 [ExecOp::OffscreenLayer {
-                    layer: Layer::Filter { .. },
+                    layer: OffscreenLayer::Filter { .. },
                     ..
                 }]
             ));
@@ -587,18 +587,17 @@ fn compile_keeps_blend_with_offscreen_child_isolated() {
     match &plan.ops[0] {
         ExecOp::OffscreenLayer {
             retained_id: _,
-            draw,
-            layer: Layer::Blend(blend),
+            layer: OffscreenLayer::Blend { draw, mode },
             outer_stack,
             children,
         } => {
             assert_eq!(*draw, 0);
-            assert_eq!(blend.mode, BlendMode::new(Mix::Multiply, Compose::SrcOver));
+            assert_eq!(*mode, BlendMode::new(Mix::Multiply, Compose::SrcOver));
             assert!(outer_stack.is_empty());
             assert!(matches!(
                 children.as_slice(),
                 [ExecOp::OffscreenLayer {
-                    layer: Layer::Filter { .. },
+                    layer: OffscreenLayer::Filter { .. },
                     ..
                 }]
             ));
@@ -625,8 +624,7 @@ fn compile_keeps_isolate_as_offscreen_layer() {
     match &plan.ops[0] {
         ExecOp::OffscreenLayer {
             retained_id: _,
-            draw,
-            layer: Layer::Isolate,
+            layer: OffscreenLayer::Isolate { draw },
             outer_stack,
             children,
         } => {

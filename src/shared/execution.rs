@@ -2,7 +2,10 @@
 mod batches;
 mod fragments;
 mod layer_stacks;
+mod layers;
 mod retained;
+
+pub(crate) use layers::OffscreenLayer;
 
 use batches::max_batch_id;
 use layer_stacks::{compact_layer_stacks, offset_layer_stack_ranges};
@@ -104,8 +107,7 @@ pub(crate) enum ExecOp {
     },
     OffscreenLayer {
         retained_id: Option<RetainedSurfaceId>,
-        draw: usize,
-        layer: Layer,
+        layer: OffscreenLayer,
         /// Ancestor clips only: opacity/blend ancestors with offscreen children
         /// own separate surfaces, so their groups never enter this range.
         outer_stack: Range<usize>,

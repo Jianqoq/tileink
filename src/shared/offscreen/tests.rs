@@ -1,4 +1,51 @@
 use super::*;
+
+#[test]
+fn world_edge_bounds_translate_without_wrapping_in_local_surfaces() {
+    let world = Bounds::new(i32::MIN, i32::MIN, i32::MAX, i32::MAX);
+    for (origin, expected) in [
+        (
+            (-8, -16),
+            Bounds::new(i32::MIN + 8, i32::MIN + 16, i32::MAX, i32::MAX),
+        ),
+        (
+            (8, 16),
+            Bounds::new(i32::MIN, i32::MIN, i32::MAX - 8, i32::MAX - 16),
+        ),
+    ] {
+        let local = LocalSpace::new(Bounds::new(origin.0, origin.1, 64, 64));
+        assert_eq!(local.bounds(world), expected);
+        let pixels = local.pixel_bounds(PixelBounds {
+            x0: world.x0,
+            y0: world.y0,
+            x1: world.x1,
+            y1: world.y1,
+        });
+        assert_eq!(
+            [pixels.x0, pixels.y0, pixels.x1, pixels.y1],
+            [expected.x0, expected.y0, expected.x1, expected.y1]
+        );
+    }
+}
+
+#[test]
+fn path_points_translate_from_the_minimum_world_origin_in_float_space() {
+    let local = LocalSpace::new(Bounds::new(
+        i32::MIN,
+        i32::MIN,
+        i32::MIN + 32,
+        i32::MIN + 32,
+    ));
+    let line = local.line(Line {
+        path_id: 7,
+        _pad: 0.0,
+        p0: [i32::MIN as f32; 2],
+        p1: [0.0; 2],
+    });
+    assert_eq!(line.p0, [0.0; 2]);
+    assert_eq!(line.p1, [2_147_483_648.0; 2]);
+    assert_eq!(line.path_id, 7);
+}
 use crate::shared::{
     execution::ROOT_COMMAND_LIST_ID, fill::FillRule, image::Image, image_resource::ImageKey,
 };
