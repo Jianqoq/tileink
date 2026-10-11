@@ -54,6 +54,9 @@ void coarse_emit_chunks(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID
     if (particle.valid) {
         DrawData draw = load_draw(draw_records, draw_index);
         flags = particle_class_flags(sdf_blob, config, draw, particle.tag);
+        if (wrappers == 0u && particle.tag == PTCL_COLOR && (particle.color >> 24u) == 255u
+            && particles.x + offset.x > coarse_work.Load(tile * COARSE_TILE_RECORD_STRIDE + COARSE_TILE_PTCL_START))
+            flags |= CHUNK_CLASS_OCCLUDER;
         if (particle.tag == PTCL_GLYPH) {
             particle.segments = uint2(glyphs.x + offset.y, glyphs.x + offset.y + particle.glyph_count);
             if (particle.segments.y <= glyphs.y) store_draw_glyphs(coarse_work, text_blob, config, draw, position, particle.segments.x);

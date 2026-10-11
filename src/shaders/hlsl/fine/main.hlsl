@@ -30,7 +30,7 @@ void fine_tile_main(uint3 group : SV_GroupID,uint3 local : SV_GroupThreadID) {
     if(tile.y>=config.tiles_height || xy.x>=config.width || xy.y>=config.height) return;
     FineInputs input;input.config=config;input.draws=draws;input.paint=paint;input.coarse=coarse;input.segments=segments;
     input.text=text;input.spills=spills;input.target=target;input.atlas=atlas;input.image_sampler=image_sampler;
-    uint kind=coarse.Load((config.fine_tile_kind_base+tile_ix)*4u);
+    uint kind=coarse.Load((config.fine_tile_kind_base+tile_ix)*4u) & TILE_KIND_MASK;
     float4 pixel=0.0;
     bool handled=false;
     if(kind==TILE_KIND_EMPTY) { pixel=fine_initial_pixel(input,xy.x,xy.y);handled=true; }

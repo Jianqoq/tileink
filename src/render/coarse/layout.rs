@@ -3,6 +3,8 @@ use crate::shared::{gpu_coarse::*, gpu_plan::GpuBufferLengths};
 /// Prove all monotonic packed offsets fit before the existing offset helpers run.
 /// This covers host usize overflow and HLSL's u32 byte addresses, including the
 /// trailing active-tile list. Record strides come from the canonical host layouts.
+/// The same byte bound limits particle capacity below 2^29, so a relative raster
+/// prefix fits in the fine descriptor's upper 29 bits without another buffer.
 pub(crate) fn validate_work_layout(lengths: GpuBufferLengths) -> Result<usize, &'static str> {
     let mut words = 0usize;
     for (count, stride) in [
@@ -31,6 +33,24 @@ pub(crate) fn validate_work_layout(lengths: GpuBufferLengths) -> Result<usize, &
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn every_addressable_particle_prefix_fits_the_fine_descriptor() {
+        let capacity = u32::MAX as usize / size_of::<u32>() / PTCL_RECORD_WORDS;
+        let lengths = GpuBufferLengths {
+            coarse_ptcl_capacity: capacity,
+            ..Default::default()
+        };
+        assert!(validate_work_layout(lengths).is_ok());
+        assert!(capacity <= (u32::MAX >> 3) as usize);
+        assert!(
+            validate_work_layout(GpuBufferLengths {
+                coarse_ptcl_capacity: capacity + 1,
+                ..Default::default()
+            })
+            .is_err()
+        );
+    }
+
     #[test]
     fn validation_covers_the_complete_shared_coarse_layout() {
         for count in [0, 1, 3, 257] {

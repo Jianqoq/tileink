@@ -3,6 +3,7 @@ using namespace metal;
 #include "config.metal"
 #include "classify.metal"
 #include "tile_classification.metal"
+#include "occlusion.metal"
 kernel void coarse_emit_chunk_tile_kinds(constant CoarseConfig& c [[buffer(0)]],
     const device uint* raw_draws [[buffer(1)]], const device uint* raw_sdf [[buffer(3)]],
     const device uint* raw_paths [[buffer(4)]], const device uint* raw_backdrops [[buffer(5)]],
@@ -25,6 +26,7 @@ kernel void coarse_emit_chunk_tile_kinds(constant CoarseConfig& c [[buffer(0)]],
             for (uint i = 0; i < work[range]; ++i) flags |= work[emit_base(c, work[range + 1] + i) + 6];
         }
         kind = tile_kind(flags);
+        if (flags & CHUNK_CLASS_OCCLUDER) kind |= occluded_particle_prefix(work, c, tile, work[tile * 6 + 2], wrappers) << TILE_PREFIX_SHIFT;
     }
     work[emit_base(c, c.emit_chunk_capacity) + tile] = kind;
 }

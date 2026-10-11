@@ -246,3 +246,9 @@ mod rect_pixels;
 
 #[path = "coarse_count/stroke.rs"]
 mod stroke;
+
+#[path = "coarse_count/occlusion.rs"]
+mod occlusion;
+
+#[path = "coarse_count/occlusion_pixels.rs"]
+mod occlusion_pixels;

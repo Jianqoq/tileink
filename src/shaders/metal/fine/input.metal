@@ -1,3 +1,4 @@
+#include "../shared/tile_kinds.metal"
 struct FineConfig {
     uint width,height,clear_color,tile_count,tiles_width,tiles_height,load_target;
     uint clip_spill_depth,group_spill_depth,ptcl_capacity,paint_sdf_shadow_base,paint_brush_base;
@@ -33,4 +34,8 @@ struct Particle {uint tag;int backdrop;uint rule,start,end,color;};
 Particle particle_at(FineInput input,uint index) {
     const device uint* p=input.coarse+input.config->tile_count*6+index*6;
     return {p[0],as_type<int>(p[1]),p[2],p[3],p[4],p[5]};
+}
+
+uint fine_tile_start(FineInput input,uint tile) {
+    return input.coarse[tile*6+1] + (input.coarse[input.config->fine_tile_kind_base+tile] >> TILE_PREFIX_SHIFT);
 }

@@ -1,6 +1,7 @@
 #ifndef TILEINK_HLSL_FINE_RECORDS_INCLUDED
 #define TILEINK_HLSL_FINE_RECORDS_INCLUDED
 #include "inputs.hlsli"
+#include "../shared/tile_kinds.hlsli"
 #include "../draw_records.hlsli"
 #include "../coarse_records.hlsli"
 #include "../shared/affine.hlsli"
@@ -19,6 +20,7 @@ FineDraw load_fine_draw(ByteAddressBuffer draws,uint index) {
 struct FineTile { uint ptcl_start,ptcl_end; };
 FineTile coarse_load_tile(FineInputs input,uint index) {
     uint2 span=input.coarse.Load2(index*COARSE_TILE_RECORD_STRIDE+COARSE_TILE_PTCL_START);
+    span.x += input.coarse.Load((input.config.fine_tile_kind_base+index)*4u) >> TILE_PREFIX_SHIFT;
     FineTile tile; tile.ptcl_start=span.x;tile.ptcl_end=span.y;return tile;
 }
 struct FineParticle { uint tag; int backdrop; uint fill_rule,segment_start,segment_end,color; };

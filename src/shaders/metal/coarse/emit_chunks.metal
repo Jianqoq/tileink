@@ -6,6 +6,7 @@ using namespace metal;
 #include "prefix_scan.metal"
 #include "emit_draw.metal"
 #include "emit_stack.metal"
+#include "occlusion.metal"
 
 kernel void coarse_emit_chunks(constant CoarseConfig& c [[buffer(0)]],
     const device uint* raw_draws [[buffer(1)]], const device uint* raw_text [[buffer(2)]], const device uint* raw_paint [[buffer(3)]],
@@ -44,6 +45,7 @@ kernel void coarse_emit_chunks(constant CoarseConfig& c [[buffer(0)]],
     if (p.valid) {
         DrawData d = load_draw(draws, index);
         flags = particle_flags(paint, c, d, p.tag);
+        if (!wrappers && p.tag == 2 && (p.color >> 24) == 255 && cursor + offset.x > work[tile * 6 + 1]) flags |= CHUNK_CLASS_OCCLUDER;
         if (p.tag == 10) {
             p.segments = uint2(glyph + offset.y, glyph + offset.y + p.glyph_count);
             if (p.segments.y <= glyph_end) store_glyphs(work, text, c, d, position, p.segments.x);

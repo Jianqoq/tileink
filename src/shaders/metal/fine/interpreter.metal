@@ -1,7 +1,7 @@
 float4 fine_pixel(FineInput input,texture2d_array<float> atlas,sampler sampling,constant TextureTable& table,
     float4 pixel,uint tile,uint lane,uint2 xy) {
     PixelStack stack={255,0,0,{255,255,255,255},{}};
-    uint start=input.coarse[tile*6+1],end=input.coarse[tile*6+2];
+    uint start=fine_tile_start(input,tile),end=input.coarse[tile*6+2];
     float2 position=float2(xy)+0.5f;
     for(uint i=start;i<end;++i) {
         Particle p=particle_at(input,i);

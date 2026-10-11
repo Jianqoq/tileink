@@ -7,6 +7,7 @@
 #include "emit_draw.hlsli"
 #include "emit_stack.hlsli"
 #include "tile_classification.hlsli"
+#include "occlusion.hlsli"
 
 ConstantBuffer<CoarseConfig> config : register(b0, space0);
 ByteAddressBuffer draw_records : register(t1, space0);
@@ -67,6 +68,15 @@ void coarse_emit(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {
         emit_stack_ends(config, coarse_work, layer_stack, draw_records, path_records, backdrops, segment_ranges, sdf_blob, particles.x, position);
         store_particle(coarse_work, config, particles.x + wrappers, PTCL_END, 0u, 0u, uint2(0u,0u), 0u);
     }
+    // All particle writes must be visible before one lane examines the stream.
+    if (wrappers == 0u) {
+        DeviceMemoryBarrierWithGroupSync();
+        if (local.x == 0u) {
+            uint skip = occluded_particle_prefix(coarse_work, config, tile, particles.x + 1u, wrappers);
+            coarse_work.Store(emit_base(config, config.emit_chunk_capacity) + tile * 4u,
+                TILE_KIND_INTERPRETER | (skip << TILE_PREFIX_SHIFT));
+        }
+    }
 }
 
 [numthreads(COARSE_WORKGROUP_SIZE,1,1)]
@@ -90,6 +100,7 @@ void coarse_emit_bins(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) 
     if (tile >= config.tile_count) return;
     uint kind_base = emit_base(config, config.emit_chunk_capacity) + tile * 4u;
     uint2 particles = coarse_work.Load2(tile * COARSE_TILE_RECORD_STRIDE + COARSE_TILE_PTCL_START);
+    uint raster_start = particles.x;
     uint2 glyphs = coarse_work.Load2(tile * COARSE_TILE_RECORD_STRIDE + COARSE_TILE_GLYPH_START);
     if (particles.x >= particles.y) { coarse_work.Store(kind_base, TILE_KIND_EMPTY); return; }
     uint wrappers = stack_wrapper_count(config, layer_stack, draw_records, path_records, backdrops, segment_ranges, sdf_blob, position);
@@ -110,6 +121,8 @@ void coarse_emit_bins(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) 
         if (particle.valid) {
             DrawData draw = load_draw(draw_records, draw_index);
             flags |= particle_class_flags(sdf_blob, config, draw, particle.tag);
+            if (wrappers == 0u && particle.tag == PTCL_COLOR && (particle.color >> 24u) == 255u && particles.x > raster_start)
+                flags |= CHUNK_CLASS_OCCLUDER;
             if (particle.tag == PTCL_GLYPH) {
                 particle.segments = uint2(glyphs.x, glyphs.x + particle.glyph_count);
                 if (particle.segments.y <= glyphs.y) store_draw_glyphs(coarse_work, text_blob, config, draw, position, particle.segments.x);
@@ -123,5 +136,7 @@ void coarse_emit_bins(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) 
     }
     emit_stack_ends(config, coarse_work, layer_stack, draw_records, path_records, backdrops, segment_ranges, sdf_blob, particles.x, position);
     store_particle(coarse_work, config, particles.x + wrappers, PTCL_END, 0u, 0u, uint2(0u,0u), 0u);
-    coarse_work.Store(kind_base, classify_tile_flags(flags));
+    uint skip = (flags & CHUNK_CLASS_OCCLUDER) != 0u
+        ? occluded_particle_prefix(coarse_work, config, tile, particles.x + wrappers + 1u, wrappers) : 0u;
+    coarse_work.Store(kind_base, classify_tile_flags(flags) | (skip << TILE_PREFIX_SHIFT));
 }

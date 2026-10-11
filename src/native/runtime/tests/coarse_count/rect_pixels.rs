@@ -2,7 +2,10 @@ use super::*;
 
 // Independent fine-only oracle: every draw is interpreted in every tile. It
 // bypasses coarse classification, so an incorrect full-tile proof changes pixels.
-fn interpret_rectangles(context: &crate::NativeContext, canvas: &crate::Canvas) -> Result<Vec<u8>> {
+pub(super) fn interpret_rectangles(
+    context: &crate::NativeContext,
+    canvas: &crate::Canvas,
+) -> Result<Vec<u8>> {
     use crate::native::runtime::compute::SamplerFilter;
     use crate::shared::{fine_config::FineConfig, gpu_constants::NATIVE_TEXTURE_TABLE_CAPACITY};
     let (width, height) = canvas.physical_size();

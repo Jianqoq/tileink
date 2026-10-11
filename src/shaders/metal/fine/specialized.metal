@@ -4,7 +4,7 @@
 // from its original destination; never blend an already-applied prefix twice.
 bool simple_tile_pixel(FineInput input,texture2d_array<float> atlas,sampler sampling,
     constant TextureTable& table,uint kind,uint tile,uint2 xy,thread float4& pixel) {
-    uint start=input.coarse[tile*6+1],end=input.coarse[tile*6+2];
+    uint start=fine_tile_start(input,tile),end=input.coarse[tile*6+2];
     float2 position=float2(xy)+0.5f;
     for(uint i=start;i<end;++i) {
         Particle p=particle_at(input,i);
@@ -24,7 +24,7 @@ bool simple_tile_pixel(FineInput input,texture2d_array<float> atlas,sampler samp
 
 float4 shade_tile_pixel(FineInput input,texture2d_array<float> atlas,sampler sampling,
     constant TextureTable& table,float4 initial,uint tile,uint lane,uint2 xy) {
-    uint kind=input.coarse[input.config->fine_tile_kind_base+tile];
+    uint kind=input.coarse[input.config->fine_tile_kind_base+tile] & TILE_KIND_MASK;
     if(kind==1) return initial;
     float4 pixel=initial;
     if(kind>=2 && kind<=4 && simple_tile_pixel(input,atlas,sampling,table,kind,tile,xy,pixel)) return pixel;

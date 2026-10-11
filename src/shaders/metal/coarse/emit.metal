@@ -6,6 +6,7 @@ using namespace metal;
 #include "prefix_scan.metal"
 #include "emit_draw.metal"
 #include "emit_stack.metal"
+#include "occlusion.metal"
 
 kernel void coarse_emit(constant CoarseConfig& c [[buffer(0)]],
     const device uint* raw_draws [[buffer(1)]], const device uint* raw_text [[buffer(2)]], const device uint* raw_paint [[buffer(3)]],
@@ -61,6 +62,13 @@ kernel void coarse_emit(constant CoarseConfig& c [[buffer(0)]],
         emit_stack(c, work, layers, draws, paths, backdrops, ranges, paint, cursor, position, true);
         store_particle(work, c, cursor + wrappers, 0, 0, 0, uint2(0), 0);
     }
+    if (!wrappers) {
+        threadgroup_barrier(mem_flags::mem_device);
+        if (!lane) {
+            uint skip = occluded_particle_prefix(work, c, tile, cursor + 1, wrappers);
+            work[emit_base(c, c.emit_chunk_capacity) + tile] = skip << TILE_PREFIX_SHIFT;
+        }
+    }
 }
 kernel void coarse_emit_bins(constant CoarseConfig& c [[buffer(0)]],
     const device uint* raw_draws [[buffer(1)]], const device uint* raw_text [[buffer(2)]], const device uint* raw_paint [[buffer(3)]],
@@ -95,6 +103,7 @@ kernel void coarse_emit_bins(constant CoarseConfig& c [[buffer(0)]],
     if (tile >= c.tile_count) return;
     uint kind = emit_base(c, c.emit_chunk_capacity) + tile;
     uint cursor = work[tile * 6 + 1], end = work[tile * 6 + 2];
+    uint raster_start = cursor;
     uint glyph = work[tile * 6 + 4], glyph_end = work[tile * 6 + 5];
     if (cursor >= end) { work[kind] = 1; return; }
     uint wrappers = wrapper_count(c, layers, draws, paths, backdrops, ranges, paint, position);
@@ -113,6 +122,7 @@ kernel void coarse_emit_bins(constant CoarseConfig& c [[buffer(0)]],
         if (p.valid) {
             DrawData d = load_draw(draws, index);
             flags |= particle_flags(paint, c, d, p.tag);
+            if (!wrappers && p.tag == 2 && (p.color >> 24) == 255 && cursor > raster_start) flags |= CHUNK_CLASS_OCCLUDER;
             if (p.tag == 10) {
                 p.segments = uint2(glyph, glyph + p.glyph_count);
                 if (p.segments.y <= glyph_end) store_glyphs(work, text, c, d, position, glyph);
@@ -125,5 +135,6 @@ kernel void coarse_emit_bins(constant CoarseConfig& c [[buffer(0)]],
     }
     emit_stack(c, work, layers, draws, paths, backdrops, ranges, paint, cursor, position, true);
     store_particle(work, c, cursor + wrappers, 0, 0, 0, uint2(0), 0);
-    work[kind] = tile_kind(flags);
+    uint skip = (flags & CHUNK_CLASS_OCCLUDER) ? occluded_particle_prefix(work, c, tile, cursor + wrappers + 1, wrappers) : 0;
+    work[kind] = tile_kind(flags) | (skip << TILE_PREFIX_SHIFT);
 }

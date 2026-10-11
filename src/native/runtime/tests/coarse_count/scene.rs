@@ -279,6 +279,14 @@ impl CountScene {
         entry: &'static str,
         grid: [u32; 3],
     ) -> Result<ComputeBatch> {
+        self.emit_batch_grid_repeated(entry, grid, 1)
+    }
+    pub(super) fn emit_batch_grid_repeated(
+        &self,
+        entry: &'static str,
+        grid: [u32; 3],
+        repetitions: usize,
+    ) -> Result<ComputeBatch> {
         let mut batch = ComputeBatch::new();
         let data: [(u32, &[u32]); 10] = [
             (0, &self.config),
@@ -299,12 +307,20 @@ impl CountScene {
         // SAFETY: all source references are initialized; store helpers enforce
         // physical stream capacities even when the logical range is truncated.
         unsafe {
-            batch.dispatch(entry, &bindings, grid)?;
+            for _ in 0..repetitions {
+                batch.dispatch(entry, &bindings, grid)?;
+            }
         }
         batch.readback(bindings[8].1)?;
         Ok(batch)
     }
     pub(super) fn emit_chunks_batch(&self) -> Result<ComputeBatch> {
+        self.emit_chunks_batch_with_kinds(false)
+    }
+    pub(super) fn emit_chunks_resolved_batch(&self) -> Result<ComputeBatch> {
+        self.emit_chunks_batch_with_kinds(true)
+    }
+    fn emit_chunks_batch_with_kinds(&self, resolve: bool) -> Result<ComputeBatch> {
         let mut batch = ComputeBatch::new();
         let data: [&[u32]; 10] = [
             &self.config,
@@ -346,6 +362,17 @@ impl CountScene {
                 [self.config[0].div_ceil(COARSE_WORKGROUP_SIZE) + 1, 1, 1],
             )?;
             batch.dispatch("coarse_emit_chunks", &emit_bindings, grid)?;
+            if resolve {
+                batch.dispatch(
+                    "coarse_emit_chunk_tile_kinds",
+                    &emit_bindings
+                        .iter()
+                        .copied()
+                        .filter(|(slot, _)| *slot != 2 && *slot != 9)
+                        .collect::<Vec<_>>(),
+                    [self.config[0].div_ceil(COARSE_WORKGROUP_SIZE) + 1, 1, 1],
+                )?;
+            }
         }
         batch.readback(buffers[8])?;
         Ok(batch)

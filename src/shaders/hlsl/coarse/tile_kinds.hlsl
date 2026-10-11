@@ -5,6 +5,7 @@
 #include "classify.hlsli"
 #include "draw_list.hlsli"
 #include "tile_classification.hlsli"
+#include "occlusion.hlsli"
 
 ConstantBuffer<CoarseConfig> config : register(b0, space0);
 ByteAddressBuffer draw_records : register(t1, space0);
@@ -31,6 +32,9 @@ void coarse_emit_chunk_tile_kinds(uint3 id : SV_DispatchThreadID) {
                 flags |= coarse_work.Load(emit_base(config, range.y + chunk) + COARSE_EMIT_CLASS_FLAGS);
         }
         kind = classify_tile_flags(flags);
+        if ((flags & CHUNK_CLASS_OCCLUDER) != 0u)
+            kind |= occluded_particle_prefix(coarse_work, config, id.x,
+                coarse_work.Load(id.x * COARSE_TILE_RECORD_STRIDE + COARSE_TILE_PTCL_END), wrappers) << TILE_PREFIX_SHIFT;
     }
     coarse_work.Store(emit_base(config, config.emit_chunk_capacity) + id.x * 4u, kind);
 }
