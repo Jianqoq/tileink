@@ -226,14 +226,8 @@ pub(crate) fn execute<A: FilterAdapter>(
             .retained()
             .active_tiles()
             .map_or_else(|| tile_count_for_bounds(local_bounds), DamageTiles::len);
-        let output = adapter
-            .take_scratch(output)
-            .expect("recorded filter output owns its scratch slot");
-        let source_history = source_history.map(|target| {
-            adapter
-                .take_scratch(target)
-                .expect("recorded filter history owns its scratch slot")
-        });
+        let output = adapter.take_scratch(output);
+        let source_history = source_history.map(|target| adapter.take_scratch(target));
         Ok((output, source_history, tiles))
     })();
     adapter.end_filter_scene(state);

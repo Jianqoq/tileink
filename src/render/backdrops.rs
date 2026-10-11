@@ -231,15 +231,9 @@ pub(crate) fn execute<A: BackdropAdapter>(
         // A composite error leaves complete source/filter/coverage images valid.
         // Errors during their construction take the cleanup path above instead.
         if cache_surface {
-            let output = a
-                .take_scratch(backdrop_slot.take().unwrap())
-                .expect("occupied backdrop output");
-            let history = a
-                .take_scratch(source_slot.take().unwrap())
-                .expect("occupied backdrop history");
-            let mask = mask_slot
-                .take()
-                .map(|slot| a.take_scratch(slot).expect("occupied backdrop coverage"));
+            let output = a.take_scratch(backdrop_slot.take().unwrap());
+            let history = a.take_scratch(source_slot.take().unwrap());
+            let mask = mask_slot.take().map(|slot| a.take_scratch(slot));
             a.retained_mut()
                 .cache_surface(layer.retained_id, meta, output, mask, Some(history));
         }

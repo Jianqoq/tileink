@@ -79,6 +79,26 @@ case. This does not establish a speedup or material regression. The Metal render
 execution path is unchanged in phase 2; probe-only allocations no longer upload
 unused source buffers. [Raw measurements and protocol](benchmarks/cleanup-phase2-metal-2026-10-11.json).
 
+## Phase 3: explicit scratch extraction ownership
+
+`SurfaceAdapter::take_scratch` now returns the occupied surface directly, matching
+its scheduler ownership contract. The native adapter no longer turns a slot error
+into `None`, and group/mask caching no longer silently disappears behind two
+optional results. Filters and backdrops use the same extraction contract. An
+attempt to extract a released slot identifies an internal scheduler bug instead
+of concealing it as a cache miss. This fixes the silent error conversion itself;
+it is not a temporary fallback.
+
+The regression test failed before the change and passes afterward. All 241
+focused layer scheduling tests pass. The complete single-thread release suite
+reports 960 passing tests and the same nine known failures described in phase 2.
+All 1730 SVG outputs and seven example images remain byte-identical to the initial
+cleanup baseline. Release Clippy passes without new warnings.
+
+The 13 paired real-renderer workloads again preserve exact pixels; p50 changes
+range from -0.84% to +0.73%. These measurements do not establish a material
+regression or speedup. [Raw measurements and protocol](benchmarks/cleanup-phase3-metal-2026-10-11.json).
+
 ## Remaining audit work
 
 - Contextless private paths still substitute CPU uploads for pooled surfaces, persistent buffers and shader resources. Make allocator requirements explicit and migrate their conformance tests before removal.

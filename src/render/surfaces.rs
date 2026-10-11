@@ -17,7 +17,9 @@ pub(crate) trait SurfaceAdapter: OperationAdapter {
     fn retained_mut(&mut self) -> &mut RetainedRenderState<Self::Surface>;
     fn acquire_scratch(&mut self) -> Result<RenderTargetId, Self::Error>;
     fn install_scratch(&mut self, target: RenderTargetId, surface: Self::Surface);
-    fn take_scratch(&mut self, target: RenderTargetId) -> Option<Self::Surface>;
+    /// Extract a successfully acquired, occupied slot. Missing ownership is a
+    /// scheduler invariant violation, never a reason to skip retained caching.
+    fn take_scratch(&mut self, target: RenderTargetId) -> Self::Surface;
     fn release_scratch(&mut self, target: RenderTargetId);
     fn clear_target(&mut self, target: RenderTargetId) -> Result<(), Self::Error>;
     fn clear_region(&mut self, target: RenderTargetId, bounds: Bounds) -> Result<(), Self::Error>;

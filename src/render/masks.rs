@@ -157,15 +157,9 @@ pub(crate) fn execute<A: MaskAdapter>(
             mask_slot = None;
             let content = adapter.take_scratch(content);
             let mask = adapter.take_scratch(mask);
-            if let (Some(content), Some(mask)) = (content, mask) {
-                adapter.retained_mut().cache_surface(
-                    op.retained_id,
-                    meta,
-                    content,
-                    Some(mask),
-                    None,
-                );
-            }
+            adapter
+                .retained_mut()
+                .cache_surface(op.retained_id, meta, content, Some(mask), None);
         }
         result
     })();

@@ -70,8 +70,10 @@ impl SurfaceAdapter for Execution<'_> {
             .install(self.batch, target, surface)
             .expect("validated native surface context");
     }
-    fn take_scratch(&mut self, target: RenderTargetId) -> Option<Surface> {
-        self.targets.take(target).ok()
+    fn take_scratch(&mut self, target: RenderTargetId) -> Surface {
+        self.targets
+            .take(target)
+            .expect("occupied native scratch slot")
     }
     fn release_scratch(&mut self, target: RenderTargetId) {
         self.targets

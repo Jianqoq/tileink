@@ -198,15 +198,9 @@ pub(crate) fn execute<A: GroupAdapter>(
             mask_slot = None;
             let source = adapter.take_scratch(source);
             let mask = adapter.take_scratch(mask);
-            if let (Some(source), Some(mask)) = (source, mask) {
-                adapter.retained_mut().cache_surface(
-                    group.retained_id,
-                    meta,
-                    source,
-                    Some(mask),
-                    None,
-                );
-            }
+            adapter
+                .retained_mut()
+                .cache_surface(group.retained_id, meta, source, Some(mask), None);
         }
         result
     })();

@@ -37,6 +37,35 @@ use crate::{
 };
 
 #[test]
+#[should_panic(expected = "occupied native scratch slot")]
+fn extracting_released_scratch_cannot_silently_discard_a_cache_entry() {
+    use crate::render::surfaces::SurfaceAdapter;
+    let mut batch = ComputeBatch::new();
+    let upload = Default::default();
+    let images = Images::record(&mut batch, &upload).unwrap();
+    let canvas = Canvas::new(4, 4, 1.0);
+    let mut cache = SceneCache::default();
+    let mut retained = Default::default();
+    let mut filter_scenes = super::filter_scenes::FilterSceneCache::default();
+    let mut execution = Execution::prepare(
+        cache.prepare(&canvas),
+        &mut batch,
+        super::FrameResources {
+            filter_scenes: filter_scenes.frame(),
+            images: &images,
+            text: None,
+            retained: &mut retained,
+        },
+        FrameOptions::default(),
+        65535,
+    )
+    .unwrap();
+    let slot = execution.acquire_scratch().unwrap();
+    execution.release_scratch(slot);
+    execution.take_scratch(slot);
+}
+
+#[test]
 fn frame_records_directly_into_supplied_target_without_full_frame_copy() -> Result<()> {
     use crate::native::runtime::compute::Command;
     let mut batch = ComputeBatch::new();

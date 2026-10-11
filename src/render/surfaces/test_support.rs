@@ -256,18 +256,15 @@ impl crate::render::surfaces::SurfaceAdapter for Adapter {
         };
         self.targets[slot] = Some(surface);
     }
-    fn take_scratch(&mut self, target: RenderTargetId) -> Option<Allocation> {
+    fn take_scratch(&mut self, target: RenderTargetId) -> Allocation {
         let RenderTargetId::Scratch(slot) = target else {
             panic!("scratch only")
         };
-        self.targets[slot].take()
+        self.targets[slot].take().expect("occupied scratch slot")
     }
     fn release_scratch(&mut self, target: RenderTargetId) {
         self.events.push(Event::Release(target));
-        assert!(
-            self.take_scratch(target).is_some(),
-            "release must own an occupied scratch slot"
-        );
+        self.take_scratch(target);
     }
     fn clear_target(&mut self, target: RenderTargetId) -> Result<(), Self::Error> {
         self.record(Event::Clear(target), "clear")
