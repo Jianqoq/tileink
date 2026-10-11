@@ -4,7 +4,7 @@ use crate::{
         Result,
         compute::{ComputeBatch, ResourceId},
     },
-    shared::{filter_config::FilterConfig, gpu_coarse::LayerStackRecord},
+    shared::filter_config::FilterConfig,
 };
 
 #[derive(Clone, Copy)]
@@ -42,46 +42,6 @@ impl Stack {
         }
     }
 
-    pub fn upload(
-        batch: &mut ComputeBatch,
-        geometry: Geometry,
-        layers: &[LayerStackRecord],
-    ) -> Result<Self> {
-        for (_, id) in geometry.bindings() {
-            batch.size(*id)?;
-        }
-        // Reject invalid opacity at the host boundary: integer pixel math assumes byte alpha.
-        if layers.iter().any(|layer| {
-            layer.tag == crate::shared::gpu_types::GPU_LAYER_OPACITY
-                && layer.payload > u32::from(u8::MAX)
-        }) {
-            return Err("layer opacity exceeds byte range".into());
-        }
-        let count = u32::try_from(layers.len())?;
-        if u64::from(count) * std::mem::size_of::<LayerStackRecord>() as u64 > u64::from(u32::MAX) {
-            return Err("layer stack raw address overflow".into());
-        }
-        let records: Vec<_> = layers
-            .iter()
-            .copied()
-            .map(|mut layer| {
-                if layer.draw >= geometry.draw_count() {
-                    layer.draw = u32::MAX;
-                }
-                layer
-            })
-            .collect();
-        let bytes = if records.is_empty() {
-            vec![0; std::mem::size_of::<LayerStackRecord>()]
-        } else {
-            bytemuck::cast_slice(&records).to_vec()
-        };
-        Ok(Self {
-            geometry,
-            layers: batch.buffer(bytes)?,
-            count,
-        })
-    }
     pub fn encode(
         &self,
         batch: &mut ComputeBatch,

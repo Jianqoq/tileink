@@ -1608,6 +1608,57 @@ six groups. Native CPU layer/stack upload helpers have only validation-test call
 an audit of active mask reference semantics are next. Actual DXC/ShaderTools and
 DX12/Vulkan execution remain unavailable; independent auditing continues.
 
+## Phase 35: delete dormant native layer upload frontends
+
+Geometry::upload, its CPU Scene slices and Stack::upload had no production
+callers. Their only caller was a validation test exercising that second frontend.
+Production already builds Geometry/Stack views from the owning Scene's uploaded
+draws, scan outputs, paint and layer records. Delete the dormant upload path,
+its duplicate validation/padding/copy logic and the test that kept it alive.
+Actual shared LayerStackRecord conversion tests continue checking draw identity,
+byte opacity and blend payloads. This permanently removes an unused alternative
+implementation; no compatibility adapter or replacement uploader is added.
+
+The active mask path also converted every missing logical draw into INVALID_INDEX
+and recorded transparent coverage. Replace that silent substitute with an error
+before allocating uniforms or recording a pass. The regression fails before the
+fix against actual SceneCache geometry, then passes for empty, one-draw and
+three-draw scenes. It rejects the first missing draw, the next index and u32::MAX,
+checks resource/pass counts stay unchanged, and accepts the last valid draw.
+Required physical ownership, alias, allocation and coordinate validation remains
+at the shared native boundary.
+
+Focused release tests pass the new regression, 39 scene tests and four current
+filter validation tests. The serial full all-target run passes 1067 tests, with
+the same three known failures: two unavailable pinned-DXC checks and the
+1600-pixel turbulence canonical comparison. One old-frontend test is deleted and
+one actual-path regression added. Formatting, release clippy, backend-free
+compilation and all example builds pass. Existing clippy warnings remain.
+Metal-validated rendering preserves all 1730 SVG fixture pixels and seven example
+images exactly; both artifact manifests match. Native presentation completes
+eight frames and the 640x360 to 480x270 resize.
+
+The [affected actual SVG application measurements](benchmarks/cleanup-phase35-metal-2026-10-12.json)
+retain 48 process observations: baseline/current and identical-current control,
+two warmups per label and ten alternating timed pairs per series. Every process
+loads and renders all 1730 fixtures. Medians change 4263.686 to 4264.850 ms
+(+0.03%), compared with +0.22% in the same-version control. This workload's
+central timing shows no material regression; the sample does not establish GPU
+stage cost, tail behavior or every application workload. Nearest-rank p95 is the
+maximum of ten observations; raw values and both tails remain in the report.
+Timing includes initialization, SVG parsing, rendering/completion, readback, PNG
+saving and teardown. All 83040 measured PNG hashes match the immutable baseline.
+Timing disables Metal validation; correctness runs enable it. The SVG application
+uses the system-default device on the freshly verified single-GPU Apple M5 host.
+
+Temporary scripts and copied measurement executables are removed. The audit has
+read 569 of 960 current implementation files, leaving 391 across six groups. Ten newly read layer/composite shader files reveal a
+fixed 64-group evaluator whose reachability needs a complete producer proof:
+normal compilation refuses to fuse opacity/blend around offscreen descendants.
+Retained edits, fragment replacement and filter localization still need semantic
+invariant tests before simplifying that shader. Actual DXC/ShaderTools and
+DX12/Vulkan execution remain unavailable; independent auditing continues.
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.

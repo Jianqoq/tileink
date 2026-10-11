@@ -118,3 +118,7 @@ mod work;
 use crate::shared::gpu_coarse::TileDrawRecord;
 #[cfg(test)]
 use work::tile_bin_dirty_updates;
+
+#[cfg(test)]
+#[path = "../tests/scene_filter_geometry.rs"]
+mod filter_geometry_tests;

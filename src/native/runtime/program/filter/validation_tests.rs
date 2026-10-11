@@ -1,6 +1,6 @@
-use super::{layer, rectangle, stack, surface};
+use super::{rectangle, surface};
 use crate::native::runtime::{Result, compute::ComputeBatch};
-use crate::shared::{filter_config::FilterConfig, gpu_coarse::LayerStackRecord};
+use crate::shared::filter_config::FilterConfig;
 
 fn pixel_config() -> FilterConfig {
     FilterConfig {
@@ -89,38 +89,6 @@ fn direct_composite_ignores_sdf_geometry_but_surface_bounds_are_checked() -> Res
     );
     surface::encode(&mut batch, pixel_config(), None, source, target)?;
     assert_eq!(batch.passes().len(), 2);
-    Ok(())
-}
-
-#[test]
-fn layer_upload_rejects_invalid_logical_ranges_and_opacity_before_allocating() -> Result<()> {
-    let mut batch = ComputeBatch::new();
-    assert!(
-        layer::Geometry::upload(
-            &mut batch,
-            layer::Scene {
-                backdrops: &[0],
-                ..Default::default()
-            }
-        )
-        .is_err()
-    );
-    assert!(batch.resources().is_empty());
-    let geometry = layer::Geometry::upload(&mut batch, layer::Scene::default())?;
-    let count = batch.resources().len();
-    let invalid = LayerStackRecord {
-        tag: crate::shared::gpu_types::GPU_LAYER_OPACITY,
-        draw: 0,
-        payload: 256,
-    };
-    assert!(stack::Stack::upload(&mut batch, geometry, &[invalid]).is_err());
-    assert_eq!(batch.resources().len(), count);
-    let valid = LayerStackRecord {
-        payload: 255,
-        ..invalid
-    };
-    let _ = stack::Stack::upload(&mut batch, geometry, &[valid])?;
-    assert_eq!(batch.resources().len(), count + 1);
     Ok(())
 }
 
