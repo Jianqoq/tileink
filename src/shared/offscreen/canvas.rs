@@ -151,12 +151,6 @@ fn translated_path_segment_capacity(canvas: &Canvas, path_id: usize, tile_bbox: 
         &canvas.lines[record.line_start as usize..(record.line_start + record.line_count) as usize];
     lines
         .iter()
-        .map(|line| {
-            crate::shared::scan_line::line_scanned_tile_count(
-                *line,
-                tile_bbox,
-                (canvas.width_in_tiles(), canvas.height_in_tiles()),
-            )
-        })
+        .map(|line| crate::shared::scan_line::line_scanned_tile_count(*line, tile_bbox))
         .sum()
 }

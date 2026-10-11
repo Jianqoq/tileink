@@ -3,17 +3,18 @@ use crate::{
     shared::{bounds::TileBbox, line::Line},
 };
 
-pub(crate) struct ScanLinePlan {
-    pub(crate) a: f32,
-    pub(crate) b: f32,
-    pub(crate) x0: f32,
-    pub(crate) sign: f32,
-    pub(crate) y0: f32,
-    pub(crate) imin: u32,
-    pub(crate) imax: u32,
+struct ScanLinePlan {
+    a: f32,
+    b: f32,
+    x0: f32,
+    sign: f32,
+    y0: f32,
+    imin: u32,
+    imax: u32,
 }
 
-pub(crate) fn line_scanned_tile_count(line: Line, bbox: TileBbox, _tiles_size: (u32, u32)) -> u32 {
+/// The already-clipped bbox owns the scan domain; canvas dimensions are unnecessary.
+pub(crate) fn line_scanned_tile_count(line: Line, bbox: TileBbox) -> u32 {
     let Some(plan) = plan_scan_line(line, bbox) else {
         return 0;
     };
@@ -141,4 +142,4 @@ fn span(a: f32, b: f32) -> u32 {
     (hi - lo).max(1.0) as u32
 }
 
-pub(crate) const TOP_TOUCH_EPSILON: f32 = 1.0e-12;
+const TOP_TOUCH_EPSILON: f32 = 1.0e-12;

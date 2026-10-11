@@ -1785,9 +1785,80 @@ transaction validation, journal-gap reconciliation, deferred resize metadata and
 input-domain damage rules preserve required semantics. Actual DXC/ShaderTools
 and DX12/Vulkan execution remain unavailable; independent auditing continues.
 
+## Phase 38: remove impossible query domains and duplicate geometry work
+
+Active batch queries receive damage, bins and complete draw membership for the
+same current scene. Scene upload validates damage dimensions before querying.
+DamageTiles clips and deduplicates its tile list; persistent/transient bin builders
+and mutation updates generate draw references from the current scene domain.
+Immediate compilation sizes membership to the whole draw arena, while retained
+painter metadata owns the same complete domain after fragment updates.
+
+The query nevertheless skipped missing tile and batch indices. Only a test-only
+query frontend supplied arbitrary tile 99, truncated membership and duplicate
+raw tile lists. Delete that frontend and the production skip branches. Existing
+tests now use the actual collect entry with DamageTiles and the owning Canvas
+and plan. Exact expected sets replace comparing the query against its own tile
+subroutine. Overlapping damage, multi-page and flat bins, sparse/dense selection,
+inactive/degenerate draws, repeated queries and generation wrap remain covered;
+one redundant deduplication test is removed. A new producer contract test passes
+before production edits and covers actual immediate/retained compilation,
+hidden layer records, three raster batches, partial edge tiles, clipped oversized
+damage and both bin storage modes. This permanently removes an unnecessary
+frontend and impossible-domain recovery; no substitute query path is added.
+
+Shared geometry reading also finds two consecutive identical degenerate-edge
+checks, with a wrapper whose only action was calling the next emitter. Merge
+them into one emission boundary. The new semantic test passes before the edit
+and verifies duplicate points, repeated ClosePath, real closing edges and path
+identity. Scan tile counting already receives its clipped bbox, so remove its
+unused canvas-dimensions argument and the parameters/calculations forwarding
+it through normal append, retained storage, offscreen translation and tests.
+ScanLinePlan and its epsilon are private implementation details. Actual
+zero-area geometry, clipping, numerical boundary rules and GPU guards retain
+their meaning; the scan algorithm and emitted path data are unchanged.
+
+Focused shared release tests pass 170 cases. The serial full all-target release
+run passes 1077 tests with the same three known failures: two unavailable
+pinned-DXC checks and the 1600-pixel turbulence canonical mismatch. Formatting,
+release clippy, backend-free compilation and all example builds pass; existing
+one library/eight test clippy warnings remain. Metal validation is enabled for
+correctness. All 1730 SVG fixture images and seven example outputs match their
+immutable baseline pixels exactly. Native presentation completes eight frames
+and its 640x360 to 480x270 resize. Both Metal artifact manifests match exactly;
+this phase changes no shader source or ABI.
+
+The [actual application measurements](benchmarks/cleanup-phase38-metal-2026-10-12.json)
+retain 96 whole-process observations across the SVG fixture application and
+native retained-window example. Each workload includes baseline/current and
+identical-current control series, two warmups per label and ten alternating
+timed pairs. SVG medians change 4285.083 to 4306.222 ms (+0.49%), compared with
++0.15% in its same-version control. Window medians change 233.174 to 232.836 ms
+(-0.15%), compared with -0.03% in its control. These applications show no material
+central timing regression; the observations do not establish an isolated query
+or scan speedup. Nearest-rank p95 is the maximum of ten samples; raw timings and
+both tails remain in the report.
+
+Timing includes initialization, rendering/completion and teardown; SVG also
+includes parsing, readback and PNG saving. Verification follows each stopped
+timer: all 83040 measured PNG hashes match the immutable baseline, and all 384
+window frames complete with the expected resize. The SVG source manifest is
+unchanged. Timing disables Metal validation. The window explicitly pins registry
+ID `0000000100000575`; SVG uses the default on the freshly verified single-GPU
+Apple M5 host. Temporary validation scripts and copied executables are removed.
+
+The audit has read 620 of 966 current implementation files, leaving 346 across
+four groups. Shared implementation/test files are now fully read. Historical
+inspection confirms that RectShadowOptions is only a compatibility alias for
+ShadowOptions; migration to the canonical type is next. Image upload also models
+an optional scene store although its only caller always supplies one. Offscreen
+clip exclusion still needs producer proof before removing its error wrapper.
+Actual DXC/ShaderTools and DX12/Vulkan execution remain unavailable; independent
+auditing continues.
+
 ## Remaining audit work
 
-- Continue auditing SVG/text semantics, native resource lifetime boundaries, shaders, render scheduling and shared geometry/data. Trace exact retained metadata patching for clip-bound updates inside filters and prove active-batch query bounds before removing skips. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
+- Continue auditing SVG/text semantics, native resource lifetime boundaries, shaders and render scheduling. Remove the confirmed RectShadowOptions compatibility alias and the always-present image-upload scene option. Trace exact retained metadata patching for clip-bound updates inside filters and prove offscreen clip exclusion before removing its error wrapper. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
 - Execute the HLSL editor test against the actual ShaderTools language server; local protocol regressions pass, but the server is unavailable locally.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

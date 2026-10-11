@@ -109,11 +109,10 @@ impl Canvas {
         line_count: u32,
         tile_bbox: crate::shared::bounds::TileBbox,
     ) -> u32 {
-        let tiles_size = (self.width_in_tiles(), self.height_in_tiles());
         self.lines[line_start as usize..(line_start + line_count) as usize]
             .iter()
             .fold(0u32, |capacity, &line| {
-                capacity.saturating_add(line_scanned_tile_count(line, tile_bbox, tiles_size))
+                capacity.saturating_add(line_scanned_tile_count(line, tile_bbox))
             })
     }
 }

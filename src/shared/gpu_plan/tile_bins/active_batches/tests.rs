@@ -73,8 +73,12 @@ fn dense_damage_matches_exact_bin_membership_including_inactive_and_degenerate_d
             holes.add_bounds(Bounds::new(256, 20, 768, 48));
             let mut sparse = DamageTiles::new(size);
             sparse.add_bounds(Bounds::new(8, 8, 9, 9));
-            for active in [full, holes, sparse, DamageTiles::new(size)] {
-                let expected = query.query_tiles(&bins, active.list(), &ids);
+            for (active, expected) in [
+                (full, expected),
+                (holes, if keyed { vec![7, 11] } else { vec![7, 11, 17] }),
+                (sparse, if keyed { vec![7, 23] } else { vec![7, 17, 23] }),
+                (DamageTiles::new(size), vec![]),
+            ] {
                 assert_eq!(query.collect(&bins, &canvas, &plan, &active), expected);
             }
             query.generation = u32::MAX;
@@ -101,11 +105,13 @@ fn active_batches_preserve_exact_sets_for_flat_and_paged_bins() {
     for _ in 0..=COARSE_CHUNK_SIZE {
         canvas.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::ZERO, Color::BLACK);
     }
-    let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+    let mut plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
     let mut ids = vec![7; canvas.draw_records.len()];
     ids[1] = 3;
     ids[2] = u32::MAX;
     *ids.last_mut().unwrap() = 11;
+    plan.draw_batch_ids = std::rc::Rc::new(ids);
+    let size = (crate::TILE_SIZE * 3, crate::TILE_SIZE);
     for flat in [false, true] {
         let mut bins = build_tile_draw_bins(&canvas);
         let mut query = ActiveBatches::default();
@@ -120,43 +126,28 @@ fn active_batches_preserve_exact_sets_for_flat_and_paged_bins() {
             );
         }
         assert_eq!(bins.page_arena_valid, !flat);
-        assert_eq!(
-            query.query_tiles(&bins, &[1, 0, 1, 2, 99], &ids),
-            [3, 7, 11]
+        let mut overlap = DamageTiles::new(size);
+        for bounds in [
+            Bounds::new(16, 0, 32, 16),
+            Bounds::new(0, 0, 48, 16),
+            Bounds::new(16, 0, 32, 16),
+        ] {
+            overlap.add_bounds(bounds);
+        }
+        assert_eq!(query.collect(&bins, &canvas, &plan, &overlap), [3, 7, 11]);
+        let mut second = DamageTiles::new(size);
+        second.add_bounds(Bounds::new(16, 0, 32, 16));
+        assert_eq!(query.collect(&bins, &canvas, &plan, &second), [3, 7]);
+        let mut inactive = DamageTiles::new(size);
+        inactive.add_bounds(Bounds::new(32, 0, 48, 16));
+        assert!(query.collect(&bins, &canvas, &plan, &inactive).is_empty());
+        assert!(
+            query
+                .collect(&bins, &canvas, &plan, &DamageTiles::new(size))
+                .is_empty()
         );
-        assert_eq!(query.query_tiles(&bins, &[1], &ids), [3, 7]);
-        assert!(query.query_tiles(&bins, &[2, 99], &ids).is_empty());
-        assert!(query.query_tiles(&bins, &[], &ids).is_empty());
-        assert!(query.query_tiles(&bins, &[0], &[]).is_empty());
-        assert_eq!(query.query_tiles(&bins, &[0, 1], &ids[..1]), [7]);
         query.generation = u32::MAX;
         query.marks.fill(1);
-        assert_eq!(query.query_tiles(&bins, &[0, 1], &ids), [3, 7, 11]);
+        assert_eq!(query.collect(&bins, &canvas, &plan, &overlap), [3, 7, 11]);
     }
-}
-#[test]
-fn active_batch_ids_deduplicate_with_reusable_generation_marks() {
-    let mut canvas = Canvas::new(crate::TILE_SIZE * 3, crate::TILE_SIZE, 1.0);
-    canvas.push_rect(
-        Rect::new(0.0, 0.0, 32.0, 16.0),
-        crate::Radius::ZERO,
-        Color::BLACK,
-    );
-    canvas.push_rect(
-        Rect::new(16.0, 0.0, 32.0, 16.0),
-        crate::Radius::ZERO,
-        Color::WHITE,
-    );
-    canvas.push_rect(
-        Rect::new(32.0, 0.0, 48.0, 16.0),
-        crate::Radius::ZERO,
-        Color::BLACK,
-    );
-    let bins = build_tile_draw_bins(&canvas);
-    let mut query = ActiveBatches::default();
-    let batches = [7, 3, u32::MAX];
-
-    assert_eq!(query.query_tiles(&bins, &[0, 1], &batches), [3, 7]);
-    assert!(query.query_tiles(&bins, &[2], &batches).is_empty());
-    assert_eq!(query.query_tiles(&bins, &[1], &batches), [3, 7]);
 }

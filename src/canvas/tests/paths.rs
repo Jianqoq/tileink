@@ -128,13 +128,7 @@ fn push_path_reserves_segment_capacity_from_scan_tile_count() {
     let expected = canvas
         .lines
         .iter()
-        .map(|&line| {
-            line_scanned_tile_count(
-                line,
-                tile_bbox,
-                (canvas.width_in_tiles(), canvas.height_in_tiles()),
-            )
-        })
+        .map(|&line| line_scanned_tile_count(line, tile_bbox))
         .sum::<u32>();
 
     assert_eq!(record.segment_capacity, expected);

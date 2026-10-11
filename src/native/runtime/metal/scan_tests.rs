@@ -88,7 +88,6 @@ fn scan_count_matches_cpu_clipped_tile_counts_and_keeps_guards() -> Result<()> {
                         x1: 8,
                         y1: 8
                     },
-                    (8, 8),
                 ),
                 "{a:?} -> {b:?}"
             );

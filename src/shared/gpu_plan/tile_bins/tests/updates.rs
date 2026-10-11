@@ -164,12 +164,16 @@ fn dense_retained_spatial_change_stays_flat_only_while_geometry_keeps_moving() {
     assert_eq!(lengths.tile_draw_index_count, 4);
     assert!(bins.take_dirty().0);
     assert_eq!(
-        crate::shared::gpu_plan::ActiveBatches::default().query_tiles(
+        crate::shared::gpu_plan::ActiveBatches::default().collect(
             &bins,
-            &[0, 1, 2, 3, 4],
-            &[9; 4]
+            &moved,
+            &moved_plan,
+            &crate::render::damage_tiles::DamageTiles::full((
+                crate::TILE_SIZE * 5,
+                crate::TILE_SIZE
+            )),
         ),
-        vec![9]
+        vec![moved.painter.batch_ids[0]]
     );
 
     let mut moved_again = Canvas::new(crate::TILE_SIZE * 5, crate::TILE_SIZE, 1.0);

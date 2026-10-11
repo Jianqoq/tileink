@@ -11,6 +11,8 @@ pub(crate) struct ActiveBatches {
 }
 
 impl ActiveBatches {
+    /// Bins, membership and damage describe the same scene. Scene upload validates
+    /// damage dimensions once; every generated tile/draw index is in that domain.
     pub(crate) fn collect(
         &mut self,
         bins: &TileDrawBins,
@@ -71,9 +73,7 @@ impl ActiveBatches {
         canvas: &Canvas,
         active: &DamageTiles,
     ) {
-        let Some(&batch) = ids.get(draw) else {
-            return;
-        };
+        let batch = ids[draw];
         if batch == u32::MAX || self.marks.get(batch as usize) == Some(&self.generation) {
             return;
         }
@@ -87,24 +87,17 @@ impl ActiveBatches {
     }
 
     fn collect_tiles(&mut self, bins: &TileDrawBins, tiles: &[u32], ids: &[u32]) {
-        let mut mark = |draw| {
-            if let Some(&batch) = ids.get(draw as usize) {
-                self.mark(batch);
-            }
-        };
+        let mut mark = |draw| self.mark(ids[draw as usize]);
         if bins.page_arena_valid {
             for &draw in tiles
                 .iter()
-                .filter_map(|&tile| bins.tile_refs.get(tile as usize))
-                .flatten()
+                .flat_map(|&tile| &bins.tile_refs[tile as usize])
             {
                 mark(draw);
             }
         } else {
             for &tile in tiles {
-                if (tile as usize) < bins.records.len() {
-                    bins.for_each_tile_draw(tile as usize, &mut mark);
-                }
+                bins.for_each_tile_draw(tile as usize, &mut mark);
             }
         }
     }
@@ -113,19 +106,10 @@ impl ActiveBatches {
         self.batches.sort_unstable();
         self.batches.clone()
     }
-
-    #[cfg(test)]
-    pub(super) fn query_tiles(
-        &mut self,
-        bins: &TileDrawBins,
-        tiles: &[u32],
-        ids: &[u32],
-    ) -> Vec<u32> {
-        self.begin();
-        self.collect_tiles(bins, tiles, ids);
-        self.finish()
-    }
 }
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod producer_tests;

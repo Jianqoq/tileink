@@ -223,8 +223,6 @@ impl Canvas {
         &self,
         record: &PathRecord,
         tile_bbox: crate::shared::bounds::TileBbox,
-        width_in_tiles: u32,
-        height_in_tiles: u32,
     ) -> u32 {
         if record.transform != GpuAffine::IDENTITY {
             // A transformed line can visit at most every row and column in its clipped path box.
@@ -239,11 +237,7 @@ impl Canvas {
         self.lines[record.line_start as usize..(record.line_start + record.line_count) as usize]
             .iter()
             .fold(0u32, |capacity, &line| {
-                capacity.saturating_add(line_scanned_tile_count(
-                    line,
-                    tile_bbox,
-                    (width_in_tiles, height_in_tiles),
-                ))
+                capacity.saturating_add(line_scanned_tile_count(line, tile_bbox))
             })
     }
 
@@ -414,12 +408,7 @@ impl Canvas {
                 .unwrap_or_else(|| self.path_pixel_bounds(&record));
             let tile_bbox = pixel_bounds.tile_bbox(width_in_tiles, height_in_tiles);
             let data_len = tile_bbox.tile_count();
-            let segment_capacity = self.segment_capacity_for_path_record(
-                &record,
-                tile_bbox,
-                width_in_tiles,
-                height_in_tiles,
-            );
+            let segment_capacity = self.segment_capacity_for_path_record(&record, tile_bbox);
             let record = &mut self.path_records[path_ix];
             record.data_offset = data_offset;
             record.data_len = data_len;

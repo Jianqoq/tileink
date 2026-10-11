@@ -62,14 +62,8 @@ fn is_open_contour_close(start: Point, end: Point) -> bool {
     dx * dx + dy * dy > 1.0e-6 * 1.0e-6
 }
 
+// One emission boundary applies the degenerate-edge rule to every flattened segment.
 fn push_line_segment(out: &mut Vec<Line>, path_id: u32, p0: Point, p1: Point) {
-    if !is_non_degenerate_line(p0, p1) {
-        return;
-    }
-    push_flat_line(out, path_id, p0, p1);
-}
-
-fn push_flat_line(out: &mut Vec<Line>, path_id: u32, p0: Point, p1: Point) {
     if !is_non_degenerate_line(p0, p1) {
         return;
     }
@@ -140,6 +134,24 @@ mod tests {
         PathFlatten::new(&path, 0.1, 0).flatten(&mut lines);
 
         assert_eq!(lines.len(), 4);
+    }
+
+    #[test]
+    fn duplicate_points_and_repeated_close_preserve_only_real_edges() {
+        let path = BezPath::from_vec(vec![
+            PathEl::MoveTo((0.0, 0.0).into()),
+            PathEl::LineTo((0.0, 0.0).into()),
+            PathEl::LineTo((10.0, 0.0).into()),
+            PathEl::LineTo((10.0, 0.0).into()),
+            PathEl::ClosePath,
+            PathEl::ClosePath,
+        ]);
+        let mut lines = Vec::new();
+        PathFlatten::new(&path, 0.1, 7).flatten(&mut lines);
+        assert_eq!(lines.len(), 2);
+        assert_eq!((lines[0].p0, lines[0].p1), ([0.0, 0.0], [10.0, 0.0]));
+        assert_eq!((lines[1].p0, lines[1].p1), ([10.0, 0.0], [0.0, 0.0]));
+        assert!(lines.iter().all(|line| line.path_id == 7));
     }
 
     #[test]
