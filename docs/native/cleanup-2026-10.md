@@ -1066,6 +1066,62 @@ inventory. Nine current file groups remain pending; the repository-wide audit
 is still in progress. Newly confirmed ignored incremental configuration and
 test-only retired planner implementations are recorded for the next cleanup.
 
+## Phase 27: remove unused incremental controls and retired test implementations
+
+`CoarseBinningMode` and `coarse_binning` had no production consumer. The
+direct-render exit ratio/frame controls were consumed only by a test-only
+transient-output planner; production never emitted `DirectTransient` or
+`RebuildHistory`. Those controls, variants and the retired planner are removed,
+along with the test-only `ActiveScanPlan`/`append_cumsum_path` implementation and
+their three self-contained tests. Seven public statistics fields with no
+producers are also removed: `dense_coarse_batches`, `scanned_paths`,
+`scanned_lines`, `scan_chunks`, `filter_dispatches`, `compact_filter_dispatches`
+and `reused_compiled_plan`. Current native history routes, path allocation and
+scan execution retain their algorithms. No compatibility aliases are added.
+
+The unused direct-render policy also caused a real configuration bug: its
+default exit ratio of 0.4 rejected otherwise valid full-redraw thresholds at or
+below 0.4. A release regression reproduced that rejection before removal. The
+remaining validation now accepts every finite threshold in `(0, 1]` and still
+rejects invalid values. This fixes the cause, rather than adding another default
+or special case. The obsolete Wasm-specific texture-budget branch is removed;
+the native budget remains 256 MiB.
+
+The former 1038-line incremental module now owns current damage planning, with
+separate configuration/diagnostics and snapshot-comparison modules. Tests are
+split by owner. Structural review confirms that all preserved algorithm and test
+bodies are unchanged, apart from the intended configuration default/validation
+cleanup. The snapshot-comparison route still has live dependency-damage
+responsibilities; its version and backdrop-cache contracts need further audit
+before determining whether it can be removed.
+
+Two new configuration tests cover accepted thresholds and invalid-domain edges.
+Two new actual Metal tests pass both before and after cleanup: they check owned,
+tracked, persistent, transient and nonzero-origin output routes, repeat-frame
+statistics and pixels, plus persistent path holes, growing allocations and
+subsequent motion against fresh rendering. All 28 focused release tests pass,
+including the five current native scan tests. The final full serial release suite
+including ignored tests reports 1048 passes and the same three known failures
+described in phase 12. All twelve Metal example tests, formatting, backend-free
+checking and release Clippy pass with no new warnings.
+
+All 1730 SVG images and seven example PNGs match the baseline exactly. The
+validated Metal window completes eight frames and its 640x360 to 480x270 resize;
+both active Metal manifests remain byte-identical. The
+[existing window application's whole-process measurement](benchmarks/cleanup-phase27-metal-2026-10-11.json)
+uses two warmup processes per variant and ten alternating timed pairs. Its
+median changes from 227.88 to 223.16 ms (-2.07%); nearest-rank p95 changes from
+231.80 to 227.36 ms. Every measured process completes all eight frames and the
+resize. These timings include initialization, cached shader loading, rendering,
+presentation and teardown; no GPU or frame-time speedup is claimed. Temporary
+baseline executable and source backups are removed. Actual DXC and DX12/Vulkan
+GPU execution remain unavailable.
+
+Complete reads of more scheduling/resource files also identified three repeated
+filter-resource traversals and upload repacking. That independent cleanup is
+recorded for the next stage. Eight current implementation groups still contain
+unread files; the repository-wide audit remains in progress.
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.

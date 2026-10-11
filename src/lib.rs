@@ -25,8 +25,8 @@ pub use cosmic_text::{
 };
 pub use pixel_grid::{PixelGrid, uniform_axis_scale};
 pub use render::incremental::{
-    CoarseBinningMode, FullRedrawReason, IncrementalOutputMode, IncrementalRenderConfig,
-    IncrementalRenderMode, IncrementalRenderStats,
+    FullRedrawReason, IncrementalOutputMode, IncrementalRenderConfig, IncrementalRenderMode,
+    IncrementalRenderStats,
 };
 pub use render::output::ExternalTextureHistoryId;
 pub use retained_scene::{

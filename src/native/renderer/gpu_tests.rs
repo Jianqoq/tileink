@@ -1,5 +1,7 @@
 use super::*;
 
+mod incremental;
+
 fn context() -> Result<NativeContext, Box<dyn std::error::Error>> {
     #[cfg(feature = "dx12")]
     let backend = crate::NativeBackend::Dx12;
