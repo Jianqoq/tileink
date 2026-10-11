@@ -140,7 +140,7 @@ fn a_new_generation_cannot_reuse_the_previous_group_image() {
     let (canvas, plan) = fixture();
     let mut adapter = Adapter::new(&canvas, RetainedSurfaceKind::Group);
     adapter.cached();
-    adapter.retained.begin_frame(Some(frame(2)), &canvas, false);
+    adapter.retained.begin_frame(Some(frame(2)), &canvas);
     execute(
         &mut adapter,
         &canvas,

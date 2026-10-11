@@ -137,7 +137,7 @@ pub struct IncrementalRenderStats {
     pub history_copied_to_output: bool,
     /// Queue submissions issued by the renderer for the frame, excluding diagnostic readbacks.
     pub queue_submissions: u32,
-    /// Exact active tile IDs captured for profiler/diagnostic frames.
+    /// Exact active tile IDs when `capture_active_tiles` is enabled.
     pub active_tiles: Vec<u32>,
     /// Coalesced pixel-space regions for [`Self::active_tiles`].
     pub active_tile_bounds: Vec<Bounds>,

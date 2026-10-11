@@ -275,7 +275,7 @@ fn mask_generation_change_replaces_cached_images() {
     let (canvas, plan) = mask_fixture();
     let mut a = Adapter::new(&canvas, RetainedSurfaceKind::Mask);
     a.cached();
-    a.retained.begin_frame(Some(frame(2)), &canvas, false);
+    a.retained.begin_frame(Some(frame(2)), &canvas);
     render(&mut a, &canvas, &plan, &layer(MaskKind::Alpha), true).unwrap();
     assert!(
         !a.events

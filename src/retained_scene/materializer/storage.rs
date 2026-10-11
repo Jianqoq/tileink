@@ -282,7 +282,6 @@ impl PersistentSceneMaterializer {
         changes.plan_structure_reused = false;
         changes.plan_values_patched = false;
         changes.plan_layer_stack.clear();
-        changes.filter_resources_changed = false;
         changes.arena_live_bytes = arena_live_bytes;
         changes.arena_capacity_bytes = arena_capacity_bytes;
         changes.arena_fragmentation = arena_fragmentation;

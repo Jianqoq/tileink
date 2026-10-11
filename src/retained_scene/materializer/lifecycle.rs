@@ -134,13 +134,8 @@ impl PersistentSceneMaterializer {
             && self.spatial_tiles_size
                 != (self.canvas.width_in_tiles(), self.canvas.height_in_tiles())
         {
-            let spatial_profile =
-                crate::render::profile::cpu::start_cpu_scope("retained.materialize.spatial_index");
             self.rebuild_spatial_index(scene);
-            drop(spatial_profile);
         }
-        let analysis_profile =
-            crate::render::profile::cpu::start_cpu_scope("retained.materialize.analysis");
         // Scoped membership depends on chunk dependencies and ancestry, not ordinary
         // parameter revisions. Snapshot affected OLD members before editing the
         // index; checking the new members after rebuild avoids an O(backdrops)
@@ -322,9 +317,6 @@ impl PersistentSceneMaterializer {
         let mut chunks_rebuilt = 0;
         let mut position_plan_patches = Vec::new();
         let mut unpatchable_plan_change = changes.topology_changed || surface_plan_changed;
-        drop(analysis_profile);
-        let chunk_profile =
-            crate::render::profile::cpu::start_cpu_scope("retained.materialize.chunks");
         for id in &changes.removed_nodes {
             if let Some(chunk) = self.chunks.remove(id) {
                 self.remove_chunk(chunk);
@@ -399,15 +391,11 @@ impl PersistentSceneMaterializer {
                 commands_dirty = true;
             }
         }
-        drop(chunk_profile);
         let mut surface_resized_painter_nodes =
             std::mem::take(&mut self.surface_resized_painter_nodes);
         surface_resized_painter_nodes.clear();
         if surface_changed {
-            let resize_profile =
-                crate::render::profile::cpu::start_cpu_scope("retained.materialize.resize_surface");
             self.resize_surface_chunks(scene, &mut surface_resized_painter_nodes);
-            drop(resize_profile);
         }
         self.dependency_free = self.layer_nodes.is_empty() && self.nonlocal_dependencies.is_empty();
         if scoped_dependencies_changed
@@ -420,8 +408,6 @@ impl PersistentSceneMaterializer {
             self.scoped_backdrop = self.has_scoped_backdrop(scene);
             self.rebuild_backdrop_order(scene);
         }
-        let plan_profile =
-            crate::render::profile::cpu::start_cpu_scope("retained.materialize.plan_sync");
         let mut plain_topology_candidate =
             changes.topology_changed && removed_plain_leaves && !root_reorder_candidate;
         let mut topology_batch_updates = Vec::new();
@@ -542,11 +528,7 @@ impl PersistentSceneMaterializer {
             plan_dirty = false;
         }
         if scene_data_changed {
-            let sync_profile = crate::render::profile::cpu::start_cpu_scope(
-                "retained.materialize.sync_canvas_data",
-            );
             self.sync_canvas_data(chunks_rebuilt, false);
-            drop(sync_profile);
             Rc::make_mut(&mut self.canvas)
                 .buffer_changes
                 .as_mut()
@@ -810,10 +792,6 @@ impl PersistentSceneMaterializer {
             } else {
                 Vec::new()
             };
-            buffer_changes.filter_resources_changed = layer_plan_patched
-                && layer_plan_patches.iter().any(|(_, old, new)| {
-                    command_has_filter_resources(old) || command_has_filter_resources(new)
-                });
             buffer_changes.plan_fragments_rebuilt = if position_plan_patched {
                 position_plan_patches.len() as u32
             } else if layer_plan_patched {
@@ -847,7 +825,6 @@ impl PersistentSceneMaterializer {
                 &changes.removed_nodes,
             );
         }
-        drop(plan_profile);
         if old_input_domains
             .iter()
             .any(|&(id, old)| old.is_none() || old != self.layer_input_isolated(id))
@@ -857,8 +834,6 @@ impl PersistentSceneMaterializer {
             // after both patch and full command-rebuild paths have converged.
             scoped_sources = None;
         }
-        let frame_profile =
-            crate::render::profile::cpu::start_cpu_scope("retained.materialize.frame");
         Rc::make_mut(&mut self.canvas).plan_cache_key = Some(self.plan_cache_key);
         let canvas = Rc::make_mut(&mut self.canvas);
         canvas.invalidated_bounds.clear();
@@ -948,7 +923,6 @@ impl PersistentSceneMaterializer {
             scoped_sources,
             old_structural_damage,
         );
-        drop(frame_profile);
         self.sync_node_metadata(scene, &changes);
         self.surface_resized_painter_nodes = surface_resized_painter_nodes;
         self.version = scene.version;

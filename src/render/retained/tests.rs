@@ -46,7 +46,7 @@ fn frame(revision: u64, bounds: Bounds) -> RetainedFrame {
 }
 
 fn commit(state: &mut RetainedRenderState<Allocation>, frame: &RetainedFrame) {
-    let plan = state.begin_frame(Some(frame.clone()), &Canvas::new(128, 64, 1.0), false);
+    let plan = state.begin_frame(Some(frame.clone()), &Canvas::new(128, 64, 1.0));
     state.finish_frame(plan, true, true);
 }
 
@@ -57,14 +57,14 @@ fn failed_frames_do_not_commit_damage_and_retry_rebuilds_history() {
     let old = frame(1, Bounds::new(0, 0, 16, 16));
     let new = frame(2, Bounds::new(16, 0, 32, 16));
     commit(&mut state, &old);
-    let failed = state.begin_frame(Some(new.clone()), &canvas, false);
+    let failed = state.begin_frame(Some(new.clone()), &canvas);
     assert_eq!(failed.stats.changed_tiles, 2);
     state.finish_frame(failed, false, false);
-    let retry = state.begin_frame(Some(new.clone()), &canvas, false);
+    let retry = state.begin_frame(Some(new.clone()), &canvas);
     assert!(retry.stats.full_redraw);
     assert_eq!(retry.stats.changed_tiles, 2);
     state.finish_frame(retry, true, true);
-    let unchanged = state.begin_frame(Some(new), &canvas, false);
+    let unchanged = state.begin_frame(Some(new), &canvas);
     assert_eq!(unchanged.stats.dirty_tiles, 0);
     state.finish_frame(unchanged, true, true);
 }
@@ -78,15 +78,15 @@ fn persistent_history_requires_the_same_owner_and_successful_update() {
     state.set_history_owner(owner);
     commit(&mut state, &frame);
     state.set_history_owner(owner);
-    let unchanged = state.begin_frame(Some(frame.clone()), &canvas, false);
+    let unchanged = state.begin_frame(Some(frame.clone()), &canvas);
     assert_eq!(unchanged.stats.dirty_tiles, 0);
     state.finish_frame(unchanged, true, true);
     state.set_history_owner(HistoryOwner::External(ExternalTextureHistoryId::new(8)));
-    let changed_owner = state.begin_frame(Some(frame.clone()), &canvas, false);
+    let changed_owner = state.begin_frame(Some(frame.clone()), &canvas);
     assert!(changed_owner.stats.full_redraw);
     assert_eq!(changed_owner.stats.changed_tiles, 0);
     state.finish_frame(changed_owner, true, false);
-    let missing_history = state.begin_frame(Some(frame), &canvas, false);
+    let missing_history = state.begin_frame(Some(frame), &canvas);
     assert!(missing_history.stats.full_redraw);
     state.finish_frame(missing_history, true, true);
 }
@@ -97,8 +97,8 @@ fn two_renderers_do_not_share_their_incremental_cursor() {
     let mut second = state();
     let frame = frame(1, Bounds::new(0, 0, 16, 16));
     commit(&mut first, &frame);
-    let first_plan = first.begin_frame(Some(frame.clone()), &Canvas::new(128, 64, 1.0), false);
-    let second_plan = second.begin_frame(Some(frame), &Canvas::new(128, 64, 1.0), false);
+    let first_plan = first.begin_frame(Some(frame.clone()), &Canvas::new(128, 64, 1.0));
+    let second_plan = second.begin_frame(Some(frame), &Canvas::new(128, 64, 1.0));
     assert_eq!(first_plan.stats.dirty_tiles, 0);
     assert!(second_plan.stats.full_redraw);
     first.finish_frame(first_plan, true, true);
@@ -106,19 +106,32 @@ fn two_renderers_do_not_share_their_incremental_cursor() {
 }
 
 #[test]
-fn prepared_scene_reuse_checks_materialization_text_and_resource_changes() {
-    let mut state = state();
-    assert!(state.scene_needs_prepare(Some(1), false, false));
-    state.mark_scene_prepared(Some(1), false);
-    assert!(!state.scene_needs_prepare(Some(1), false, false));
-    assert!(state.scene_needs_prepare(Some(2), false, false));
-    assert!(state.scene_needs_prepare(Some(1), true, false));
-    assert!(state.scene_needs_prepare(Some(1), false, true));
-    state.mark_scene_prepared(None, false);
-    assert!(state.scene_needs_prepare(None, false, false));
-    state.mark_scene_prepared(Some(1), false);
-    state.invalidate_prepared_scene();
-    assert!(state.scene_needs_prepare(Some(1), false, false));
+fn active_tile_diagnostics_follow_the_explicit_capture_setting() {
+    let canvas = Canvas::new(128, 64, 1.0);
+    let initial = frame(1, Bounds::new(0, 0, 16, 16));
+    let changed = frame(2, Bounds::new(16, 0, 32, 16));
+    for capture in [false, true] {
+        let mut state = state();
+        let mut config = state.config();
+        config.capture_active_tiles = capture;
+        state.set_config(config);
+        commit(&mut state, &initial);
+        let plan = state.begin_frame(Some(changed.clone()), &canvas);
+        assert_eq!(plan.stats.changed_tiles, 2);
+        assert_eq!(
+            state.stats().active_tiles,
+            if capture { vec![0, 1] } else { vec![] }
+        );
+        assert_eq!(
+            state.stats().active_tile_bounds,
+            if capture {
+                vec![Bounds::new(0, 0, 32, 16)]
+            } else {
+                vec![]
+            }
+        );
+        state.finish_frame(plan, true, true);
+    }
 }
 
 #[test]
@@ -217,7 +230,7 @@ fn evicting_a_backdrop_forces_the_next_root_to_rebuild() {
         ..state.config()
     };
     state.set_config(config);
-    let plan = state.begin_frame(Some(frame), &Canvas::new(128, 64, 1.0), false);
+    let plan = state.begin_frame(Some(frame), &Canvas::new(128, 64, 1.0));
     assert!(plan.stats.full_redraw);
     state.finish_frame(plan, true, true);
 }
@@ -242,7 +255,7 @@ fn growing_an_earlier_surface_preserves_unvisited_backdrop_input_in_the_current_
     });
     let canvas = Canvas::new(128, 64, 1.0);
     let frame = frame(1, Bounds::new(0, 0, 16, 16));
-    let first = state.begin_frame(Some(frame.clone()), &canvas, false);
+    let first = state.begin_frame(Some(frame.clone()), &canvas);
     let filter_id = surface_id();
     let backdrop_id = RetainedSurfaceId {
         slot: 1,
@@ -273,7 +286,7 @@ fn growing_an_earlier_surface_preserves_unvisited_backdrop_input_in_the_current_
 
     let mut changed = frame.clone();
     changed.invalidated_bounds.push(Bounds::new(1, 1, 2, 2));
-    let second = state.begin_frame(Some(changed), &canvas, false);
+    let second = state.begin_frame(Some(changed), &canvas);
     assert!(!second.stats.full_redraw);
     assert_eq!(second.tiles.len(), 1);
     assert!(
@@ -319,7 +332,7 @@ fn failed_frame_completion_releases_backdrop_protection_before_budget_changes() 
         None,
         Some(Allocation(32)),
     );
-    let plan = state.begin_frame(Some(frame.clone()), &Canvas::new(128, 64, 1.0), false);
+    let plan = state.begin_frame(Some(frame.clone()), &Canvas::new(128, 64, 1.0));
     assert!(!plan.stats.full_redraw);
     state.finish_frame(plan, false, false);
     state.set_config(IncrementalRenderConfig {
@@ -331,7 +344,7 @@ fn failed_frame_completion_releases_backdrop_protection_before_budget_changes() 
             .take_matching_surface(Some(surface_id()), Some(meta))
             .is_none()
     );
-    let retry = state.begin_frame(Some(frame), &Canvas::new(128, 64, 1.0), false);
+    let retry = state.begin_frame(Some(frame), &Canvas::new(128, 64, 1.0));
     assert!(retry.stats.full_redraw);
     state.finish_frame(retry, true, true);
 }

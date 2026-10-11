@@ -328,16 +328,6 @@ pub(super) fn scene_node_placement(node: &SceneNode) -> (Option<Rc<Canvas>>, Opt
     }
 }
 
-pub(super) fn command_has_filter_resources(command: &Command) -> bool {
-    matches!(
-        command,
-        Command::Layer {
-            layer: Layer::Filter { .. } | Layer::Backdrop { .. },
-            ..
-        }
-    )
-}
-
 pub(super) fn chunk_has_surface_dependent_plan(canvas: &Canvas) -> bool {
     canvas.command_lists.iter().any(|list| {
         list.commands.iter().any(|command| {

@@ -3,12 +3,8 @@
 use std::ops::Range;
 
 use super::{
-    damage_tiles::tile_count_for_bounds,
-    filter_resources::cursors::FilterCursors,
-    operations,
-    output::RenderTargetId,
-    profile::cpu::{profile_cpu, start_cpu_scope},
-    retained_surfaces::RetainedSurfaceKind,
+    damage_tiles::tile_count_for_bounds, filter_resources::cursors::FilterCursors, operations,
+    output::RenderTargetId, retained_surfaces::RetainedSurfaceKind,
 };
 use crate::{
     Canvas,
@@ -59,36 +55,29 @@ pub(crate) fn execute<A: GroupAdapter>(
         cursors.advance_ops(group.children);
         return Ok(());
     }
-    let (meta, mut cached) = {
-        let _scope = start_cpu_scope("plan.group.cache");
-        let meta = group.retained_id.and_then(|id| {
-            adapter.retained().surface_meta(
-                id,
-                RetainedSurfaceKind::Group,
-                size,
-                adapter.origin(),
-                bounds,
-            )
-        });
-        let cached = adapter
-            .retained_mut()
-            .take_matching_surface(group.retained_id, meta);
-        (meta, cached)
-    };
+    let meta = group.retained_id.and_then(|id| {
+        adapter.retained().surface_meta(
+            id,
+            RetainedSurfaceKind::Group,
+            size,
+            adapter.origin(),
+            bounds,
+        )
+    });
+    let mut cached = adapter
+        .retained_mut()
+        .take_matching_surface(group.retained_id, meta);
     if !adapter.retained().surface_is_dirty(bounds)
         && let Some((id, surface)) = cached.take()
     {
-        let result = {
-            let _scope = start_cpu_scope("plan.group.composite");
-            adapter.composite_cached(
-                target,
-                &surface.primary,
-                surface.secondary.as_ref(),
-                bounds,
-                group.outer_stack,
-                group.blend,
-            )
-        };
+        let result = adapter.composite_cached(
+            target,
+            &surface.primary,
+            surface.secondary.as_ref(),
+            bounds,
+            group.outer_stack,
+            group.blend,
+        );
         adapter.retained_mut().stats_mut().reused_offscreen_surfaces += 1;
         adapter.retained_mut().insert_surface(id, surface);
         cursors.advance_ops(group.children);
@@ -115,64 +104,24 @@ pub(crate) fn execute<A: GroupAdapter>(
     let mut source_slot = None;
     let mut mask_slot = None;
     let result = (|| {
-        let source = {
-            let _scope = start_cpu_scope("plan.group.children");
-            if let Some((_, mut surface)) = cached {
-                let source = {
-                    let _scope = start_cpu_scope("plan.group.scratch");
-                    let source = adapter.acquire_scratch()?;
-                    source_slot = Some(source);
-                    adapter.install_scratch(source, surface.primary);
-                    source
-                };
-                if adapter.retained().surface_is_dirty(bounds) {
-                    adapter.clear_region(source, bounds)?;
-                }
-                profile_cpu("plan.group.render", || {
-                    operations::execute_ops(
-                        adapter,
-                        canvas,
-                        plan,
-                        group.children,
-                        source,
-                        cursors,
-                        None,
-                    )
-                })?;
-                {
-                    let _scope = start_cpu_scope("plan.group.scratch");
-                    let mask = adapter.acquire_scratch()?;
-                    mask_slot = Some(mask);
-                    adapter.install_scratch(
-                        mask,
-                        surface
-                            .secondary
-                            .take()
-                            .expect("group cache has a retained mask"),
-                    );
-                }
-                source
-            } else {
-                profile_cpu(
-                    "plan.group.render",
-                    || -> Result<RenderTargetId, A::Error> {
-                        let source = adapter.acquire_scratch()?;
-                        source_slot = Some(source);
-                        adapter.clear_target(source)?;
-                        operations::execute_ops(
-                            adapter,
-                            canvas,
-                            plan,
-                            group.children,
-                            source,
-                            cursors,
-                            None,
-                        )?;
-                        Ok(source)
-                    },
-                )?
+        let source = adapter.acquire_scratch()?;
+        source_slot = Some(source);
+        let retained_mask = if let Some((_, surface)) = cached {
+            adapter.install_scratch(source, surface.primary);
+            if adapter.retained().surface_is_dirty(bounds) {
+                adapter.clear_region(source, bounds)?;
             }
+            Some(surface.secondary.expect("group cache has a retained mask"))
+        } else {
+            adapter.clear_target(source)?;
+            None
         };
+        operations::execute_ops(adapter, canvas, plan, group.children, source, cursors, None)?;
+        if let Some(retained_mask) = retained_mask {
+            let mask = adapter.acquire_scratch()?;
+            mask_slot = Some(mask);
+            adapter.install_scratch(mask, retained_mask);
+        }
         if let Some(opacity) = group.opacity
             && adapter.retained().surface_is_dirty(bounds)
         {
@@ -186,13 +135,10 @@ pub(crate) fn execute<A: GroupAdapter>(
             mask
         };
         if adapter.retained().surface_is_dirty(bounds) {
-            let _scope = start_cpu_scope("plan.group.mask");
             adapter.build_mask(mask, group.draw as u32, bounds)?;
         }
-        let result = {
-            let _scope = start_cpu_scope("plan.group.composite");
-            adapter.composite_targets(target, source, mask, bounds, group.outer_stack, group.blend)
-        };
+        let result =
+            adapter.composite_targets(target, source, mask, bounds, group.outer_stack, group.blend);
         if group.retained_id.is_some() && meta.is_some() {
             source_slot = None;
             mask_slot = None;

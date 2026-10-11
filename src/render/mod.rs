@@ -2,7 +2,6 @@
 //! GPU adapters consume these algorithms without owning scene semantics.
 pub(crate) mod damage_tiles;
 pub(crate) mod incremental;
-pub(crate) mod profile;
 pub(crate) mod upload;
 
 pub(crate) mod binning;

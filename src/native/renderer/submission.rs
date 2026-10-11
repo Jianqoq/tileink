@@ -40,7 +40,7 @@ impl NativeRenderer {
             let plan = self
                 .recording
                 .retained
-                .begin_frame(selected.frame(), canvas, false);
+                .begin_frame(selected.frame(), canvas);
             self.recording
                 .retained
                 .stats_mut()

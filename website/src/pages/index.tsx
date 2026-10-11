@@ -14,7 +14,7 @@ export default function Home() {
     features: [
       ['Tile-based GPU pipeline', 'Path scan, coarse binning, and fine raster operate on 16×16 tiles on native GPU backends.'],
       ['General retained scenes', 'Transactional hierarchy, incremental chunks and arenas, tile pages, plan fragments, and output history.'],
-      ['Complete drawing stack', 'Paths, SDFs, text, images, gradients, masks, filters, backdrops, SVG, debugging, and profiling.'],
+      ['Complete drawing stack', 'Paths, SDFs, text, images, gradients, masks, filters, backdrops, SVG, and incremental rendering statistics.'],
     ],
   } : {
     tagline: '面向 Rust 的 tile-based 2D vector renderer，支持原生 DX12、Vulkan、Metal，以及 immediate Canvas 和 retained scene。',
@@ -22,7 +22,7 @@ export default function Home() {
     features: [
       ['Tile-based GPU pipeline', 'Path scan、coarse binning 与 fine raster 按 16×16 tile 工作，由原生 GPU 后端执行。'],
       ['General retained scenes', '事务式层级、增量 chunk/arena、tile pages、plan fragments 与输出历史，按实际变化付费。'],
-      ['Complete drawing stack', '路径、SDF、文本、图片、渐变、mask、filter、backdrop、SVG 与调试 profiler。'],
+      ['Complete drawing stack', '路径、SDF、文本、图片、渐变、mask、filter、backdrop、SVG 与增量渲染统计。'],
     ],
   };
   return <Layout title="Rust tile renderer" description="Tileink architecture, guides and public API">

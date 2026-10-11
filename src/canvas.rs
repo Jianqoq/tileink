@@ -151,8 +151,6 @@ pub(crate) struct SceneBufferChanges {
     pub(crate) plan_values_patched: bool,
     /// Changed fused layer-stack records in the precompiled plan.
     pub(crate) plan_layer_stack: Vec<Range<usize>>,
-    /// Offscreen filter descriptors changed and their auxiliary GPU tables must be refreshed.
-    pub(crate) filter_resources_changed: bool,
     pub(crate) arena_live_bytes: u64,
     pub(crate) arena_capacity_bytes: u64,
     pub(crate) arena_fragmentation: f32,

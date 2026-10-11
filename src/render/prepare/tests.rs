@@ -3,12 +3,6 @@ use crate::canvas::SceneBufferChanges;
 use crate::text::TextRun;
 use peniko::{Color, kurbo::Rect};
 
-fn scratch_count(prepared: &PreparedPlan) -> Option<usize> {
-    let mut count = None;
-    prepared.prepare_scratch(|needed| count = Some(needed));
-    count
-}
-
 fn canvas() -> Canvas {
     let mut canvas = Canvas::new(32, 32, 1.0);
     canvas.push_rect(
@@ -31,14 +25,12 @@ fn first_preparation_and_a_missing_cached_plan_require_complete_metadata() {
     for _ in 0..2 {
         let prepared = state.prepare_plan(&canvas, &mut None);
         assert!(!prepared.reused_metadata);
-        assert!(prepared.upload_filters);
-        assert_eq!(scratch_count(&prepared), Some(0));
         assert_eq!(prepared.stack_depths, (0, 0));
     }
 }
 
 #[test]
-fn unchanged_plan_reuses_cached_plan_and_metadata_without_filter_uploads() {
+fn unchanged_plan_reuses_cached_plan_and_metadata() {
     let canvas = canvas();
     let mut state = ScenePreparation::default();
     let first = state.prepare_plan(&canvas, &mut None);
@@ -47,8 +39,6 @@ fn unchanged_plan_reuses_cached_plan_and_metadata_without_filter_uploads() {
     let prepared = state.prepare_plan(&canvas, &mut Some(first.plan));
     assert!(Rc::ptr_eq(&prepared.plan, &reference));
     assert!(prepared.reused_metadata);
-    assert!(!prepared.upload_filters);
-    assert_eq!(scratch_count(&prepared), None);
     assert_eq!(prepared.stack_depths, (7, 9));
 }
 
@@ -68,7 +58,6 @@ fn structural_reuse_refreshes_values_when_the_fingerprint_changes() {
     let prepared = state.prepare_plan(&canvas, &mut Some(first.plan));
     assert!(Rc::ptr_eq(&prepared.plan, &reference));
     assert!(prepared.reused_metadata);
-    assert!(!prepared.upload_filters);
 }
 
 #[test]
@@ -84,7 +73,6 @@ fn patched_values_consume_the_new_plan_but_keep_its_size_metadata() {
     );
     changed.buffer_changes = Some(SceneBufferChanges {
         plan_values_patched: true,
-        filter_resources_changed: true,
         ..Default::default()
     });
     let expected = changed.compile_shared(ROOT_COMMAND_LIST_ID);
@@ -93,22 +81,8 @@ fn patched_values_consume_the_new_plan_but_keep_its_size_metadata() {
     state.stack_depths = (7, 9);
     let prepared = state.prepare_plan(&changed, &mut Some(first.plan));
     assert!(Rc::ptr_eq(&prepared.plan, &expected));
-    assert!(prepared.reused_metadata && prepared.upload_filters);
+    assert!(prepared.reused_metadata);
     assert_eq!(prepared.stack_depths, (7, 9));
-    assert_eq!(scratch_count(&prepared), None);
-}
-
-#[test]
-fn resource_changes_refresh_filter_tables_even_for_an_exact_cached_plan() {
-    let mut canvas = canvas();
-    let mut state = ScenePreparation::default();
-    let first = state.prepare_plan(&canvas, &mut None);
-    canvas.buffer_changes = Some(SceneBufferChanges {
-        filter_resources_changed: true,
-        ..Default::default()
-    });
-    let prepared = state.prepare_plan(&canvas, &mut Some(first.plan));
-    assert!(prepared.reused_metadata && prepared.upload_filters);
 }
 
 #[test]

@@ -153,10 +153,46 @@ exactly. The 13 paired real-renderer workloads also preserve exact pixels; p50
 changes range from -0.32% to +1.53%. These variations do not establish a material
 regression or speedup. [Raw measurements and protocol](benchmarks/cleanup-phase5-metal-2026-10-11.json).
 
+## Phase 6: remove disconnected diagnostics and preparation models
+
+The CPU profiler's session owner was compiled only for tests. Production scopes
+therefore never recorded timings, but retained unused TLS access and closure
+wrappers throughout preparation, scheduling and retained materialization. Those
+hooks, their test-only session model, the private clock and its sole `web-sys`
+dependency are removed. This removes the disconnected implementation itself;
+it does not introduce a substitute timer.
+
+The old public debug capture/options types had no native renderer consumer or
+producer. They and the English guide's calls to absent profiling/debug methods
+are removed. The guide now documents API validation, explicit image readback and
+incremental statistics, matching the existing Chinese guide. Active tile capture
+continues to follow the explicit incremental configuration, with a semantic test
+covering both settings.
+
+Preparation also contained test-only scratch/upload decisions and a second
+prepared-scene identity model. Those are deleted along with the unused filter
+resource change signal and its classification work. Current plan/depth reuse,
+native scene buffers, text reconciliation and filter resources retain their
+production tests. Group execution shares scratch acquisition and child recording
+while preserving cached mask ownership and error cleanup.
+
+The final single-thread release suite reports 957 passing tests and the same nine
+known failures. The count removes obsolete model tests and adds the active-tile
+configuration test. All 231 scheduling, 98 retained-scene and 19 native renderer
+focused tests pass. All 1730 SVG outputs and seven example PNGs remain byte-identical
+to the initial cleanup baseline. Example tests, backend-free checking and release
+Clippy pass without new warnings. The website text and MDX references were checked
+against the current Rust API; a website build was not run because its dependencies
+are not installed.
+
+The same-process benchmark now covers 17 actual renderer workloads, including
+retained sparse/dense translations, group opacity updates and continuous resize.
+Every case preserves exact pixels, and p50 changes range from -0.76% to +0.70%,
+with no material measured regression.
+[Raw measurements and protocol](benchmarks/cleanup-phase6-metal-2026-10-11.json).
+
 ## Remaining audit work
 
-- Remove obsolete CPU profiling hooks whose session owner exists only in tests,
-  and audit the disconnected public debug capture types and their stale guide.
 - Standalone vector-image placements still upload a zero-filled placeholder before
   copying the completed child image. Trace direct native retention and lifetime
   semantics before removing that upload and copy.

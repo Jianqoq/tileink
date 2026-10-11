@@ -183,8 +183,6 @@ impl SceneCache {
             stack_depths: crate::shared::gpu_plan::plan_stack_depths(&plan),
             plan,
             reused_metadata: false,
-            #[cfg(test)]
-            upload_filters: true,
         };
         self.record_prepared(batch, canvas, text, images, options, prepared)
     }

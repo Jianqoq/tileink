@@ -2,7 +2,6 @@
 
 use super::incremental::IncrementalRenderStats;
 use super::output::RenderTargetId;
-use super::profile::cpu::profile_cpu;
 use crate::Canvas;
 use crate::shared::execution::ExecOp;
 use std::ops::Range;
@@ -69,12 +68,10 @@ pub(crate) fn execute_draw_batch<A: DrawBatchAdapter>(
     batch: DrawBatch<'_>,
     target: RenderTargetId,
 ) -> Result<(), A::Error> {
-    profile_cpu("plan.draw_batch", || {
-        if prepare_draw_batch(adapter, canvas, batch, target)? {
-            adapter.fine(target)?;
-        }
-        Ok(())
-    })
+    if prepare_draw_batch(adapter, canvas, batch, target)? {
+        adapter.fine(target)?;
+    }
+    Ok(())
 }
 
 /// Execute root batches in painter order, stopping at the first recording error.

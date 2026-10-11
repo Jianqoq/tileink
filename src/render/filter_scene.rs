@@ -1,7 +1,6 @@
 //! Shared CPU preparation for isolated filter work. Full-canvas filters borrow
 //! the original scene; translated filters compact only spatial candidates. This
 //! preserves the existing allocation fast path independently of the GPU adapter.
-use super::profile::cpu::profile_cpu;
 use crate::{
     canvas::Canvas,
     shared::{
@@ -31,11 +30,9 @@ impl<'a> PreparedFilterScene<'a> {
         let local = (surface != Bounds::canvas(canvas.physical_width(), canvas.physical_height()))
             .then(|| {
                 let draws = candidates();
-                profile_cpu("prepare.local_scene", || {
-                    local_offscreen_scene(canvas, plan, children, surface, &draws)
-                })
+                local_offscreen_scene(canvas, plan, children, surface, &draws)
             });
-        let filter = profile_cpu("prepare.local_filter", || local_filter(filter, surface));
+        let filter = local_filter(filter, surface);
         Self {
             root: (canvas, plan, children),
             local,

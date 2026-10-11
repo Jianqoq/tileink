@@ -8,7 +8,6 @@ use super::{
     damage_tiles::DamageTiles,
     incremental::{DamagePlan, IncrementalRenderConfig, IncrementalRenderStats, IncrementalState},
     output::ExternalTextureHistoryId,
-    profile::cpu::profile_cpu,
     retained_surfaces::{
         RetainedSurface, RetainedSurfaceCache, RetainedSurfaceKind, RetainedSurfaceMeta,
         SurfaceAllocation,
@@ -23,10 +22,6 @@ use crate::{
 
 /// Coordinates retained state while the selected GPU adapter executes the resulting work.
 pub(crate) struct RetainedRenderState<T> {
-    #[cfg(test)]
-    prepared_scene: Option<u64>,
-    #[cfg(test)]
-    prepared_uses_text: bool,
     config: IncrementalRenderConfig,
     incremental: IncrementalState,
     stats: IncrementalRenderStats,
@@ -51,10 +46,6 @@ impl<T: SurfaceAllocation> Default for RetainedRenderState<T> {
 impl<T: SurfaceAllocation> RetainedRenderState<T> {
     pub(crate) fn new(config: IncrementalRenderConfig) -> Self {
         Self {
-            #[cfg(test)]
-            prepared_scene: None,
-            #[cfg(test)]
-            prepared_uses_text: false,
             config,
             incremental: IncrementalState::default(),
             stats: IncrementalRenderStats::default(),
@@ -113,19 +104,10 @@ impl<T: SurfaceAllocation> RetainedRenderState<T> {
     pub(crate) fn invalidate(&mut self) {
         self.incremental.invalidate_renderer_state();
         self.history_valid = false;
-        #[cfg(test)]
-        {
-            self.prepared_scene = None;
-        }
     }
 
     pub(crate) fn invalidate_history(&mut self) {
         self.history_valid = false;
-    }
-
-    #[cfg(test)]
-    pub(crate) fn invalidate_prepared_scene(&mut self) {
-        self.prepared_scene = None;
     }
 
     pub(crate) fn set_history_owner(&mut self, owner: HistoryOwner) {
@@ -159,11 +141,9 @@ impl<T: SurfaceAllocation> RetainedRenderState<T> {
             self.persistent_frame = Some((scene_id, version, frame.clone()));
             frame
         } else {
-            let frame = profile_cpu("retained.collect", || {
-                scene
-                    .retained_frame()
-                    .expect("persistent materialized scene has retained identity")
-            });
+            let frame = scene
+                .retained_frame()
+                .expect("persistent materialized scene has retained identity");
             self.persistent_frame = Some((scene_id, version, frame.clone()));
             frame
         };
@@ -178,16 +158,14 @@ impl<T: SurfaceAllocation> RetainedRenderState<T> {
         &mut self,
         frame: Option<RetainedFrame>,
         scene: &Canvas,
-        profiler_active: bool,
     ) -> DamagePlan {
         if self.surfaces.take_backdrop_evicted() {
             self.history_valid = false;
         }
         let physical_size = scene.physical_size();
-        let mut plan = profile_cpu("retained.damage", || {
-            self.incremental
-                .plan(frame, physical_size, self.config, self.history_valid)
-        });
+        let mut plan = self
+            .incremental
+            .plan(frame, physical_size, self.config, self.history_valid);
         // Persistent deltas already contain ordinary layer influence and indexed backdrop
         // propagation, so journal-connected scenes normally skip the command-tree oracle.
         if plan.changed_tiles.len() < plan.changed_tiles.total_tiles()
@@ -199,16 +177,14 @@ impl<T: SurfaceAllocation> RetainedRenderState<T> {
             if let Some(dirty) = &plan.dirty_backdrops {
                 self.dirty_backdrop_nodes = dirty.iter().copied().collect();
             } else {
-                let propagated = profile_cpu("retained.damage.propagate", || {
-                    scene.propagate_damage(&plan.retained_damage)
-                });
+                let propagated = scene.propagate_damage(&plan.retained_damage);
                 self.dirty_backdrop_nodes = propagated.dirty_backdrops;
                 plan.include_dependent_bounds(propagated.bounds, self.config);
             }
         } else {
             self.dirty_backdrop_nodes.clear();
         }
-        if self.config.capture_active_tiles || profiler_active {
+        if self.config.capture_active_tiles {
             plan.stats.active_tiles = plan.tiles.list().to_vec();
             plan.stats.active_tile_bounds = plan.tiles.coalesced_rects(physical_size);
         }
@@ -258,25 +234,6 @@ impl<T: SurfaceAllocation> RetainedRenderState<T> {
         self.active_tiles = None;
         self.rendering_frame = None;
         self.dirty_backdrop_nodes.clear();
-    }
-
-    #[cfg(test)]
-    pub(crate) fn scene_needs_prepare(
-        &self,
-        materialization: Option<u64>,
-        uses_text: bool,
-        resources_dirty: bool,
-    ) -> bool {
-        materialization.is_none()
-            || self.prepared_scene != materialization
-            || self.prepared_uses_text != uses_text
-            || resources_dirty
-    }
-
-    #[cfg(test)]
-    pub(crate) fn mark_scene_prepared(&mut self, materialization: Option<u64>, uses_text: bool) {
-        self.prepared_scene = materialization;
-        self.prepared_uses_text = uses_text;
     }
 
     pub(crate) fn surface_meta(

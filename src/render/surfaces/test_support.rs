@@ -95,7 +95,7 @@ pub(crate) struct Adapter {
 impl Adapter {
     pub(crate) fn new(canvas: &Canvas, kind: RetainedSurfaceKind) -> Self {
         let mut retained = RetainedRenderState::new(IncrementalRenderConfig::default());
-        retained.begin_frame(Some(frame(1)), canvas, false);
+        retained.begin_frame(Some(frame(1)), canvas);
         Self {
             filter_context: None,
             filter_ends: 0,
