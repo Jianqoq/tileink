@@ -109,6 +109,12 @@ existing image-table slots (64 minus existing standalone image textures).
 Resource capacity errors are explicit. Native shader compilation does not remove
 these scheduling or texture bandwidth costs.
 
+CPU scene brush records store exact entry/source bytes and uniform words, with
+the affine in the brush header. They have no filter input mode or sample radius;
+the internal brush invocation is input-free. Filter input declarations belong to
+the ordinary ShaderPipeline resources and dependency metadata. No legacy brush
+payload decoder is retained.
+
 Pipeline identity includes source bytes, entry and resource ABI; uniforms,
 coordinates and radius values are configuration data. Each backend bounds its
 application pipeline cache and evicts only when no submitted frame is in flight.

@@ -1,8 +1,3 @@
-#![allow(
-    dead_code,
-    reason = "Rust-side binding constants share one schema with native shaders"
-)]
-
 pub(crate) mod brush {
     pub(crate) const GPU_BRUSH_U32_STRIDE: usize = 9;
     pub(crate) const GPU_BRUSH_PARAM_STRIDE: usize = 12;
@@ -16,7 +11,6 @@ pub(crate) mod brush {
     pub(crate) const GPU_BRUSH_MESH: u32 = 8;
     pub(crate) const GPU_BRUSH_PROGRAM: u32 = 9;
     pub(crate) const GPU_RESOURCE_TEXTURE_PLACEMENT_BIT: u32 = 0x8000_0000;
-    pub(crate) const GPU_RESOURCE_TEXTURE_INDEX_MASK: u32 = 0x7fff_ffff;
 
     pub(crate) const GPU_PATTERN_NEAREST: u32 = 0;
     pub(crate) const GPU_PATTERN_BILINEAR: u32 = 1;
@@ -24,24 +18,6 @@ pub(crate) mod brush {
     pub(crate) const GPU_EXTEND_PAD: u32 = 0;
     pub(crate) const GPU_EXTEND_REPEAT: u32 = 1;
     pub(crate) const GPU_EXTEND_REFLECT: u32 = 2;
-}
-
-pub(crate) mod fine {
-    pub(crate) const STORAGE_BUFFER_COUNT: u32 = 6;
-    pub(crate) const IMAGE_RESOURCE_ATLAS_BINDING: u32 = 0;
-    pub(crate) const IMAGE_RESOURCE_SAMPLER_BINDING: u32 = 1;
-    pub(crate) const IMAGE_RESOURCE_TEXTURES_BINDING: u32 = 2;
-}
-
-pub(crate) mod filter {
-    // The retained filter path adds the compact active-tile worklist to the
-    // largest scene-stack kernel (seven scene buffers plus this worklist).
-    pub(crate) const MAX_STORAGE_BUFFER_COUNT: u32 = 8;
-    pub(crate) const SOURCE_TEXTURE_BINDING: u32 = 1;
-    pub(crate) const AUX_TEXTURE_BINDING: u32 = 2;
-    pub(crate) const IMAGE_RESOURCE_ATLAS_BINDING: u32 = 0;
-    pub(crate) const IMAGE_RESOURCE_SAMPLER_BINDING: u32 = 1;
-    pub(crate) const IMAGE_RESOURCE_TEXTURES_BINDING: u32 = 2;
 }
 
 #[cfg(test)]

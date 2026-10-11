@@ -13,28 +13,20 @@ impl ShaderKernel {
             .bindings
             .iter()
             .filter(|b| !b.internal)
-            .map(|b| {
-                let format = match b.size {
-                    4 => ShaderTextureFormat::Rgba8Unorm,
-                    8 => ShaderTextureFormat::Rgba16Float,
-                    16 => ShaderTextureFormat::Rgba32Float,
-                    _ => ShaderTextureFormat::Rgba8Unorm,
-                };
-                ShaderBinding {
-                    name: format!("slot_{}", b.slot),
-                    slot: b.slot,
-                    kind: match b.kind {
-                        B::Uniform => K::Uniform(b.size),
-                        B::Read => K::ReadBuffer,
-                        B::Write => K::ReadWriteBuffer,
-                        B::Texture => K::Texture,
-                        B::TextureWrite => K::WriteTexture(format),
-                        B::TextureReadWrite => K::ReadWriteTexture(format),
-                        B::TextureArray => K::TextureArray,
-                        B::TextureTable => K::TextureTable(b.count),
-                        B::Sampler => K::Sampler,
-                    },
-                }
+            .map(|b| ShaderBinding {
+                name: format!("slot_{}", b.slot),
+                slot: b.slot,
+                kind: match b.kind {
+                    B::Uniform => K::Uniform(b.size),
+                    B::Read => K::ReadBuffer,
+                    B::Write => K::ReadWriteBuffer,
+                    B::Texture => K::Texture,
+                    B::TextureWrite => K::WriteTexture(texture_format(b.size)),
+                    B::TextureReadWrite => K::ReadWriteTexture(texture_format(b.size)),
+                    B::TextureArray => K::TextureArray,
+                    B::TextureTable => K::TextureTable(b.count),
+                    B::Sampler => K::Sampler,
+                },
             })
             .collect::<Vec<_>>();
         validate::interface(artifact.workgroup, &bindings)?;
@@ -44,5 +36,14 @@ impl ShaderKernel {
             workgroup: artifact.workgroup,
             bindings: bindings.into(),
         })
+    }
+}
+
+fn texture_format(size: u32) -> ShaderTextureFormat {
+    match size {
+        4 => ShaderTextureFormat::Rgba8Unorm,
+        8 => ShaderTextureFormat::Rgba16Float,
+        16 => ShaderTextureFormat::Rgba32Float,
+        _ => unreachable!("build-validated writable texture size"),
     }
 }

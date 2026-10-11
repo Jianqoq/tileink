@@ -52,7 +52,7 @@ impl PartialEq<FillRule> for FillRuleWord {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct DrawRecord {
-    /// Path index in [`Canvas`](crate::gpu::canvas::Canvas), or `NONE` for non-path draws.
+    /// Path index in [`Canvas`](crate::Canvas), or `NONE` for non-path draws.
     pub path_id: u32,
     /// Text glyph run index, or `NONE` for non-text draws.
     pub glyph_run_id: u32,
@@ -128,15 +128,9 @@ impl DrawRecord {
             value if value == DrawTag::Isolate as u32 => DrawTag::Isolate,
             value if value == DrawTag::Opacity as u32 => DrawTag::Opacity,
             value if value == DrawTag::Blend as u32 => DrawTag::Blend,
-            _ => DrawTag::Brush,
+            _ => unreachable!("draw records contain a typed DrawTag"),
         }
     }
-
-    // pub fn covers_tile(&self, tile_x: u32, tile_y: u32, width: u32, height: u32) -> bool {
-    //     let tile_bounds = Bounds::from_tile_coords(tile_x, tile_y, width, height);
-    //     let pb = self.pixel_bounds.intersect(tile_bounds);
-    //     pb.x0 < pb.x1 && pb.y0 < pb.y1
-    // }
 }
 
 #[cfg(test)]
@@ -144,6 +138,29 @@ mod tests {
     use std::mem::{align_of, size_of};
 
     use super::*;
+
+    #[test]
+    fn draw_tag_words_preserve_typed_tags_and_reject_unknown_words() {
+        let mut draw: DrawRecord = bytemuck::Zeroable::zeroed();
+        for tag in [
+            DrawTag::Brush,
+            DrawTag::PathGlyph,
+            DrawTag::Clip,
+            DrawTag::Isolate,
+            DrawTag::Opacity,
+            DrawTag::Blend,
+        ] {
+            draw.tag = tag.into();
+            assert_eq!(draw.tag(), tag);
+        }
+        for word in [6, 7, u32::MAX] {
+            draw.tag = DrawTagWord(word);
+            assert!(
+                std::panic::catch_unwind(|| draw.tag()).is_err(),
+                "unknown tag {word} is not a brush"
+            );
+        }
+    }
 
     #[test]
     fn draw_record_is_gpu_buffer_layout() {

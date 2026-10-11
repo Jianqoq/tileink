@@ -329,23 +329,18 @@ pub(crate) fn encoded_brush_word_len(brush: &Brush) -> usize {
         }
 }
 
-pub(crate) fn encoded_brush_payload(blob: &[u32], offset: u32, len: u32) -> Option<&[u32]> {
-    let record = encoded_brush_words(blob, offset, len)?;
-    let data = &record[..GPU_BRUSH_U32_STRIDE];
-    let start = data[2] as usize;
-    let end = start.checked_add(data[3] as usize)?;
-    record.get(start..end)
-}
-
 pub(crate) fn decode_encoded_brush(blob: &[u32], offset: u32, len: u32) -> Option<Brush> {
-    let record = encoded_brush_words(blob, offset, len)?;
-    let data = &record[..GPU_BRUSH_U32_STRIDE];
+    let start = offset as usize;
+    let record = blob.get(start..start.checked_add(len as usize)?)?;
+    let header = record.get(..ENCODED_BRUSH_HEADER_WORDS)?;
+    let data = &header[..GPU_BRUSH_U32_STRIDE];
     // Header validation guarantees every fixed parameter. Variable payloads and
     // encoded descriptor values still require validation below: unknown values are
     // malformed records, not alternate spellings of the default enum variant.
     let params: [f32; GPU_BRUSH_PARAM_STRIDE] =
-        std::array::from_fn(|i| f32::from_bits(record[GPU_BRUSH_U32_STRIDE + i]));
-    let payload = encoded_brush_payload(blob, offset, len)?;
+        std::array::from_fn(|i| f32::from_bits(header[GPU_BRUSH_U32_STRIDE + i]));
+    let payload_start = data[2] as usize;
+    let payload = record.get(payload_start..payload_start.checked_add(data[3] as usize)?)?;
     match data[0] {
         GPU_BRUSH_SOLID => Some(Brush::Solid(color_from_premul_rgba8(data[4]))),
         GPU_BRUSH_LINEAR => Some(Brush::Linear(LinearGradient {
@@ -404,11 +399,7 @@ pub(crate) fn decode_encoded_brush(blob: &[u32], offset: u32, len: u32) -> Optio
             }))
         }
         GPU_BRUSH_PROGRAM => Some(Brush::Program(super::shader::ProgramBrush(
-            super::shader::ProgramInstance::decode(
-                payload,
-                std::array::from_fn(|i| params[i]),
-                false,
-            )?,
+            super::shader::BrushInstance::decode(payload, std::array::from_fn(|i| params[i]))?,
         ))),
         GPU_BRUSH_PATTERN_RESOURCE => {
             if payload.len() != 3 {
@@ -687,13 +678,6 @@ fn copy_f32_bits(dst: &mut [u32], src: &[f32]) {
     for (dst, src) in dst.iter_mut().zip(src) {
         *dst = src.to_bits();
     }
-}
-
-fn encoded_brush_words(blob: &[u32], offset: u32, len: u32) -> Option<&[u32]> {
-    let start = offset as usize;
-    let end = start.checked_add(len as usize)?;
-    let record = blob.get(start..end)?;
-    (record.len() >= ENCODED_BRUSH_HEADER_WORDS).then_some(record)
 }
 
 fn color_from_premul_rgba8(color: u32) -> peniko::Color {

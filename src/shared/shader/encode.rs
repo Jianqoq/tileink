@@ -1,11 +1,12 @@
-//! CPU scene serialization preserves complete source bytes, including comments.
+//! Brush-only scene serialization preserves complete source bytes and uniform bits.
+//! Filters use ShaderPipeline resources; their retired input-mode payload is gone.
 //! None of this payload is interpreted on the GPU.
 use super::*;
 use crate::shared::{brush::ENCODED_BRUSH_HEADER_WORDS, gpu_layout::brush::*};
-impl ProgramInstance {
+impl BrushInstance {
     pub(crate) fn word_len(&self) -> usize {
         ENCODED_BRUSH_HEADER_WORDS
-            + 6
+            + 4
             + self.program.entry.len().div_ceil(4)
             + self
                 .program
@@ -28,15 +29,7 @@ impl ProgramInstance {
             p.sources.metal.as_deref(),
             p.sources.hlsl.as_deref(),
         ];
-        let mut words = vec![
-            p.uniform_words as u32,
-            match p.input {
-                ShaderInput::None => 0,
-                ShaderInput::Current => 1,
-                ShaderInput::Sampled { .. } => 2,
-            },
-            p.sample_radius().to_bits(),
-        ];
+        let mut words = vec![p.uniform_words as u32];
         for string in strings {
             let bytes = string.unwrap_or_default().as_bytes();
             words.push(bytes.len() as u32);
@@ -63,22 +56,12 @@ impl ProgramInstance {
         blob.extend(payload);
         (offset, blob.len() as u32 - offset)
     }
-    pub(crate) fn decode(payload: &[u32], transform: [f32; 6], allow_input: bool) -> Option<Self> {
+    pub(crate) fn decode(payload: &[u32], transform: [f32; 6]) -> Option<Self> {
         if transform.iter().any(|v| !v.is_finite()) {
             return None;
         }
         let uniform_words = *payload.first()? as usize;
-        let radius = f32::from_bits(*payload.get(2)?);
-        let input = match *payload.get(1)? {
-            0 => ShaderInput::None,
-            1 => ShaderInput::Current,
-            2 => ShaderInput::Sampled { radius },
-            _ => return None,
-        };
-        if !allow_input && input != ShaderInput::None {
-            return None;
-        }
-        let mut rest = payload.get(3..)?;
+        let mut rest = payload.get(1..)?;
         let mut string = || -> Option<String> {
             let len = *rest.first()? as usize;
             let words = len.div_ceil(4);
@@ -100,7 +83,7 @@ impl ProgramInstance {
                 hlsl: (!hlsl.is_empty()).then_some(hlsl),
             },
             &entry,
-            input,
+            ShaderInput::None,
             uniform_words,
         )
         .ok()?;

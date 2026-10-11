@@ -506,6 +506,54 @@ p50 is 0.249 ms. Its incorrect baseline is excluded from timing comparisons.
 Temporary measurement source is removed after validation.
 [Raw measurements and protocol](benchmarks/cleanup-phase14-metal-2026-10-11.json).
 
+## Phase 15: remove retired shader-instance modes and binding defaults
+
+Native brush instances no longer carry the input mode and sample radius from the
+removed single-program filter implementation. Their CPU scene payload contains
+only the uniform count, exact entry/source bytes and raw uniform words; affine
+placement stays in the brush header. The internal type is now `BrushInstance`,
+and its invocation accepts no unused input texture or compact-tile parameters.
+Filters continue to use ordinary ShaderPipeline resources. The old payload is
+not decoded through a compatibility branch. Source and entry validation now
+belongs to the public kernel constructor once, and brush decoding reads each
+record/header/payload once instead of repeating record validation through helpers.
+
+Draw tags originate from the typed enum, including inactive retained records.
+Unknown internal words no longer silently become ordinary brushes during CPU
+allocation planning. Build-validated writable texture sizes map exactly to
+RGBA8, RGBA16Float or RGBA32Float; unknown sizes no longer default to RGBA8.
+Texture format conversion runs only for writable texture bindings, preserving
+uniform sizes, sampler metadata and all other native resource kinds. Unused
+fine/filter binding modules, an unused CPU mask, the blanket dead-code allowance
+and commented-out geometry code are removed. Current reflected native interfaces
+remain authoritative. These are permanent removals of dead modes and defaults.
+
+Three regressions first reproduced the old brush payload, unknown-tag conversion
+and unknown-format conversion. Five added tests cover those contracts, exact
+single/both-backend and Unicode source bytes, empty/raw-bit uniforms, offsets,
+truncated/malformed/retired payload rejection, all texture precisions and
+nontexture/internal binding mappings. All 48 focused and 262 broader release
+tests pass. The complete single-thread release suite reports 1004 passing tests
+and the same three known failures described in phase 12. Clippy has no new
+warnings; example builds and all 11 example tests pass. All 1730 SVG images and
+seven example PNGs remain byte-identical to the cleanup baseline. DX12/Vulkan
+Windows library and test types and the backend-free library compile successfully;
+the temporary Windows harness checks Rust types, not shader compilation or GPU
+execution.
+
+Two complete paired Metal rounds cover 29 real workloads, including four native
+procedural-brush scenes, append, shadow and retained mutation. Each round warms
+100 pairs and records 600 samples per version with alternating execution order
+and validation disabled. Initial, mutated and final pixels match exactly. Across
+the combined 1200 samples per version, p50 changes range from -0.35% to +0.93%;
+the four brush cases range from -0.12% to +0.34%. Retained resize changes from
++1.73% in the first round to +0.37% in the second. These small variations do not
+establish a speedup or a material regression. Both rounds, scene definitions and
+hashes are preserved in
+[`cleanup-phase15-metal-2026-10-11.json`](benchmarks/cleanup-phase15-metal-2026-10-11.json).
+An incomplete capacity diagnostic is excluded. Temporary measurement, snapshot,
+validation and Windows typecheck sources were removed after recording results.
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.

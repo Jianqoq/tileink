@@ -88,22 +88,9 @@ impl ShaderProgram {
         input: ShaderInput,
         uniform_words: usize,
     ) -> Result<Self, ShaderError> {
-        if [sources.metal.as_deref(), sources.hlsl.as_deref()]
-            .into_iter()
-            .flatten()
-            .any(|s| s.trim().is_empty())
-            || sources.metal.is_none() && sources.hlsl.is_none()
-        {
-            return Err(ShaderError::MissingSource);
-        }
-        if entry.is_empty()
-            || !entry
-                .bytes()
-                .enumerate()
-                .all(|(i, c)| c == b'_' || c.is_ascii_alphabetic() || i > 0 && c.is_ascii_digit())
-        {
-            return Err(ShaderError::InvalidEntry);
-        }
+        // The public kernel constructor owns source, entry and binding validation.
+        let sources = Rc::new(sources);
+        let kernel = pipeline::program_kernel(sources.clone(), entry, input)?;
         if uniform_words > u32::MAX as usize / 4 {
             return Err(ShaderError::InvalidUniformSize);
         }
@@ -112,8 +99,6 @@ impl ShaderProgram {
         {
             return Err(ShaderError::InvalidSampleRadius);
         }
-        let sources = Rc::new(sources);
-        let kernel = pipeline::program_kernel(sources.clone(), entry, input)?;
         Ok(Self {
             kernel,
             sources,
@@ -142,21 +127,20 @@ impl ShaderProgram {
         if self.reads_input() {
             return Err(ShaderError::BrushReadsInput);
         }
-        Ok(ProgramBrush(self.instantiate(uniforms.as_ref())?))
+        let uniforms = uniforms.as_ref();
+        self.validate_uniforms(uniforms)?;
+        Ok(ProgramBrush(BrushInstance {
+            program: self.clone(),
+            uniforms: uniforms.into(),
+            transform: super::brush::IDENTITY_TRANSFORM,
+        }))
     }
     /// Convenience constructor for a standard single-pass ShaderPipeline.
     /// There is no separate Program filter or execution path.
     pub fn filter(&self, uniforms: impl AsRef<[u32]>) -> Result<ShaderPipeline, ShaderError> {
-        self.validate_uniforms(uniforms.as_ref())?;
-        pipeline::program_pipeline(self, uniforms.as_ref())
-    }
-    fn instantiate(&self, uniforms: &[u32]) -> Result<ProgramInstance, ShaderError> {
+        let uniforms = uniforms.as_ref();
         self.validate_uniforms(uniforms)?;
-        Ok(ProgramInstance {
-            program: self.clone(),
-            uniforms: uniforms.into(),
-            transform: super::brush::IDENTITY_TRANSFORM,
-        })
+        pipeline::program_pipeline(self, uniforms)
     }
     fn validate_uniforms(&self, uniforms: &[u32]) -> Result<(), ShaderError> {
         if uniforms.len() != self.uniform_words {
@@ -166,12 +150,12 @@ impl ShaderProgram {
     }
 }
 #[derive(Clone, Debug)]
-pub(crate) struct ProgramInstance {
+pub(crate) struct BrushInstance {
     pub(crate) program: ShaderProgram,
     pub(crate) uniforms: Rc<[u32]>,
     pub(crate) transform: [f32; 6],
 }
-impl ProgramInstance {
+impl BrushInstance {
     fn with_uniforms(&self, uniforms: &[u32]) -> Result<Self, ShaderError> {
         self.program.validate_uniforms(uniforms)?;
         Ok(Self {
@@ -182,7 +166,7 @@ impl ProgramInstance {
 }
 /// A native compute paint, rasterized on the GPU over its draw bounds before compositing.
 #[derive(Clone, Debug)]
-pub struct ProgramBrush(pub(crate) ProgramInstance);
+pub struct ProgramBrush(pub(crate) BrushInstance);
 impl ProgramBrush {
     pub fn with_uniforms(&self, uniforms: impl AsRef<[u32]>) -> Result<Self, ShaderError> {
         Ok(Self(self.0.with_uniforms(uniforms.as_ref())?))

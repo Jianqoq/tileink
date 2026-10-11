@@ -87,8 +87,6 @@ fn raster(
                 region_height: bounds.height(),
                 ..Default::default()
             },
-            None,
-            None,
             Output {
                 image: texture,
                 origin,

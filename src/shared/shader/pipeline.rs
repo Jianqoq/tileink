@@ -1,5 +1,7 @@
 //! Explicit native workloads. This is a resource/dispatch description, not a
 //! shader language: kernel source, loops and algorithms belong to the caller.
+#[cfg(all(test, tileink_native_runtime))]
+mod compiled_tests;
 #[cfg(test)]
 mod tests;
 mod validate;
