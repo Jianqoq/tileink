@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Incrementally inserted retained subtrees preserve every draw batch and filter input, including sources outside the canvas. Filter localization now reads current retained order and membership instead of stale compilation tables.
 - Retained filter, backdrop and mask subtrees preserve ancestor clips when nested layers are inserted or removed. Offscreen compositing now evaluates only its ancestor clips, removing unused fixed-depth group handling from Metal and HLSL.
 - SVG `feComposite` and `feConvolveMatrix` now honor each primitive's filter color space. Convolution processes premultiplied colors by default and applies bias using the unclamped result alpha, matching the reference output.
 - SVG pattern brushes now account for the path and viewBox transforms when sampling pattern tiles, fixing their scale and phase in native renders.

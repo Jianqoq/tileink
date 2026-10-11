@@ -14,10 +14,16 @@ impl Scene {
     pub(crate) fn filter_candidates(
         &self,
         bounds: crate::shared::bounds::Bounds,
+        canvas: &Canvas,
         plan: &ExecPlan,
     ) -> Vec<u32> {
-        self.tile_draw_bins
-            .draws_in_bounds(bounds, &plan.draw_order)
+        self.tile_draw_bins.draws_in_bounds(
+            bounds,
+            &plan.draw_order,
+            canvas
+                .retained_painter()
+                .map(|painter| painter.keys.as_slice()),
+        )
     }
 
     pub(crate) fn plan_handle(&self) -> Rc<ExecPlan> {

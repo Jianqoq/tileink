@@ -215,6 +215,7 @@ impl PersistentSceneMaterializer {
             [old_location.command_index] = command;
         self.layer_command_locations.insert(id, old_location);
 
+        self.install_fragment_batches(&draw_batches);
         let physical_batches = draw_batches.into_iter().collect::<HashMap<_, _>>();
         let mut nodes = Vec::new();
         scene.collect_subtree(id, &mut nodes);
@@ -225,7 +226,7 @@ impl PersistentSceneMaterializer {
             let batch = {
                 let mut batches = self
                     .node_physical_draws(node)
-                    .filter_map(|draw| physical_batches.get(&draw).copied());
+                    .map(|draw| physical_batches[&draw]);
                 batches
                     .next()
                     .filter(|&batch| batches.all(|candidate| candidate == batch))

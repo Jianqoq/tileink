@@ -8,6 +8,7 @@ use peniko::{
 
 mod build;
 mod membership;
+mod order_queries;
 mod storage;
 mod updates;
 

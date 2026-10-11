@@ -16,7 +16,7 @@ pub(crate) struct SavedFilterState {
 }
 impl FilterAdapter for Adapter {
     type LocalState = SavedFilterState;
-    fn filter_candidates(&self, _: Bounds, _: &ExecPlan) -> Vec<u32> {
+    fn filter_candidates(&self, _: Bounds, _: &Canvas, _: &ExecPlan) -> Vec<u32> {
         self.candidate_queries.set(self.candidate_queries.get() + 1);
         self.candidate_draws.clone()
     }

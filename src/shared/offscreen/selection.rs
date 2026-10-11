@@ -24,11 +24,12 @@ pub(super) fn local_draw_selection(
     );
     let mut draws = Vec::new();
     let mut seen = HashSet::new();
+    let batch_ids = canvas.raster_batch_ids(plan);
     // Every requested batch has an explicit selection, including empty batches.
     for &draw in candidates {
         let draw = draw as usize;
         let record = &canvas.draw_records[draw];
-        if let Some(request) = batches.get_mut(&plan.draw_batch_ids[draw])
+        if let Some(request) = batches.get_mut(&batch_ids[draw])
             && pixel_bounds_overlap(record.pixel_bounds, request.bounds)
             && seen.insert(draw)
         {

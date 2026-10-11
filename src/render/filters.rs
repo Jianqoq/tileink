@@ -39,7 +39,7 @@ pub(crate) struct FilterPlacement {
 
 pub(crate) trait FilterAdapter: FilterPassAdapter {
     type LocalState;
-    fn filter_candidates(&self, bounds: Bounds, plan: &ExecPlan) -> Vec<u32>;
+    fn filter_candidates(&self, bounds: Bounds, canvas: &Canvas, plan: &ExecPlan) -> Vec<u32>;
     /// On failure the previous context must remain active. A returned state is
     /// consumed exactly once by end_filter_scene, including recording failure.
     fn begin_filter_scene(
@@ -126,7 +126,7 @@ pub(crate) fn execute<A: FilterAdapter>(
         layer.children,
         layer.filter,
         bounds.surface,
-        || adapter.filter_candidates(bounds.surface, plan),
+        || adapter.filter_candidates(bounds.surface, canvas, plan),
     );
     let (local_canvas, local_plan, local_children) = prepared.scene();
     let local_filter = prepared.filter();

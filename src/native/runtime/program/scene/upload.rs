@@ -123,10 +123,8 @@ impl SceneCache {
                 &changes.painter,
             )
         });
-        let (batch_ids, batch_dirty) = match canvas.retained_painter() {
-            Some(painter) => (painter.batch_ids.as_slice(), batch_ranges.as_deref()),
-            None => (prepared.plan.draw_batch_ids.as_slice(), None),
-        };
+        let batch_ids = canvas.raster_batch_ids(&prepared.plan);
+        let batch_dirty = canvas.retained_painter().and(batch_ranges.as_deref());
         let batches = self.buffers.batches.upload(batch, batch_ids, batch_dirty)?;
         let active_batches = if let Some(active) = options.active {
             if active.dimensions() != (lengths.tiles_width as u32, lengths.tiles_height as u32) {

@@ -86,6 +86,9 @@ fn path_leaf() -> Rc<Canvas> {
 #[path = "tests/batch_classification.rs"]
 mod batch_classification;
 
+#[path = "tests/fragment_membership.rs"]
+mod fragment_membership;
+
 #[path = "tests/root_layer_classification.rs"]
 mod root_layer_classification;
 

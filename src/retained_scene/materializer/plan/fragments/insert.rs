@@ -131,6 +131,7 @@ impl PersistentSceneMaterializer {
                 &reassigned_batches.keys().copied().collect::<HashSet<_>>(),
             );
         }
+        self.install_fragment_batches(&draw_batches);
         let physical_batches = draw_batches.into_iter().collect::<HashMap<_, _>>();
         for &node_id in &nodes {
             if !matches!(scene.nodes[&node_id].kind, NodeKind::Scene { .. }) {
@@ -139,7 +140,7 @@ impl PersistentSceneMaterializer {
             let batch = {
                 let mut batches = self
                     .node_physical_draws(node_id)
-                    .filter_map(|draw| physical_batches.get(&draw).copied());
+                    .map(|draw| physical_batches[&draw]);
                 batches
                     .next()
                     .filter(|&batch| batches.all(|candidate| candidate == batch))

@@ -49,8 +49,8 @@ impl FilterPassAdapter for Execution<'_> {
 }
 impl FilterAdapter for Execution<'_> {
     type LocalState = LocalState;
-    fn filter_candidates(&self, bounds: Bounds, plan: &ExecPlan) -> Vec<u32> {
-        self.scene.scanned().filter_candidates(bounds, plan)
+    fn filter_candidates(&self, bounds: Bounds, canvas: &Canvas, plan: &ExecPlan) -> Vec<u32> {
+        self.scene.scanned().filter_candidates(bounds, canvas, plan)
     }
     fn begin_filter_scene(
         &mut self,

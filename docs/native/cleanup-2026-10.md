@@ -1714,9 +1714,80 @@ read 573 of 962 current implementation files, leaving 389 across six groups.
 Actual DXC/ShaderTools and
 DX12/Vulkan execution remain unavailable; independent auditing continues.
 
+## Phase 37: current retained fragment membership
+
+Retained edits intentionally reuse execution structure while Canvas painter
+metadata owns current draw order and batch membership. The painter updater
+previously cleared every dirty slot, then tried to recover multi-batch leaves
+from the old compilation table. Appended fragment draws were absent from that
+table and became inactive through an out-of-bounds-to-MAX substitute. A focused
+regression first reproduces a visible draw silently becoming inactive.
+
+Install each fragment's actual per-draw assignments at both root insertion and
+offscreen replacement. Metadata updates preserve live assignments and clear
+retired/hidden slots after restoring current keys. Delete the old plan-table
+clone and recovery branch. Fragment classification indexes its complete compiler
+output directly instead of silently skipping missing assignments. This fixes
+the ownership error permanently without adding a parallel cache or recompiling
+the whole retained scene.
+
+Pinned GPU tests then expose two consumers of the same outdated compilation
+tables: filter candidate ordering drops newly inserted draws, and filter
+localization indexes a table shorter than the current draw arena. Pass the
+current Canvas to filter candidate queries; retained queries use current painter
+keys, while immediate queries use their current compiled sequence. Persistent
+bins own complete ranks, so remove the per-candidate rank-availability probe.
+One Canvas membership accessor now serves localization, active batches and GPU
+uploads. Exterior queries still include all possible filter sources; this is
+required for filters that move off-canvas pixels into the visible output.
+
+Four new semantic tests cover multi-batch insertion, reparenting a leaf whose
+content becomes layered, persistent/transient candidate ordering and actual
+filter pixels. GPU checks exercise both local and exterior sources, independent
+color samples, and repeated removal/insertion to reuse physical slots. Nine
+focused fragment tests and 21 spatial-bin tests pass. The serial full all-target
+release run passes 1076 tests with the same three known failures: two unavailable
+pinned-DXC checks and the 1600-pixel turbulence canonical mismatch. Formatting,
+release clippy, backend-free compilation and all example builds pass; existing
+one library/eight test clippy warnings remain.
+
+Metal validation is enabled for correctness. All 1730 SVG fixture images and
+seven example outputs match their immutable baseline pixels exactly. Native
+presentation completes eight frames and its 640x360 to 480x270 resize. Both Metal
+artifact manifests match exactly; this phase changes no shader source or ABI.
+
+The [actual application measurements](benchmarks/cleanup-phase37-metal-2026-10-12.json)
+retain 96 whole-process observations across the SVG fixture application and the
+native retained-window example. Both include baseline/current and identical-current
+control series, two warmups per label and ten alternating timed pairs. SVG
+medians change 4312.680 to 4311.113 ms (-0.04%), compared with -0.33% in its
+same-version control. Window medians change 233.454 to 233.206 ms (-0.11%),
+compared with -0.36% in its control. These measured applications show no material
+central timing regression. Whole-process timing does not establish an isolated
+stage improvement or every retained-edit workload's performance. Nearest-rank
+p95 is the maximum of ten samples; the SVG baseline/current maxima are 4520.416
+and 4541.177 ms, so this sample cannot establish tail behavior.
+
+Timing includes initialization, rendering/completion and teardown; SVG also
+includes parsing, readback and PNG saving. Verification runs after each stopped
+timer: all 83040 measured PNG hashes match the immutable baseline and all 384
+window frames complete with the expected resize. The SVG source manifest is
+unchanged. Timing disables Metal validation. The window explicitly pins registry
+ID `0000000100000575`; SVG uses the system default on this freshly verified
+single-GPU Apple M5 host.
+
+Temporary validation/measurement scripts and copied executables are removed.
+The audit has read 588 of 965 current implementation files, leaving 377 across
+five groups. All retained-scene implementation/test files have now been read;
+clip-bound updates inside filters still warrant an exact metadata-patching
+investigation before replacing their full metadata reconstruction. Current
+transaction validation, journal-gap reconciliation, deferred resize metadata and
+input-domain damage rules preserve required semantics. Actual DXC/ShaderTools
+and DX12/Vulkan execution remain unavailable; independent auditing continues.
+
 ## Remaining audit work
 
-- Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
+- Continue auditing SVG/text semantics, native resource lifetime boundaries, shaders, render scheduling and shared geometry/data. Trace exact retained metadata patching for clip-bound updates inside filters and prove active-batch query bounds before removing skips. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
 - Execute the HLSL editor test against the actual ShaderTools language server; local protocol regressions pass, but the server is unavailable locally.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

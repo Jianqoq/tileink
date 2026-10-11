@@ -95,7 +95,12 @@ impl TileDrawBins {
     /// Returns conservative painter-ordered candidates for a pixel region. Queries within the
     /// indexed domain avoid scanning the scene draw table. Persistent and transient bins share
     /// the same page/flat query path; exterior queries preserve all possible filter sources.
-    pub(crate) fn draws_in_bounds(&self, bounds: Bounds, draw_order: &[u32]) -> Vec<u32> {
+    pub(crate) fn draws_in_bounds(
+        &self,
+        bounds: Bounds,
+        draw_order: &[u32],
+        painter_keys: Option<&[PainterKey]>,
+    ) -> Vec<u32> {
         // Filters can move off-canvas source pixels into visible output. Tile
         // membership covers only this indexed domain, so an exterior query must
         // leave exact source clipping to the localizer instead of dropping draws.
@@ -104,6 +109,17 @@ impl TileDrawBins {
             self.tiles_size.1 * crate::TILE_SIZE,
         );
         if bounds.intersect(indexed) != bounds {
+            // Retained fragment/flat edits deliberately reuse execution structure. Its original
+            // draw_order can omit new draws; the current painter owns the complete live order.
+            if let Some(keys) = painter_keys {
+                let mut draws = keys
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(draw, key)| (key.path[0] != u128::MAX).then_some(draw as u32))
+                    .collect::<Vec<_>>();
+                draws.sort_unstable_by(|a, b| keys[*a as usize].cmp(&keys[*b as usize]));
+                return draws;
+            }
             return draw_order.to_vec();
         }
         let bbox = PixelBounds {
@@ -122,16 +138,13 @@ impl TileDrawBins {
         if candidates.is_empty() {
             return Vec::new();
         }
-        let ranked = candidates.iter().all(|draw| {
-            self.draw_ranks
-                .get(*draw as usize)
-                .is_some_and(|rank| rank.path[0] != u128::MAX)
-        });
-        if ranked {
+        // Persistent bins own complete ranks; transient retained bins use their current owner.
+        // Immediate transient bins carry no ranks and use the supplied compiled draw sequence.
+        let ranks =
+            painter_keys.or_else(|| self.page_arena_valid.then_some(self.draw_ranks.as_slice()));
+        if let Some(ranks) = ranks {
             let mut draws = candidates.into_iter().collect::<Vec<_>>();
-            draws.sort_unstable_by(|a, b| {
-                self.draw_ranks[*a as usize].cmp(&self.draw_ranks[*b as usize])
-            });
+            draws.sort_unstable_by(|a, b| ranks[*a as usize].cmp(&ranks[*b as usize]));
             draws
         } else {
             draw_order

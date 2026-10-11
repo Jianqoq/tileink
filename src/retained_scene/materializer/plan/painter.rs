@@ -93,17 +93,33 @@ impl PersistentSceneMaterializer {
         self.update_painter_metadata_with_additional(changed, &[]);
     }
 
+    /// Install the fragment's actual per-draw assignments. A layered leaf has no
+    /// single node batch; an older compiled plan cannot supply its new memberships.
+    pub(crate) fn install_fragment_batches(&mut self, assignments: &[(usize, u32)]) {
+        let draw_capacity = self.arenas.draws.values().len();
+        let canvas = Rc::make_mut(&mut self.canvas);
+        let painter = &mut canvas.painter;
+        painter.keys.resize(draw_capacity, PainterKey::inactive());
+        painter.batch_ids.resize(draw_capacity, u32::MAX);
+        for &(draw, batch) in assignments {
+            if set_stable_batch(
+                &mut painter.batch_ids,
+                &mut painter.batch_counts,
+                draw,
+                batch,
+            ) && let Some(changes) = &mut canvas.buffer_changes
+            {
+                changes.painter.push(draw..draw + 1);
+            }
+        }
+    }
+
     pub(crate) fn update_painter_metadata_with_additional(
         &mut self,
         changed: &HashSet<RetainedNodeId>,
         additional: &[RetainedNodeId],
     ) {
         let draw_capacity = self.arenas.draws.values().len();
-        let compiled_batches = self
-            .canvas
-            .compiled_plan
-            .as_ref()
-            .map(|plan| plan.draw_batch_ids.clone());
         let canvas = Rc::make_mut(&mut self.canvas);
         let mut metadata = std::mem::take(&mut canvas.painter);
         metadata.keys.resize(draw_capacity, PainterKey::inactive());
@@ -115,14 +131,6 @@ impl PersistentSceneMaterializer {
             dirty.extend(changes.painter.iter().cloned());
             for range in &changes.draws {
                 metadata.keys[range.clone()].fill(PainterKey::inactive());
-                for physical in range.clone() {
-                    set_stable_batch(
-                        &mut metadata.batch_ids,
-                        &mut metadata.batch_counts,
-                        physical,
-                        u32::MAX,
-                    );
-                }
                 dirty.push(range.clone());
             }
         }
@@ -146,13 +154,8 @@ impl PersistentSceneMaterializer {
                 };
                 metadata_changed |= metadata.keys[physical] != key;
                 metadata.keys[physical] = key;
-                // A layered leaf spans batches. Reuse its per-draw compiled membership when
-                // the plan is stable; a pending plan rebuild supplies new membership afterward.
-                let batch = batch.or_else(|| {
-                    compiled_batches
-                        .as_ref()
-                        .map(|batches| batches.get(physical).copied().unwrap_or(u32::MAX))
-                });
+                // Multi-batch leaves retain their existing per-draw assignments. Fragment
+                // installation writes replacements directly; full recompiles synchronize below.
                 if let Some(batch) = batch {
                     metadata_changed |= set_stable_batch(
                         &mut metadata.batch_ids,
@@ -167,6 +170,22 @@ impl PersistentSceneMaterializer {
             }
         }
         let canvas = Rc::make_mut(&mut self.canvas);
+        if let Some(changes) = &canvas.buffer_changes {
+            // Clear retired/hidden slots after live painter keys have been restored. Clearing
+            // all dirty batch IDs first discarded stable multi-batch membership unnecessarily.
+            for range in &changes.draws {
+                for physical in range.clone() {
+                    if metadata.keys[physical].path[0] == u128::MAX {
+                        set_stable_batch(
+                            &mut metadata.batch_ids,
+                            &mut metadata.batch_counts,
+                            physical,
+                            u32::MAX,
+                        );
+                    }
+                }
+            }
+        }
         canvas.painter = metadata;
         if let Some(changes) = &mut canvas.buffer_changes {
             changes.painter = merge_index_ranges(dirty);

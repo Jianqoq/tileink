@@ -42,16 +42,16 @@ fn tile_draw_bins_query_region_without_scanning_unrelated_tiles() {
     let bins = build_tile_draw_bins(&canvas);
 
     assert_eq!(
-        bins.draws_in_bounds(Bounds::new(32, 0, 64, 32), &plan.draw_order),
+        bins.draws_in_bounds(Bounds::new(32, 0, 64, 32), &plan.draw_order, None),
         vec![0]
     );
     assert!(
-        bins.draws_in_bounds(Bounds::new(0, 16, 32, 32), &plan.draw_order)
+        bins.draws_in_bounds(Bounds::new(0, 16, 32, 32), &plan.draw_order, None)
             .is_empty()
     );
     // The index cannot rule out source draws beyond its canvas domain.
     assert_eq!(
-        bins.draws_in_bounds(Bounds::new(0, 32, 32, 64), &plan.draw_order),
+        bins.draws_in_bounds(Bounds::new(0, 32, 32, 64), &plan.draw_order, None),
         *plan.draw_order
     );
 }

@@ -58,7 +58,7 @@ fn partial_edge_tiles_preserve_membership_across_sparse_and_rank_updates() {
             }
         }
         assert_eq!(
-            bins.draws_in_bounds(Bounds::new(512, 256, 528, 272), &order),
+            bins.draws_in_bounds(Bounds::new(512, 256, 528, 272), &order, None),
             order
                 .iter()
                 .copied()

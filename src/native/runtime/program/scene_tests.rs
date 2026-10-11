@@ -105,12 +105,12 @@ fn filter_candidates_are_spatial_and_keep_recorded_scene_identity() -> Result<()
         65535,
     )?;
     assert_eq!(
-        first.filter_candidates(Bounds::new(0, 0, 16, 16), first.plan()),
+        first.filter_candidates(Bounds::new(0, 0, 16, 16), &canvas, first.plan()),
         [0]
     );
     assert!(
         first
-            .filter_candidates(Bounds::new(48, 0, 64, 16), first.plan())
+            .filter_candidates(Bounds::new(48, 0, 64, 16), &canvas, first.plan())
             .is_empty()
     );
     // A nested/local scene and a later root may have different coordinates and
@@ -120,15 +120,15 @@ fn filter_candidates_are_spatial_and_keep_recorded_scene_identity() -> Result<()
     let second = cache.record(&mut gpu_support::batch(&context), &other, None, None, 65535)?;
     assert!(
         second
-            .filter_candidates(Bounds::new(0, 0, 16, 16), second.plan())
+            .filter_candidates(Bounds::new(0, 0, 16, 16), &other, second.plan())
             .is_empty()
     );
     assert_eq!(
-        second.filter_candidates(Bounds::new(16, 0, 32, 16), second.plan()),
+        second.filter_candidates(Bounds::new(16, 0, 32, 16), &other, second.plan()),
         [0]
     );
     assert_eq!(
-        first.filter_candidates(Bounds::new(96, 0, 112, 16), first.plan()),
+        first.filter_candidates(Bounds::new(96, 0, 112, 16), &canvas, first.plan()),
         [1]
     );
     Ok(())
@@ -150,7 +150,7 @@ fn filter_candidates_keep_offcanvas_sources() -> Result<()> {
     )?;
     // Offset(+16, 0) can bring these source pixels into the visible output.
     assert_eq!(
-        scene.filter_candidates(Bounds::new(-16, 0, 16, 16), scene.plan()),
+        scene.filter_candidates(Bounds::new(-16, 0, 16, 16), &canvas, scene.plan()),
         [0]
     );
     Ok(())

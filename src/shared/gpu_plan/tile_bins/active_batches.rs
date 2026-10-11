@@ -20,10 +20,7 @@ impl ActiveBatches {
     ) -> Vec<u32> {
         self.begin();
         let painter = canvas.retained_painter();
-        let ids = match painter {
-            Some(painter) => painter.batch_ids.as_slice(),
-            None => plan.draw_batch_ids.as_slice(),
-        };
+        let ids = canvas.raster_batch_ids(plan);
         if active.len() as usize > canvas.draw_records.len() {
             // Dense damage used to revisit a draw once per dirty tile in its bbox.
             // Reverse the exact membership query and stop at a batch's first hit.
