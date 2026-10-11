@@ -10,7 +10,7 @@ impl ExecPlan {
         old: &Command,
         new: &Command,
     ) -> bool {
-        let (old_draw, new_draw, old_layer, new_layer) = match (old, new) {
+        match (old, new) {
             (
                 Command::Layer {
                     draw: old_draw,
@@ -22,56 +22,40 @@ impl ExecPlan {
                     layer: new_layer,
                     ..
                 },
-            ) if same_layer_plan_shape(old_layer, new_layer) => (
-                Some(*old_draw),
-                Some(*new_draw),
-                Some(old_layer),
-                Some(new_layer),
-            ),
-            (Command::MaskLayer { .. }, Command::MaskLayer { .. }) => (None, None, None, None),
-            _ => return false,
-        };
-
-        if let (Some(old_draw), Some(new_draw), Some(new_layer)) = (old_draw, new_draw, new_layer) {
-            let locations = self
-                .layer_stack_locations
-                .remove(&(old_draw as u32))
-                .unwrap_or_default();
-            for &index in &locations {
-                let entry = &mut self.layer_stack_data[index];
-                match (entry, new_layer) {
-                    (LayerStackEntry::Clip { draw }, Layer::Clip | Layer::ClipSdf { .. })
-                        if *draw == old_draw as u32 =>
-                    {
-                        *draw = new_draw as u32;
+            ) if same_layer_plan_shape(old_layer, new_layer) => {
+                let entry = match new_layer {
+                    Layer::Clip | Layer::ClipSdf { .. } => Some(LayerStackEntry::Clip {
+                        draw: *new_draw as u32,
+                    }),
+                    Layer::Opacity(value) => Some(LayerStackEntry::Opacity {
+                        draw: *new_draw as u32,
+                        opacity: value.opacity,
+                    }),
+                    Layer::Blend(value) => Some(LayerStackEntry::Blend {
+                        draw: *new_draw as u32,
+                        mode: value.mode,
+                    }),
+                    _ => None,
+                };
+                // Opacity/blend with offscreen children have no fused entry.
+                // Filters have no hidden draw at all: their placeholder must
+                // never remove another layer's index. Index presence identifies
+                // the actual compiled representation, including empty groups.
+                if let Some(entry) = entry
+                    && let Some(locations) = self.layer_stack_locations.remove(&(*old_draw as u32))
+                {
+                    for &index in &locations {
+                        self.layer_stack_data[index] = entry;
                     }
-                    (LayerStackEntry::Opacity { draw, opacity }, Layer::Opacity(replacement))
-                        if *draw == old_draw as u32 =>
-                    {
-                        *draw = new_draw as u32;
-                        *opacity = replacement.opacity;
-                    }
-                    (LayerStackEntry::Blend { draw, mode }, Layer::Blend(replacement))
-                        if *draw == old_draw as u32 =>
-                    {
-                        *draw = new_draw as u32;
-                        *mode = replacement.mode;
-                    }
-                    _ => {}
+                    self.layer_stack_locations
+                        .insert(*new_draw as u32, locations);
+                    return true;
                 }
             }
-            if matches!(
-                new_layer,
-                Layer::Clip | Layer::ClipSdf { .. } | Layer::Opacity(_) | Layer::Blend(_)
-            ) {
-                self.layer_stack_locations
-                    .entry(new_draw as u32)
-                    .or_default()
-                    .extend(locations);
-                return true;
-            }
+            (Command::MaskLayer { .. }, Command::MaskLayer { .. }) => {}
+            _ => return false,
         }
-        patch_retained_layer_ops(&mut self.ops, id, old_draw, old_layer, new)
+        patch_retained_layer_ops(&mut self.ops, id, old, new)
     }
 }
 
@@ -92,68 +76,56 @@ fn same_layer_plan_shape(old: &Layer, new: &Layer) -> bool {
 fn patch_retained_layer_ops(
     ops: &mut [ExecOp],
     id: RetainedNodeId,
-    old_draw: Option<usize>,
-    old_layer: Option<&Layer>,
+    old: &Command,
     new: &Command,
 ) -> bool {
-    let mut matched = false;
     for op in ops {
-        match op {
-            ExecOp::OffscreenLayer {
-                retained_id,
-                draw,
-                layer,
-                children,
-                ..
-            } => {
-                if retained_id.is_some_and(|surface| surface.node == id)
-                    && old_draw == Some(*draw)
-                    && old_layer.is_some_and(|old| same_layer_plan_shape(old, layer))
-                {
-                    let Command::Layer {
-                        draw: replacement_draw,
-                        layer: replacement,
-                        ..
-                    } = new
-                    else {
-                        return false;
-                    };
-                    *draw = *replacement_draw;
-                    *layer = replacement.clone();
-                    matched = true;
-                }
-                matched |= patch_retained_layer_ops(children, id, old_draw, old_layer, new);
+        match (&mut *op, old, new) {
+            (
+                ExecOp::OffscreenLayer {
+                    retained_id,
+                    draw,
+                    layer,
+                    ..
+                },
+                Command::Layer { draw: old_draw, .. },
+                Command::Layer {
+                    draw: new_draw,
+                    layer: replacement,
+                    ..
+                },
+            ) if retained_id.is_some_and(|surface| surface.node == id) && *draw == *old_draw => {
+                *draw = *new_draw;
+                *layer = replacement.clone();
+                return true;
             }
-            ExecOp::OffscreenMaskLayer {
-                retained_id,
-                layer,
-                content,
-                mask,
-                ..
-            } => {
-                if retained_id.is_some_and(|surface| surface.node == id) {
-                    let Command::MaskLayer {
-                        layer: replacement, ..
-                    } = new
-                    else {
-                        return false;
-                    };
-                    *layer = replacement.clone();
-                    matched = true;
-                }
-                matched |= patch_retained_layer_ops(content, id, old_draw, old_layer, new);
-                matched |= patch_retained_layer_ops(mask, id, old_draw, old_layer, new);
+            (
+                ExecOp::OffscreenMaskLayer {
+                    retained_id, layer, ..
+                },
+                Command::MaskLayer { .. },
+                Command::MaskLayer {
+                    layer: replacement, ..
+                },
+            ) if retained_id.is_some_and(|surface| surface.node == id) => {
+                *layer = replacement.clone();
+                return true;
             }
             _ => {}
         }
-    }
-    // Fused layers have no retained-id-bearing ExecOp; their stack entry was patched above.
-    matched
-        || matches!(
-            new,
-            Command::Layer {
-                layer: Layer::Clip | Layer::ClipSdf { .. } | Layer::Opacity(_) | Layer::Blend(_),
-                ..
+        let patched = match op {
+            ExecOp::OffscreenLayer { children, .. } => {
+                patch_retained_layer_ops(children, id, old, new)
             }
-        )
+            ExecOp::OffscreenMaskLayer { content, mask, .. } => {
+                patch_retained_layer_ops(content, id, old, new)
+                    || patch_retained_layer_ops(mask, id, old, new)
+            }
+            ExecOp::DrawBatch { .. } => false,
+        };
+        if patched {
+            return true;
+        }
+    }
+    false
 }

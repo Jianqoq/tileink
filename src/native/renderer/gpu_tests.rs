@@ -2,6 +2,7 @@ use super::*;
 
 mod fragment_membership;
 mod incremental;
+mod layer_updates;
 mod offscreen_clips;
 mod retained_damage;
 

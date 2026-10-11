@@ -95,6 +95,9 @@ mod root_layer_classification;
 #[path = "tests/placement.rs"]
 mod placement;
 
+#[path = "tests/layer_updates.rs"]
+mod layer_updates;
+
 #[path = "tests/rollback.rs"]
 mod rollback;
 

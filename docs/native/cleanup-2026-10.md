@@ -2382,9 +2382,68 @@ are removed. All 52 benchmark JSON/gzip files parse and generated npm root
 declarations match package.json. All 970 current implementation files are fully
 read; unresolved producer proofs and platform execution remain separate work.
 
+## Phase 47: patch the actual retained layer representation
+
+Retained descriptor updates no longer infer fusion from the layer kind alone.
+Opacity/blend groups with offscreen descendants own an offscreen operation; the
+old unconditional fused-layer success left its opacity/blend descriptor stale.
+Empty substitute index vectors and the final success-by-kind branch concealed
+that missing update. A real fused entry now updates its indexed stack snapshots;
+otherwise the matching retained offscreen operation is patched. Filters and
+backdrops never inspect the fused index: their unused placeholder draw could
+previously remove another layer's actual index. This fixes the source of both
+issues, without compatibility behavior or a substitute result.
+
+The patch consumes typed old/new commands instead of four correlated optional
+values. Stack indexes are produced from real snapshots, including empty retained
+branches, and live hidden draw allocations are unique. Each retained layer owns
+one root command; its descendants establish their own retained identities. The
+offscreen search therefore stops at the matching node/draw rather than scanning
+unrelated operations after success. Layer-kind changes still require recompiling
+execution structure, which is a semantic plan transition.
+
+Four regressions fail before production changes: stale offscreen opacity,
+stale offscreen blend, an unrelated clip index removed by an empty filter update,
+and actual Metal pixel differences after a group parameter update. Seven new
+tests also cover empty fused groups, type changes and both mask branches. All
+eight focused single-thread release tests pass, including the existing resize
+test selected by the same filter. A 1920x1080 retained application exercises
+72 overlapping rounded-card pairs inside a two-axis blur, parameter animation,
+unchanged frames and readback. Four baseline updated-phase PNGs differ from
+the same executable's fresh-renderer reference; the initial two images match.
+
+Full single-thread release tests pass 1113 cases with the same three existing
+failures: two unavailable pinned-DXC checks and the turbulence canonical mismatch.
+All seven current image examples and 1730 SVG PNGs exactly match baseline.
+The retained application's six incremental PNGs exactly match its fresh reference;
+the four intended differences correct the stale group parameters. Native
+presentation completes eight frames with its expected resize. Formatting,
+release clippy, backend-free compilation and all examples pass with unchanged
+one library/eight library-test lint warnings. Metal/backend-free artifact
+manifests are exact; GPU source/ABI is unchanged. Both website architecture guides
+describe parameter updates and layer-kind transitions.
+
+The [application report](benchmarks/cleanup-phase47-metal-2026-10-12.json) retains
+144 whole-process observations, two warmups per label, ten alternating pairs per
+comparison and identical-current controls. Validation is enabled for correctness
+and disabled for timing; image/frame verification follows every stopped timer.
+SVG medians change 4415.077 to 4447.524 ms (+0.735%), control -0.673%; retained
+medians change 434.392 to 429.032 ms (-1.234%), control -0.616%; window medians
+change 234.008 to 232.755 ms (-0.536%), control +0.209%. Paired median 95%
+descriptive bootstrap intervals include zero and overlap the controls. No stable
+material application timing regression is identified, and no isolated speedup
+is claimed. The baseline retained updated phases are incorrect, so their own
+recorded hashes are used for timing verification; the current phases must match
+the fresh reference. All observations and tails are retained, checking 83040 SVG
+PNG hashes, 288 retained PNG hashes, 4608 retained frames and 384 window frames.
+SVG sources stay unchanged. Temporary Rust/Python measurement code and six copied
+executables are removed. All 53 benchmark JSON/gzip files parse and npm root
+declarations match package.json. All 972 current implementation files are fully
+read; platform execution and the remaining producer proofs are still pending.
+
 ## Remaining audit work
 
-- All current implementation files are fully read. The progressive/glass shader, SVG lowering, filter distance and text coordinate cleanup are implemented and verified on Metal. Prove coarse stack emitter inputs, retained compiled membership bounds and plan eligibility before removing their remaining substitutes. Test DX12 lock-poison policy and prove packed uniform handle presence. Trace exact retained metadata patching for clip-bound updates inside filters and prove offscreen clip exclusion before removing its error wrapper. Continue checking current Cargo/module reachability for retired code after the orphan example removal. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
+- All current implementation files are fully read. The progressive/glass shader, SVG lowering, filter distance, text coordinate and retained layer descriptor cleanup are implemented and verified on Metal. Prove coarse stack emitter inputs, retained compiled membership bounds and other plan eligibility before removing their remaining substitutes. Test DX12 lock-poison policy and prove packed uniform handle presence. Trace exact retained metadata patching for clip-bound updates inside filters. The offscreen clip producer read proof is complete; add an invariant regression and remove its impossible error wrapper. Continue checking current Cargo/module reachability for retired code after the orphan example removal. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
 - Execute the HLSL editor test against the actual ShaderTools language server; local protocol regressions pass, but the server is unavailable locally.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

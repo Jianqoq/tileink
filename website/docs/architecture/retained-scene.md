@@ -51,6 +51,10 @@ Journal 保留最近 256 次 commit。renderer 落后超过窗口时做一次 fu
 
 Tile draw index 使用 page arena：`Tile → ordered page chain → draw slots`。普通变化只改受影响 tile pages。ExecPlan 缓存 leaf/group/layer fragments；结构变化只沿变化节点到 root 更新。相邻且 layer stack 相同的 fragments 会合并 batch。
 
+Opacity／Blend 包含离屏子层时，在该子树合成完成后应用到整个组。
+更新参数会直接修改实际的融合栈或离屏操作，保持 batch 顺序和成员稳定；结果与全新渲染一致。
+空组也保留可更新的计划条目。改变层类型时重新编译对应执行结构。
+
 ## Resize fast path
 
 Responsive hierarchy changes committed with a resize preserve the previous immutable frame and
