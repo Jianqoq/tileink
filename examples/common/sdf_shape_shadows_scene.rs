@@ -2,7 +2,7 @@ use peniko::{
     Color,
     kurbo::{Circle, Point, Rect},
 };
-use tileink::{Canvas, Radius, RectShadowOptions, SdfArc, SdfLine, SdfLineCap, ShadowOptions};
+use tileink::{Canvas, Radius, SdfArc, SdfLine, SdfLineCap, ShadowOptions};
 
 pub fn sdf_shape_shadows_scene() -> (Canvas, u32, u32) {
     let width = 640;
@@ -33,7 +33,7 @@ pub fn sdf_shape_shadows_scene() -> (Canvas, u32, u32) {
     );
     scene.push_arc_shadow(
         arc,
-        RectShadowOptions::new(16.0, 20.0, 18.0, 0.32),
+        ShadowOptions::new(16.0, 20.0, 18.0, 0.32),
         Color::BLACK,
     );
     scene.push_sdf_arc(arc, Color::from_rgb8(239, 68, 68));
@@ -46,7 +46,7 @@ pub fn sdf_shape_shadows_scene() -> (Canvas, u32, u32) {
     );
     scene.push_line_shadow(
         line,
-        RectShadowOptions::new(10.0, 14.0, 14.0, 0.3),
+        ShadowOptions::new(10.0, 14.0, 14.0, 0.3),
         Color::BLACK,
     );
     scene.push_line(line, Color::from_rgb8(20, 184, 166));

@@ -1,5 +1,6 @@
 use super::*;
 use crate::Canvas;
+use std::rc::Rc;
 
 fn vector(width: u32, height: u32) -> ImageSource {
     ImageSource::Vector(Rc::new(Canvas::new(width, height, 1.0)))

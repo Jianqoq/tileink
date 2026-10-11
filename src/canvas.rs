@@ -58,9 +58,10 @@ use crate::shared::{
         },
         line::{DashLine as SdfDashLine, Line as SdfLine, LineShadow as SdfLineShadow},
         rect::{
-            Radius, Rect as SdfRect, RectShadow as SdfRectShadow, RectShadowOptions,
-            RectStroke as SdfRectStroke, StrokeWidths,
+            Radius, Rect as SdfRect, RectShadow as SdfRectShadow, RectStroke as SdfRectStroke,
+            StrokeWidths,
         },
+        shadow::ShadowOptions,
         star::{Star as SdfStar, StarStroke as SdfStarStroke},
         triangle::Triangle as SdfTriangle,
     },

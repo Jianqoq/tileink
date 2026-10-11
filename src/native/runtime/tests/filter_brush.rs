@@ -3,7 +3,8 @@ use crate::{native::runtime::renderer::Images, shared::layer::filter::Filter};
 #[test]
 fn brush_dispatch_rejects_nonrecord_offsets_aliases_and_foreign_batches() -> Result<()> {
     let mut batch = ComputeBatch::new();
-    let upload = Default::default();
+    let empty = crate::shared::image_resource::ImageResourceStore::default();
+    let upload = empty.upload_merged(&empty, 4096, 4, 16, None);
     let images = Images::record(&mut batch, &upload)?;
     let filter = Filter::Flood {
         brush: peniko::Color::from_rgb8(31, 57, 111).into(),

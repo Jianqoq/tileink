@@ -80,16 +80,13 @@ mod tests {
     fn missing_pool_cannot_bypass_image_caching_or_record_partial_resources() {
         let resources = crate::shared::image_resource::ImageResourceStore::default();
         let signature = resources.upload_signature(&resources, 32, 4, 0);
+        let upload = resources.upload_merged(&resources, 32, 4, 0, None);
         let mut batch = ComputeBatch::new();
         let mut cache = None;
         assert!(
-            Images::record_cached(
-                &mut batch,
-                &Default::default(),
-                &mut cache,
-                signature,
-                |_, _| panic!("empty vector resources"),
-            )
+            Images::record_cached(&mut batch, &upload, &mut cache, signature, |_, _| panic!(
+                "empty vector resources"
+            ),)
             .is_err()
         );
         assert!(cache.is_none());

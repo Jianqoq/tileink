@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn push_shape_shadows_record_sdf_shadow_without_path_storage() {
     let mut canvas = test_scene();
-    let options = RectShadowOptions::new(2.0, 3.0, 4.0, 0.5);
+    let options = ShadowOptions::new(2.0, 3.0, 4.0, 0.5);
     canvas.push_circle_shadow(
         Circle::new((20.0, 20.0), 8.0),
         options,

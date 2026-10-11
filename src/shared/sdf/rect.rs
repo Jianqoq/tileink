@@ -3,8 +3,6 @@ use peniko::kurbo::Point;
 use super::shadow::{ShadowOptions, shadow_bounds};
 use crate::shared::bounds::Bounds;
 
-pub type RectShadowOptions = ShadowOptions;
-
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct Radius {
@@ -111,7 +109,7 @@ pub struct Rect {
 #[derive(Debug, Clone, Copy)]
 pub struct RectShadow {
     pub rect: Rect,
-    pub options: RectShadowOptions,
+    pub options: ShadowOptions,
 }
 
 impl Rect {

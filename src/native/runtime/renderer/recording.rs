@@ -66,7 +66,7 @@ mod tests {
                     .is_err()
             );
             assert!(batch.resources().is_empty());
-            assert!(recording.signature.is_none());
+            assert!(recording.upload.is_none());
         }
         // Invalid attempts leave the same recorder usable for subsequent frames.
         let context = crate::native::runtime::gpu_support::context().unwrap();
@@ -94,9 +94,9 @@ pub(crate) struct Recording {
     pub(crate) retained: crate::render::retained::RetainedRenderState<super::Surface>,
     scene: SceneCache,
     vectors: crate::render::vector_images::VectorImageCache<Recording>,
-    upload: GpuImageResourceUpload,
+    // A snapshot and its identity enter the cache together; before first use neither exists.
+    upload: Option<(ImageResourceUploadSignature, GpuImageResourceUpload)>,
     gpu_images: Option<super::images::ImageCache>,
-    signature: Option<ImageResourceUploadSignature>,
     text: Option<PreparedTextData>,
     text_environment: Option<(crate::TextRasterOptions, u64)>,
 }
@@ -151,18 +151,23 @@ impl Recording {
             limits.atlas_pages,
             limits.texture_table_len,
         );
-        if self.signature != Some(signature) {
-            self.upload = resources.upload_merged(
+        if self
+            .upload
+            .as_ref()
+            .is_none_or(|(key, _)| *key != signature)
+        {
+            let upload = resources.upload_merged(
                 canvas.scene_image_resources(),
                 limits.image_dimension,
                 limits.atlas_pages,
                 limits.texture_table_len,
-                Some(&self.upload),
+                self.upload.as_ref().map(|(_, upload)| upload),
             );
-            self.signature = Some(signature);
+            self.upload = Some((signature, upload));
         }
+        let upload = &self.upload.as_ref().unwrap().1;
         self.vectors
-            .retain_sources(self.upload.vectors().iter().map(|vector| &vector.canvas));
+            .retain_sources(upload.vectors().iter().map(|vector| &vector.canvas));
         // Children own their scene namespace. Passing
         // the parent's global store would recursively render unrelated vector images.
         // Different image keys can reference the same immutable child. Its cached
@@ -170,7 +175,7 @@ impl Recording {
         let mut rendered = std::collections::HashMap::new();
         let images = Images::record_cached(
             batch,
-            &self.upload,
+            upload,
             &mut self.gpu_images,
             signature,
             |batch, child| {

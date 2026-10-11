@@ -19,6 +19,8 @@ title: Paint, geometry, and filters
 
 `Sdf` represents Rect, Circle, strokes, CandleStick, Line, DashLine, Arc, and Triangle; `SdfShadow` contains analytic shadow counterparts. Both expose `bounds`. Helpers include `Radius::all`, `StrokeWidths::all`, `ShadowOptions::new`, `SdfLine::new`, `SdfDashLine::new`, `SdfDashLine::with_offset`, `SdfArc::new`, `SdfTriangle::new`, and `CandleStick::new` plus width validators. A triangle's `corner_radius` is a uniform analytic expansion of its three edges, producing rounded vertices without path tessellation.
 
+Rectangle, circle, arc, line and callout shadows all use `ShadowOptions` for their offset, falloff distance and intensity.
+
 `Region::rect` and `Region::path` define filter/mask sampling regions. `Filter` covers blur, color transforms, shadows, convolution, morphology, displacement, turbulence, lighting, composite/blend, primitive graphs, and `RectLiquidGlass`; related public parameter types are re-exported from the crate root. `BlurSampling::downsampled(factor)` selects the reduced-resolution blur path; factors below one are normalized internally when evaluated.
 
 `ShaderKernel::new` and `ShaderPipeline::new` expose native resource bindings, writable buffers, floating-point textures and explicit multipass/multiresolution dispatch. Use `with_resource` for snapshot updates and `with_input_radius` for a bounded aggregate read footprint. See the shader pipeline section in [Images and brushes](../guides/images-and-brushes.md#multipass-native-shaderpipeline).

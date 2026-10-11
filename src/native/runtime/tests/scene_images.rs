@@ -7,7 +7,10 @@ use std::rc::Rc;
 #[test]
 fn empty_images_have_initialized_atlas_and_complete_table() -> Result<()> {
     let mut batch = ComputeBatch::new();
-    let images = SceneImages::record(&mut batch, &GpuImageResourceUpload::default())?;
+    // Exercise the real producer, which also supplies an atlas page for empty stores.
+    let empty = ImageResourceStore::default();
+    let upload = empty.upload_merged(&empty, 4096, 4, NATIVE_TEXTURE_TABLE_CAPACITY, None);
+    let images = SceneImages::record(&mut batch, &upload)?;
     let Resource::Texture(atlas) = &batch.resources()[images.atlas.index()] else {
         panic!()
     };

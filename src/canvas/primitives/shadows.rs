@@ -11,7 +11,7 @@ impl Canvas {
         &mut self,
         rect: Rect,
         radius: Radius,
-        options: RectShadowOptions,
+        options: ShadowOptions,
         brush: impl Into<Brush>,
     ) -> Option<DrawId> {
         let options = options.normalized()?;
@@ -30,7 +30,7 @@ impl Canvas {
     pub fn push_circle_shadow(
         &mut self,
         circle: Circle,
-        options: RectShadowOptions,
+        options: ShadowOptions,
         brush: impl Into<Brush>,
     ) -> Option<DrawId> {
         let options = options.normalized()?;
@@ -48,7 +48,7 @@ impl Canvas {
     pub fn push_arc_shadow(
         &mut self,
         arc: SdfArc,
-        options: RectShadowOptions,
+        options: ShadowOptions,
         brush: impl Into<Brush>,
     ) -> Option<DrawId> {
         if arc.is_empty() {
@@ -63,7 +63,7 @@ impl Canvas {
     pub fn push_line_shadow(
         &mut self,
         line: SdfLine,
-        options: RectShadowOptions,
+        options: ShadowOptions,
         brush: impl Into<Brush>,
     ) -> Option<DrawId> {
         if line.is_empty() {
@@ -82,7 +82,7 @@ impl Canvas {
     pub fn push_callout_shadow(
         &mut self,
         callout: SdfCallout,
-        options: RectShadowOptions,
+        options: ShadowOptions,
         brush: impl Into<Brush>,
     ) -> Option<DrawId> {
         if callout.is_empty() {

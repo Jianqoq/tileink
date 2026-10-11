@@ -43,7 +43,8 @@ fn extracting_released_scratch_cannot_silently_discard_a_cache_entry() {
     use crate::render::surfaces::SurfaceAdapter;
     let context = crate::native::runtime::gpu_support::context().unwrap();
     let mut batch = crate::native::runtime::gpu_support::batch(&context);
-    let upload = Default::default();
+    let empty = crate::shared::image_resource::ImageResourceStore::default();
+    let upload = empty.upload_merged(&empty, 4096, 4, 16, None);
     let images = Images::record(&mut batch, &upload).unwrap();
     let canvas = Canvas::new(4, 4, 1.0);
     let mut cache = SceneCache::default();
@@ -75,7 +76,8 @@ fn frame_records_directly_into_supplied_target_without_full_frame_copy() -> Resu
     let mut batch = crate::native::runtime::gpu_support::batch(&context);
     let texture = context.create_texture(3, 2)?;
     let target = batch.import_texture(&texture)?;
-    let upload = Default::default();
+    let empty = crate::shared::image_resource::ImageResourceStore::default();
+    let upload = empty.upload_merged(&empty, 4096, 4, 16, None);
     let images = Images::record(&mut batch, &upload)?;
     let canvas = Canvas::new(3, 2, 1.0);
     let output = Execution::record(
@@ -110,7 +112,8 @@ fn frame_records_directly_into_supplied_target_without_full_frame_copy() -> Resu
 #[test]
 fn frame_rejects_foreign_image_upload_before_recording() -> Result<()> {
     let mut owner = ComputeBatch::new();
-    let upload = Default::default();
+    let empty = crate::shared::image_resource::ImageResourceStore::default();
+    let upload = empty.upload_merged(&empty, 4096, 4, 16, None);
     let images = Images::record(&mut owner, &upload)?;
     let mut other = ComputeBatch::new();
     let canvas = Canvas::new(2, 2, 1.0);

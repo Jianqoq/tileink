@@ -12,7 +12,8 @@ fn with_execution(
 ) -> Result<()> {
     let context = crate::native::runtime::gpu_support::context()?;
     let mut batch = crate::native::runtime::gpu_support::batch(&context);
-    let upload = Default::default();
+    let empty = crate::shared::image_resource::ImageResourceStore::default();
+    let upload = empty.upload_merged(&empty, 4096, 4, 16, None);
     let images = Images::record(&mut batch, &upload)?;
     let mut cache = SceneCache::default();
     let mut retained = Default::default();

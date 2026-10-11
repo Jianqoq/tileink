@@ -1856,9 +1856,73 @@ clip exclusion still needs producer proof before removing its error wrapper.
 Actual DXC/ShaderTools and DX12/Vulkan execution remain unavailable; independent
 auditing continues.
 
+## Phase 39: canonical shadows and complete image-upload snapshots
+
+Remove RectShadowOptions, the compatibility alias retained when commit 74282fc9
+introduced ShadowOptions. Rectangle, circle, arc, line and callout shadow APIs,
+examples and tests now use the same canonical type. Both website languages
+explain the shared options. The shadow data and calculations are unchanged.
+
+Image upload has one constructor whose only caller always supplies both resource
+stores. Remove the optional scene branch, duplicate selected-texture limit checks
+and impossible first-page default. Every upload owns either packed atlas pages
+or its initialized transparent page. Remove derived Default, which created an
+invalid zero-page upload, and the native consumer's second empty-atlas creation
+path. Recording now stores the upload and its signature together in one optional
+cache entry; absence before the first frame no longer needs a fake upload.
+Tests construct empty uploads through the real store producer.
+
+Shelf packing receives selected images that fit a fresh page including their
+one-pixel guard. Seed each page with its first item and remove repeated fit
+filtering, empty-packer retries and impossible silent skips. Device budgets,
+missing-image transparency, renderer/scene namespaces, weak identity guards,
+unchanged-pixel reuse and vector ownership retain their required semantics.
+Split the 1049-line resource file into stores/identity (222 lines), uploads
+(363), atlas packing/copying (211), and separate semantic tests. This permanently
+removes redundant states and branches; no substitute compatibility path is added.
+
+Three new semantic tests cover overlapping namespace keys, resource removal to
+empty, page dimensions 0/1/2/3/7/8/9/31, zero/one/multiple page budgets, exact
+standalone texture limits and contiguous placement indices. All 21 image tests
+pass before and after the production edit. Native image tests pass 11 cases,
+recording tests 20 and shadow tests eight. The serial full all-target release run
+passes 1080 tests with the same three known failures: two unavailable pinned-DXC
+checks and the 1600-pixel turbulence canonical mismatch. Formatting, release
+clippy, backend-free compilation and example builds pass; existing one library/
+eight test clippy warnings remain. Website build dependencies remain unavailable.
+
+With Metal validation enabled, all 1730 SVG images and seven example outputs
+match the immutable baseline exactly. Presentation completes eight frames and
+the 640x360 to 480x270 resize. The two Metal artifact manifests and backend-free
+empty manifest are unchanged; this phase changes no shader source or ABI.
+
+The [application measurements](benchmarks/cleanup-phase39-metal-2026-10-12.json)
+retain 96 whole-process observations, including baseline/current and identical-
+current controls, two warmups per label and ten alternating timed pairs. SVG
+medians change 4277.914 to 4297.932 ms (+0.47%), with -0.02% in the same-version
+control. Window medians change 232.569 to 232.700 ms (+0.06%), with -0.03% in its
+control. These applications show no material central timing regression; the
+measurements do not establish an isolated packing speedup. Nearest-rank p95 is
+the maximum of ten samples; raw timings and tails remain in the report.
+
+Timing includes initialization, rendering/completion and teardown; SVG also
+includes parsing, readback and PNG saving. Verification follows each stopped
+timer: 83040 PNG hashes match, 384 window frames complete, and SVG inputs remain
+unchanged. Timing disables Metal validation. Window explicitly pins registry ID
+0000000100000575; SVG uses the default on the freshly verified single-GPU Apple
+M5 host. Temporary scripts and copied executables are removed.
+
+The audit has read 684 of 970 current implementation files, leaving 286 in native
+runtime, shaders and the SVG entry. All render scheduling and DX12 implementation
+files have been read. DX12 lock-poison recovery and packed uniform handle absence
+need focused policy/producer tests. Sweep shaders also repeatedly add/subtract
+TAU toward unrestricted public start angles, risking excessive work or a stalled
+float increment; a bounded arithmetic fix with semantic regressions is next.
+Actual DXC/ShaderTools and DX12/Vulkan execution remain unavailable.
+
 ## Remaining audit work
 
-- Continue auditing SVG/text semantics, native resource lifetime boundaries, shaders and render scheduling. Remove the confirmed RectShadowOptions compatibility alias and the always-present image-upload scene option. Trace exact retained metadata patching for clip-bound updates inside filters and prove offscreen clip exclusion before removing its error wrapper. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
+- Continue the 286 pending native runtime, shader and SVG-entry reads. Replace unbounded sweep angle loops with bounded arithmetic and focused regressions. Test DX12 lock-poison policy and prove packed uniform handle presence. Trace exact retained metadata patching for clip-bound updates inside filters and prove offscreen clip exclusion before removing its error wrapper. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
 - Execute the HLSL editor test against the actual ShaderTools language server; local protocol regressions pass, but the server is unavailable locally.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

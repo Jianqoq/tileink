@@ -44,40 +44,38 @@ impl SceneImages {
         upload: &GpuImageResourceUpload,
     ) -> Result<ImageAllocation> {
         let pages = upload.atlas_pages();
-        let atlas = if pages.is_empty() {
-            batch.texture_array_rgba8([1, 1, 1], vec![0; 4])?
+        // The upload constructor always supplies an initialized atlas page.
+        let size = upload.atlas_page_size();
+        if size == 0 || size > i32::MAX as u32 || pages.len() > u16::MAX as usize {
+            return Err("native image atlas dimensions exceed texture limits".into());
+        }
+        let page_bytes = (size as usize)
+            .checked_mul(size as usize)
+            .and_then(|n| n.checked_mul(4))
+            .ok_or("native image atlas page size overflow")?;
+        let bytes = page_bytes
+            .checked_mul(pages.len())
+            .ok_or("native image atlas size overflow")?;
+        for (index, page) in pages.iter().enumerate() {
+            if page.index as usize != index
+                || page.size != size
+                || page.pixels.len().checked_mul(4) != Some(page_bytes)
+            {
+                return Err("native image atlas page layout mismatch".into());
+            }
+        }
+        let pixels = if pages.len() == 1 {
+            std::rc::Rc::clone(&pages[0].pixels)
         } else {
-            let size = upload.atlas_page_size();
-            if size == 0 || size > i32::MAX as u32 || pages.len() > u16::MAX as usize {
-                return Err("native image atlas dimensions exceed texture limits".into());
+            let mut pixels = Vec::new();
+            pixels.try_reserve_exact(bytes / 4)?;
+            for page in pages {
+                pixels.extend_from_slice(&page.pixels);
             }
-            let page_bytes = (size as usize)
-                .checked_mul(size as usize)
-                .and_then(|n| n.checked_mul(4))
-                .ok_or("native image atlas page size overflow")?;
-            let bytes = page_bytes
-                .checked_mul(pages.len())
-                .ok_or("native image atlas size overflow")?;
-            for (index, page) in pages.iter().enumerate() {
-                if page.index as usize != index
-                    || page.size != size
-                    || page.pixels.len().checked_mul(4) != Some(page_bytes)
-                {
-                    return Err("native image atlas page layout mismatch".into());
-                }
-            }
-            let pixels = if pages.len() == 1 {
-                std::rc::Rc::clone(&pages[0].pixels)
-            } else {
-                let mut pixels = Vec::new();
-                pixels.try_reserve_exact(bytes / 4)?;
-                for page in pages {
-                    pixels.extend_from_slice(&page.pixels);
-                }
-                std::rc::Rc::new(pixels)
-            };
-            batch.texture_pixels([size, size, u32::try_from(pages.len())?], true, pixels)?
+            std::rc::Rc::new(pixels)
         };
+        let atlas =
+            batch.texture_pixels([size, size, u32::try_from(pages.len())?], true, pixels)?;
         let empty = batch.texture_rgba8([1, 1], vec![0; 4])?;
         let mut textures = vec![empty; NATIVE_TEXTURE_TABLE_CAPACITY as usize];
         for texture in upload.textures() {

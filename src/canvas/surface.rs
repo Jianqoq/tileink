@@ -221,9 +221,9 @@ impl Canvas {
         }
     }
 
-    pub(super) fn physical_shadow_options(&self, options: RectShadowOptions) -> RectShadowOptions {
+    pub(super) fn physical_shadow_options(&self, options: ShadowOptions) -> ShadowOptions {
         let scale = self.scale_f32();
-        RectShadowOptions {
+        ShadowOptions {
             offset_x: options.offset_x * scale,
             offset_y: options.offset_y * scale,
             expand: options.expand * scale,

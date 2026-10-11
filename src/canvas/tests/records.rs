@@ -47,7 +47,7 @@ fn append_rejects_a_corrupt_present_shadow_instead_of_removing_it() {
             2.0,
             SdfLineCap::Round,
         ),
-        RectShadowOptions::new(2.0, 3.0, 4.0, 0.5),
+        ShadowOptions::new(2.0, 3.0, 4.0, 0.5),
         Color::WHITE,
     );
     child.sdf_shadow_blob[6] = f32::NAN.to_bits();

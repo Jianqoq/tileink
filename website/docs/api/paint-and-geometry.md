@@ -69,6 +69,8 @@ title: Paint、Geometry 与 Filter
 
 Circle/Rect/stroke/shadow structs 同时公开字段，适合 struct literal；详细字段运行 `cargo doc --open` 查看。
 
+矩形、圆形、圆弧、线和 callout 阴影统一使用 `ShadowOptions`，分别设置偏移、衰减距离和强度。
+
 ## Region 与 Mask
 
 `Region::rect(rect, radius)` 创建 analytic rounded-rect region；`Region::path(path, transform, tolerance)` 创建 path region。`Mask` 包含 region 和 `MaskKind`（alpha/luminance 语义）。
