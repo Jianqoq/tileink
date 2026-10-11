@@ -1,6 +1,6 @@
 # Native DXC discovery
 
-Native DX12 and Vulkan builds compile HLSL during the Cargo build. The executable embeds shaders and does not need DXC at runtime.
+Native DX12 and Vulkan builds compile built-in HLSL during the Cargo build. Their embedded kernels do not invoke DXC at runtime. Application-provided HLSL from `ShaderProgram` or `ShaderKernel` compiles when its native pipeline is first created and requires the same pinned DXC toolchain at runtime.
 
 Compiler selection order:
 

@@ -1,5 +1,6 @@
 //! Buffer compute layouts and lazily cached native SPIR-V pipelines.
-use super::super::Result;
+use super::super::{Result, pipeline_cache};
+mod cache;
 use crate::native::shaders::BindingKind;
 use ash::vk;
 use std::{collections::BTreeMap, ffi::CString};
@@ -95,76 +96,10 @@ pub fn ensure(
             .stage(vk::ShaderStageFlags::COMPUTE)
             .module(shader)
             .name(&name);
-        let identity = serde_json::to_vec(
-            &serde_json::json!({"api":"vulkan","version":properties.api_version,"vendor":properties.vendor_id,"device":properties.device_id,"driver":properties.driver_version,"uuid":properties.pipeline_cache_uuid}),
-        );
-        let cached = (|| -> Result<bool> {
-            let identity = identity?;
-            let handle = std::cell::Cell::new(vk::Pipeline::null());
-            let build = |data: &[u8]| -> std::result::Result<(vk::Pipeline, Vec<u8>), vk::Result> {
-                let cache = device.create_pipeline_cache(
-                    &vk::PipelineCacheCreateInfo::default().initial_data(data),
-                    None,
-                )?;
-                let created = device.create_compute_pipelines(
-                    cache,
-                    &[vk::ComputePipelineCreateInfo::default()
-                        .stage(stage)
-                        .layout(result.layout)],
-                    None,
-                );
-                let pipeline = match created {
-                    Ok(p) => p[0],
-                    Err((partial, error)) => {
-                        for p in partial {
-                            device.destroy_pipeline(p, None);
-                        }
-                        device.destroy_pipeline_cache(cache, None);
-                        return Err(error);
-                    }
-                };
-                let bytes = device.get_pipeline_cache_data(cache);
-                device.destroy_pipeline_cache(cache, None);
-                match bytes {
-                    Ok(bytes) => Ok((pipeline, bytes)),
-                    Err(e) => {
-                        device.destroy_pipeline(pipeline, None);
-                        Err(e)
-                    }
-                }
-            };
-            let loaded = super::super::pipeline_cache::load_or_create_for_layout(
-                &identity,
-                key,
-                b"native-compute-buffer-table-v1",
-                |data| {
-                    if !cache_header_matches(
-                        data,
-                        properties.vendor_id,
-                        properties.device_id,
-                        &properties.pipeline_cache_uuid,
-                    ) {
-                        return Ok(false);
-                    }
-                    match build(data) {
-                        Ok((p, _)) => {
-                            handle.set(p);
-                            Ok(true)
-                        }
-                        Err(_) => Ok(false),
-                    }
-                },
-                || {
-                    let (p, bytes) = build(&[]).map_err(std::io::Error::other)?;
-                    handle.set(p);
-                    Ok(bytes)
-                },
-            );
-            result.pipeline = handle.get();
-            Ok(loaded?)
-        })();
+        let cached = cache::create(device, properties, key, stage, result.layout);
         device.destroy_shader_module(shader, None);
-        let hit = cached?;
+        let (pipeline, hit) = cached?;
+        result.pipeline = pipeline;
         eprintln!(
             "native Vulkan compute {entry}: {}",
             if hit { "cache hit" } else { "compiled" }
@@ -181,36 +116,5 @@ impl Drop for Pipeline {
             self.device
                 .destroy_descriptor_set_layout(self.bindings, None);
         }
-    }
-}
-
-fn cache_header_matches(bytes: &[u8], vendor: u32, device: u32, uuid: &[u8; 16]) -> bool {
-    bytes.len() >= 32
-        && u32::from_le_bytes(bytes[0..4].try_into().unwrap()) == 32
-        && u32::from_le_bytes(bytes[4..8].try_into().unwrap()) == 1
-        && u32::from_le_bytes(bytes[8..12].try_into().unwrap()) == vendor
-        && u32::from_le_bytes(bytes[12..16].try_into().unwrap()) == device
-        && bytes[16..32] == *uuid
-}
-
-#[test]
-fn driver_cache_header_requires_exact_device_and_uuid() {
-    let uuid = [17; 16];
-    let mut bytes: Vec<_> = [32u32, 1, 23, 41]
-        .iter()
-        .flat_map(|word| word.to_le_bytes())
-        .collect();
-    bytes.extend(uuid);
-    assert!(cache_header_matches(&bytes, 23, 41, &uuid));
-    assert!(!cache_header_matches(&bytes, 24, 41, &uuid));
-    assert!(!cache_header_matches(&bytes, 23, 42, &uuid));
-    assert!(!cache_header_matches(&bytes, 23, 41, &[18; 16]));
-    for length in 0..32 {
-        assert!(!cache_header_matches(&bytes[..length], 23, 41, &uuid));
-    }
-    for offset in [0, 4] {
-        let mut invalid = bytes.clone();
-        invalid[offset] += 1;
-        assert!(!cache_header_matches(&invalid, 23, 41, &uuid));
     }
 }

@@ -21,3 +21,5 @@ The dense-update heuristic compares changed draw/tile memberships against the cu
 A retained root-layer removal fast path applies only when the transaction has no changed live nodes. Mixed removal/insertion or removal/update transactions reconcile the full execution plan; removing a page must not discard the new page’s draw operations. CPU plan coverage and native GPU fresh-render comparison cover successive clipped-page replacements. This fixes missing first-activation content at the plan-classification root cause.
 
 滤镜录制直接返回原始错误，包括 graph 的缺失或前向输入引用；分配或原生 shader 录制失败会中止该帧，释放已取得的临时表面，并保留最先发生的错误。原生帧直接在调用者持有的批次中录制，目标拷贝和提交由对应输出与同步接口负责。
+
+Vulkan 的 pipeline／驱动缓存创建错误直接返回，不再当作缓存失效重试。不兼容的驱动缓存数据由 Vulkan 处理；缓存导出或写盘失败时，释放本次创建的原生对象。

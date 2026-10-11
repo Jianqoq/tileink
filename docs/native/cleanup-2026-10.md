@@ -791,8 +791,48 @@ actual DXC performance measurement is claimed. Public shader error documentation
 is updated in both website languages. The temporary type-check harness and copied
 presentation executable are removed after verification.
 
+## Phase 21: Vulkan driver errors, opaque cache data and explicit ownership
+
+Vulkan cache construction no longer converts every driver error into a cold retry.
+Cache-object and compute-pipeline failures propagate with their original result.
+The host's repeated header/device/UUID parser is removed: the existing persistent
+key already includes API, driver, device, UUID, shader and layout identity, and
+[Vulkan handles incompatible initial cache data](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineCacheCreateInfo.html).
+Disk framing/checksum validation remains shared with other native caches.
+
+A cache hit creates the pipeline from the opaque bytes without exporting the
+cache again. Cold creation exports once for publication. A small owned pair keeps
+the cache and pipeline alive until publication succeeds, retires partial results
+and releases both objects on creation/export/write failures. Pipeline construction
+and cache ownership now live in separate short files. This permanently removes
+the incorrect retry and manual compatibility policy.
+
+Seven tests execute that production cache module and the real persistent-cache
+wrapper through a controlled ash function table on every host. Before fixing,
+five cases failed: cached cache-object errors, cached pipeline errors, redundant
+hit export, host header policy and repeated creation after device-identity changes.
+The tests also cover cold failures, partial native objects, publication failure,
+source/device/driver/API/UUID key separation and zero live handles after retirement.
+They verify calls and ownership without a Vulkan loader or GPU; they do not prove
+driver conformance or actual Vulkan throughput. The obsolete header-policy unit
+test is replaced by the current opaque-data contract.
+
+All 23 focused serial release tests pass. The full Metal suite, including ignored
+GPU/compiler tests, reports 1041 passing tests and the same three known failures
+described in phase 12. All 12 example tests pass. Release Clippy has no new warnings;
+the backend-free library compiles. Windows DX12/Vulkan library/example/test types
+pass through the temporary type-only harness, which is removed after checking.
+Actual DXC compilation and Vulkan/DX12 GPU runtime validation remain unavailable.
+
+All 1730 SVG images and seven example PNGs match phase 20 exactly. The validated
+Metal window completes eight frames and the 640x360 to 480x270 resize. Its executable
+and shader manifest remain byte-identical. No actual Vulkan performance improvement
+is claimed. The bilingual renderer docs now describe the error contract. The DXC
+discovery doc's obsolete claim that runtime never needs DXC is corrected for
+application-provided HLSL.
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
-- Audit Vulkan pipeline-cache error classification: its cached construction currently turns every driver error into a cold retry, including errors unrelated to cache rejection. Add an executable focused regression before fixing.
+- Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.
