@@ -166,7 +166,7 @@ fn fixed_chains_and_graphs_keep_a_nested_wrap_domain() {
     }
 }
 
-fn dependency_radius(filter: &Filter) -> i32 {
+fn dependency_radius(filter: &Filter) -> u32 {
     filter_dependency(filter)
         .local_radius()
         .expect("this case has a finite neighbourhood")
@@ -183,5 +183,67 @@ fn a_large_convolution_anchor_cannot_wrap_the_source_footprint_to_empty() {
     assert_eq!(
         filter_dependency(&filter).affected_output(Bounds::new(0, 0, 1, 1), domain, domain),
         domain
+    );
+}
+
+#[test]
+fn tile_dependency_preserves_distances_across_the_signed_coordinate_domain() {
+    let output = Bounds::new(i32::MAX - 8, i32::MAX - 8, i32::MAX, i32::MAX);
+    let source = Bounds::new(i32::MIN, i32::MIN, i32::MIN + 8, i32::MIN + 8);
+    let filter = Filter::Graph {
+        primitives: vec![FilterPrimitive {
+            input: FilterInput::SourceGraphic,
+            input2: None,
+            region: output,
+            linear_rgb: false,
+            kind: FilterPrimitiveKind::Tile {
+                source_region: source,
+            },
+        }],
+        fixed_region: true,
+    };
+    let dependency = filter_dependency(&filter);
+    assert_eq!(
+        dependency.local_radius().unwrap() as u64,
+        u64::from(u32::MAX - 8)
+    );
+    assert_eq!(dependency.source_bounds(output, source), source);
+    assert_eq!(dependency.affected_output(source, source, output), output);
+}
+
+#[test]
+fn whole_region_damage_uses_the_unsigned_extent_without_truncation() {
+    let filter = convolve(3, 1, 1, 0, 1.0, ConvolveEdgeMode::Wrap);
+    let domain = Bounds::new(i32::MIN, -1, i32::MAX, 1);
+    assert_eq!(
+        filter_dependency(&filter).damage_outset(domain) as u64,
+        u64::from(u32::MAX - 1)
+    );
+}
+
+#[test]
+fn combined_filter_radii_do_not_wrap_or_stop_at_the_signed_limit() {
+    for (sigma, offset, expected) in [
+        (2.0, 4.1, 11u64),
+        (1.0e9, 1.0, 3_000_000_001),
+        (f32::MAX, f32::MAX, u64::from(u32::MAX)),
+    ] {
+        let shadow = Filter::DropShadow {
+            std_dev: sigma,
+            offset_x: offset,
+            offset_y: -offset,
+            brush: crate::Brush::Solid(peniko::Color::BLACK),
+        };
+        assert_eq!(filter_outset(&shadow) as u64, expected);
+    }
+    let glass = RectLiquidGlass {
+        blur_radius: u32::MAX,
+        ..RectLiquidGlass::default()
+    };
+    assert_eq!(glass.sample_outset() as u64, u64::from(u32::MAX));
+    let filter = convolve(1, 1, u32::MAX, 0, 1.0, ConvolveEdgeMode::Duplicate);
+    assert_eq!(
+        filter_dependency(&filter).local_radius().unwrap() as u64,
+        u64::from(u32::MAX)
     );
 }

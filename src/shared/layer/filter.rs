@@ -281,9 +281,10 @@ impl Default for RectLiquidGlass {
 }
 
 impl RectLiquidGlass {
-    pub(crate) fn sample_outset(self) -> i32 {
-        let refraction = LIQUID_GLASS_REFRACTION_PIXEL_SCALE.ceil() as i32;
-        blur_outset(self.blur_radius as f32 * LIQUID_GLASS_BLUR_STD_DEV_SCALE) + refraction + 2
+    pub(crate) fn sample_outset(self) -> u32 {
+        let refraction = LIQUID_GLASS_REFRACTION_PIXEL_SCALE.ceil() as u32;
+        blur_outset(self.blur_radius as f32 * LIQUID_GLASS_BLUR_STD_DEV_SCALE)
+            .saturating_add(refraction + 2)
     }
 }
 
@@ -520,7 +521,7 @@ pub(crate) fn unclipped_filtered_region_bounds(filter: &Filter, sample_region: &
     region_bounds(sample_region).outset(filter_outset(filter))
 }
 
-pub(crate) fn filter_outset(filter: &Filter) -> i32 {
+pub(crate) fn filter_outset(filter: &Filter) -> u32 {
     match filter {
         Filter::Chain {
             filters,
@@ -534,7 +535,7 @@ pub(crate) fn filter_outset(filter: &Filter) -> i32 {
                 filters
                     .iter()
                     .map(filter_outset)
-                    .fold(0, i32::saturating_add)
+                    .fold(0, u32::saturating_add)
             }
         }
         Filter::Graph { .. } => 0,
@@ -546,21 +547,22 @@ pub(crate) fn filter_outset(filter: &Filter) -> i32 {
             std_dev_y,
             sampling: _,
         } => blur_outset(std_dev_x.max(*std_dev_y)),
-        Filter::Offset { dx, dy } => dx.abs().ceil().max(dy.abs().ceil()) as i32,
+        Filter::Offset { dx, dy } => dx.abs().ceil().max(dy.abs().ceil()) as u32,
         Filter::Morphology {
             radius_x,
             radius_y,
             operator,
         } => match operator {
             MorphologyOperator::Erode => 0,
-            MorphologyOperator::Dilate => (*radius_x).max(*radius_y).max(0.0).ceil() as i32,
+            MorphologyOperator::Dilate => (*radius_x).max(*radius_y).max(0.0).ceil() as u32,
         },
         Filter::DropShadow {
             std_dev,
             offset_x,
             offset_y,
             ..
-        } => blur_outset(*std_dev) + offset_x.abs().ceil().max(offset_y.abs().ceil()) as i32,
+        } => blur_outset(*std_dev)
+            .saturating_add(offset_x.abs().ceil().max(offset_y.abs().ceil()) as u32),
         _ => 0,
     }
 }
@@ -588,8 +590,8 @@ fn rect_bounds(rect: peniko::kurbo::Rect) -> Bounds {
     )
 }
 
-fn blur_outset(std_dev: f32) -> i32 {
-    (std_dev.max(0.0) * 3.0).ceil() as i32
+pub(crate) fn blur_outset(std_dev: f32) -> u32 {
+    (std_dev.max(0.0) * 3.0).ceil() as u32
 }
 
 #[derive(Clone, Debug)]

@@ -218,6 +218,46 @@ fn native_shader_pipeline_output_growth_matches_offset_and_shadow_at_multiple_dp
     context.check_validation()?;
     Ok(())
 }
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn native_shader_pipeline_full_span_output_growth_remains_visible_and_reuses_renderer() -> Result<()>
+{
+    let context = context()?;
+    let program = ShaderProgram::new(
+        ShaderSources {
+            metal: Some(include_str!("../../../../examples/shaders/paint.metal").into()),
+            hlsl: Some(include_str!("../../../../examples/shaders/paint.hlsl").into()),
+        },
+        "paint",
+        ShaderInput::None,
+        8,
+    )?;
+    let filter = program
+        .filter([0.0f32, 0.0, 0.0, 0.0, 0.8, 0.8, 0.8, 0.8].map(f32::to_bits))?
+        .with_output_outset(f32::MAX)?;
+    let mut renderer = NativeRenderer::with_context(&context, 33, 19)?;
+    let mut expected = None;
+    for rect in [
+        Rect::new(0.0, 0.0, 33.0, 19.0),
+        Rect::new(-3.0e9, -3.0e9, -3.0e9 + 512.0, -3.0e9 + 512.0),
+        Rect::new(0.0, 0.0, 33.0, 19.0),
+    ] {
+        let mut canvas = Canvas::new(33, 19, 1.0);
+        canvas.push_filter_layer(filter.clone().into(), Region::rect(rect, Radius::ZERO));
+        canvas.push_rect(rect, Radius::ZERO, Color::WHITE);
+        canvas.pop_layer();
+        let image = renderer.render_to_image(&canvas)?.readback()?;
+        assert!(image.pixels.iter().all(|pixel| *pixel != 0));
+        if let Some(expected) = &expected {
+            assert_eq!(&image.pixels, expected);
+        } else {
+            expected = Some(image.pixels);
+        }
+    }
+    context.check_validation()?;
+    Ok(())
+}
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn native_shader_pipeline_graph_composite_matches_builtin_and_nested_graphs() -> Result<()> {

@@ -116,6 +116,29 @@ fn partial_blur_expands_vertical_halo_without_changing_output_work() {
 }
 
 #[test]
+fn partial_blur_large_halo_covers_all_rows_before_reporting_encoding_failure() {
+    let mut recorder = active_recorder();
+    recorder.fail_kernel = Some(1);
+    assert_eq!(
+        FilterExecutor::new(&mut recorder).apply_blur_from_source_partial(
+            RenderTargetId::Main,
+            RenderTargetId::Scratch(99),
+            Bounds::new(16, 16, 32, 32),
+            bounds(),
+            2.0,
+            f32::MAX,
+        ),
+        Err("kernel recording failed")
+    );
+    assert!(
+        recorder.kernels[0].contains(&format!("output_bounds: {:?}", Bounds::new(16, 0, 32, 48)))
+    );
+    assert_eq!(recorder.work_changes, [Some(vec![1, 5, 9]), Some(vec![5])]);
+    assert_eq!(recorder.work, Some(vec![5]));
+    assert!(recorder.live.is_empty());
+}
+
+#[test]
 fn partial_glass_restores_incremental_state_even_when_a_blur_pass_fails() {
     let glass = filter_model::RectLiquidGlass {
         blur_radius: 6,

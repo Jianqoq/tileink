@@ -40,6 +40,8 @@ title: Paint、Geometry 与 Filter
 
 `Bounds::new(x0, y0, x1, y1)` 创建整数像素范围，`Bounds::canvas(width, height)` 创建完整画布范围。`intersect`、`union` 与 `outset` 分别计算交集、并集与向外扩张；`is_empty` 检查空范围。Bounds 使用半开区间，`x1`/`y1` 不属于范围。
 
+`outset(amount: u32)` 接受非负像素距离，可覆盖完整的 `i32` 坐标跨度；扩张后的端点限制在 `i32` 范围内。宽高使用宽整数计算，因此横跨正负坐标极限的非空范围不会因溢出变成零。
+
 ## Image
 
 | 方法 | 说明 |

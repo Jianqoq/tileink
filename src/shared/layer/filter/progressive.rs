@@ -91,13 +91,13 @@ impl ProgressiveBlur {
             .then_some(projection)
     }
 
-    pub(crate) fn sample_outset(self) -> i32 {
+    pub(crate) fn sample_outset(self) -> u32 {
         if self.max_std_dev <= 0.0 || self.projection().is_none() {
             return 0;
         }
         // Cover the support of the upper bracketing pyramid level, including
         // reconstruction. A Gaussian's usual 3*sigma halo is insufficient here.
-        (20.0 * self.max_std_dev + 8.0).ceil() as i32
+        (20.0 * self.max_std_dev + 8.0).ceil() as u32
     }
 }
 

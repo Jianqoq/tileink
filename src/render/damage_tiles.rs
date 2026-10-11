@@ -393,11 +393,11 @@ impl DamageTiles {
     }
 
     /// Adds vertical sampling halos without filling gaps between sparse columns.
-    pub(crate) fn outset_y(&self, pixels: i32) -> Self {
-        if pixels <= 0 {
+    pub(crate) fn outset_y(&self, pixels: u32) -> Self {
+        if pixels == 0 {
             return self.clone();
         }
-        let rows = (pixels as u32).div_ceil(TILE_SIZE);
+        let rows = pixels.div_ceil(TILE_SIZE);
         let mut expanded = Self {
             tiles_width: self.tiles_width,
             tiles_height: self.tiles_height,
@@ -422,8 +422,8 @@ impl DamageTiles {
     ///
     /// Offscreen filters use this to redraw source pixels outside the visible
     /// output damage that can still be sampled into that output.
-    pub(crate) fn outset(&self, physical_size: (u32, u32), pixels: i32) -> Self {
-        if pixels <= 0 {
+    pub(crate) fn outset(&self, physical_size: (u32, u32), pixels: u32) -> Self {
+        if pixels == 0 {
             return self.clone();
         }
         let canvas = Bounds::canvas(physical_size.0, physical_size.1);

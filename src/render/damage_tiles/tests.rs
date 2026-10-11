@@ -321,15 +321,15 @@ fn vertical_halos_match_pixel_bounds_and_preserve_sparse_columns() {
                 damage.add_bounds(Bounds::new(x as i32, y as i32, x as i32 + 1, y as i32 + 1));
             }
         }
-        for pixels in [-1_i32, 0, 1, 15, 16, 17, 32, i32::MAX] {
+        for pixels in [0_u32, 1, 15, 16, 17, 32, i32::MAX as u32, u32::MAX] {
             let mut expected = DamageTiles::new(size);
             for rect in damage.coalesced_rects(size) {
                 expected.add_bounds(
                     Bounds::new(
                         rect.x0,
-                        rect.y0.saturating_sub(pixels.max(0)),
+                        (i64::from(rect.y0) - i64::from(pixels)).max(i64::from(i32::MIN)) as i32,
                         rect.x1,
-                        rect.y1.saturating_add(pixels.max(0)),
+                        (i64::from(rect.y1) + i64::from(pixels)).min(i64::from(i32::MAX)) as i32,
                     )
                     .intersect(Bounds::canvas(size.0, size.1)),
                 );

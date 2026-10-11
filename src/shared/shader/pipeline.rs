@@ -258,7 +258,7 @@ impl ShaderPipeline {
             ..self.clone()
         })
     }
-    pub(crate) fn sample_outset(&self) -> Option<i32> {
+    pub(crate) fn sample_outset(&self) -> Option<u32> {
         self.input_dependency.map(|input| match input {
             ShaderInput::Sampled { radius } => super::sampling_outset(self.transform, radius),
             _ => 0,
@@ -276,8 +276,8 @@ impl ShaderPipeline {
             ..self.clone()
         })
     }
-    pub(crate) fn output_outset(&self) -> i32 {
-        super::transformed_radius(self.transform, self.output_outset).ceil() as i32
+    pub(crate) fn output_outset(&self) -> u32 {
+        super::transformed_radius(self.transform, self.output_outset).ceil() as u32
     }
     pub(crate) fn requires_output_scratch(&self) -> bool {
         let Some(output) = self

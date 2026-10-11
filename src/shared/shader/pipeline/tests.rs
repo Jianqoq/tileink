@@ -103,8 +103,8 @@ fn chained_output_growth_saturates_before_clipping_instead_of_wrapping() {
         fixed_region: false,
     };
     assert_eq!(
-        crate::shared::layer::filter::filter_outset(&chain),
-        i32::MAX
+        crate::shared::layer::filter::filter_outset(&chain) as u64,
+        u64::from(u32::MAX)
     );
     let canvas = crate::Bounds::canvas(16, 16);
     let region = crate::Region::rect(
@@ -114,6 +114,41 @@ fn chained_output_growth_saturates_before_clipping_instead_of_wrapping() {
     assert_eq!(
         crate::shared::layer::filter::filtered_region_bounds(&chain, &region, canvas),
         canvas
+    );
+    let far_negative = crate::Region::rect(
+        peniko::kurbo::Rect::new(
+            f64::from(i32::MIN),
+            f64::from(i32::MIN),
+            f64::from(i32::MIN) + 1.0,
+            f64::from(i32::MIN) + 1.0,
+        ),
+        crate::Radius::ZERO,
+    );
+    assert_eq!(
+        crate::shared::layer::filter::filtered_region_bounds(&chain, &far_negative, canvas),
+        canvas
+    );
+}
+
+#[test]
+fn shader_read_radius_covers_the_full_unsigned_coordinate_distance() {
+    let pipeline = ShaderPipeline::new(
+        vec![ShaderResource::Input(0), ShaderResource::Output],
+        vec![pass(&[
+            (1, ShaderBindingKind::Texture, 0),
+            (
+                3,
+                ShaderBindingKind::WriteTexture(ShaderTextureFormat::Rgba8Unorm),
+                1,
+            ),
+        ])],
+    )
+    .unwrap()
+    .with_input_radius(f32::MAX)
+    .unwrap();
+    assert_eq!(
+        pipeline.sample_outset().unwrap() as u64,
+        u64::from(u32::MAX)
     );
 }
 #[test]

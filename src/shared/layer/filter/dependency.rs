@@ -4,13 +4,14 @@ use super::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FilterDependency {
-    Local(i32),
+    // Pixel distances are nonnegative and may span both signed coordinate extremes.
+    Local(u32),
     WholeRegion,
     WholeCanvas,
 }
 
 impl FilterDependency {
-    pub(crate) fn local_radius(self) -> Option<i32> {
+    pub(crate) fn local_radius(self) -> Option<u32> {
         match self {
             Self::Local(radius) => Some(radius),
             Self::WholeRegion | Self::WholeCanvas => None,
@@ -40,14 +41,12 @@ impl FilterDependency {
 
     /// BoundsInfluence stores a finite conservative spatial summary. Resolve a
     /// whole-domain read here, while execution keeps the explicit domain kind.
-    pub(crate) fn damage_outset(self, domain: Bounds) -> i32 {
+    pub(crate) fn damage_outset(self, domain: Bounds) -> u32 {
         match self {
             Self::Local(radius) => radius,
-            Self::WholeRegion | Self::WholeCanvas => domain
-                .width()
-                .max(domain.height())
-                .saturating_sub(1)
-                .min(i32::MAX as u32) as i32,
+            Self::WholeRegion | Self::WholeCanvas => {
+                domain.width().max(domain.height()).saturating_sub(1)
+            }
         }
     }
 
@@ -84,7 +83,7 @@ pub(crate) fn filter_dependency(filter: &Filter) -> FilterDependency {
             .fold(FilterDependency::Local(0), FilterDependency::followed_by),
         Filter::Morphology {
             radius_x, radius_y, ..
-        } => FilterDependency::Local(radius_x.max(*radius_y).max(0.0).ceil() as i32),
+        } => FilterDependency::Local(radius_x.max(*radius_y).max(0.0).ceil() as u32),
         Filter::ConvolveMatrix(matrix) => convolution_dependency(matrix),
         Filter::DiffuseLighting(_) | Filter::SpecularLighting(_) => FilterDependency::Local(1),
         _ => FilterDependency::Local(filter_outset(filter)),
@@ -105,7 +104,7 @@ fn convolution_dependency(matrix: &ConvolveMatrix) -> FilterDependency {
     if radius > 0 && matrix.edge_mode == ConvolveEdgeMode::Wrap {
         FilterDependency::WholeRegion
     } else {
-        FilterDependency::Local(radius.min(i32::MAX as u32) as i32)
+        FilterDependency::Local(radius)
     }
 }
 
@@ -114,7 +113,7 @@ fn primitive_dependency(primitive: &FilterPrimitive) -> FilterDependency {
         FilterPrimitiveKind::Filter(filter) => filter_dependency(filter),
         FilterPrimitiveKind::ShaderPipeline { pipeline, .. } => pipeline_dependency(pipeline),
         FilterPrimitiveKind::DisplacementMap(map) => {
-            FilterDependency::Local((map.scale_x.abs().max(map.scale_y.abs()) * 0.5).ceil() as i32)
+            FilterDependency::Local((map.scale_x.abs().max(map.scale_y.abs()) * 0.5).ceil() as u32)
         }
         FilterPrimitiveKind::Tile { source_region } => {
             FilterDependency::Local(bounds_distance(primitive.region, *source_region))
@@ -123,12 +122,11 @@ fn primitive_dependency(primitive: &FilterPrimitive) -> FilterDependency {
     }
 }
 
-fn bounds_distance(a: Bounds, b: Bounds) -> i32 {
-    (a.x0 - b.x0)
-        .abs()
-        .max((a.y0 - b.y0).abs())
-        .max((a.x1 - b.x1).abs())
-        .max((a.y1 - b.y1).abs())
+fn bounds_distance(a: Bounds, b: Bounds) -> u32 {
+    a.x0.abs_diff(b.x0)
+        .max(a.y0.abs_diff(b.y0))
+        .max(a.x1.abs_diff(b.x1))
+        .max(a.y1.abs_diff(b.y1))
 }
 
 fn pipeline_dependency(pipeline: &crate::ShaderPipeline) -> FilterDependency {

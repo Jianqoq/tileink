@@ -15,6 +15,8 @@ title: Paint, geometry, and filters
 
 `Bounds::new(x0, y0, x1, y1)` creates an integer pixel extent and `Bounds::canvas(width, height)` creates a full-canvas extent. `intersect`, `union`, and `outset` compute set operations; `is_empty` detects an empty half-open range.
 
+`outset(amount: u32)` accepts a nonnegative pixel distance covering the full signed coordinate span, with expanded endpoints clamped to the `i32` domain. Width and height use wide arithmetic, so nonempty ranges spanning both coordinate extremes cannot wrap to zero.
+
 `Image` constructors are `new`, `from_rgba8`, and `from_premultiplied_rgba8`; read with `rgba8_at`/`rgba8_bytes` and write with `save`. `ImageKey::new` creates registry identity.
 
 `Sdf` represents Rect, Circle, strokes, CandleStick, Line, DashLine, Arc, and Triangle; `SdfShadow` contains analytic shadow counterparts. Both expose `bounds`. Helpers include `Radius::all`, `StrokeWidths::all`, `ShadowOptions::new`, `SdfLine::new`, `SdfDashLine::new`, `SdfDashLine::with_offset`, `SdfArc::new`, `SdfTriangle::new`, and `CandleStick::new` plus width validators. A triangle's `corner_radius` is a uniform analytic expansion of its three edges, producing rounded vertices without path tessellation.

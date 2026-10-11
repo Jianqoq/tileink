@@ -78,7 +78,7 @@ pub(crate) struct BackdropDependency {
 
 #[derive(Clone, Copy)]
 pub(crate) struct BoundsInfluence {
-    outset: i32,
+    outset: u32,
     clip: Option<Bounds>,
 }
 

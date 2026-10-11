@@ -2261,9 +2261,57 @@ All 984 current implementation files, including the nine new SVG modules and
 test files, are fully reviewed. Reading completion does not close the outstanding
 proofs and runtime validation work below.
 
+## Phase 45: unsigned filter distances across the full coordinate domain
+
+Filter read/output radii and retained damage influences now use `u32` throughout.
+A nonnegative pixel distance can span both signed coordinate extremes; the old
+`i32::MAX` truncation could leave visible output or dependencies empty after
+clipping. Bounds expansion clamps endpoints with unsigned saturating arithmetic,
+while width/height subtract in a wide integer before converting the nonnegative
+extent. Tile dependencies use exact endpoint `abs_diff`; chains, shadow and glass
+combine radii without wrapping. This is a permanent correction to the range
+model, without a compatibility path or substitute result.
+
+Partial two-axis blur expands its horizontal intermediate vertically before
+canvas clipping, so a large halo cannot flip its upper endpoint negative. Its
+sparse-column damage and failure-state restoration remain intact. SVG reuses the
+shared Gaussian support calculation instead of maintaining a second copy. All
+callers of Bounds expansion use nonnegative distances; obsolete negative-distance
+identity branches are removed. Actual native texture and blur-kernel limits still
+report errors rather than pretending an unsupported GPU operation succeeded.
+
+Seven focused release regressions failed before production changes. Eight new
+tests cover coordinate/extent edges, large radius composition, Tile and whole
+domain dependencies, partial blur failure restoration and the actual Metal layer
+renderer. The GPU test alternates on-screen and far-negative sample regions with
+full-span shader output growth, then checks renderer reuse and validation. The
+focused suites pass 181 shared, 19 filter executor, 11 damage tile, 111 retained,
+15 SVG and one dedicated GPU test. Full single-thread release tests pass 1108
+cases with the same three known failures: two unavailable pinned-DXC checks and
+the turbulence canonical mismatch. Formatting, clippy, backend-free compilation
+and all example builds pass with unchanged lint warnings. All 1730 SVG images
+and seven image examples match baseline bytes; native presentation completes
+eight frames and the expected resize. Metal and backend-free artifact manifests
+are unchanged. Actual HLSL compilation is unavailable on this host. Both website
+API guides document the unsigned Bounds expansion contract.
+
+The [application report](benchmarks/cleanup-phase45-metal-2026-10-12.json) retains
+96 whole-process observations, including two warmups per label, ten alternating
+timed pairs and identical-current controls for each workload. All runs verify
+83040 SVG PNG hashes and 384 completed window frames after stopping the timer;
+SVG sources remain unchanged. Metal validation is enabled for correctness and
+disabled for timing. SVG medians change 4410.958 to 4410.161 ms (-0.018%), with
+control -0.470%; native window medians change 234.807 to 234.601 ms (-0.088%),
+with control +0.322%. Paired median changes are -0.421% and +0.403%; their 95%
+descriptive bootstrap intervals include zero and overlap the controls. No stable
+material application timing regression was identified; these measurements do not
+establish an isolated speedup. All samples and tails are retained. The temporary
+validation script and four copied executables have been removed. All 51 benchmark
+JSON/gzip files parse; generated npm root declarations still match package.json.
+
 ## Remaining audit work
 
-- All current implementation files are fully read. The progressive/glass shader and SVG cleanup is implemented and verified on Metal. Prove coarse stack emitter inputs, retained compiled membership bounds and plan eligibility before removing their remaining substitutes. Test DX12 lock-poison policy and prove packed uniform handle presence. Trace exact retained metadata patching for clip-bound updates inside filters and prove offscreen clip exclusion before removing its error wrapper. Add focused regressions for the recorded large filter/text integer-arithmetic concerns. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
+- All current implementation files are fully read. The progressive/glass shader, SVG lowering and filter distance cleanup are implemented and verified on Metal. Prove coarse stack emitter inputs, retained compiled membership bounds and plan eligibility before removing their remaining substitutes. Test DX12 lock-poison policy and prove packed uniform handle presence. Trace exact retained metadata patching for clip-bound updates inside filters and prove offscreen clip exclusion before removing its error wrapper. Add focused regressions for the recorded text integer-arithmetic concern. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
 - Execute the HLSL editor test against the actual ShaderTools language server; local protocol regressions pass, but the server is unavailable locally.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

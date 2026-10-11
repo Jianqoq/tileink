@@ -25,14 +25,14 @@ impl Bounds {
         }
     }
 
-    // Saturate before clipping: large valid filter anchors must not wrap a
-    // nonempty source footprint into negative upper bounds.
-    pub fn outset(self, amount: i32) -> Bounds {
+    /// Expand by a nonnegative pixel distance, clamping endpoints to the
+    /// coordinate domain. A distance can span the entire signed i32 range.
+    pub fn outset(self, amount: u32) -> Bounds {
         Bounds {
-            x0: self.x0.saturating_sub(amount),
-            y0: self.y0.saturating_sub(amount),
-            x1: self.x1.saturating_add(amount),
-            y1: self.y1.saturating_add(amount),
+            x0: self.x0.saturating_sub_unsigned(amount),
+            y0: self.y0.saturating_sub_unsigned(amount),
+            x1: self.x1.saturating_add_unsigned(amount),
+            y1: self.y1.saturating_add_unsigned(amount),
         }
     }
 
@@ -56,11 +56,11 @@ impl Bounds {
     }
 
     pub fn width(self) -> u32 {
-        (self.x1 - self.x0).max(0) as u32
+        (i64::from(self.x1) - i64::from(self.x0)).max(0) as u32
     }
 
     pub fn height(self) -> u32 {
-        (self.y1 - self.y0).max(0) as u32
+        (i64::from(self.y1) - i64::from(self.y0)).max(0) as u32
     }
 }
 
@@ -122,7 +122,48 @@ impl PixelBounds {
 
 #[cfg(test)]
 mod tests {
-    use super::PixelBounds;
+    use super::{Bounds, PixelBounds};
+
+    #[test]
+    fn coordinate_extents_cover_the_full_signed_domain_without_wrapping() {
+        for (start, end, expected) in [
+            (i32::MIN, i32::MAX, u32::MAX),
+            (i32::MIN, 0, 1 << 31),
+            (0, i32::MAX, i32::MAX as u32),
+            (i32::MAX, i32::MIN, 0),
+            (0, i32::MIN, 0),
+            (i32::MIN, i32::MIN, 0),
+            (-17, 23, 40),
+        ] {
+            let bounds = Bounds::new(start, start, end, end);
+            assert_eq!((bounds.width(), bounds.height()), (expected, expected));
+        }
+    }
+
+    #[test]
+    fn unsigned_expansion_matches_wide_arithmetic_at_every_coordinate_edge() {
+        let edges = [i32::MIN, i32::MIN + 1, -17, 0, 23, i32::MAX - 1, i32::MAX];
+        for x0 in edges {
+            for x1 in edges {
+                for amount in [0, 1, i32::MAX as u32, 1 << 31, u32::MAX] {
+                    let endpoint = |value: i32, direction: i64| {
+                        (i64::from(value) + direction * i64::from(amount))
+                            .clamp(i64::from(i32::MIN), i64::from(i32::MAX))
+                            as i32
+                    };
+                    assert_eq!(
+                        Bounds::new(x0, x1, x1, x0).outset(amount),
+                        Bounds::new(
+                            endpoint(x0, -1),
+                            endpoint(x1, -1),
+                            endpoint(x1, 1),
+                            endpoint(x0, 1),
+                        )
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn pixel_bounds_intersection_is_canonical_when_disjoint() {

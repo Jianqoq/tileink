@@ -177,8 +177,8 @@ impl From<ProgramBrush> for super::brush::Brush {
         Self::Program(brush)
     }
 }
-fn sampling_outset(transform: [f32; 6], radius: f32) -> i32 {
-    (transformed_radius(transform, radius) + 1.0).ceil() as i32
+fn sampling_outset(transform: [f32; 6], radius: f32) -> u32 {
+    (transformed_radius(transform, radius) + 1.0).ceil() as u32
 }
 fn transformed_radius(transform: [f32; 6], radius: f32) -> f64 {
     if radius == 0.0 {

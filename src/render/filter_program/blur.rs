@@ -73,13 +73,12 @@ impl<A: FilterAdapter> FilterExecutor<'_, A> {
         let std_dev_y = std_dev_y.max(0.0);
         match (std_dev_x > 0.0, std_dev_y > 0.0) {
             (true, true) => self.with_scratch(|s, temp| {
-                let radius_y = (std_dev_y * 3.0).ceil() as i32;
-                let intermediate_bounds = Bounds::new(
-                    output_bounds.x0,
-                    output_bounds.y0 - radius_y,
-                    output_bounds.x1,
-                    output_bounds.y1 + radius_y,
-                )
+                let radius_y = filter_model::blur_outset(std_dev_y);
+                let intermediate_bounds = Bounds {
+                    y0: output_bounds.y0.saturating_sub_unsigned(radius_y),
+                    y1: output_bounds.y1.saturating_add_unsigned(radius_y),
+                    ..output_bounds
+                }
                 .intersect(Bounds::canvas(s.adapter.size().0, s.adapter.size().1));
                 let output_work = s.adapter.filter_work();
                 if output_work.is_some()

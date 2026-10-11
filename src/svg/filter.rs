@@ -20,7 +20,7 @@ use crate::{
     Canvas, Filter, Radius, Region,
     shared::{
         bounds::Bounds,
-        layer::filter::{FilterInput, FilterPrimitive, FilterPrimitiveKind},
+        layer::filter::{FilterInput, FilterPrimitive, FilterPrimitiveKind, blur_outset},
     },
 };
 use peniko::kurbo::Affine;
@@ -366,7 +366,7 @@ impl<'a> SvgFilterGraphBuilder<'a> {
                 } => {
                     let radius = match operator {
                         crate::MorphologyOperator::Dilate => {
-                            radius_x.max(*radius_y).max(0.0).ceil() as i32
+                            radius_x.max(*radius_y).max(0.0).ceil() as u32
                         }
                         crate::MorphologyOperator::Erode => 0,
                     };
@@ -394,7 +394,7 @@ impl<'a> SvgFilterGraphBuilder<'a> {
             FilterPrimitiveKind::DisplacementMap(displacement) => {
                 self.input_source_region(input).outset(
                     (displacement.scale_x.abs().max(displacement.scale_y.abs()) * 0.5).ceil()
-                        as i32,
+                        as u32,
                 )
             }
             FilterPrimitiveKind::Merge { inputs } => inputs
@@ -452,10 +452,6 @@ fn filter_to_primitive_kind(filter: Option<Filter>) -> FilterPrimitiveKind {
         Some(filter) => FilterPrimitiveKind::Filter(Box::new(filter)),
         None => FilterPrimitiveKind::Identity,
     }
-}
-
-fn blur_outset(std_dev: f32) -> i32 {
-    (std_dev.max(0.0) * 3.0).ceil() as i32
 }
 
 fn equal_std_dev(x: f32, y: f32, feature: &str) -> Result<f32, SvgError> {
