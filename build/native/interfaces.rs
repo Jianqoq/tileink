@@ -15,7 +15,7 @@ mod texture;
 mod validation;
 use super::abi::{Field, Interface, Kind, Resource};
 use crate::gpu_constants as constants;
-use std::{collections::BTreeMap, io};
+use std::{io, sync::OnceLock};
 const COARSE_CONFIG: &[(&str, u32, u32)] = &[
     ("tile_count", 0, 1),
     ("tiles_width", 4, 1),
@@ -75,6 +75,29 @@ fn buffer(binding: u32, kind: Kind) -> Resource {
         internal: false,
     }
 }
+fn sampler(binding: u32) -> Resource {
+    Resource {
+        size: 0,
+        ..buffer(binding, Kind::Sampler)
+    }
+}
+
+// Production entries share the descriptor contract directly. Constructing a
+// validation interface just to extract this resource wastes unrelated layouts.
+fn texture_table() -> Resource {
+    static CAPACITY: OnceLock<u32> = OnceLock::new();
+    let count = *CAPACITY.get_or_init(|| {
+        constants::parse(include_str!(
+            "../../src/shaders/hlsl/shared/texture_table_constants.hlsli"
+        ))
+        .expect("texture table constants")["NATIVE_TEXTURE_TABLE_CAPACITY"]
+    });
+    Resource {
+        count,
+        ..buffer(30, Kind::TextureTable)
+    }
+}
+
 fn uniform(binding: u32, fields: &[(&str, u32, u32)], internal: bool) -> Resource {
     Resource {
         count: 1,
@@ -82,7 +105,8 @@ fn uniform(binding: u32, fields: &[(&str, u32, u32)], internal: bool) -> Resourc
         kind: Kind::Uniform,
         size: fields
             .last()
-            .map_or(0, |(_, offset, lanes)| offset + lanes * 4),
+            .map(|(_, offset, lanes)| offset + lanes * 4)
+            .expect("built-in uniform has fields"),
         fields: fields
             .iter()
             .map(|&(name, offset, lanes)| Field {
@@ -114,15 +138,13 @@ fn interface(
     }
 }
 pub fn get(family: &str) -> io::Result<Interface> {
-    let constants: BTreeMap<String, u32> =
-        constants::parse(include_str!("../../src/shaders/hlsl/constants.hlsli"))?;
     let result = match family {
         "scan-apply-chunk-offsets"
         | "scan-chunk-offsets"
         | "scan-clear"
         | "scan-count"
         | "scan-emit"
-        | "scan-prefix-chunks" => scan::get(family, &constants)?,
+        | "scan-prefix-chunks" => scan::get(family)?,
         "coarse-particle-counts"
         | "coarse-tile-kinds"
         | "coarse-tile-counts"
@@ -131,41 +153,39 @@ pub fn get(family: &str) -> io::Result<Interface> {
         | "coarse-count"
         | "coarse-emit-allocation"
         | "coarse-emit-offsets"
-        | "coarse-prefix" => coarse::get(family, &constants)?,
-        "pixel-math" | "geometry-math" | "fill-coverage" | "blend-math" => {
-            validation::get(family, &constants)
-        }
+        | "coarse-prefix" => coarse::get(family)?,
+        "pixel-math" | "geometry-math" | "fill-coverage" | "blend-math" => validation::get(family),
         "filter-progressive" => progressive::get(),
-        "filter-basic" => filter::basic(&constants),
-        "filter-inputs" => filter::inputs(&constants),
-        "filter-morphology" => filter::morphology(&constants),
-        "filter-displacement" => filter::displacement(&constants),
-        "filter-transfer" => filter::transfer(&constants),
-        "filter-convolve" => filter::convolve(&constants),
-        "filter-resample" => filter::resample(&constants),
-        "filter-blur" => filter::blur(&constants, false),
-        "filter-lighting" => filter::lighting(&constants),
-        "filter-rectangle" => filter::rectangle(&constants),
-        "filter-path-mask" => filter::path_mask(&constants),
-        "filter-turbulence" => filter::turbulence(&constants),
-        "filter-surface" => filter::surface(&constants),
-        "filter-layer" => filter::layer(&constants),
-        "filter-stack" => filter::stack(&constants),
-        "filter-glass" => filter::glass(&constants),
-        "filter-brush" => filter::brush(&constants),
-        "texture-table-validation" => texture::table(&constants),
-        "sdf-coverage" => validation::sdf(&constants),
-        "filter-blur-shared" => filter::blur(&constants, true),
-        "fine-gradient" => fine::gradient(&constants),
-        "fine-pattern" => fine::pattern(&constants),
-        "fine-main" => fine::main(&constants),
-        "fine-text" => fine::text(&constants),
-        "fine-brush" => fine::brush(&constants),
-        "texture-validation" => texture::validation(&constants),
-        "texture-array-validation" => texture::array(&constants),
-        "sampler-validation" => texture::sampler(&constants),
+        "filter-basic" => filter::basic(),
+        "filter-inputs" => filter::inputs(),
+        "filter-morphology" => filter::morphology(),
+        "filter-displacement" => filter::displacement(),
+        "filter-transfer" => filter::transfer(),
+        "filter-convolve" => filter::convolve(),
+        "filter-resample" => filter::resample(),
+        "filter-blur" => filter::blur(false),
+        "filter-lighting" => filter::lighting(),
+        "filter-rectangle" => filter::rectangle(),
+        "filter-path-mask" => filter::path_mask(),
+        "filter-turbulence" => filter::turbulence(),
+        "filter-surface" => filter::surface(),
+        "filter-layer" => filter::layer(),
+        "filter-stack" => filter::stack(),
+        "filter-glass" => filter::glass(),
+        "filter-brush" => filter::brush(),
+        "texture-table-validation" => texture::table(),
+        "sdf-coverage" => validation::sdf(),
+        "filter-blur-shared" => filter::blur(true),
+        "fine-gradient" => fine::gradient(),
+        "fine-pattern" => fine::pattern(),
+        "fine-main" => fine::main(),
+        "fine-text" => fine::text(),
+        "fine-brush" => fine::brush(),
+        "texture-validation" => texture::validation(),
+        "texture-array-validation" => texture::array(),
+        "sampler-validation" => texture::sampler(),
         "cumsum" => interface(
-            [constants["CUMSUM_CHUNK_SIZE"], 1, 1],
+            [constants::get("CUMSUM_CHUNK_SIZE"), 1, 1],
             &[
                 ("config", uniform(0, CUMSUM_CONFIG, false)),
                 ("chunk_backdrop_offsets", buffer(1, Kind::Read)),
@@ -231,7 +251,7 @@ pub fn get(family: &str) -> io::Result<Interface> {
             ],
         ),
         "range-scatter" => interface(
-            [constants["RANGE_SCATTER_WORKGROUP_SIZE"], 1, 1],
+            [constants::get("RANGE_SCATTER_WORKGROUP_SIZE"), 1, 1],
             &[
                 ("destination", buffer(0, Kind::Write)),
                 ("source", buffer(1, Kind::Read)),

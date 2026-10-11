@@ -1,9 +1,9 @@
+use crate::gpu_constants as constants;
 #[path = "../../../src/shared/fine_config.rs"]
 mod fine_config;
 use super::super::abi::{Interface, Kind};
 use super::{buffer, interface, uniform};
 use fine_config::FineConfig;
-use std::collections::BTreeMap;
 const FINE_CONFIG: &[(&str, u32, u32)] = &[
     ("width", std::mem::offset_of!(FineConfig, width) as u32, 1),
     ("height", std::mem::offset_of!(FineConfig, height) as u32, 1),
@@ -98,9 +98,9 @@ const FINE_CONFIG: &[(&str, u32, u32)] = &[
         1,
     ),
 ];
-pub(super) fn gradient(constants: &BTreeMap<String, u32>) -> Interface {
+pub(super) fn gradient() -> Interface {
     interface(
-        [constants["FINE_WORKGROUP_SIZE"], 1, 1],
+        [constants::get("FINE_WORKGROUP_SIZE"), 1, 1],
         &[
             ("config", uniform(0, FINE_CONFIG, false)),
             ("paint", buffer(3, Kind::Read)),
@@ -127,17 +127,15 @@ pub(super) fn gradient(constants: &BTreeMap<String, u32>) -> Interface {
     )
 }
 
-pub(super) fn pattern(constants: &BTreeMap<String, u32>) -> Interface {
-    let mut result = gradient(constants);
+pub(super) fn pattern() -> Interface {
+    let mut result = gradient();
     result.resources.insert(
         "image_resource_atlas".into(),
         buffer(12, Kind::TextureArray),
     );
-    let mut sampler = buffer(13, Kind::Sampler);
-    sampler.size = 0;
     result
         .resources
-        .insert("image_resource_sampler".into(), sampler);
+        .insert("image_resource_sampler".into(), super::sampler(13));
     let mut bindings = result.entries.remove("gradient_words").unwrap();
     bindings.extend([
         "image_resource_atlas".into(),
@@ -147,24 +145,20 @@ pub(super) fn pattern(constants: &BTreeMap<String, u32>) -> Interface {
     result
 }
 
-pub(super) fn brush(constants: &BTreeMap<String, u32>) -> Interface {
-    let mut result = pattern(constants);
+pub(super) fn brush() -> Interface {
+    let mut result = pattern();
     let mut bindings = result.entries.remove("pattern_words").unwrap();
-    let table = super::texture::table(constants)
-        .resources
-        .remove("texture_table")
-        .unwrap();
     result
         .resources
-        .insert("image_resource_textures".into(), table);
+        .insert("image_resource_textures".into(), super::texture_table());
     bindings.push("image_resource_textures".into());
     result.entries.insert("brush_words".into(), bindings);
     result
 }
 
-pub(super) fn text(constants: &BTreeMap<String, u32>) -> Interface {
+pub(super) fn text() -> Interface {
     interface(
-        [constants["FINE_WORKGROUP_SIZE"], 1, 1],
+        [constants::get("FINE_WORKGROUP_SIZE"), 1, 1],
         &[
             ("requests", buffer(9, Kind::Read)),
             ("output", buffer(10, Kind::Write)),
@@ -186,15 +180,9 @@ pub(super) fn text(constants: &BTreeMap<String, u32>) -> Interface {
     )
 }
 
-pub(super) fn main(constants: &BTreeMap<String, u32>) -> Interface {
-    let mut sampler = buffer(13, Kind::Sampler);
-    sampler.size = 0;
-    let table = super::texture::table(constants)
-        .resources
-        .remove("texture_table")
-        .unwrap();
+pub(super) fn main() -> Interface {
     interface(
-        [constants["FINE_WORKGROUP_SIZE"], 1, 1],
+        [constants::get("FINE_WORKGROUP_SIZE"), 1, 1],
         &[
             ("config", uniform(0, FINE_CONFIG, false)),
             ("target", buffer(1, Kind::TextureWrite)),
@@ -205,8 +193,8 @@ pub(super) fn main(constants: &BTreeMap<String, u32>) -> Interface {
             ("text", buffer(6, Kind::Read)),
             ("spills", buffer(7, Kind::Write)),
             ("atlas", buffer(12, Kind::TextureArray)),
-            ("image_sampler", sampler),
-            ("images", table),
+            ("image_sampler", super::sampler(13)),
+            ("images", super::texture_table()),
         ],
         &[(
             "fine_tile_main",

@@ -702,7 +702,54 @@ source hashes are saved in
 Temporary measurement and validation source and copied executables are removed
 after recording results.
 
+## Phase 19: direct native resource contracts and shared constants
+
+The native interface catalog reads common algorithm constants through the existing
+shared constant cache. Per-family reparsing and constant-map plumbing are removed.
+Texture-table consumers construct their resource directly instead of building a
+complete validation interface and extracting one entry. Table capacity is parsed
+once from its authoritative HLSLI declaration, including progressive blur, which
+previously repeated the literal. Samplers share their actual zero-sized descriptor
+constructor. The impossible empty built-in uniform default and the infallible
+binding formatter's Result wrapping are removed. These are permanent internal
+simplifications; application shader source, native ABI and public APIs are unchanged.
+
+Two semantic tests cover every catalog family and globally unique entry, binding
+order, unknown families, and the five production/validation texture-table consumers.
+Both pass before and after the refactor. All 38 focused release tests pass. The
+full serial Metal suite, including ignored GPU/compiler tests, reports 1025 passing
+tests and the same three known failures described in phase 12. All 12 example
+tests pass. Release Clippy has no new warnings and the backend-free library compiles.
+Actual DXC compilation and DX12/Vulkan GPU execution remain unverified on this host.
+
+A temporary catalog probe compares all 51 families and 84 entries: cache ABI bytes
+and generated binding declarations are exactly equal to `ff1bef43`. The actual
+application's Metal manifest is also unchanged. Running the complete before/after
+release build scripts produces identical 40 Metal libraries, manifests, host/test
+constants and declarations after normalizing only their output-directory paths.
+The window example executables are byte-identical. All 1730 SVG images and seven
+example PNGs match phase 18, and the validated Metal host completes eight frames
+and the 640x360 to 480x270 resize successfully.
+
+The real release build-script workload uses the complete warm-cache Metal catalog,
+including compiler/SDK identity hashing, source expansion, cache validation and
+artifact publication. With three warmup pairs and 12 alternating timed pairs,
+p50 changes from 2585.442 to 1857.563 ms (-28.15%). A second round reverses the
+starting order (two warmup/eight timed pairs): 2462.255 to 1837.507 ms (-25.37%).
+The same-version control changes by +0.18%. Individual tool/hash/process timings
+vary substantially, so these measurements do not isolate constant parsing or
+represent total Cargo/rustc build time. No material build regression is observed.
+
+Ten timed native-window pairs after two warmups change from 235.063 to 233.967 ms
+(-0.47%), including startup, eight frames, resize and shutdown. Because both release
+executables are byte-identical, no runtime speedup is claimed. Raw samples, controls,
+ABI/compiled-output/executable hashes and the exact measurement scope are saved in
+[`cleanup-phase19-metal-2026-10-11.json`](benchmarks/cleanup-phase19-metal-2026-10-11.json).
+Temporary catalog probes, copied build sources, measurement scripts and presentation
+executables are removed after validation.
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
+- Reproduce the SPIR-V readonly-buffer reflection contract and runtime DXC cached-reflection subprocess error conversion before fixing; these are recorded followups, not validated compatibility paths.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

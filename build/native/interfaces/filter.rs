@@ -139,9 +139,9 @@ pub(super) fn config() -> Resource {
     }
 }
 
-pub(super) fn basic(constants: &BTreeMap<String, u32>) -> Interface {
+pub(super) fn basic() -> Interface {
     interface(
-        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        [constants::get("FILTER_WORKGROUP_SIZE"), 1, 1],
         &[
             ("config", config()),
             ("source_texture", buffer(1, Kind::Texture)),
@@ -193,9 +193,9 @@ pub(super) fn basic(constants: &BTreeMap<String, u32>) -> Interface {
     )
 }
 
-pub(super) fn inputs(constants: &BTreeMap<String, u32>) -> Interface {
+pub(super) fn inputs() -> Interface {
     interface(
-        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        [constants::get("FILTER_WORKGROUP_SIZE"), 1, 1],
         &[
             ("config", config()),
             ("source_texture", buffer(1, Kind::Texture)),
@@ -232,9 +232,9 @@ pub(super) fn inputs(constants: &BTreeMap<String, u32>) -> Interface {
     )
 }
 
-pub(super) fn morphology(constants: &BTreeMap<String, u32>) -> Interface {
+pub(super) fn morphology() -> Interface {
     interface(
-        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        [constants::get("FILTER_WORKGROUP_SIZE"), 1, 1],
         &[
             ("config", config()),
             ("source_texture", buffer(1, Kind::Texture)),
@@ -248,9 +248,9 @@ pub(super) fn morphology(constants: &BTreeMap<String, u32>) -> Interface {
     )
 }
 
-pub(super) fn displacement(constants: &BTreeMap<String, u32>) -> Interface {
+pub(super) fn displacement() -> Interface {
     interface(
-        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        [constants::get("FILTER_WORKGROUP_SIZE"), 1, 1],
         &[
             ("config", config()),
             ("source_texture", buffer(1, Kind::Texture)),
@@ -271,9 +271,9 @@ pub(super) fn displacement(constants: &BTreeMap<String, u32>) -> Interface {
     )
 }
 
-pub(super) fn transfer(constants: &BTreeMap<String, u32>) -> Interface {
+pub(super) fn transfer() -> Interface {
     interface(
-        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        [constants::get("FILTER_WORKGROUP_SIZE"), 1, 1],
         &[
             ("config", config()),
             ("target_texture", buffer(3, Kind::TextureWrite)),
@@ -292,9 +292,9 @@ pub(super) fn transfer(constants: &BTreeMap<String, u32>) -> Interface {
     )
 }
 
-pub(super) fn convolve(constants: &BTreeMap<String, u32>) -> Interface {
+pub(super) fn convolve() -> Interface {
     interface(
-        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        [constants::get("FILTER_WORKGROUP_SIZE"), 1, 1],
         &[
             ("config", config()),
             ("source_texture", buffer(1, Kind::Texture)),
@@ -315,9 +315,9 @@ pub(super) fn convolve(constants: &BTreeMap<String, u32>) -> Interface {
     )
 }
 
-pub(super) fn resample(constants: &BTreeMap<String, u32>) -> Interface {
+pub(super) fn resample() -> Interface {
     interface(
-        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        [constants::get("FILTER_WORKGROUP_SIZE"), 1, 1],
         &[
             ("config", config()),
             ("source_texture", buffer(1, Kind::Texture)),
@@ -337,15 +337,15 @@ pub(super) fn resample(constants: &BTreeMap<String, u32>) -> Interface {
     )
 }
 
-pub(super) fn blur(constants: &BTreeMap<String, u32>, shared: bool) -> Interface {
+pub(super) fn blur(shared: bool) -> Interface {
     let size = if shared {
         [
-            constants["SHARED_BLUR_TILE_WIDTH"],
-            constants["SHARED_BLUR_TILE_HEIGHT"],
+            constants::get("SHARED_BLUR_TILE_WIDTH"),
+            constants::get("SHARED_BLUR_TILE_HEIGHT"),
             1,
         ]
     } else {
-        [constants["FILTER_WORKGROUP_SIZE"], 1, 1]
+        [constants::get("FILTER_WORKGROUP_SIZE"), 1, 1]
     };
     let entry = if shared {
         "filter_blur_shared_region"
@@ -367,9 +367,9 @@ pub(super) fn blur(constants: &BTreeMap<String, u32>, shared: bool) -> Interface
     )
 }
 
-pub(super) fn lighting(constants: &BTreeMap<String, u32>) -> Interface {
+pub(super) fn lighting() -> Interface {
     interface(
-        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        [constants::get("FILTER_WORKGROUP_SIZE"), 1, 1],
         &[
             ("config", config()),
             ("source_texture", buffer(1, Kind::Texture)),
@@ -383,9 +383,9 @@ pub(super) fn lighting(constants: &BTreeMap<String, u32>) -> Interface {
     )
 }
 
-pub(super) fn rectangle(constants: &BTreeMap<String, u32>) -> Interface {
+pub(super) fn rectangle() -> Interface {
     interface(
-        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        [constants::get("FILTER_WORKGROUP_SIZE"), 1, 1],
         &[
             ("config", config()),
             ("source_texture", buffer(1, Kind::Texture)),
@@ -420,9 +420,9 @@ pub(super) fn rectangle(constants: &BTreeMap<String, u32>) -> Interface {
     )
 }
 
-pub(super) fn path_mask(constants: &BTreeMap<String, u32>) -> Interface {
+pub(super) fn path_mask() -> Interface {
     interface(
-        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        [constants::get("FILTER_WORKGROUP_SIZE"), 1, 1],
         &[
             ("config", config()),
             ("target_texture", buffer(3, Kind::TextureWrite)),
@@ -451,9 +451,9 @@ pub(super) fn path_mask(constants: &BTreeMap<String, u32>) -> Interface {
     )
 }
 
-pub(super) fn turbulence(constants: &BTreeMap<String, u32>) -> Interface {
+pub(super) fn turbulence() -> Interface {
     interface(
-        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        [constants::get("FILTER_WORKGROUP_SIZE"), 1, 1],
         &[
             ("config", config()),
             ("target_texture", buffer(3, Kind::TextureWrite)),
@@ -474,9 +474,9 @@ pub(super) fn turbulence(constants: &BTreeMap<String, u32>) -> Interface {
     )
 }
 
-pub(super) fn surface(constants: &BTreeMap<String, u32>) -> Interface {
+pub(super) fn surface() -> Interface {
     interface(
-        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        [constants::get("FILTER_WORKGROUP_SIZE"), 1, 1],
         &[
             ("config", config()),
             ("source_texture", buffer(1, Kind::Texture)),
@@ -490,9 +490,9 @@ pub(super) fn surface(constants: &BTreeMap<String, u32>) -> Interface {
     )
 }
 
-pub(super) fn layer(constants: &BTreeMap<String, u32>) -> Interface {
+pub(super) fn layer() -> Interface {
     interface(
-        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        [constants::get("FILTER_WORKGROUP_SIZE"), 1, 1],
         &[
             ("config", config()),
             ("target_texture", buffer(3, Kind::TextureWrite)),
@@ -521,8 +521,8 @@ pub(super) fn layer(constants: &BTreeMap<String, u32>) -> Interface {
     )
 }
 
-pub(super) fn stack(constants: &BTreeMap<String, u32>) -> Interface {
-    let mut result = layer(constants);
+pub(super) fn stack() -> Interface {
+    let mut result = layer();
     for (name, slot, kind) in [
         ("source_texture", 1, Kind::Texture),
         ("aux_texture", 2, Kind::Texture),
@@ -546,8 +546,8 @@ pub(super) fn stack(constants: &BTreeMap<String, u32>) -> Interface {
     result
 }
 
-pub(super) fn glass(constants: &BTreeMap<String, u32>) -> Interface {
-    let mut result = displacement(constants);
+pub(super) fn glass() -> Interface {
+    let mut result = displacement();
     let bindings = result
         .entries
         .remove("filter_displacement_map_region")
@@ -561,13 +561,7 @@ pub(super) fn glass(constants: &BTreeMap<String, u32>) -> Interface {
     result
 }
 
-pub(super) fn brush(constants: &BTreeMap<String, u32>) -> Interface {
-    let mut sampler = buffer(13, Kind::Sampler);
-    sampler.size = 0;
-    let table = super::texture::table(constants)
-        .resources
-        .remove("texture_table")
-        .unwrap();
+pub(super) fn brush() -> Interface {
     let common = &[
         "config",
         "target_texture",
@@ -578,15 +572,15 @@ pub(super) fn brush(constants: &BTreeMap<String, u32>) -> Interface {
         "image_resource_textures",
     ];
     let mut result = interface(
-        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        [constants::get("FILTER_WORKGROUP_SIZE"), 1, 1],
         &[
             ("config", config()),
             ("target_texture", buffer(3, Kind::TextureWrite)),
             ("active_tiles", buffer(8, Kind::Read)),
             ("brush_blob", buffer(10, Kind::Read)),
             ("image_resource_atlas", buffer(12, Kind::TextureArray)),
-            ("image_resource_sampler", sampler),
-            ("image_resource_textures", table),
+            ("image_resource_sampler", super::sampler(13)),
+            ("image_resource_textures", super::texture_table()),
             ("aux_texture", buffer(2, Kind::Texture)),
         ],
         &[("filter_flood_region", common)],

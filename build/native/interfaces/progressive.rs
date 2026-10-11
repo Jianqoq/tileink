@@ -32,19 +32,15 @@ pub(super) fn get() -> Interface {
             field!(axis, U32, 1),
         ],
     };
-    let mut table = buffer(30, Kind::TextureTable);
-    table.count = 64;
-    let mut sampler = buffer(13, Kind::Sampler);
-    sampler.size = 0;
     interface(
         [8, 8, 1],
         &[
-            ("image_sampler", sampler),
+            ("image_sampler", super::sampler(13)),
             ("config", config),
             ("source_texture", buffer(1, Kind::Texture)),
             ("level_metadata", buffer(2, Kind::Read)),
             ("target_texture", buffer(3, Kind::TextureWrite)),
-            ("texture_table", table),
+            ("texture_table", super::texture_table()),
         ],
         &[
             (

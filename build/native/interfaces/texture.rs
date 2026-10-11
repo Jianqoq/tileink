@@ -1,9 +1,9 @@
 use super::{Interface, Kind, buffer, interface, uniform};
-use std::collections::BTreeMap;
+use crate::gpu_constants as constants;
 
-pub(super) fn validation(constants: &BTreeMap<String, u32>) -> Interface {
+pub(super) fn validation() -> Interface {
     interface(
-        [constants["FINE_WORKGROUP_SIZE"], 1, 1],
+        [constants::get("FINE_WORKGROUP_SIZE"), 1, 1],
         &[
             (
                 "config",
@@ -25,8 +25,8 @@ pub(super) fn validation(constants: &BTreeMap<String, u32>) -> Interface {
     )
 }
 
-pub(super) fn array(constants: &BTreeMap<String, u32>) -> Interface {
-    let mut result = validation(constants);
+pub(super) fn array() -> Interface {
+    let mut result = validation();
     result.resources.get_mut("config").unwrap().fields[2].name = "layer".into();
     result.resources.get_mut("source").unwrap().kind = Kind::TextureArray;
     result.entries = [(
@@ -37,11 +37,9 @@ pub(super) fn array(constants: &BTreeMap<String, u32>) -> Interface {
     result
 }
 
-pub(super) fn sampler(constants: &BTreeMap<String, u32>) -> Interface {
-    let mut sampler = buffer(2, Kind::Sampler);
-    sampler.size = 0;
+pub(super) fn sampler() -> Interface {
     interface(
-        [constants["FINE_WORKGROUP_SIZE"], 1, 1],
+        [constants::get("FINE_WORKGROUP_SIZE"), 1, 1],
         &[
             (
                 "config",
@@ -57,7 +55,7 @@ pub(super) fn sampler(constants: &BTreeMap<String, u32>) -> Interface {
                 ),
             ),
             ("source", buffer(1, Kind::TextureArray)),
-            ("image_sampler", sampler),
+            ("image_sampler", super::sampler(2)),
             ("requests", buffer(3, Kind::Read)),
             ("destination", buffer(4, Kind::Write)),
             ("dispatch_grid", uniform(31, super::DISPATCH_GRID, true)),
@@ -76,18 +74,13 @@ pub(super) fn sampler(constants: &BTreeMap<String, u32>) -> Interface {
     )
 }
 
-pub(super) fn table(constants: &BTreeMap<String, u32>) -> Interface {
-    let mut table = buffer(30, Kind::TextureTable);
-    table.count = crate::gpu_constants::parse(include_str!(
-        "../../../src/shaders/hlsl/shared/texture_table_constants.hlsli"
-    ))
-    .expect("texture table constants")["NATIVE_TEXTURE_TABLE_CAPACITY"];
+pub(super) fn table() -> Interface {
     interface(
-        [constants["FINE_WORKGROUP_SIZE"], 1, 1],
+        [constants::get("FINE_WORKGROUP_SIZE"), 1, 1],
         &[
             ("requests", buffer(0, Kind::Read)),
             ("output", buffer(1, Kind::TextureWrite)),
-            ("texture_table", table),
+            ("texture_table", super::texture_table()),
         ],
         &[(
             "texture_table_words",

@@ -1,10 +1,11 @@
 use super::{COARSE_CONFIG, DISPATCH_GRID, Interface, Kind, buffer, interface, uniform};
-use std::{collections::BTreeMap, io};
+use crate::gpu_constants as constants;
+use std::io;
 
-pub(super) fn get(family: &str, constants: &BTreeMap<String, u32>) -> io::Result<Interface> {
+pub(super) fn get(family: &str) -> io::Result<Interface> {
     Ok(match family {
         "coarse-particle-counts" => interface(
-            [constants["COARSE_WORKGROUP_SIZE"], 1, 1],
+            [constants::get("COARSE_WORKGROUP_SIZE"), 1, 1],
             &[
                 ("config", uniform(0, COARSE_CONFIG, false)),
                 ("dispatch_grid", uniform(31, DISPATCH_GRID, true)),
@@ -36,7 +37,7 @@ pub(super) fn get(family: &str, constants: &BTreeMap<String, u32>) -> io::Result
             )],
         ),
         "coarse-tile-kinds" => interface(
-            [constants["COARSE_WORKGROUP_SIZE"], 1, 1],
+            [constants::get("COARSE_WORKGROUP_SIZE"), 1, 1],
             &[
                 ("config", uniform(0, COARSE_CONFIG, false)),
                 ("draw_records", buffer(1, Kind::Read)),
@@ -62,7 +63,7 @@ pub(super) fn get(family: &str, constants: &BTreeMap<String, u32>) -> io::Result
             )],
         ),
         "coarse-tile-counts" => interface(
-            [constants["COARSE_WORKGROUP_SIZE"], 1, 1],
+            [constants::get("COARSE_WORKGROUP_SIZE"), 1, 1],
             &[
                 ("config", uniform(0, COARSE_CONFIG, false)),
                 ("draw_records", buffer(1, Kind::Read)),
@@ -88,7 +89,7 @@ pub(super) fn get(family: &str, constants: &BTreeMap<String, u32>) -> io::Result
             )],
         ),
         "coarse-emit" => interface(
-            [constants["COARSE_WORKGROUP_SIZE"], 1, 1],
+            [constants::get("COARSE_WORKGROUP_SIZE"), 1, 1],
             &[
                 ("config", uniform(0, COARSE_CONFIG, false)),
                 ("draw_records", buffer(1, Kind::Read)),
@@ -135,7 +136,7 @@ pub(super) fn get(family: &str, constants: &BTreeMap<String, u32>) -> io::Result
             ],
         ),
         "coarse-emit-chunks" => interface(
-            [constants["COARSE_WORKGROUP_SIZE"], 1, 1],
+            [constants::get("COARSE_WORKGROUP_SIZE"), 1, 1],
             &[
                 ("config", uniform(0, COARSE_CONFIG, false)),
                 ("dispatch_grid", uniform(31, DISPATCH_GRID, true)),
@@ -167,7 +168,7 @@ pub(super) fn get(family: &str, constants: &BTreeMap<String, u32>) -> io::Result
             )],
         ),
         "coarse-count" => interface(
-            [constants["COARSE_WORKGROUP_SIZE"], 1, 1],
+            [constants::get("COARSE_WORKGROUP_SIZE"), 1, 1],
             &[
                 ("config", uniform(0, COARSE_CONFIG, false)),
                 ("draw_records", buffer(1, Kind::Read)),
@@ -214,7 +215,7 @@ pub(super) fn get(family: &str, constants: &BTreeMap<String, u32>) -> io::Result
             ],
         ),
         "coarse-emit-allocation" => interface(
-            [constants["COARSE_WORKGROUP_SIZE"], 1, 1],
+            [constants::get("COARSE_WORKGROUP_SIZE"), 1, 1],
             &[
                 ("config", uniform(0, COARSE_CONFIG, false)),
                 ("coarse_work", buffer(7, Kind::Write)),
@@ -247,7 +248,7 @@ pub(super) fn get(family: &str, constants: &BTreeMap<String, u32>) -> io::Result
             &[("coarse_emit_chunk_offsets", &["config", "chunk_records"])],
         ),
         "coarse-prefix" => interface(
-            [constants["COARSE_WORKGROUP_SIZE"], 1, 1],
+            [constants::get("COARSE_WORKGROUP_SIZE"), 1, 1],
             &[
                 ("config", uniform(0, COARSE_CONFIG, false)),
                 ("coarse_work", buffer(7, Kind::Write)),

@@ -253,11 +253,11 @@ pub fn binding_declarations(abi: &Interface, entry: &str) -> io::Result<String> 
                 Kind::Sampler => "Sampler",
                 Kind::TextureTable => "TextureTable",
             };
-            Ok(format!(
+            format!(
                 "Binding {{ slot: {}, kind: BindingKind::{kind}, size: {}, count: {}, internal: {} }}",
                 r.binding, r.size, r.count, r.internal
-            ))
+            )
         })
-        .collect::<io::Result<Vec<_>>>()?;
+        .collect::<Vec<_>>();
     Ok(format!("&[{}]", bindings.join(",")))
 }

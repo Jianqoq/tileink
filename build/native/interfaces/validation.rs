@@ -1,9 +1,9 @@
 //! Typed adapters for validating production math helpers independently of textures.
 use super::super::abi::{Interface, Kind};
 use super::{buffer, interface, uniform};
-use std::collections::BTreeMap;
+use crate::gpu_constants as constants;
 
-pub(super) fn get(family: &str, constants: &BTreeMap<String, u32>) -> Interface {
+pub(super) fn get(family: &str) -> Interface {
     let entry = match family {
         "blend-math" => "blend_math_words",
         "pixel-math" => "pixel_math_words",
@@ -34,15 +34,15 @@ pub(super) fn get(family: &str, constants: &BTreeMap<String, u32>) -> Interface 
         names.push("segments");
     }
     interface(
-        [constants["FINE_WORKGROUP_SIZE"], 1, 1],
+        [constants::get("FINE_WORKGROUP_SIZE"), 1, 1],
         &resources,
         &[(entry, &names)],
     )
 }
 
-pub(super) fn sdf(constants: &BTreeMap<String, u32>) -> Interface {
+pub(super) fn sdf() -> Interface {
     interface(
-        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        [constants::get("FILTER_WORKGROUP_SIZE"), 1, 1],
         &[
             ("config", super::filter::config()),
             ("sdf_requests", buffer(5, Kind::Read)),

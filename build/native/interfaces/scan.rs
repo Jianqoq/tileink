@@ -1,10 +1,11 @@
 use super::{DISPATCH_GRID, Interface, Kind, SCAN_CONFIG, buffer, interface, uniform};
-use std::{collections::BTreeMap, io};
+use crate::gpu_constants as constants;
+use std::io;
 
-pub(super) fn get(family: &str, constants: &BTreeMap<String, u32>) -> io::Result<Interface> {
+pub(super) fn get(family: &str) -> io::Result<Interface> {
     Ok(match family {
         "scan-apply-chunk-offsets" => interface(
-            [constants["SCAN_CHUNK_SIZE"], 1, 1],
+            [constants::get("SCAN_CHUNK_SIZE"), 1, 1],
             &[
                 ("config", uniform(0, SCAN_CONFIG, false)),
                 ("scan_chunks", buffer(1, Kind::Read)),
@@ -28,7 +29,7 @@ pub(super) fn get(family: &str, constants: &BTreeMap<String, u32>) -> io::Result
             )],
         ),
         "scan-chunk-offsets" => interface(
-            [constants["SCAN_CHUNK_SIZE"], 1, 1],
+            [constants::get("SCAN_CHUNK_SIZE"), 1, 1],
             &[
                 ("config", uniform(0, SCAN_CONFIG, false)),
                 ("path_records", buffer(1, Kind::Read)),
@@ -52,7 +53,7 @@ pub(super) fn get(family: &str, constants: &BTreeMap<String, u32>) -> io::Result
             )],
         ),
         "scan-clear" => interface(
-            [constants["SCAN_CHUNK_SIZE"], 1, 1],
+            [constants::get("SCAN_CHUNK_SIZE"), 1, 1],
             &[
                 ("config", uniform(0, SCAN_CONFIG, false)),
                 ("backdrops", buffer(1, Kind::Write)),
@@ -80,7 +81,7 @@ pub(super) fn get(family: &str, constants: &BTreeMap<String, u32>) -> io::Result
             )],
         ),
         "scan-count" => interface(
-            [constants["SCAN_CHUNK_SIZE"], 1, 1],
+            [constants::get("SCAN_CHUNK_SIZE"), 1, 1],
             &[
                 ("config", uniform(0, SCAN_CONFIG, false)),
                 ("lines", buffer(1, Kind::Read)),
@@ -102,7 +103,7 @@ pub(super) fn get(family: &str, constants: &BTreeMap<String, u32>) -> io::Result
             )],
         ),
         "scan-emit" => interface(
-            [constants["SCAN_CHUNK_SIZE"], 1, 1],
+            [constants::get("SCAN_CHUNK_SIZE"), 1, 1],
             &[
                 ("config", uniform(0, SCAN_CONFIG, false)),
                 ("lines", buffer(1, Kind::Read)),
@@ -124,7 +125,7 @@ pub(super) fn get(family: &str, constants: &BTreeMap<String, u32>) -> io::Result
             )],
         ),
         "scan-prefix-chunks" => interface(
-            [constants["SCAN_CHUNK_SIZE"], 1, 1],
+            [constants::get("SCAN_CHUNK_SIZE"), 1, 1],
             &[
                 ("config", uniform(0, SCAN_CONFIG, false)),
                 ("scan_chunks", buffer(1, Kind::Read)),
