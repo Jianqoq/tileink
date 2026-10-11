@@ -19,6 +19,9 @@ RAYON_NUM_THREADS=1 TILEINK_NATIVE_GPU=<registry-id> MTL_DEBUG_LAYER=1 \
 ```
 
 For focused geometry checks, replace `native::runtime` with `native::runtime::sdf_gpu`.
+Raw Metal probe, scan, coarse and filter tests also require `TILEINK_NATIVE_GPU`.
+Missing, empty or unavailable identities fail without selecting the default device.
+The public `NativeContextOptions::default()` still permits normal default-device selection.
 These tests use analytic CPU references, geometric equivalences and physical coordinate
 invariance; they require no archived WGSL output. The Metal toolchain checks remain available
 through `run_tests.sh --test metal_toolchain -- --include-ignored`.

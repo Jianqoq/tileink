@@ -17,3 +17,5 @@ Imported textures used as drawing targets require `ShaderRead | ShaderWrite | Re
 Filter recording propagates the original error, including missing or forward graph references. Allocation or native shader recording failures abort the frame and release acquired scratch surfaces while preserving the first error. Native frames record directly into their caller-owned batch; output and synchronization APIs own target copies and submission.
 
 Vulkan pipeline and driver-cache creation errors propagate without a cache-miss retry. Vulkan handles incompatible driver data; cache export or publication failures release the native objects created by that invocation.
+
+DX12 debug enablement and device creation share a process-wide lock. If a panic during creation poisons that lock, later debug enablement or device creation returns an initialization error before calling D3D12, preventing reuse of interrupted creation state.

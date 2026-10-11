@@ -2717,9 +2717,63 @@ package.json. The bilingual GPU pipeline guide documents the stack contract.
 All 979 current implementation files have one audit owner and are fully read;
 the remaining producer proofs and platform execution work continue separately.
 
+## Phase 52: enforce native creation and test-device contracts
+
+DX12 debug enablement and device creation no longer recover a poisoned
+process-wide creation lock. A panic can interrupt native creation before its
+state is committed; both entry points now propagate an initialization error
+before another D3D12 call. The shared 13-line gate is exercised directly without
+loading D3D12. A regression first reproduces recovery after poison, then checks
+that repeated access fails and preserves poison. A healthy-state test checks
+exclusive ownership and committed state preservation. This is a permanent
+failure-policy fix.
+
+Metal probe, scan, coarse, filter and reflection tests now share the explicit
+`TILEINK_NATIVE_GPU` options used by the other native unit tests. Missing, empty
+and unavailable identities cannot select the default device. A subprocess
+regression first fails with the old default selection; each child must execute
+exactly one test. The coarse/filter harness moves into its own 79-line module,
+leaving the main Metal test module at 203 lines. Public default-device selection
+remains valid API behavior. The macOS runner README documents the test contract.
+
+The packed-uniform trace proves that a present offset owns bytes in a nonempty
+upload arena: buffer construction rejects empty data, classification selects
+immutable constant buffers, and packing assigns offsets only after writing their
+aligned ranges. A semantic test checks zero, one and two active constant slots
+at alignments 1, 4, 256 and 1024, including readback exclusions. DX12 therefore
+stores the required upload resource explicitly instead of silently producing a
+missing handle. Storage/readback aliases still use independent buffers at
+offset zero; sampler/table slots legitimately have no standalone resource.
+
+The remaining Vulkan lock recovery is confined to diagnostic vectors. The
+existing native-callback regression verifies that messages survive poisoning
+without unwinding through FFI. Reading those diagnostics and reporting failed
+teardown preserve that contract; they are not device-state recovery.
+
+Focused release checks pass two creation-gate tests, the three-case GPU selection
+regression, four uniform tests and 50 coarse tests. Full single-thread release
+tests, including ignored tests, pass 1138 cases with zero failures and zero
+ignored. Formatting, release clippy, backend-free compilation, all examples and
+Windows DX12/Vulkan all-target checks pass. The existing one library/eight
+library-test clippy warnings remain. Pinned DXC catalog/reflection checks pass;
+both 84-entry Windows manifests, Metal/backend-free manifests, and compiler and
+validator identities are unchanged.
+
+All 1730 freshly written SVG PNGs and seven image examples match phase 51 bytes;
+SVG sources stay unchanged. Native presentation completes eight frames at
+640×360 and 480×270. The Metal SVG and window production executables are
+byte-identical before and after. These are correctness checks; this phase makes
+no rendering-speed claim, and DX12 resource execution/performance still requires
+a Windows GPU. The [validation report](benchmarks/cleanup-phase52-native-2026-10-12.json)
+records commands, regressions, producer proofs and artifact identities. Four
+copied verification executables are removed, and no temporary Rust workload is
+introduced. Both renderer API guides document the creation error. All 58
+benchmark JSON/gzip files parse and npm root declarations match package.json.
+All 982 current implementation files have one audit owner and are fully read.
+
 ## Remaining audit work
 
-- All current implementation files are fully read. The progressive/glass shader, SVG lowering, filter distance, text coordinate, retained layer descriptor, typed offscreen, recording geometry and coarse stack cleanup are implemented and verified on Metal. Prove retained compiled membership bounds and other plan eligibility before removing their remaining substitutes. Test DX12 lock-poison policy and prove packed uniform handle presence. Enforce the Metal coarse test harness's explicit GPU pin requirement. Clip geometry replacement inside/outside filters has fresh-renderer and analytic GPU coverage; continue tracing the wider retained metadata patching rules. Continue checking current Cargo/module reachability for retired code after the orphan example removal. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
+- All current implementation files are fully read. The progressive/glass shader, SVG lowering, filter distance, text coordinate, retained layer descriptor, typed offscreen, recording geometry, coarse stack and native creation/resource policy cleanup are implemented. Metal GPU correctness and portable native-policy regressions pass; DX12 resource runtime still needs Windows verification. Prove retained compiled membership bounds and other plan eligibility before removing their remaining substitutes. Clip geometry replacement inside/outside filters has fresh-renderer and analytic GPU coverage; continue tracing the wider retained metadata patching rules. Continue checking current Cargo/module reachability for retired code after the orphan example removal. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
 - Execute the HLSL editor test against the actual ShaderTools language server; local protocol regressions pass, but the server is unavailable locally.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

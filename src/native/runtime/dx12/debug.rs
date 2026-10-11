@@ -1,11 +1,7 @@
 //! Debug-layer enablement is process-wide, not a per-device switch.
+use super::creation::{self, Creation};
 use super::*;
 use std::sync::Mutex;
-
-struct Creation {
-    device_created: bool,
-    debug_enabled: bool,
-}
 
 static CREATION: Mutex<Creation> = Mutex::new(Creation {
     device_created: false,
@@ -17,7 +13,7 @@ static CREATION: Mutex<Creation> = Mutex::new(Creation {
 /// and no external device creation may run concurrently. Tileink-owned creation is
 /// serialized here; late requests are rejected without touching the debug layer.
 pub(crate) unsafe fn enable_validation() -> Result<()> {
-    let mut state = CREATION.lock().unwrap_or_else(|error| error.into_inner());
+    let mut state = creation::lock(&CREATION)?;
     if state.debug_enabled {
         return Ok(());
     }
@@ -35,7 +31,7 @@ pub(crate) unsafe fn enable_validation() -> Result<()> {
 }
 
 pub(super) fn create_device(adapter: &IDXGIAdapter1) -> Result<ID3D12Device> {
-    let mut state = CREATION.lock().unwrap_or_else(|error| error.into_inner());
+    let mut state = creation::lock(&CREATION)?;
     let mut device = None;
     unsafe {
         D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, &mut device)?;

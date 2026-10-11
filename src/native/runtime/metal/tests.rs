@@ -1,15 +1,13 @@
 use super::super::probe_cases as cases;
 use super::*;
+use crate::native::runtime::gpu_support;
 #[path = "../tests/scan_cases.rs"]
 mod scan_cases;
 
 #[test]
-#[ignore = "requires physical Metal GPU and MTL_DEBUG_LAYER=1"]
+#[ignore = "requires TILEINK_NATIVE_GPU and MTL_DEBUG_LAYER=1"]
 fn production_adapter_matches_all_probe_oracles_and_retires_reverse_readbacks() -> Result<()> {
-    let mut device = Metal::with_options(&crate::NativeContextOptions {
-        physical_adapter: None,
-        validation: true,
-    })?;
+    let mut device = Metal::with_options(&gpu_support::options()?)?;
     let cases = cases::cases();
     for group in cases.chunks(13) {
         let mut pending = Vec::new();
@@ -26,13 +24,10 @@ fn production_adapter_matches_all_probe_oracles_and_retires_reverse_readbacks() 
 }
 
 #[test]
-#[ignore = "requires physical Metal GPU and MTL_DEBUG_LAYER=1"]
+#[ignore = "requires TILEINK_NATIVE_GPU and MTL_DEBUG_LAYER=1"]
 fn scatter_and_cumsum_cover_tail_chunks_signed_carries_and_padded_groups() -> Result<()> {
     use super::super::program::{Scatter, cumsum::CumsumPlan};
-    let mut device = Metal::with_options(&crate::NativeContextOptions {
-        validation: true,
-        ..Default::default()
-    })?;
+    let mut device = Metal::with_options(&gpu_support::options()?)?;
     for count in [0, 1, 255, 256, 257, 519] {
         let mut source = vec![8, count.min(1), 0, 0, 3, 0, count, 0];
         source.extend((0..count).map(|n| n * 17 + 3));
@@ -85,12 +80,9 @@ fn scatter_and_cumsum_cover_tail_chunks_signed_carries_and_padded_groups() -> Re
 }
 
 #[test]
-#[ignore = "requires physical Metal GPU and MTL_DEBUG_LAYER=1"]
+#[ignore = "requires TILEINK_NATIVE_GPU and MTL_DEBUG_LAYER=1"]
 fn texture_upload_readback_strips_row_padding_and_preserves_array_layers() -> Result<()> {
-    let mut device = Metal::with_options(&crate::NativeContextOptions {
-        validation: true,
-        ..Default::default()
-    })?;
+    let mut device = Metal::with_options(&gpu_support::options()?)?;
     for width in [1, 15, 16, 17, 257] {
         for layers in [1, 3] {
             let bytes: Vec<u8> = (0..width * 7 * layers * 4)
@@ -111,15 +103,9 @@ fn texture_upload_readback_strips_row_padding_and_preserves_array_layers() -> Re
 }
 
 #[test]
-#[ignore = "requires physical Metal GPU and MTL_DEBUG_LAYER=1"]
+#[ignore = "requires TILEINK_NATIVE_GPU and MTL_DEBUG_LAYER=1"]
 fn public_renderer_clears_empty_frames_at_tile_and_row_pitch_boundaries() -> Result<()> {
-    let context = crate::NativeContext::new(
-        crate::NativeBackend::Metal,
-        &crate::NativeContextOptions {
-            validation: true,
-            ..Default::default()
-        },
-    )?;
+    let context = crate::NativeContext::new(crate::NativeBackend::Metal, &gpu_support::options()?)?;
     for (width, height) in [(1, 1), (15, 17), (17, 15), (257, 3)] {
         let mut renderer = crate::NativeRenderer::with_context(&context, width, height)?;
         let canvas = crate::Canvas::new(width, height, 1.0);
@@ -144,42 +130,8 @@ mod coarse_cases;
 
 #[path = "../tests/coarse_count_gpu.rs"]
 mod coarse_count;
-mod coarse_routes {
-    use super::*;
-    pub(super) struct Routes(std::cell::RefCell<Metal>);
-    impl Routes {
-        pub(super) fn new() -> Result<Self> {
-            Ok(Self(std::cell::RefCell::new(Metal::with_options(
-                &crate::NativeContextOptions {
-                    validation: true,
-                    ..Default::default()
-                },
-            )?)))
-        }
-        pub(super) fn check(
-            &self,
-            batch: &ComputeBatch,
-            expected: &[Vec<u8>],
-            case: &str,
-        ) -> Result<()> {
-            let mut device = self.0.borrow_mut();
-            let ticket = device.submit_compute(batch)?;
-            let actual = device.readback_batch(&ticket)?;
-            assert_eq!(actual.len(), expected.len(), "{case}");
-            for (i, (a, b)) in actual.iter().zip(expected).enumerate() {
-                let diff = a.iter().zip(b).position(|(a, b)| a != b);
-                assert!(
-                    a.len() == b.len() && diff.is_none(),
-                    "{case}: buffer {i}, first different byte {diff:?}"
-                );
-            }
-            Ok(())
-        }
-        pub(super) fn validate(&self) -> Result<()> {
-            self.0.borrow().assert_valid()
-        }
-    }
-}
+#[path = "coarse_routes.rs"]
+mod coarse_routes;
 
 #[path = "../tests/coarse_allocation_cases.rs"]
 mod allocation_cases;
@@ -196,7 +148,7 @@ mod filter_morphology_cases;
 mod filter_transfer_cases;
 
 #[test]
-#[ignore = "requires physical Metal GPU and MTL_DEBUG_LAYER=1"]
+#[ignore = "requires TILEINK_NATIVE_GPU and MTL_DEBUG_LAYER=1"]
 fn morphology_and_transfer_match_independent_cpu_oracles() -> Result<()> {
     let routes = coarse_routes::Routes::new()?;
     for (batch, expected) in filter_morphology_cases::cases()? {
@@ -208,12 +160,9 @@ fn morphology_and_transfer_match_independent_cpu_oracles() -> Result<()> {
 }
 
 #[test]
-#[ignore = "requires physical Metal GPU and MTL_DEBUG_LAYER=1"]
+#[ignore = "requires TILEINK_NATIVE_GPU and MTL_DEBUG_LAYER=1"]
 fn every_compiled_entry_matches_reflected_binding_contract() -> Result<()> {
-    let mut metal = Metal::with_options(&crate::NativeContextOptions {
-        validation: true,
-        ..Default::default()
-    })?;
+    let mut metal = Metal::with_options(&gpu_support::options()?)?;
     for shader in crate::native::shaders::SHADER_ARTIFACTS {
         pipeline::ensure(
             &metal.device,
@@ -226,12 +175,9 @@ fn every_compiled_entry_matches_reflected_binding_contract() -> Result<()> {
 }
 
 #[test]
-#[ignore = "requires physical Metal GPU and MTL_DEBUG_LAYER=1"]
+#[ignore = "requires TILEINK_NATIVE_GPU and MTL_DEBUG_LAYER=1"]
 fn reflected_uniform_contract_rejects_wrong_scalar_types_before_dispatch() -> Result<()> {
-    let mut metal = Metal::with_options(&crate::NativeContextOptions {
-        validation: true,
-        ..Default::default()
-    })?;
+    let mut metal = Metal::with_options(&gpu_support::options()?)?;
     let original = crate::native::shaders::SHADER_ARTIFACTS
         .iter()
         .find(|shader| shader.entry == "copy_words")

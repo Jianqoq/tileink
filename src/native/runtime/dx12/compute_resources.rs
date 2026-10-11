@@ -62,8 +62,9 @@ impl Resources {
             };
             for (index, input) in batch.resources().iter().enumerate() {
                 if this.uniform_offset(index).is_some() {
-                    this.handles
-                        .push(uniform.as_ref().map(|buffer| buffer.resource.clone()));
+                    // Uniforms only assigns offsets into its nonempty arena.
+                    let uniform = uniform.as_ref().expect("packed uniform arena");
+                    this.handles.push(Some(uniform.resource.clone()));
                     continue;
                 }
                 if matches!(input, Resource::Sampler(_) | Resource::TextureTable(_)) {

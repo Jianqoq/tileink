@@ -9,6 +9,14 @@ pub(super) fn batch(context: &NativeContext) -> ComputeBatch {
     ComputeBatch::with_surfaces(Rc::new(RefCell::new(SurfacePool::new(context))))
 }
 
+/// Test device identity is mandatory; a missing pin must never select another GPU.
+pub(super) fn options() -> Result<NativeContextOptions> {
+    Ok(NativeContextOptions {
+        physical_adapter: Some(std::env::var("TILEINK_NATIVE_GPU")?),
+        validation: true,
+    })
+}
+
 pub(super) fn context() -> Result<NativeContext> {
     #[cfg(feature = "dx12")]
     unsafe {
@@ -20,13 +28,7 @@ pub(super) fn context() -> Result<NativeContext> {
     let backend = crate::NativeBackend::Vulkan;
     #[cfg(feature = "metal")]
     let backend = crate::NativeBackend::Metal;
-    Ok(NativeContext::new(
-        backend,
-        &NativeContextOptions {
-            physical_adapter: Some(std::env::var("TILEINK_NATIVE_GPU")?),
-            validation: true,
-        },
-    )?)
+    Ok(NativeContext::new(backend, &options()?)?)
 }
 
 pub(super) fn sample(

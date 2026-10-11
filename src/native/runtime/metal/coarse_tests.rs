@@ -1,12 +1,9 @@
 use super::*;
 
 #[test]
-#[ignore = "requires physical Metal GPU and MTL_DEBUG_LAYER=1"]
+#[ignore = "requires TILEINK_NATIVE_GPU and MTL_DEBUG_LAYER=1"]
 fn coarse_prefix_matches_cpu_pairs_sparse_tiles_and_multi_block_carries() -> Result<()> {
-    let mut device = Metal::with_options(&crate::NativeContextOptions {
-        validation: true,
-        ..Default::default()
-    })?;
+    let mut device = Metal::with_options(&gpu_support::options()?)?;
     for count in [0, 1, 255, 256, 257, 65537] {
         for sparse in [false, true] {
             let (batch, expected) = coarse_cases::prefix_case(count, sparse)?;
@@ -22,7 +19,7 @@ fn coarse_prefix_matches_cpu_pairs_sparse_tiles_and_multi_block_carries() -> Res
 }
 
 #[test]
-#[ignore = "requires physical Metal GPU and MTL_DEBUG_LAYER=1"]
+#[ignore = "requires TILEINK_NATIVE_GPU and MTL_DEBUG_LAYER=1"]
 fn coarse_allocation_keeps_guards_truncation_and_reverse_tile_ranges() -> Result<()> {
     let routes = coarse_routes::Routes::new()?;
     for tiles in [0, 1, 255, 256, 257, 513] {

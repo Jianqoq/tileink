@@ -90,3 +90,34 @@ fn empty_unused_and_invalid_uniform_layouts_are_handled() -> Result<()> {
     assert!(Uniforms::new(&batch, 3).is_err());
     Ok(())
 }
+
+#[test]
+fn packed_offsets_always_own_nonempty_arena_ranges() -> Result<()> {
+    for readbacks in 0..=2 {
+        let mut batch = batch()?;
+        let ids: Vec<_> = batch
+            .passes()
+            .iter()
+            .flat_map(|pass| &pass.bindings)
+            .filter_map(|(binding, id)| (binding.kind == BindingKind::Uniform).then_some(*id))
+            .collect();
+        assert_eq!(ids.len(), 2);
+        for id in ids.iter().take(readbacks) {
+            batch.readback(*id)?;
+        }
+        for alignment in [1, 4, 256, 1024] {
+            let packed = Uniforms::new(&batch, alignment)?;
+            assert_eq!(packed.offsets.iter().flatten().count(), 2 - readbacks);
+            assert_eq!(packed.bytes.is_empty(), readbacks == 2);
+            for (index, offset) in packed.offsets.iter().enumerate() {
+                if let Some(offset) = offset {
+                    let data = batch.resources()[index].bytes();
+                    assert!(!data.is_empty());
+                    let start = *offset as usize;
+                    assert_eq!(&packed.bytes[start..start + data.len()], data);
+                }
+            }
+        }
+    }
+    Ok(())
+}

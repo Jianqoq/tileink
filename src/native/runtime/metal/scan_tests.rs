@@ -1,12 +1,9 @@
 use super::*;
 
 #[test]
-#[ignore = "requires physical Metal GPU and MTL_DEBUG_LAYER=1"]
+#[ignore = "requires TILEINK_NATIVE_GPU and MTL_DEBUG_LAYER=1"]
 fn scan_prefix_preserves_guards_empty_chunks_and_wrapping_ranges() -> Result<()> {
-    let mut device = Metal::with_options(&crate::NativeContextOptions {
-        validation: true,
-        ..Default::default()
-    })?;
+    let mut device = Metal::with_options(&gpu_support::options()?)?;
     for lengths in [
         vec![0],
         vec![1],
@@ -25,13 +22,10 @@ fn scan_prefix_preserves_guards_empty_chunks_and_wrapping_ranges() -> Result<()>
 }
 
 #[test]
-#[ignore = "requires physical Metal GPU and MTL_DEBUG_LAYER=1"]
+#[ignore = "requires TILEINK_NATIVE_GPU and MTL_DEBUG_LAYER=1"]
 fn scan_count_matches_cpu_clipped_tile_counts_and_keeps_guards() -> Result<()> {
     use crate::shared::{bounds::TileBbox, scan_line::line_scanned_tile_count};
-    let mut device = Metal::with_options(&crate::NativeContextOptions {
-        validation: true,
-        ..Default::default()
-    })?;
+    let mut device = Metal::with_options(&gpu_support::options()?)?;
     let mut segments = vec![
         ([8.0, 0.0], [8.0, 48.0]),
         ([0.0, 8.0], [48.0, 8.0]),
@@ -97,12 +91,9 @@ fn scan_count_matches_cpu_clipped_tile_counts_and_keeps_guards() -> Result<()> {
 }
 
 #[test]
-#[ignore = "requires physical Metal GPU and MTL_DEBUG_LAYER=1"]
+#[ignore = "requires TILEINK_NATIVE_GPU and MTL_DEBUG_LAYER=1"]
 fn scan_invalid_path_references_leave_count_and_emit_outputs_untouched() -> Result<()> {
-    let mut device = Metal::with_options(&crate::NativeContextOptions {
-        validation: true,
-        ..Default::default()
-    })?;
+    let mut device = Metal::with_options(&gpu_support::options()?)?;
     for entry in ["scan_count", "scan_emit"] {
         let mut batch = ComputeBatch::new();
         let config =
