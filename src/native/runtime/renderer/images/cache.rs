@@ -66,7 +66,7 @@ impl<'a> Images<'a> {
         let textures = SceneImages {
             atlas,
             table: batch.texture_table(&textures)?,
-            sampler: batch.sampler(SamplerFilter::Linear)?,
+            sampler: batch.sampler(SamplerFilter::Linear),
         };
         Ok(Self { upload, textures })
     }

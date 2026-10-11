@@ -136,7 +136,7 @@ fn opaque_driver_cache_is_forwarded_without_host_header_policy() {
             assert!(!create("opaque").unwrap());
             driver::with(|d| d.reset_calls());
             assert!(create("opaque").unwrap());
-            driver::with(|d| assert_eq!(d.inputs, [d.bytes.clone()]));
+            driver::with(|d| assert_eq!(d.inputs.as_slice(), std::slice::from_ref(&d.bytes)));
         },
     );
 }

@@ -106,6 +106,8 @@ Brush 先由用户 kernel 在 GPU 上绘制受影响区域，再交给现有路�
 
 `NativeShaderBatch` 公开已有 GPU 资源的调用接口：创建 buffer／纹理／数组／纹理表／sampler，或导入 `NativeTexture`，用 `record` 将句柄按 External index 绑定，最后 `submit`。它与 Canvas 滤镜共用 pipeline 描述、校验和执行器；跨 batch／设备、类型不匹配和读写别名会报错。`ShaderBindingKind::Uniform(size)` 支持任意常量块，`TextureArray`／`TextureTable(count)` 支持数组和纹理表。
 
+`batch.sampler(ShaderSampler::Linear)` 直接返回 `NativeShaderResource`，不需要 `?`。录制只保存不可变的 sampler 描述；原生资源分配发生在 `submit`，分配失败也由它返回。
+
 资源槽位为 0..=29，纹理表另可用槽位 30，sampler 为 0..=15。可选 `Config` 在槽位 0 使用 `ShaderConfig`。纹理首次写入必须初始化后续读取的像素；buffer 每次执行会恢复初始数据，不保存隐式历史。输出为预乘 sRGB RGBA8；中间浮点纹理保留负数和 HDR。
 
 查看 `examples/shader_pipeline.rs` 和 `examples/common/shader_blur.rs`：四个用户原生 kernel 完成降采样、横向／纵向高斯模糊和上采样，并绑定额外的 tint 图片。

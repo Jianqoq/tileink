@@ -74,14 +74,12 @@ impl NativeShaderBatch {
             .map(NativeShaderResource)
             .map_err(NativeError::Recording)
     }
-    pub fn sampler(&mut self, filter: ShaderSampler) -> Result<NativeShaderResource, NativeError> {
-        self.batch
-            .sampler(match filter {
-                ShaderSampler::Nearest => SamplerFilter::Nearest,
-                ShaderSampler::Linear => SamplerFilter::Linear,
-            })
-            .map(NativeShaderResource)
-            .map_err(NativeError::Recording)
+    /// Record an immutable descriptor. Native allocation errors are returned by submit.
+    pub fn sampler(&mut self, filter: ShaderSampler) -> NativeShaderResource {
+        NativeShaderResource(self.batch.sampler(match filter {
+            ShaderSampler::Nearest => SamplerFilter::Nearest,
+            ShaderSampler::Linear => SamplerFilter::Linear,
+        }))
     }
     pub fn record(
         &mut self,

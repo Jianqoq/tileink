@@ -84,6 +84,8 @@ All built-in filter GPU stages use the public `ShaderKernel::precompiled`, `Shad
 
 `NativeShaderBatch` exposes GPU buffer/texture/array/table/sampler creation and zero-copy `NativeTexture` import. Bind handles in External index order with `record`, then `submit`. It shares pipeline descriptors, validation and execution with Canvas filters; foreign handles, type/format mismatches and writable aliases are rejected. `ShaderBindingKind::Uniform(size)` supports arbitrary constant blocks; `TextureArray` and `TextureTable(count)` expose arrays and descriptor tables.
 
+`batch.sampler(ShaderSampler::Linear)` returns a `NativeShaderResource` directly, without `?`. Recording stores an immutable sampler descriptor; native allocation happens during `submit`, which reports allocation failures.
+
 Resource slots are 0..=29; texture tables may also use slot30, samplers 0..=15. Optional Config uses ShaderConfig at slot0. Initial texture writers must initialize all subsequently read texels; buffers reset from their initial data on every invocation. Final output is premultiplied-sRGB RGBA8, while floating-point intermediates retain negatives and HDR.
 
 See `examples/shader_pipeline.rs` and `examples/common/shader_blur.rs`: four application kernels downsample, convolve horizontally/vertically, and upsample with an additional tint image.

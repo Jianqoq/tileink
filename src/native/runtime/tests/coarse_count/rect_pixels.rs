@@ -58,7 +58,7 @@ pub(super) fn interpret_rectangles(
     let atlas = batch.texture_array_rgba8([1, 1, 1], vec![0; 4])?;
     let image = batch.texture_rgba8([1, 1], vec![0; 4])?;
     let images = batch.texture_table(&vec![image; NATIVE_TEXTURE_TABLE_CAPACITY as usize])?;
-    let sampler = batch.sampler(SamplerFilter::Nearest)?;
+    let sampler = batch.sampler(SamplerFilter::Nearest);
     // SAFETY: every tile owns a complete bounded stream of SDF draws plus END;
     // the full Canvas paint records and transforms stay paired, with no stacks.
     unsafe {

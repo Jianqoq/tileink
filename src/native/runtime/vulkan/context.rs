@@ -26,18 +26,7 @@ impl Vulkan {
             } else {
                 Vec::new()
             };
-            let mut debug_info = vk::DebugUtilsMessengerCreateInfoEXT::default()
-                .message_severity(
-                    vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                        | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
-                )
-                .message_type(
-                    vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
-                        | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
-                        | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
-                )
-                .pfn_user_callback(Some(validation::callback))
-                .user_data(std::sync::Arc::as_ptr(&messages).cast_mut().cast());
+            let mut debug_info = validation::info(&messages);
             let info = vk::ApplicationInfo::default().api_version(vk::API_VERSION_1_1);
             let mut instance_info = vk::InstanceCreateInfo::default()
                 .application_info(&info)
@@ -198,18 +187,6 @@ impl Vulkan {
             host_owner,
         } = parts;
         unsafe {
-            let debug_info = vk::DebugUtilsMessengerCreateInfoEXT::default()
-                .message_severity(
-                    vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                        | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
-                )
-                .message_type(
-                    vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
-                        | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
-                        | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
-                )
-                .pfn_user_callback(Some(validation::callback))
-                .user_data(std::sync::Arc::as_ptr(&messages).cast_mut().cast());
             let memory = instance.get_physical_device_memory_properties(physical);
             let properties = instance.get_physical_device_properties(physical);
             let families = instance.get_physical_device_queue_family_properties(physical);
@@ -239,6 +216,7 @@ impl Vulkan {
                 injected_submit_error: None,
             };
             if validation {
+                let debug_info = validation::info(&this.messages);
                 this.messenger = this.debug.create_debug_utils_messenger(&debug_info, None)?;
             }
             Ok(this)

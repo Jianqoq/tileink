@@ -7,9 +7,9 @@ fn immutable_samplers_are_shared_across_in_flight_frames() -> Result<()> {
     let messages = device.validation_messages();
     let mut batch = super::super::compute::ComputeBatch::new();
     use crate::native::runtime::compute::SamplerFilter;
-    batch.sampler(SamplerFilter::Nearest)?;
-    batch.sampler(SamplerFilter::Linear)?;
-    batch.sampler(SamplerFilter::Nearest)?;
+    batch.sampler(SamplerFilter::Nearest);
+    batch.sampler(SamplerFilter::Linear);
+    batch.sampler(SamplerFilter::Nearest);
     let a = device.submit_compute(&batch)?;
     let b = device.submit_compute(&batch)?;
     let identities = |ticket: &super::super::submissions::Ticket| {

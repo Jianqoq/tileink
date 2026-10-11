@@ -65,7 +65,7 @@ pub(super) fn sample(
         .unwrap()
         .count as usize;
     let images = batch.texture_table(&vec![texture; table_len])?;
-    let sampler = batch.sampler(SamplerFilter::Nearest)?;
+    let sampler = batch.sampler(SamplerFilter::Nearest);
     // SAFETY: each request owns one output word; all images and bounded paint
     // storage remain owned by this batch. Corrupt records test robust rejection.
     unsafe {

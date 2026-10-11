@@ -54,7 +54,7 @@ fn native_brush_reads_preserve_valid_words_and_reject_out_of_range_addresses() -
         let atlas = batch.texture_array_rgba8([1, 1, 1], vec![0; 4])?;
         let texture = batch.texture_rgba8([1, 1], vec![0; 4])?;
         let images = batch.texture_table(&vec![texture; table_len])?;
-        let sampler = batch.sampler(SamplerFilter::Nearest)?;
+        let sampler = batch.sampler(SamplerFilter::Nearest);
         // SAFETY: brush_words guards every paint read; invalid bases/offsets are
         // deliberate inputs to that contract. Four requests own four output words.
         unsafe {

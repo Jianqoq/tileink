@@ -114,7 +114,7 @@ fn solid_tiles(
     let atlas = batch.texture_array_rgba8([1, 1, 1], vec![0; 4])?;
     let image = batch.texture_rgba8([1, 1], vec![0; 4])?;
     let images = batch.texture_table(&vec![image; NATIVE_TEXTURE_TABLE_CAPACITY as usize])?;
-    let sampler = batch.sampler(SamplerFilter::Nearest)?;
+    let sampler = batch.sampler(SamplerFilter::Nearest);
     // SAFETY: tile IDs are unique/in bounds, each header addresses one complete
     // solid particle, and this stream never reads draw records or spills.
     unsafe {

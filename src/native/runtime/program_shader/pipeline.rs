@@ -163,7 +163,7 @@ fn record_invocation(
                     R::Sampler(f) => batch.sampler(match f {
                         ShaderSampler::Nearest => SamplerFilter::Nearest,
                         ShaderSampler::Linear => SamplerFilter::Linear,
-                    })?,
+                    }),
                     resource => {
                         let region = region.ok_or("pipeline resource requires a surface")?;
                         let surface = [region.width, region.height];

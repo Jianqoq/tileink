@@ -62,7 +62,7 @@ pub(crate) fn encode(
     if levels.len() > TABLE_SIZE {
         return Err("progressive blur level count overflow".into());
     }
-    let sampler = batch.sampler(SamplerFilter::Linear)?;
+    let sampler = batch.sampler(SamplerFilter::Linear);
     let mut images = Vec::with_capacity(TABLE_SIZE);
     let original = batch.reusable_overwritten_surface(extent)?;
     batch.copy_texture(TextureCopy {

@@ -144,10 +144,10 @@ fn texture_array_dimensions_and_binding_views_are_explicit() {
 fn sampler_resources_reject_foreign_handles_byte_readback_and_wrong_bindings() {
     use super::SamplerFilter;
     let mut batch = ComputeBatch::new();
-    let sampler = batch.sampler(SamplerFilter::Linear).unwrap();
+    let sampler = batch.sampler(SamplerFilter::Linear);
     assert!(batch.readback(sampler).is_err());
     let mut foreign = ComputeBatch::new();
-    let other = foreign.sampler(SamplerFilter::Nearest).unwrap();
+    let other = foreign.sampler(SamplerFilter::Nearest);
     assert!(batch.size(other).is_err());
     let config = batch.buffer(vec![0; 16]).unwrap();
     let source = batch.texture_array_rgba8([1, 1, 1], vec![0; 4]).unwrap();

@@ -1,6 +1,9 @@
 #![cfg(all(feature = "metal", target_os = "macos"))]
 use tileink::*;
 
+#[path = "native_shader_batch/samplers.rs"]
+mod samplers;
+
 const SOURCE: &str = r#"
 #include <metal_stdlib>
 using namespace metal;

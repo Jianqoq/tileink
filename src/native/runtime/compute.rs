@@ -165,13 +165,14 @@ impl ComputeBatch {
         self.resources.push(Resource::Texture(texture));
         Ok(id)
     }
-    pub fn sampler(&mut self, filter: SamplerFilter) -> Result<ResourceId> {
+    /// Record a descriptor; native sampler allocation happens during submission.
+    pub fn sampler(&mut self, filter: SamplerFilter) -> ResourceId {
         let id = ResourceId {
             owner: self.owner,
             index: self.resources.len(),
         };
         self.resources.push(Resource::Sampler(filter));
-        Ok(id)
+        id
     }
     pub fn size(&self, id: ResourceId) -> Result<usize> {
         if id.owner != self.owner {

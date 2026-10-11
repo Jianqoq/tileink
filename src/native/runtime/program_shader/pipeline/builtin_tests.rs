@@ -26,7 +26,7 @@ fn bindings(
                     let image = batch.texture_rgba8([3, 2], vec![0; 24])?;
                     batch.texture_table(&vec![image; b.count as usize])?
                 }
-                BindingKind::Sampler => batch.sampler(SamplerFilter::Linear)?,
+                BindingKind::Sampler => batch.sampler(SamplerFilter::Linear),
             };
             Ok((b.slot, id))
         })

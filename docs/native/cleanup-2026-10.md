@@ -831,8 +831,49 @@ is claimed. The bilingual renderer docs now describe the error contract. The DXC
 discovery doc's obsolete claim that runtime never needs DXC is corrected for
 application-provided HLSL.
 
+## Phase 22: direct sampler recording and one Vulkan diagnostic registration
+
+Sampler recording only appends an immutable descriptor to the CPU batch. Both
+the internal and public methods now return their resource handle directly,
+removing the impossible `Result` and repeated error conversion at every caller.
+`NativeShaderBatch::sampler` no longer requires `?`; native allocation failures
+still propagate from submission. The native API guide and both website languages
+document this permanent API simplification.
+
+The two Vulkan diagnostic registration paths now share one constructor borrowing
+the live message owner. The callback no longer tests the callback-data and
+registered owner pointers for null: Vulkan supplies valid callback data and the
+registered user pointer. The optional message check remains because
+[device-address messages can omit text](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugUtilsMessengerCallbackDataEXT.html).
+Poisoned-lock recovery retains diagnostics without unwinding through the native
+callback; it is an FFI collection requirement, with a dedicated semantic test.
+
+Four production-callback tests passed before and after the cleanup, covering UTF-8,
+empty/absent text, ordering, independent owners and poisoned-lock collection. A
+fifth verifies the shared registration's owner, filters and return contract. A
+real Metal test passed before and after the sampler API change: nearest/linear
+pixels match expectations and foreign batch sampler handles are rejected. These
+are semantic preservation tests, not reproductions of a rendering defect. A
+redundant clone in the phase-21 Vulkan cache test is also removed.
+
+All 33 focused serial release tests pass. The full suite, including ignored tests,
+reports 1047 passes and the same three known failures described in phase 12. The
+12 example tests, backend-free check, formatting and release Clippy pass. Windows
+DX12/Vulkan library/test/example type checks pass; actual DXC compilation and
+Vulkan/DX12 GPU execution remain unavailable. The temporary type harness is
+removed. Callback tests execute the production function without a Vulkan loader.
+
+All 1730 SVG images and seven example PNGs match phase 21 exactly. The validated
+Metal window completes eight frames and its 640x360 to 480x270 resize; the shader
+manifest is unchanged. The actual application's alternating before/after
+[whole-process measurement](benchmarks/cleanup-phase22-metal-2026-10-11.json)
+has a median change of -0.09%, with two warmup and ten timed pairs. This does not
+isolate sampler recording or establish a GPU throughput improvement. Temporary
+measurement artifacts are removed; raw timings remain in the benchmark record.
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
+- Simplify upload scatter's redundant destination-size state: persistent buffers already enforce the 32-bit byte-address limit. Preserve the current copy/scatter size and fragmentation selection, with boundary tests before changing its representation.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

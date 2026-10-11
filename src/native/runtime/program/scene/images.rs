@@ -21,7 +21,7 @@ impl ImageAllocation {
         Ok(SceneImages {
             atlas: self.atlas,
             table: batch.texture_table(&self.textures)?,
-            sampler: batch.sampler(SamplerFilter::Linear)?,
+            sampler: batch.sampler(SamplerFilter::Linear),
         })
     }
 }

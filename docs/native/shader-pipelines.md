@@ -56,6 +56,10 @@ pipelines. Foreign batch/device handles, wrong kinds/formats, short constant
 blocks, wrong table counts and writable aliases are rejected. The pipeline plan
 never stores batch handles and can be reused with new resources.
 
+`batch.sampler(ShaderSampler::Linear)` returns a `NativeShaderResource` directly.
+Recording a sampler only stores its immutable descriptor; native allocation
+failures are reported by `submit`. No `?` is needed when recording the sampler.
+
 `ShaderBindingKind::Uniform(size)` and `ShaderResource::Uniform(bytes)` support
 arbitrary read-only native constant blocks, with reflected byte-size checks.
 `TextureArray` and `TextureTable(count)` declare native array and descriptor table
