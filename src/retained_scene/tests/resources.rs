@@ -100,3 +100,24 @@ fn replacing_retained_vector_content_removes_only_its_previous_resource() {
     assert!(materializer.canvas().scene_images.contains(new_key));
     assert!(old_source.scene_images.contains(old_key));
 }
+
+#[test]
+fn removing_an_unregistered_chunk_resource_is_an_ownership_error() {
+    let (source, key) = vector_leaf(4);
+    let mut refs = HashMap::default();
+    let mut canvas = Rc::new(Canvas::new(16, 16, 1.0));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        PersistentSceneMaterializer::remove_chunk_resources(
+            &mut refs,
+            &mut canvas,
+            &source.scene_images,
+        );
+    }));
+    assert!(
+        result.is_err(),
+        "only registered resource references can be released"
+    );
+    assert!(refs.is_empty());
+    assert!(!canvas.scene_images.contains(key));
+    assert!(source.scene_images.contains(key));
+}

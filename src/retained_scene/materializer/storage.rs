@@ -93,9 +93,10 @@ impl PersistentSceneMaterializer {
         glyphs: &[CanvasGlyph],
     ) -> bool {
         match (*allocation, glyphs.first().copied()) {
-            (Some(id), Some(first)) => arenas
+            (Some(id), Some(_)) => arenas
                 .glyphs
-                .get_or_insert_with(|| SceneArena::new(first))
+                .as_mut()
+                .expect("live glyph allocation has an arena")
                 .replace(id, glyphs),
             (Some(id), None) => {
                 arenas.glyphs.as_mut().unwrap().remove(id);
@@ -125,37 +126,34 @@ impl PersistentSceneMaterializer {
         if let Some(glyphs) = chunk.glyphs {
             self.arenas.glyphs.as_mut().unwrap().remove(glyphs);
         }
-        self.arenas.runs.remove(chunk.runs.unwrap());
+        self.arenas.runs.remove(chunk.runs);
         self.arenas.backdrops.remove(chunk.backdrops);
         self.arenas.segments.remove(chunk.segments);
     }
 
     pub(crate) fn add_chunk_resources(
-        resource_refs: &mut HashMap<ImageKey, (ImageSource, usize)>,
+        resource_refs: &mut HashMap<ImageKey, usize>,
         canvas: &mut Rc<Canvas>,
         resources: &ImageResourceStore,
     ) {
         for (key, image) in resources.iter() {
-            let entry = resource_refs
-                .entry(key)
-                .or_insert_with(|| (image.clone(), 0));
-            entry.0 = image.clone();
-            entry.1 += 1;
+            // The published canvas owns the source. This index only counts live chunks.
+            *resource_refs.entry(key).or_insert(0) += 1;
             Rc::make_mut(canvas).scene_images.insert(key, image.clone());
         }
     }
 
     pub(crate) fn remove_chunk_resources(
-        resource_refs: &mut HashMap<ImageKey, (ImageSource, usize)>,
+        resource_refs: &mut HashMap<ImageKey, usize>,
         canvas: &mut Rc<Canvas>,
         resources: &ImageResourceStore,
     ) {
         for (key, _) in resources.iter() {
-            let remove = resource_refs.get_mut(&key).is_some_and(|(_, count)| {
-                *count -= 1;
-                *count == 0
-            });
-            if remove {
+            let count = resource_refs
+                .get_mut(&key)
+                .expect("live chunk resource is registered");
+            *count -= 1;
+            if *count == 0 {
                 resource_refs.remove(&key);
                 Rc::make_mut(canvas).scene_images.remove(key);
             }

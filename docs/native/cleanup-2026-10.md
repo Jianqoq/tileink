@@ -452,6 +452,60 @@ M5, p50 changes +0.23% to +1.57% (0.69 to 3.25 microseconds), without a material
 measured regression or a speedup claim. Temporary measurement source is removed.
 [Raw measurements and protocol](benchmarks/cleanup-phase13-metal-2026-10-11.json).
 
+## Phase 14: remove impossible retained-storage states
+
+Every retained chunk allocates a text-run slot, including empty content. The slot
+is now required rather than wrapped in an `Option` with unused zero-base defaults.
+A live glyph allocation uses its existing arena instead of attempting to recreate
+one. Chunk dependency refresh reads its known live chunk directly. The image
+reference index stores counts only; the published canvas already owns each image
+source, so the extra never-read source and its repeated clones are removed.
+Arena allocations and registered chunk resources are released exactly once.
+Missing ownership now fails at the invariant rather than silently returning an
+unused boolean or skipping a resource release. Empty allocations, optional glyph
+storage, shared-image references and inactive dirty GPU slots keep their actual
+semantics. Chunk encoding/remapping moves out of lifecycle orchestration into a
+separate module.
+
+The new text lifecycle test exposed two existing rendering bugs. CPU glyph-list
+capacity still used nearest-sampling bounds, whereas Metal and HLSL already include
+one local texel around the bitmap for bilinear sampling. Underallocation dropped
+later glyphs or tiles. Both full and incremental capacity calculations now reserve
+that same local footprint before applying the draw affine. Translation append also
+moved path/glyph geometry and world bounds without moving their local bounds;
+later retained or nested affine placement could then cull translated content.
+Append now preserves both coordinate domains. These are direct contract fixes,
+with no compatibility or temporary rendering implementation.
+
+Six new regressions cover duplicate/missing ownership, empty/growing/cleared and
+reinserted text, arena compaction, affine bilinear bounds, positive/negative and
+fractional append offsets at two scales, and actual native text readback against
+fresh immediate rendering with and without nested append. Ownership, candidate
+bounds and both GPU/CPU placement failures were reproduced before their fixes.
+Text length tests move to a focused module and load the bundled font explicitly
+instead of passing without assertions when system font layout is unavailable.
+
+All 206 relevant focused release tests pass. The complete single-thread release
+suite reports 999 passing tests and the same three known failures described in
+phase 12. Release Clippy has no new warnings; example builds and all 11 example
+tests pass. All 1730 SVG images and seven example PNGs remain byte-identical to
+the cleanup baseline.
+
+DX12 and Vulkan library and test types pass Windows Rust type checking using a
+temporary artifact-free harness, removed afterward. This checks Rust types only;
+Windows GPU execution and shader compilation are not verified.
+
+Twenty-four paired actual renderer workloads compare against the immediate
+parent commit `03359fec`, with 100 warmup pairs and 600 samples per version.
+They cover general filters, retained mutations, path/source revisions, shared
+vector resources and mixed SDF/pattern append. Every comparable case preserves
+exact pixels. On M5, p50 changes -1.59% to +1.51%, with no material measured
+regression. The added nested-text revision workload reproduces the old rendering
+error and now matches an independently recorded immediate reference; its corrected
+p50 is 0.249 ms. Its incorrect baseline is excluded from timing comparisons.
+Temporary measurement source is removed after validation.
+[Raw measurements and protocol](benchmarks/cleanup-phase14-metal-2026-10-11.json).
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.

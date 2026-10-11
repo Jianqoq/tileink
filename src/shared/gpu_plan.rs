@@ -1199,6 +1199,9 @@ fn bounds_tile_bbox(bounds: Bounds, width_in_tiles: u32, height_in_tiles: u32) -
 }
 
 fn transformed_glyph_bounds(draw: &DrawRecord, bounds: Bounds) -> Bounds {
+    // Match Metal/HLSL coarse candidates: bilinear sampling can read one local
+    // texel beyond the bitmap. Nearest-only capacity drops later glyphs/tiles.
+    let bounds = bounds.outset(1);
     let bounds = draw.transform.transform_bounds(PixelBounds {
         x0: bounds.x0,
         y0: bounds.y0,
@@ -1988,71 +1991,8 @@ pub(crate) fn build_cumsum_plan_into(
 }
 
 #[cfg(test)]
-mod text_length_tests {
-    use peniko::{Color, kurbo::Point};
-
-    use super::GpuBufferLengths;
-    use crate::{Canvas, TextContext, TextFontSystem, TextLayoutOptions, text::PreparedTextData};
-
-    #[test]
-    fn text_lengths_count_only_tiles_intersecting_glyph_bounds() {
-        let mut font_system = TextFontSystem::new();
-        let mut context = TextContext::new();
-        let layout = context.layout(&mut font_system, TextLayoutOptions::new("MMMMMMMM", 24.0));
-        if layout.is_empty() {
-            return;
-        }
-
-        let mut canvas = Canvas::new(160, 64, 1.0);
-        canvas.push_text_layout(&layout, Point::new(2.0, 32.0), Color::WHITE);
-        let text = PreparedTextData::new(
-            &canvas.text_glyphs,
-            &canvas.text_runs,
-            &mut font_system,
-            &mut context,
-        );
-        let lengths = GpuBufferLengths::from_scene_with_text(&canvas, Some(&text));
-
-        let expected = text
-            .run_glyph_indices(0)
-            .filter_map(|glyph_id| {
-                let bounds = text.glyph_bounds(glyph_id)?;
-                Some(super::bounds_tile_bbox(
-                    bounds,
-                    canvas.width_in_tiles(),
-                    canvas.height_in_tiles(),
-                ))
-            })
-            .map(|bbox| bbox.tile_count() as usize)
-            .sum::<usize>();
-
-        assert_eq!(lengths.coarse_glyph_capacity, expected);
-    }
-
-    #[test]
-    fn text_lengths_track_whether_gpu_text_data_was_prepared() {
-        let mut font_system = TextFontSystem::new();
-        let mut context = TextContext::new();
-        let layout = context.layout(&mut font_system, TextLayoutOptions::new("text", 24.0));
-        if layout.is_empty() {
-            return;
-        }
-
-        let mut canvas = Canvas::new(96, 48, 1.0);
-        canvas.push_text_layout(&layout, Point::new(2.0, 28.0), Color::WHITE);
-        let no_text_lengths = GpuBufferLengths::from_scene(&canvas);
-        let text = PreparedTextData::new(
-            &canvas.text_glyphs,
-            &canvas.text_runs,
-            &mut font_system,
-            &mut context,
-        );
-        let text_lengths = GpuBufferLengths::from_scene_with_text(&canvas, Some(&text));
-
-        assert!(!no_text_lengths.text_enabled);
-        assert!(text_lengths.text_enabled);
-    }
-}
+#[path = "gpu_plan/text_length_tests.rs"]
+mod text_length_tests;
 
 #[cfg(test)]
 mod tests {

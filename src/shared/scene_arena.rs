@@ -165,17 +165,15 @@ impl<T: Copy> SceneArena<T> {
         self.mark_dirty(allocation.start..allocation.start + allocation.len);
     }
 
-    pub(crate) fn remove(&mut self, id: ArenaAllocation) -> bool {
-        let Some(allocation) = self.allocations.remove(&id) else {
-            return false;
-        };
+    /// Releases a live allocation exactly once, like resize/write require a live owner.
+    pub(crate) fn remove(&mut self, id: ArenaAllocation) {
+        let allocation = self.allocations.remove(&id).expect("live arena allocation");
         self.live_len -= allocation.len;
         self.values[allocation.start..allocation.start + allocation.capacity].fill(self.vacant);
         // GPU consumers address the arena's physical high-water range. Clearing only the logical
         // length leaves stale records in the released padding until that capacity is reused.
         self.mark_dirty(allocation.start..allocation.start + allocation.capacity);
         self.release_range(allocation.start..allocation.start + allocation.capacity);
-        true
     }
 
     pub(crate) fn range(&self, id: ArenaAllocation) -> Range<usize> {
@@ -386,11 +384,28 @@ mod tests {
         let removed = arena.insert(&[1, 2, 3, 4]);
         let survivor = arena.insert(&[5]);
         let range = arena.range(removed);
-        assert!(arena.remove(removed));
+        arena.remove(removed);
         assert_eq!(&arena.values()[range.clone()], &[0, 0, 0, 0]);
         let reused = arena.insert(&[7, 8, 9]);
         assert_eq!(arena.range(reused).start, range.start);
         assert_eq!(&arena.values()[arena.range(survivor)], &[5]);
+    }
+
+    #[test]
+    fn releasing_an_allocation_twice_is_an_ownership_error() {
+        for data in [&[][..], &[1, 2][..]] {
+            let mut arena = SceneArena::new(0u32);
+            let allocation = arena.insert(data);
+            arena.remove(allocation);
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                arena.remove(allocation);
+            }));
+            assert!(
+                result.is_err(),
+                "a released allocation cannot be released again"
+            );
+            assert_eq!(arena.live_len(), 0);
+        }
     }
 
     #[test]
@@ -467,7 +482,7 @@ mod tests {
         let removed = arena.insert(&[9; 4]);
         let range = arena.range(removed);
         let _ = take_dirty_ranges(&mut arena);
-        assert!(arena.remove(removed));
+        arena.remove(removed);
         let _ = take_dirty_ranges(&mut arena);
 
         let allocation = arena.insert_filled(4, 0);

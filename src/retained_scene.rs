@@ -28,7 +28,7 @@ mod prelude {
             bounds::Bounds,
             draw_record::{DrawRecord, DrawTagWord, FillRuleWord},
             execution::{Command, CommandList, RetainedBatchBranch},
-            image_resource::{ImageKey, ImageResourceStore, ImageSource},
+            image_resource::{ImageKey, ImageResourceStore},
             layer::{Layer, filter},
             line::Line,
             path::PathRecord,

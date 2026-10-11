@@ -24,6 +24,7 @@ fn assert_layer_stack(plan: &ExecPlan, layer_stack: Range<usize>, expected: &[La
     assert_eq!(actual, expected);
 }
 
+mod append_bounds;
 mod compile;
 mod filters;
 mod paths;

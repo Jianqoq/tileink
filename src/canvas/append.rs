@@ -178,6 +178,9 @@ impl Canvas {
 
     pub(super) fn translate_draw_for_append(draw: &mut DrawRecord, offset: SceneOffset) {
         if !draw.has_analytic_geometry() {
+            // Lines and glyph positions move in local storage. Preserve that
+            // same local bound for any later retained or nested affine placement.
+            draw.local_pixel_bounds = offset.pixel_bounds(draw.local_pixel_bounds);
             draw.pixel_bounds = offset.pixel_bounds(draw.pixel_bounds);
         }
     }

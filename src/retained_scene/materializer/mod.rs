@@ -2,6 +2,7 @@ pub(crate) use super::model::*;
 pub(crate) use super::prelude::*;
 pub(crate) use super::scene::RetainedScene;
 
+mod chunks;
 mod command_topology;
 mod damage;
 mod draw_order;
@@ -49,7 +50,7 @@ pub(crate) struct SceneChunk {
     pub(crate) sdfs: ArenaAllocation,
     shadows: ArenaAllocation,
     glyphs: Option<ArenaAllocation>,
-    runs: Option<ArenaAllocation>,
+    runs: ArenaAllocation,
     backdrops: ArenaAllocation,
     segments: ArenaAllocation,
     plan_fingerprint: u64,
@@ -220,7 +221,7 @@ pub(crate) struct PersistentSceneMaterializer {
     vacant_command_fragments: Vec<std::ops::Range<usize>>,
     // Preserve deferred vector sources through materialization; only the selected
     // GPU executor may rasterize them. Counts follow live retained chunks.
-    resource_refs: HashMap<ImageKey, (ImageSource, usize)>,
+    resource_refs: HashMap<ImageKey, usize>,
     pub(crate) dependency_free: bool,
     /// Refreshed once with dependency metadata after chunks change. Root-domain
     /// updates must not rescan every backdrop at each frame-patching stage.

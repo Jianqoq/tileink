@@ -118,3 +118,6 @@ mod journal;
 
 #[path = "tests/topology.rs"]
 mod topology;
+
+#[path = "tests/text_storage.rs"]
+mod text_storage;
