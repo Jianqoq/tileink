@@ -39,9 +39,7 @@ impl Canvas {
         self.plan_cache_key = None;
         self.compiled_plan = None;
         self.persistent_frame = None;
-        self.painter_keys = None;
-        self.stable_batch_ids = None;
-        self.stable_batch_counts = None;
+        self.painter = PainterMetadata::default();
         self.retained_transform = GpuAffine::IDENTITY;
         self.path_cnt = 0;
         self.backdrop_pool_capacity = 0;

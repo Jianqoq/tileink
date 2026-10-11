@@ -58,12 +58,7 @@ fn tile_draw_bins_query_region_without_scanning_unrelated_tiles() {
 
 #[test]
 fn fused_lengths_reuse_the_same_tile_draw_bins() {
-    let mut canvas = Canvas::new_persistent(
-        crate::TILE_SIZE * 2,
-        crate::TILE_SIZE,
-        1.0,
-        crate::RetainedNodeId::for_owner(70_000),
-    );
+    let mut canvas = Canvas::new(crate::TILE_SIZE * 2, crate::TILE_SIZE, 1.0);
     for _ in 0..=COARSE_CHUNK_SIZE {
         canvas.push_rect(
             Rect::new(0.0, 0.0, 16.0, 16.0),
@@ -77,6 +72,7 @@ fn fused_lengths_reuse_the_same_tile_draw_bins() {
         Color::WHITE,
     );
 
+    let canvas = materialize(canvas);
     let mut bins = TileDrawBins::default();
     let mut cursors = Vec::new();
     let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);

@@ -90,6 +90,9 @@ impl GpuBufferLengths {
         incremental: bool,
         mut overrides: GpuLengthOverrides,
     ) -> Self {
+        let painter_keys = canvas
+            .retained_painter()
+            .map(|painter| painter.keys.as_slice());
         let tiles_width = canvas.width_in_tiles() as usize;
         let tiles_height = canvas.height_in_tiles() as usize;
         let tiles_size = (tiles_width as u32, tiles_height as u32);
@@ -108,7 +111,7 @@ impl GpuBufferLengths {
             });
         let updated = !surface_changed
             && !dense_spatial_change
-            && (incremental || canvas.painter_keys.is_some())
+            && (incremental || painter_keys.is_some())
             && canvas.buffer_changes.as_ref().is_some_and(|changes| {
                 let changed = changes
                     .draws
@@ -119,7 +122,7 @@ impl GpuBufferLengths {
                 bins.update_changed(
                     &canvas.draw_records,
                     &plan.draw_order,
-                    canvas.painter_keys.as_deref(),
+                    painter_keys,
                     tiles_size,
                     &changed,
                 )
@@ -133,7 +136,7 @@ impl GpuBufferLengths {
                 bins.reset_transient(
                     &canvas.draw_records,
                     &plan.draw_order,
-                    canvas.painter_keys.as_deref(),
+                    painter_keys,
                     tiles_size,
                     cursors,
                     canvas.persistent_root.is_some(),
@@ -147,10 +150,7 @@ impl GpuBufferLengths {
                     index_count: bins.upload_index_count(),
                     chunk_count: bins.active_page_count(),
                 }
-            } else if canvas.persistent_root.is_none()
-                && canvas.buffer_changes.is_none()
-                && canvas.painter_keys.is_none()
-            {
+            } else if canvas.persistent_root.is_none() && canvas.buffer_changes.is_none() {
                 bins.reset_transient(
                     &canvas.draw_records,
                     &plan.draw_order,

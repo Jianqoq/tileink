@@ -124,7 +124,7 @@ fn dense_retained_spatial_change_stays_flat_only_while_geometry_keeps_moving() {
             Color::BLACK,
         );
     }
-    initial.persistent_root = Some(RetainedNodeId::for_owner(71_000));
+    let initial = materialize(initial);
     let initial_plan = initial.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
     let mut bins = TileDrawBins::default();
     let mut cursors = Vec::new();
@@ -144,7 +144,7 @@ fn dense_retained_spatial_change_stays_flat_only_while_geometry_keeps_moving() {
             Color::BLACK,
         );
     }
-    moved.persistent_root = initial.persistent_root;
+    let mut moved = materialize(moved);
     moved.buffer_changes = Some(SceneBufferChanges {
         draws: std::iter::once(0..moved.draw_records.len()).collect(),
         ..Default::default()
@@ -185,7 +185,7 @@ fn dense_retained_spatial_change_stays_flat_only_while_geometry_keeps_moving() {
             Color::BLACK,
         );
     }
-    moved_again.persistent_root = initial.persistent_root;
+    let mut moved_again = materialize(moved_again);
     moved_again.buffer_changes = Some(SceneBufferChanges {
         draws: std::iter::once(0..moved_again.draw_records.len()).collect(),
         ..Default::default()

@@ -1,7 +1,10 @@
 use super::*;
 use crate::native::runtime::gpu_support;
-use crate::{Radius, RetainedNodeId, canvas::SceneBufferChanges};
-use peniko::{Color, kurbo::Rect};
+use crate::{Radius, RetainedNodeId, RetainedParent, RetainedScene};
+use peniko::{
+    Color,
+    kurbo::{Affine, Rect},
+};
 
 #[test]
 fn sparse_tile_bin_uploads_only_changed_records_and_pages() {
@@ -42,21 +45,32 @@ fn sparse_tile_bin_uploads_only_changed_records_and_pages() {
 fn scene_upload_consumes_tile_dirty_journals_across_retained_updates() -> Result<()> {
     let context = gpu_support::context()?;
     let mut cache = SceneCache::default();
+    let root = RetainedNodeId::for_owner(71_001);
+    let child = RetainedNodeId::for_owner(71_002);
+    let mut source = Canvas::new(64, 16, 1.0);
+    source.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::ZERO, Color::BLACK);
+    let mut scene = RetainedScene::new(64, 16, 1.0, root)?;
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            child,
+            Rc::new(source),
+            Affine::IDENTITY,
+        )
+        .commit()?;
+    let mut materializer = crate::retained_scene::PersistentSceneMaterializer::new(&scene);
     for frame in 0..256 {
-        let mut canvas = Canvas::new(64, 16, 1.0);
         let x = f64::from(frame % 2 * 16);
-        canvas.push_rect(
-            Rect::new(x, 0.0, x + 16.0, 16.0),
-            Radius::ZERO,
-            Color::BLACK,
-        );
-        canvas.persistent_root = Some(RetainedNodeId::for_owner(71_001));
         if frame != 0 {
-            canvas.buffer_changes = Some(SceneBufferChanges {
-                draws: std::iter::once(0..1).collect(),
-                ..Default::default()
-            });
+            scene
+                .transaction()
+                .set_transform(child, Affine::translate((x, 0.0)))
+                .commit()?;
+            materializer.update(&scene, scene.changes_since(materializer.version()));
         }
+        let canvas = materializer.canvas();
         let mut batch = gpu_support::batch(&context);
         cache.record(&mut batch, &canvas, None, None, 65_535)?;
         // A recorded update consumes its journal. An abandoned batch forces

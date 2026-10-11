@@ -315,18 +315,11 @@ impl SceneCache {
                 &changes.painter,
             )
         });
-        let batches = self.buffers.batches.upload(
-            batch,
-            canvas
-                .stable_batch_ids
-                .as_deref()
-                .unwrap_or(&prepared.plan.draw_batch_ids),
-            if canvas.stable_batch_ids.is_some() {
-                batch_ranges.as_deref()
-            } else {
-                None
-            },
-        )?;
+        let (batch_ids, batch_dirty) = match canvas.retained_painter() {
+            Some(painter) => (painter.batch_ids.as_slice(), batch_ranges.as_deref()),
+            None => (prepared.plan.draw_batch_ids.as_slice(), None),
+        };
+        let batches = self.buffers.batches.upload(batch, batch_ids, batch_dirty)?;
         let active_batches = if let Some(active) = options.active {
             if active.dimensions() != (lengths.tiles_width as u32, lengths.tiles_height as u32) {
                 return Err("native damage dimensions differ from scene".into());

@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "painter/lifecycle.rs"]
+mod lifecycle;
+
 #[test]
 fn painter_dirty_ranges_drop_removed_suffix_after_draw_arena_compaction() {
     let root = RetainedNodeId::for_owner(62_075);
@@ -17,19 +20,18 @@ fn painter_dirty_ranges_drop_removed_suffix_after_draw_arena_compaction() {
         .commit()
         .unwrap();
     let mut materializer = PersistentSceneMaterializer::new(&scene);
-    let current_len = materializer.canvas.stable_batch_ids.as_ref().unwrap().len();
+    let current_len = materializer.canvas.painter.batch_ids.len();
 
     // Arena compaction shortens the current draw arrays before painter metadata is rebuilt. Model
     // the previous high-water metadata that used to produce `current_len..old_len` as an upload.
     Rc::make_mut(&mut materializer.canvas)
-        .painter_keys
-        .as_mut()
-        .unwrap()
+        .painter
+        .keys
         .extend(std::iter::repeat_n(PainterKey::inactive(), 8));
     materializer.rebuild_painter_metadata(&scene);
 
     let canvas = materializer.canvas();
-    let batch_len = canvas.stable_batch_ids.as_ref().unwrap().len();
+    let batch_len = canvas.painter.batch_ids.len();
     assert_eq!(batch_len, current_len);
     assert!(
         canvas
@@ -59,22 +61,16 @@ fn painter_rebuild_uploads_batch_only_metadata_changes() {
         .commit()
         .unwrap();
     let mut materializer = PersistentSceneMaterializer::new(&scene);
-    let physical = materializer.canvas.stable_batch_ids.as_ref().unwrap()[..]
+    let physical = materializer.canvas.painter.batch_ids[..]
         .iter()
         .position(|batch| *batch != u32::MAX)
         .unwrap();
-    Rc::make_mut(&mut materializer.canvas)
-        .stable_batch_ids
-        .as_mut()
-        .unwrap()[physical] = u32::MAX;
+    Rc::make_mut(&mut materializer.canvas).painter.batch_ids[physical] = u32::MAX;
 
     materializer.rebuild_painter_metadata(&scene);
 
     let canvas = materializer.canvas();
-    assert_ne!(
-        canvas.stable_batch_ids.as_ref().unwrap()[physical],
-        u32::MAX
-    );
+    assert_ne!(canvas.painter.batch_ids[physical], u32::MAX);
     assert!(
         canvas
             .buffer_changes

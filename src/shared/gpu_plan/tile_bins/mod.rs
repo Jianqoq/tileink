@@ -183,7 +183,9 @@ pub(super) fn build_tile_draw_bins_into(
     build_tile_draw_bins_for_draws_into(
         &canvas.draw_records,
         &plan.draw_order,
-        canvas.painter_keys.as_deref(),
+        canvas
+            .retained_painter()
+            .map(|painter| painter.keys.as_slice()),
         (canvas.width_in_tiles(), canvas.height_in_tiles()),
         bins,
         cursors,

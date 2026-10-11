@@ -22,7 +22,8 @@ mod prelude {
         Canvas, FillRule, Filter, Mask, NodeGeneration, PersistentLayerKey, Region, RetainedNodeId,
         Sdf,
         canvas::{
-            PainterKey, RetainedFrameDelta, RetainedNodeKind, RetainedNodePatch, SceneBufferChanges,
+            PainterKey, PainterMetadata, RetainedFrameDelta, RetainedNodeKind, RetainedNodePatch,
+            SceneBufferChanges,
         },
         shared::{
             bounds::Bounds,

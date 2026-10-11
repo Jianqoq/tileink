@@ -224,7 +224,8 @@ fn empty_root_selection_still_visits_layers_and_shares_resource_cursors() {
 #[test]
 fn dead_batches_do_not_issue_extra_work() {
     let mut canvas = Canvas::new(17, 19, 1.0);
-    canvas.stable_batch_counts = Some(vec![1, 0, 1]);
+    canvas.persistent_root = Some(crate::RetainedNodeId::for_owner(1));
+    canvas.painter.batch_counts = vec![1, 0, 1];
     let plan = plan(vec![draw(2), draw(1), draw(0)]);
     let mut adapter = TraceAdapter::default();
     run(&mut adapter, &canvas, &plan, None).unwrap();

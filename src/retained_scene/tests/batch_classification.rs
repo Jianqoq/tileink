@@ -55,8 +55,8 @@ fn assert_painter_metadata_matches_fresh(
             let draws = state
                 .node_physical_draws(id)
                 .map(|physical| {
-                    let key = state.canvas.painter_keys.as_ref().unwrap()[physical].clone();
-                    let batch = state.canvas.stable_batch_ids.as_ref().unwrap()[physical];
+                    let key = state.canvas.painter.keys[physical].clone();
+                    let batch = state.canvas.painter.batch_ids[physical];
                     let plan = state.canvas.compiled_plan.as_ref().unwrap();
                     assert_eq!(
                         batch,

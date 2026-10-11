@@ -33,9 +33,7 @@ impl Canvas {
             plan_cache_key: None,
             compiled_plan: None,
             persistent_frame: None,
-            painter_keys: None,
-            stable_batch_ids: None,
-            stable_batch_counts: None,
+            painter: PainterMetadata::default(),
             retained_transform: GpuAffine::IDENTITY,
         }
     }

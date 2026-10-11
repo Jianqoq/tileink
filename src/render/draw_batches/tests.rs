@@ -92,7 +92,8 @@ fn ops() -> Vec<ExecOp> {
 #[test]
 fn plan_order_skips_dead_batches_and_preserves_painter_order() {
     let mut canvas = Canvas::new(17, 19, 1.0);
-    canvas.stable_batch_counts = Some(vec![1, 0, 1]);
+    canvas.persistent_root = Some(crate::RetainedNodeId::for_owner(1));
+    canvas.painter.batch_counts = vec![1, 0, 1];
     let mut adapter = MemoryAdapter::new(false);
     execute_in_place_root_batches(&mut adapter, &canvas, &ops(), &[2, 1, 0]).unwrap();
     assert_eq!(adapter.main, [131, 231, 331, 431]);
@@ -118,7 +119,8 @@ fn partial_roots_preserve_undamaged_pixels_for_odd_and_even_batch_counts() {
 #[test]
 fn empty_and_dead_batches_do_no_work() {
     let mut canvas = Canvas::new(17, 19, 1.0);
-    canvas.stable_batch_counts = Some(vec![0; 3]);
+    canvas.persistent_root = Some(crate::RetainedNodeId::for_owner(1));
+    canvas.painter.batch_counts = vec![0; 3];
     for indices in [&[][..], &[0, 1, 2][..]] {
         let mut adapter = MemoryAdapter::new(true);
         execute_in_place_root_batches(&mut adapter, &canvas, &ops(), indices).unwrap();
@@ -168,7 +170,8 @@ fn live_membership_uses_retained_counts_or_immediate_draws() {
     let mut canvas = Canvas::new(17, 19, 1.0);
     assert!(!draw_batch_is_live(&canvas, &[], 0));
     assert!(draw_batch_is_live(&canvas, &[3], 0));
-    canvas.stable_batch_counts = Some(vec![2, 0]);
+    canvas.persistent_root = Some(crate::RetainedNodeId::for_owner(1));
+    canvas.painter.batch_counts = vec![2, 0];
     assert!(draw_batch_is_live(&canvas, &[], 0));
     assert!(!draw_batch_is_live(&canvas, &[3], 1));
     assert!(!draw_batch_is_live(&canvas, &[3], 2));

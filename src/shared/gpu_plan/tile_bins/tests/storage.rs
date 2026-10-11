@@ -57,12 +57,7 @@ fn tile_bins_switch_from_transient_flat_upload_back_to_persistent_pages() {
         GpuLengthOverrides::default(),
     );
 
-    let mut persistent = Canvas::new_persistent(
-        crate::TILE_SIZE * 2,
-        crate::TILE_SIZE,
-        1.0,
-        crate::RetainedNodeId::for_owner(70_001),
-    );
+    let mut persistent = Canvas::new(crate::TILE_SIZE * 2, crate::TILE_SIZE, 1.0);
     persistent.push_rect(
         Rect::new(0.0, 0.0, 16.0, 16.0),
         crate::Radius::ZERO,
@@ -73,6 +68,7 @@ fn tile_bins_switch_from_transient_flat_upload_back_to_persistent_pages() {
         crate::Radius::ZERO,
         Color::WHITE,
     );
+    let persistent = materialize(persistent);
     let persistent_plan = persistent.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
     let lengths = GpuBufferLengths::from_scene_with_text_and_tile_draw_bins(
         &persistent,
@@ -94,12 +90,7 @@ fn tile_bins_switch_from_transient_flat_upload_back_to_persistent_pages() {
 fn retained_surface_resize_uses_dense_bins_then_restores_incremental_index() {
     use crate::canvas::SceneBufferChanges;
 
-    let mut canvas = Canvas::new_persistent(
-        crate::TILE_SIZE * 2,
-        crate::TILE_SIZE,
-        1.0,
-        crate::RetainedNodeId::for_owner(70_002),
-    );
+    let mut canvas = Canvas::new(crate::TILE_SIZE * 2, crate::TILE_SIZE, 1.0);
     canvas.push_rect(
         Rect::new(0.0, 0.0, 16.0, 16.0),
         crate::Radius::ZERO,
@@ -110,6 +101,7 @@ fn retained_surface_resize_uses_dense_bins_then_restores_incremental_index() {
         crate::Radius::ZERO,
         Color::WHITE,
     );
+    let mut canvas = materialize(canvas);
     let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
     let mut bins = TileDrawBins::default();
     let mut cursors = Vec::new();

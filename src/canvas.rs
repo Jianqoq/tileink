@@ -2,6 +2,7 @@ mod append;
 mod compile;
 mod draw;
 mod layers;
+mod painter;
 mod paths;
 mod primitives;
 mod retained;
@@ -67,6 +68,7 @@ use crate::shared::{
 use crate::text::{TextRun, layout_bounds_at_scaled_origin, scene_glyphs_at_scaled_origin};
 use crate::{TextContext, TextFontSystem, TextLayout};
 
+pub(crate) use painter::{PainterKey, PainterMetadata};
 pub use retained::RetainedNodeId;
 pub(crate) mod damage_history;
 
@@ -110,11 +112,7 @@ pub struct Canvas {
     pub(crate) plan_cache_key: Option<u64>,
     pub(crate) compiled_plan: Option<SharedRc<ExecPlan>>,
     pub(crate) persistent_frame: Option<RetainedFrame>,
-    pub(crate) painter_keys: Option<Vec<PainterKey>>,
-    pub(crate) stable_batch_ids: Option<Vec<u32>>,
-    /// Live physical draw count per stable batch. Persistent plans may keep an empty placeholder
-    /// or a stale shared draw list while membership moves through the stable ID table.
-    pub(crate) stable_batch_counts: Option<Vec<u32>>,
+    pub(crate) painter: PainterMetadata,
     /// Local-to-device transform installed by retained materialization. Immediate canvases keep
     /// identity; retained transform edits use the previous value to patch command metadata by a
     /// delta without ever walking path lines.
@@ -162,21 +160,6 @@ pub(crate) struct SceneBufferChanges {
     pub(crate) arena_capacity_bytes: u64,
     pub(crate) arena_fragmentation: f32,
     pub(crate) arena_compactions: u64,
-}
-
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub(crate) struct PainterKey {
-    pub(crate) path: SharedRc<[u128]>,
-    pub(crate) local: u32,
-}
-
-impl PainterKey {
-    pub(crate) fn inactive() -> Self {
-        Self {
-            path: SharedRc::from([u128::MAX]),
-            local: u32::MAX,
-        }
-    }
 }
 
 /// Opaque handle to a draw stored inside a [`Canvas`].

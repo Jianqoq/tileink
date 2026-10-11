@@ -94,10 +94,14 @@ pub(crate) fn execute_in_place_root_batches<A: DrawBatchAdapter>(
 
 fn draw_batch_is_live(scene: &Canvas, draws: &[usize], batch_id: u32) -> bool {
     scene
-        .stable_batch_counts
-        .as_ref()
-        .map_or(!draws.is_empty(), |counts| {
-            counts.get(batch_id as usize).copied().unwrap_or(0) != 0
+        .retained_painter()
+        .map_or(!draws.is_empty(), |painter| {
+            painter
+                .batch_counts
+                .get(batch_id as usize)
+                .copied()
+                .unwrap_or(0)
+                != 0
         })
 }
 

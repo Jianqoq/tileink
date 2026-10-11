@@ -115,7 +115,7 @@ fn surface_resize_preserves_painter_keys_when_backdrop_rebuilds_the_plan() {
         .commit()
         .unwrap();
     let mut materializer = PersistentSceneMaterializer::new(&scene);
-    let before = materializer.canvas.painter_keys.clone().unwrap();
+    let before = materializer.canvas.painter.keys.clone();
     assert_eq!(
         before.iter().filter(|key| key.path[0] != u128::MAX).count(),
         3
@@ -126,7 +126,7 @@ fn surface_resize_preserves_painter_keys_when_backdrop_rebuilds_the_plan() {
 
     // Surface remapping dirties live draw records but does not change their painter ownership.
     // Clearing those keys made the resize-only tile index omit every unchanged vector draw.
-    assert_eq!(materializer.canvas.painter_keys.as_ref().unwrap(), &before);
+    assert_eq!(materializer.canvas.painter.keys, before);
     assert!(
         materializer
             .canvas

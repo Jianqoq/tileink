@@ -1391,6 +1391,81 @@ The Canvas group now has no unread implementation files. The wider audit remains
 in progress with 434 current implementation files unread across six groups.
 Actual DXC/ShaderTools and DX12/Vulkan GPU execution remain unavailable here.
 
+## Phase 32: give retained painter metadata one owner
+
+Canvas directly owns one `PainterMetadata` containing painter keys, stable batch
+IDs and live batch counts. Ordinary canvases keep empty vectors and use their
+execution plan's order; the existing persistent-root identity selects retained
+metadata. The three independently optional arrays and their missing-array
+allocation/recount substitutes are deleted. Constructor/reset establish empty
+owned data, and materialization initializes all arrays together. This permanently
+removes invalid partial initialization states without adding a compatibility path.
+
+A full painter rebuild now moves the previous metadata for dirty-range comparison
+instead of cloning both old arrays. It creates batch membership once from the
+compiled plan, deleting the inactive batch allocation that was immediately
+replaced. Incremental updates move the complete metadata once per update, then
+write keys and batch membership in one per-draw traversal. Per-node take/unwrap/
+restore cycles, a shared writer with a meaningless `batch=None` rebuilding mode
+and a now-redundant immediate-mode condition are removed. Batch synchronization
+has one caller immediately after `refresh_compiled_plan`, so its silent absent-plan
+return is replaced with the producer's required invariant.
+
+Immediate-plan ordering, historical dead-batch counts, sparse active queries,
+abandoned-upload recovery and pending-plan rebuilding remain current semantics.
+Out-of-range historical batch counts represent dead batches; they cannot be
+replaced by unchecked indexing. The remaining per-draw compiled-membership and
+plan-fragment eligibility contracts are still tracked for further audit.
+
+Two permanent lifecycle tests passed before the production change. They cover
+empty initialization, empty/nonempty insertion and removal, DPI rebuilding,
+multi-leaf offscreen content patches, coherent counts and an immutable earlier
+Canvas snapshot. Tile-bin and upload-journal tests now consume actual retained
+materialization rather than constructing root-marked canvases without metadata.
+The GPU journal test still exercises all 256 accepted/abandoned batch transitions.
+Painter types are isolated in a small Canvas module, and active-batch query tests
+are separated from their implementation.
+
+Focused serial release selections pass: 165 retained, 116 Canvas-related, 30 GPU
+planning, six draw-batch and six operation tests. Selections overlap. The full
+`--all-targets` release suite including ignored tests reports 1062 passes and the
+same three known failures documented in phase 12; all twelve example tests pass.
+Formatting, backend-free checking, release Clippy and example builds pass, with
+the existing 1/8 library/library-test warnings and no new ones. All 1730 SVG images,
+seven example PNGs and both active Metal manifests match their immutable baseline.
+The validated native window completes eight frames and its 640x360 to 480x270 resize.
+
+The [retained application measurements](benchmarks/cleanup-phase32-metal-2026-10-12.json)
+record 48 real rendering processes and all 1152 completed frame times. Each process
+uses public `RetainedScene`/`NativeRenderer` APIs for three independently initialized
+scenes, initially 256 nodes and 768 draws with 32 opacity-filter leaves. Eight
+stages per scene cover initialization, replacing all content, removing/reinserting
+64 nodes, growing 16 leaves to 12 draws, reordering, shrinking to 384x224 and
+returning to 512x256 with another content edit. Every frame completes GPU readback
+and saves a PNG; all runs reproduce the 24 validated baseline images exactly.
+
+Baseline/current and identical-current modes each have two warmups per label and
+ten timed alternating pairs. Whole-process medians change from 175.971 ms to
+170.546 ms (-3.08%), compared with -1.79% in the identical-current control.
+Nearest-rank p95 changes by -10.72%, compared with -5.24% in the control; with ten
+observations per label, p95 is the maximum sample. This preserves the complete
+measured application workload. Stage-level medians are recorded in the data,
+including small apparent increases, but the same-version stage timings vary more
+(for example, initialization changes by -23.42%). They do not establish isolated
+stage or GPU improvements or regressions. Whole-process time includes construction,
+mutation, materialization, GPU completion, readback, PNG writes and teardown;
+per-frame times exclude PNG saves. Metal validation is disabled for timing and
+enabled for separate probes/tests/renders.
+
+The temporary Rust application source, edit/measurement scripts and copied
+executables are removed after validation; no production measurement hooks remain.
+Whole-repository auditing continues. Native scene assembly now has a complete
+read, including upload acceptance, snapshots and program-image lifetime; its large
+recording module and remaining initialization/cache contracts are queued for the
+next cleanup. The audit has now read 526 of 953 current implementation files;
+427 remain across six groups. Actual DXC/ShaderTools and DX12/Vulkan GPU execution
+remain unavailable.
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
