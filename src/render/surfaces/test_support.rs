@@ -314,9 +314,7 @@ pub(crate) fn frame(revision: u64) -> RetainedFrame {
         id: id().node,
         revision: NodeGeneration::new(revision),
         bounds: Bounds::canvas(32, 32),
-        order: 0,
         kind: RetainedNodeKind::Scene,
-        placement_bits: None,
     };
     RetainedFrame {
         root: RetainedNodeId::for_owner(1),
@@ -328,11 +326,9 @@ pub(crate) fn frame(revision: u64) -> RetainedFrame {
         state_pages: Rc::new(Default::default()),
         invalidated_bounds: Vec::new(),
         invalidate_all: false,
-        incremental_complete: true,
-        version: None,
+        version: 0,
         delta: None,
         damage_history: crate::canvas::damage_history::DamageHistory::default(),
-        dependency_free: true,
         requires_damage_propagation: false,
     }
 }

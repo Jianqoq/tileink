@@ -7,14 +7,11 @@ use crate::{
 fn frame(nodes: &[(u64, u64, Bounds)]) -> RetainedFrame {
     let nodes = nodes
         .iter()
-        .enumerate()
-        .map(|(order, (id, revision, bounds))| RetainedNodeState {
+        .map(|(id, revision, bounds)| RetainedNodeState {
             id: RetainedNodeId::for_owner(*id),
             revision: NodeGeneration::new(*revision),
             bounds: *bounds,
-            order: order as u32,
             kind: RetainedNodeKind::Scene,
-            placement_bits: None,
         })
         .collect::<Vec<_>>();
     let node_index = nodes
@@ -32,11 +29,9 @@ fn frame(nodes: &[(u64, u64, Bounds)]) -> RetainedFrame {
         state_pages: std::rc::Rc::new(Default::default()),
         invalidated_bounds: Vec::new(),
         invalidate_all: false,
-        incremental_complete: true,
-        version: None,
+        version: 0,
         delta: None,
         damage_history: crate::canvas::damage_history::DamageHistory::default(),
-        dependency_free: false,
         requires_damage_propagation: true,
     }
 }

@@ -1195,6 +1195,70 @@ encoder and scene/glyph upload staging. The whole-repository audit remains in
 progress, including the retained version/journal-loss/backdrop contract and
 eight groups with unread implementation files.
 
+## Phase 29: versioned retained frames and rejected-target damage
+
+The only production retained-frame constructor is the persistent materializer.
+Its frames always have a scene version and complete retained content. The
+optional version and incomplete-content redraw branch only served manual test
+fixtures. `RetainedFrame.version` is now mandatory; `incremental_complete` and
+`FullRedrawReason::UntrackedContent` are deleted, together with the test that
+fabricated that impossible production state. Immediate canvases still select
+the explicit non-retained full-render route.
+
+Three other fields are removed: node `placement_bits` was always `None`, node
+`order` only copied an unused number, and frame `dependency_free` had no readers.
+Painter ordering continues to use actual node indexes. The materializer's live
+`dependency_free` classification remains in use. Node comparison now uses the
+complete meaningful state directly. Identical materialized-frame selection
+branches collapse into one version-aware cache update; no aliases or compatibility
+states remain for the deleted representations.
+
+Tracing the snapshot route found a real rendering bug. Two successive public
+retained render requests can materialize new scene versions and then reject an
+incorrect output size before rendering begins. State-delta pruning can leave
+those versions sharing the same base-node array. The old pointer-only static
+shortcut then reports no damage and displays old pixels. A permanent native
+regression failed on unchanged production code with this exact sequence. The
+shortcut now also requires equal versions, allowing logical overlay comparison
+when the rendered cursor is behind. This fixes the incorrect assumption at its
+source; it does not add a recovery implementation or force a full redraw.
+
+The regression covers plain content, a root backdrop and a backdrop inside an
+ordinary filter, with overlapping later foreground. It compares the recovery
+and next partial frame against fresh native rendering. A separate preservation
+test expires the actual 256-entry scene journal and verifies both root/nested
+backdrop histories, the following partial frame and an unchanged frame. That
+test also passed before the fix. Snapshot comparison and journal-loss cache
+reconstruction are current submission semantics, as demonstrated through the
+public renderer, so they are retained.
+
+The 1342-line materializer damage file is split into dependency propagation,
+frame construction, content/local/surface/topology patches and spatial-index
+ownership. Each resulting file has fewer than 300 lines. A token-level review
+confirms every moved method body is identical after the documented inert-field
+and version changes, apart from formatting and the moved module path.
+
+Focused serial release selections pass: 163 retained tests, 20 final incremental
+tests and both native regressions. These selections overlap and are not added
+as a distinct-test total. The full `--all-targets` release suite, including ignored
+tests, reports 1054 passes and the same three known failures documented in phase
+12; all twelve example tests pass. Formatting, backend-free checking and release
+Clippy pass, with the existing 1/8 library/library-test warnings and no new ones.
+All 1730 SVG images and seven example PNGs exactly match their immutable baseline.
+Both active Metal manifests remain byte-identical. The validated native window
+completes eight frames and its 640x360 to 480x270 resize.
+
+The [application measurements](benchmarks/cleanup-phase29-metal-2026-10-12.json)
+retain every observation from 48 real window processes: baseline/current and
+identical-current controls, each with two warmups per label and ten timed
+alternating pairs. Whole-process medians change from 233.845 ms to 233.126 ms
+(-0.31%); the identical-current control changes by -0.003%. The measured application
+preserves performance. Startup, presentation, resize and teardown are included;
+this does not establish a GPU or isolated frame-time improvement. No temporary
+Rust measurement program was added, and the copied baseline executable is
+removed after validation. Actual DXC/ShaderTools and DX12/Vulkan GPU execution
+remain unavailable. Whole-repository auditing continues.
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.

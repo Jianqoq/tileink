@@ -129,18 +129,8 @@ impl<T: SurfaceAllocation> RetainedRenderState<T> {
             && (*cached_id, *cached_version) == (scene_id, version)
         {
             frame.clone()
-        } else if materialized_reused
-            && let Some((cached_id, _, _)) = &self.persistent_frame
-            && *cached_id == scene_id
-        {
-            // Raster-only invalidation installs an O(1) frame delta in the materialized Canvas.
-            // Read that override so version cursors remain exact across later content commits.
-            let frame = scene
-                .retained_frame()
-                .expect("persistent materialized scene has retained identity");
-            self.persistent_frame = Some((scene_id, version, frame.clone()));
-            frame
         } else {
+            // Read every new version, including raster-only frame overrides.
             let frame = scene
                 .retained_frame()
                 .expect("persistent materialized scene has retained identity");
@@ -207,9 +197,9 @@ impl<T: SurfaceAllocation> RetainedRenderState<T> {
                 let bridging_delta = self.surface_frame.as_ref().and_then(|previous| {
                     let delta = frame.delta.as_ref()?;
                     (previous.root == frame.root
-                        && previous.version == Some(delta.from_version)
-                        && frame.version == Some(delta.to_version))
-                    .then_some(delta)
+                        && previous.version == delta.from_version
+                        && frame.version == delta.to_version)
+                        .then_some(delta)
                 });
                 if !same_nodes && let Some(delta) = bridging_delta {
                     let removed = delta

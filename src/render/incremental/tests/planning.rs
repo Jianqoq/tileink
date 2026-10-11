@@ -1,38 +1,13 @@
 use super::*;
 
 #[test]
-fn incomplete_previous_frame_cannot_become_an_incremental_baseline() {
-    let mut previous = frame(&[(2, 0, Bounds::new(0, 0, 16, 16))]);
-    previous.incremental_complete = false;
-    let current = frame(&[(2, 0, Bounds::new(0, 0, 16, 16))]);
-    let mut state = IncrementalState {
-        previous: Some(previous),
-        renderer_state_invalid: false,
-        frame_diff: Default::default(),
-    };
-
-    let plan = state.plan(
-        Some(current),
-        (128, 64),
-        IncrementalRenderConfig::default(),
-        true,
-    );
-
-    assert_eq!(
-        plan.stats.full_redraw_reason,
-        Some(FullRedrawReason::UntrackedContent)
-    );
-    assert_eq!(plan.stats.dirty_tiles, plan.stats.total_tiles);
-}
-
-#[test]
 fn journal_removal_propagates_old_pixels_through_backdrop() {
     let old_bounds = Bounds::new(32, 16, 48, 32);
     let mut previous = frame(&[(2, 0, old_bounds)]);
-    previous.version = Some(1);
+    previous.version = 1;
     let old = previous.nodes[0];
     let mut current = frame(&[]);
-    current.version = Some(2);
+    current.version = 2;
     current.delta = Some(Rc::new(RetainedFrameDelta {
         from_version: 1,
         to_version: 2,
@@ -209,10 +184,10 @@ fn indexed_delta_omits_unused_oracle_sources_without_losing_damage() {
     for requires_propagation in [false, true] {
         for indexed_backdrops in [false, true] {
             let mut previous = frame(&[(2, 0, Bounds::new(0, 0, 16, 16))]);
-            previous.version = Some(1);
+            previous.version = 1;
             let old = previous.nodes[0];
             let mut current = frame(&[(3, 0, Bounds::new(16, 0, 32, 16))]);
-            current.version = Some(2);
+            current.version = 2;
             current.requires_damage_propagation = requires_propagation;
             current.invalidated_bounds.push(Bounds::new(48, 0, 64, 16));
             let new = current.nodes[0];

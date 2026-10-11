@@ -88,13 +88,15 @@ impl IncrementalState {
             ..Default::default()
         };
 
-        let resolved = frame
-            .as_ref()
-            .zip(self.previous.as_ref())
-            .and_then(|(current, previous)| Some((current, previous.version?, current.version?)))
-            .map_or(Ok(None), |(current, from, to)| {
-                current.damage_history.resolve(from, to)
-            });
+        let resolved =
+            frame
+                .as_ref()
+                .zip(self.previous.as_ref())
+                .map_or(Ok(None), |(current, previous)| {
+                    current
+                        .damage_history
+                        .resolve(previous.version, current.version)
+                });
         let reason = self
             .full_reason(frame.as_ref(), config.mode, history_valid)
             .or_else(|| {
@@ -106,11 +108,11 @@ impl IncrementalState {
             Some(damage.dirty_backdrops.clone())
         } else {
             frame.as_ref().and_then(|current| {
-                let previous_version = self.previous.as_ref()?.version?;
+                let previous_version = self.previous.as_ref()?.version;
                 let delta = current.delta.as_ref()?;
                 (delta.backdrop_damage_complete
                     && delta.from_version == previous_version
-                    && current.version == Some(delta.to_version)
+                    && current.version == delta.to_version
                     && !current.invalidate_all)
                     .then(|| delta.dirty_backdrops.clone())
             })
@@ -169,16 +171,14 @@ impl IncrementalState {
             || previous.logical_size != current.logical_size
             || previous.physical_size != current.physical_size
             || previous.scale_bits != current.scale_bits
-            || !previous.incremental_complete
-            || !current.incremental_complete
             || current.invalidate_all
         {
             return (DamageTiles::full(physical_size), RetainedDamage::default());
         }
 
-        if let (Some(previous_version), Some(delta)) = (previous.version, &current.delta)
-            && delta.from_version == previous_version
-            && current.version == Some(delta.to_version)
+        if let Some(delta) = &current.delta
+            && delta.from_version == previous.version
+            && current.version == delta.to_version
         {
             let mut tiles = DamageTiles::new(physical_size);
             let mut retained = RetainedDamage::default();
@@ -223,9 +223,9 @@ impl IncrementalState {
             return (tiles, retained);
         }
 
-        // A persistent scene version is collected once and shared by subsequent static frames.
-        // Pointer identity makes static and raster-only invalidation independent of node count.
-        if Rc::ptr_eq(&previous.nodes, &current.nodes) {
+        // Shared base nodes can still have different overlay revisions after a rejected
+        // submission. Only the same version can skip comparing those logical states.
+        if previous.version == current.version && Rc::ptr_eq(&previous.nodes, &current.nodes) {
             let mut tiles = DamageTiles::new(physical_size);
             let mut retained = RetainedDamage::default();
             for &bounds in &current.invalidated_bounds {
@@ -271,10 +271,9 @@ impl IncrementalState {
         if self.renderer_state_invalid && self.previous.is_some() {
             return Some(FullRedrawReason::RendererStateChanged);
         }
-        if self.previous.is_none() {
+        let Some(previous) = self.previous.as_ref() else {
             return Some(FullRedrawReason::FirstFrame);
-        }
-        let previous = self.previous.as_ref().unwrap();
+        };
         if previous.root != frame.root {
             return Some(FullRedrawReason::RootChanged);
         }
@@ -283,14 +282,6 @@ impl IncrementalState {
             || previous.scale_bits != frame.scale_bits
         {
             return Some(FullRedrawReason::SurfaceChanged);
-        }
-        // An incomplete frame may contain direct commands that are absent from
-        // the retained-node diff. It is safe to draw such a frame in full, but
-        // it must never become the baseline for a later incremental frame: a
-        // removed untracked command would otherwise leave its old pixels in
-        // the history texture.
-        if !previous.incremental_complete || !frame.incremental_complete {
-            return Some(FullRedrawReason::UntrackedContent);
         }
         if frame.invalidate_all {
             return Some(FullRedrawReason::ExplicitInvalidation);

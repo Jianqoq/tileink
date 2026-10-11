@@ -51,7 +51,6 @@ pub enum FullRedrawReason {
     FirstFrame,
     RootChanged,
     SurfaceChanged,
-    UntrackedContent,
     ExplicitInvalidation,
     RendererStateChanged,
     DirtyTileThreshold,

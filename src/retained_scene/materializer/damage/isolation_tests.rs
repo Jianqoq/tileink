@@ -56,7 +56,7 @@ fn assert_outside_input_is_isolated(layer: RetainedLayerDescriptor) {
     let current = materializer.canvas.persistent_frame.as_ref().unwrap();
     let damage = current
         .damage_history
-        .resolve(old, current.version.unwrap())
+        .resolve(old, current.version)
         .unwrap()
         .unwrap();
     assert!(
@@ -145,7 +145,7 @@ fn mask_content_does_not_invalidate_its_independent_mask_branch_backdrop() {
     let current = materializer.canvas.persistent_frame.as_ref().unwrap();
     let damage = current
         .damage_history
-        .resolve(old, current.version.unwrap())
+        .resolve(old, current.version)
         .unwrap()
         .unwrap();
     assert!(

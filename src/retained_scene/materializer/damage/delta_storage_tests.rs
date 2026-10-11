@@ -57,7 +57,7 @@ fn invalidation_only_updates_reuse_empty_payloads_and_preserve_version_links() {
     let second = second_frame.delta.as_ref().unwrap();
     assert!(!Rc::ptr_eq(first, second));
     assert_eq!(second.from_version, first.to_version);
-    assert_eq!(second_frame.version, Some(second.to_version));
+    assert_eq!(second_frame.version, second.to_version);
     assert_eq!(first_frame.invalidated_bounds, [Bounds::new(1, 1, 3, 3)]);
     assert_eq!(second_frame.invalidated_bounds, [Bounds::new(5, 5, 7, 7)]);
     assert!(

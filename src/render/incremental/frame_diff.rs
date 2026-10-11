@@ -83,7 +83,7 @@ fn diff_base_nodes(
             continue;
         };
         let old = previous.nodes[previous_index];
-        if node_output_changed(old, *node) {
+        if old != *node {
             add_state_change_damage(damage, retained, Some(old), Some(*node));
         }
     }
@@ -138,7 +138,7 @@ fn diff_unaffected_base_nodes(
             continue;
         };
         let old = previous.nodes[previous_index];
-        if node_output_changed(old, *node) {
+        if old != *node {
             add_state_change_damage(damage, retained, Some(old), Some(*node));
         }
     }
@@ -167,16 +167,6 @@ fn diff_unaffected_base_nodes(
             add_state_change_damage(damage, retained, Some(*node), None);
         }
     }
-}
-
-fn node_output_changed(
-    old: crate::canvas::RetainedNodeState,
-    new: crate::canvas::RetainedNodeState,
-) -> bool {
-    old.revision != new.revision
-        || old.kind != new.kind
-        || old.placement_bits != new.placement_bits
-        || old.bounds != new.bounds
 }
 
 fn collect_logical_overrides(
@@ -236,7 +226,7 @@ fn damage_overridden_nodes(
     ) {
         let old = resolved_node_state(previous, &scratch.previous_overrides, id);
         let new = resolved_node_state(current, &scratch.current_overrides, id);
-        if old.is_none_or(|old| new.is_none_or(|new| node_output_changed(old, new))) {
+        if old != new {
             add_state_change_damage(damage, retained, old, new);
         } else if let Some(state) = new
             && (!previous.node_index.contains_key(&id) || !current.node_index.contains_key(&id))

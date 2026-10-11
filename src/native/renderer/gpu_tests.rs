@@ -1,6 +1,7 @@
 use super::*;
 
 mod incremental;
+mod retained_damage;
 
 fn context() -> Result<NativeContext, Box<dyn std::error::Error>> {
     #[cfg(feature = "dx12")]

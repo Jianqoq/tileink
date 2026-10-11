@@ -79,9 +79,7 @@ pub(crate) struct RetainedNodeState {
     pub(crate) id: RetainedNodeId,
     pub(crate) revision: NodeGeneration,
     pub(crate) bounds: Bounds,
-    pub(crate) order: u32,
     pub(crate) kind: RetainedNodeKind,
-    pub(crate) placement_bits: Option<(u64, u64)>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -139,13 +137,10 @@ pub(crate) struct RetainedFrame {
     pub(crate) state_pages: Rc<HashMap<usize, Rc<[RetainedNodeState]>>>,
     pub(crate) invalidated_bounds: Vec<Bounds>,
     pub(crate) invalidate_all: bool,
-    pub(crate) incremental_complete: bool,
-    /// Persistent-scene version and immutable journal overlay.
-    pub(crate) version: Option<u64>,
+    /// Every retained frame comes from a complete, versioned persistent scene.
+    pub(crate) version: u64,
     pub(crate) delta: Option<Rc<RetainedFrameDelta>>,
     pub(crate) damage_history: crate::canvas::damage_history::DamageHistory,
-    /// No layer/filter/mask can propagate leaf damage outside the changed node bounds.
-    pub(crate) dependency_free: bool,
     /// Backdrops require walking command ancestry after retained diffing to discover changed
     /// sampled background. Filter descendants already carry filter-expanded frame bounds; manual
     /// invalidation is handled separately because it has no retained node attribution.

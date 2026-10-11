@@ -51,9 +51,7 @@ fn overlay_only_insertion_participates_in_fallback_damage() {
         id: RetainedNodeId::for_owner(2),
         revision: NodeGeneration::new(0),
         bounds: Bounds::new(32, 0, 48, 16),
-        order: 0,
         kind: RetainedNodeKind::Scene,
-        placement_bits: None,
     };
     current.delta = Some(std::rc::Rc::new(RetainedFrameDelta {
         from_version: 1,
