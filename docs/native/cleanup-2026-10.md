@@ -912,9 +912,59 @@ native APIs and contain no retired execution path. The HLSL editor test's generi
 successful reply to incoming client requests is recorded for a focused protocol
 followup. The whole-repository audit remains in progress.
 
+## Phase 24: explicit editor protocol errors and smaller application shaders
+
+The HLSL editor test no longer replies successfully to every server request.
+It advertises no client request handlers, so unsupported requests now receive
+the [JSON-RPC method-not-found error](https://www.jsonrpc.org/specification).
+In particular, it does not fabricate an empty configuration array without
+advertising [configuration support](https://raw.githubusercontent.com/microsoft/language-server-protocol/gh-pages/_specifications/lsp/3.17/workspace/configuration.md).
+Server request IDs are independent of client request IDs: an incoming request
+can no longer satisfy the predicate waiting for the initialize response.
+The message loop also uses one deadline and reports a consistent timeout without
+extending short waits. These are permanent protocol fixes, not a substitute
+language server or shader compiler.
+
+Nine focused tests execute the production message loop, covering unsupported
+methods, configuration, numeric/string/null IDs, bidirectional ID collisions,
+notifications, server errors, reader/write failures and timeouts. Before fixing,
+four test functions reproduced seven failing subtests and one error. All nine
+now pass. The actual ShaderTools server remains unconfigured and its end-to-end
+editor test is explicitly skipped; protocol tests do not establish editor or
+HLSL compiler compatibility.
+
+Complete reads of all sixteen application shader files found copied helpers,
+unused bindings and unused coordinate calculations. Removing them deletes 73
+lines across ten Metal/HLSL files. Applications still provide complete native
+shader source. The uniform ABI and every live shader formula, tiled dispatch,
+sampling and color conversion remain unchanged. No source generator or legacy
+execution path is introduced.
+
+All ten focused real Metal shader tests pass. The full serial release suite,
+including ignored tests, reports 1049 passes and the same three known failures
+described in phase 12. All twelve example tests pass, as do formatting and release
+Clippy with no new warnings. Actual DXC compilation and DX12/Vulkan GPU execution
+remain unavailable; deleting unused HLSL declarations is not claimed as an actual
+Windows compiler check.
+
+All 1730 SVG images and seven example PNGs match the baseline exactly. The
+validated Metal window completes eight frames and its 640x360 to 480x270 resize;
+its executable and the Metal shader manifest remain byte-identical. The actual
+960x640 procedural-paint/scanline-filter application has a median change of
++0.22% across two warmup and ten alternating timed pairs in the
+[whole-process measurement](benchmarks/cleanup-phase24-metal-2026-10-11.json).
+Every measured PNG matches the baseline. Timings include initialization, warmed
+shader-cache loading, rendering, GPU readback and PNG output; they do not isolate
+shader parsing or GPU throughput. No runtime speedup is claimed. Temporary
+measurement copies are removed.
+
+Native interop boundaries, the remaining renderer GPU tests and shader sampling
+tests were also read completely. Their ownership, synchronization and transparent
+sampling rules implement current semantics. The whole-repository audit continues.
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
-- Trace the HLSL editor test's supported incoming client requests and test explicit responses; the actual ShaderTools language server is unavailable locally.
+- Execute the HLSL editor test against the actual ShaderTools language server; local protocol regressions pass, but the server is unavailable locally.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

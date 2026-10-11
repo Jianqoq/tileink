@@ -14,6 +14,27 @@ import time
 import unittest
 
 
+def wait_for(messages, send, predicate, timeout=20):
+    """Wait within one deadline; this client advertises no request handlers."""
+    deadline = time.monotonic() + timeout
+    while (remaining := deadline - time.monotonic()) > 0:
+        try:
+            message = messages.get(timeout=remaining)
+        except queue.Empty:
+            break
+        if isinstance(message, Exception):
+            raise message
+        if "id" in message and "method" in message:
+            send({"id": message["id"], "error": {
+                "code": -32601, "message": "Method not found"}})
+            # Request IDs are independent in the two directions. This request
+            # cannot satisfy the predicate for our initialize response.
+            continue
+        if predicate(message):
+            return message
+    raise TimeoutError("Shader Tools did not respond")
+
+
 class ShaderEditorTest(unittest.TestCase):
     def test_hlsl_sources_have_no_editor_diagnostics(self):
         server = os.environ.get("TILEINK_HLSL_LANGUAGE_SERVER")
@@ -48,24 +69,12 @@ class ShaderEditorTest(unittest.TestCase):
             process.stdin.write(f"Content-Length: {len(data)}\r\n\r\n".encode() + data)
             process.stdin.flush()
 
-        def wait(predicate):
-            deadline = time.monotonic() + 20
-            while time.monotonic() < deadline:
-                message = messages.get(timeout=max(0.01, deadline - time.monotonic()))
-                if isinstance(message, Exception):
-                    raise message
-                if "id" in message and "method" in message:
-                    send({"id": message["id"], "result": [] if message["method"] == "workspace/configuration" else None})
-                if predicate(message):
-                    return message
-            self.fail("Shader Tools did not respond")
-
         reader = threading.Thread(target=read, daemon=True)
         reader.start()
         try:
             send({"id": 1, "method": "initialize", "params": {
                 "processId": os.getpid(), "rootUri": root.as_uri(), "capabilities": {}}})
-            initialized = wait(lambda message: message.get("id") == 1)
+            initialized = wait_for(messages, send, lambda message: message.get("id") == 1)
             self.assertNotIn("error", initialized)
             send({"method": "initialized", "params": {}})
             for relative in sorted(path.relative_to(root) for path in root.rglob("*") if path.suffix in (".hlsl", ".hlsli")):
@@ -81,11 +90,11 @@ class ShaderEditorTest(unittest.TestCase):
                         "uri": uri, "languageId": "hlsl", "version": 1, "text": source + "\n@\n"}}})
                     def for_document(message):
                         return message.get("method") == "textDocument/publishDiagnostics" and message["params"]["uri"].casefold() == uri.casefold()
-                    first = wait(for_document)
+                    first = wait_for(messages, send, for_document)
                     self.assertTrue(first["params"]["diagnostics"])
                     send({"method": "textDocument/didChange", "params": {
                         "textDocument": {"uri": uri, "version": 2}, "contentChanges": [{"range": {"start": {"line": 0, "character": 0}, "end": {"line": source.count("\n") + 2, "character": 0}}, "text": source}]}})
-                    final = wait(for_document)
+                    final = wait_for(messages, send, for_document)
                     self.assertEqual(final["params"]["diagnostics"], [])
                     send({"method": "textDocument/didClose", "params": {"textDocument": {"uri": uri}}})
         finally:

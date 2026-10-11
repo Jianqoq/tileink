@@ -21,7 +21,6 @@ bool position(uint3 group,uint lane,out uint2 p) {
     else p=uint2(config.region_x0+index%config.region_width,config.region_y0+index/config.region_width);
     return all(p<uint2(config.width,config.height)) && all(p>=uint2(config.region_x0,config.region_y0)) && all(p<uint2(config.region_x0+config.region_width,config.region_y0+config.region_height));
 }
-float2 logical(uint2 p) {float2 q=float2(p)+0.5;return float2(config.inverse_xx*q.x+config.inverse_xy*q.y+config.inverse_tx,config.inverse_yx*q.x+config.inverse_yy*q.y+config.inverse_ty);}
 float4 border(int2 p) { return all(p>=0) && all(p<int2(config.width,config.height))?input_image.Load(int3(p,0)):float4(0,0,0,0); }
 float4 sample_input(uint2 p,float2 offset) {
     offset=clamp(offset,-config.sample_radius,config.sample_radius);
@@ -33,7 +32,6 @@ float4 output_color(float4 v) {if(!all(isfinite(v))) return 0;float a=clamp(v.a,
 [numthreads(256,1,1)]
 void sample(uint3 group:SV_GroupID,uint lane:SV_GroupIndex) {
     uint2 p;if(!position(group,lane,p)) return;
-    float2 pos=logical(p);
     float4 result=sample_input(p,asfloat(uniforms.Load4(0)).xy);
     output_image[p-uint2(config.output_x0,config.output_y0)]=output_color(result);
 }

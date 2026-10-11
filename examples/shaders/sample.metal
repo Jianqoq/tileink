@@ -16,10 +16,6 @@ bool position(constant ShaderConfig& c,const device uint* tiles,uint3 group,uint
     else p=uint2(c.region_x0+index%c.region_width,c.region_y0+index/c.region_width);
     return all(p<uint2(c.width,c.height)) && all(p>=uint2(c.region_x0,c.region_y0)) && all(p<uint2(c.region_x0+c.region_width,c.region_y0+c.region_height));
 }
-float2 logical(constant ShaderConfig& c,uint2 p) {
-    float2 q=float2(p)+0.5f;
-    return float2(c.inverse_xx*q.x+c.inverse_xy*q.y+c.inverse_tx,c.inverse_yx*q.x+c.inverse_yy*q.y+c.inverse_ty);
-}
 float4 border(texture2d<float,access::read> input,int2 p,uint2 extent) { return all(p>=0) && all(p<int2(extent))?input.read(uint2(p)):float4(0); }
 float4 sample_input(texture2d<float,access::read> input,constant ShaderConfig& c,uint2 p,float2 offset) {
     offset=clamp(offset,-c.sample_radius,c.sample_radius);
@@ -35,7 +31,6 @@ float4 output_color(float4 v) {
 kernel void sample(constant ShaderConfig& c [[buffer(0)]],texture2d<float,access::read> input [[texture(1)]],
     texture2d<float,access::write> output [[texture(3)]],const device uint* tiles [[buffer(8)]],const device uint* u [[buffer(10)]],uint3 group [[threadgroup_position_in_grid]],uint lane [[thread_index_in_threadgroup]]) {
     uint2 p;if(!position(c,tiles,group,lane,p)) return;
-    float2 pos=logical(c,p);
     float4 result=sample_input(input,c,p,as_type<float4>(uint4(u[0],u[1],u[2],u[3])).xy);
     output.write(output_color(result),p-uint2(c.output_x0,c.output_y0));
 }

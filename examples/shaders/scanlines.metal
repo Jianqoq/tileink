@@ -20,20 +20,13 @@ float2 logical(constant ShaderConfig& c,uint2 p) {
     float2 q=float2(p)+0.5f;
     return float2(c.inverse_xx*q.x+c.inverse_xy*q.y+c.inverse_tx,c.inverse_yx*q.x+c.inverse_yy*q.y+c.inverse_ty);
 }
-float4 border(texture2d<float,access::read> input,int2 p,uint2 extent) { return all(p>=0) && all(p<int2(extent))?input.read(uint2(p)):float4(0); }
-float4 sample_input(texture2d<float,access::read> input,constant ShaderConfig& c,uint2 p,float2 offset) {
-    offset=clamp(offset,-c.sample_radius,c.sample_radius);
-    float2 q=float2(p)+float2(c.sample_xx*offset.x+c.sample_xy*offset.y,c.sample_yx*offset.x+c.sample_yy*offset.y);
-    int2 a=int2(floor(q));float2 t=fract(q);uint2 extent(c.width,c.height);
-    return mix(mix(border(input,a,extent),border(input,a+int2(1,0),extent),t.x),mix(border(input,a+int2(0,1),extent),border(input,a+int2(1,1),extent),t.x),t.y);
-}
 float4 output_color(float4 v) {
     if(!all(isfinite(v))) return float4(0);
     float a=clamp(v.a,0.0f,1.0f);v=clamp(v,0.0f,a);
     return floor(v*255.0f+0.5f)*(1.0f/255.0f);
 }
 kernel void scanlines(constant ShaderConfig& c [[buffer(0)]],texture2d<float,access::read> input [[texture(1)]],
-    texture2d<float,access::write> output [[texture(3)]],const device uint* tiles [[buffer(8)]],const device uint* u [[buffer(10)]],uint3 group [[threadgroup_position_in_grid]],uint lane [[thread_index_in_threadgroup]]) {
+    texture2d<float,access::write> output [[texture(3)]],const device uint* tiles [[buffer(8)]],uint3 group [[threadgroup_position_in_grid]],uint lane [[thread_index_in_threadgroup]]) {
     uint2 p;if(!position(c,tiles,group,lane,p)) return;
     float2 pos=logical(c,p);
     float wave=sin(pos.y*1.3)*0.12;
