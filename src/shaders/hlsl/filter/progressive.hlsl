@@ -102,10 +102,9 @@ void progressive_blur_resolve(uint3 id : SV_DispatchThreadID) {
     float t = all(config.gradient.zw == 0) ? 1.0
         : saturate(dot(float2(xy) + 0.5 - config.gradient.xy, config.gradient.zw));
     float sigma = config.max_std_dev * t * t * (3.0 - 2.0 * t);
-    if (sigma == 0) return; // Preserve exactly clear pixels, including their alpha.
-    float2 p = float2(xy - config.source.xy) + 0.5;
-    // Below 1/8 pixel the Gaussian tails cannot affect an RGBA8 result.
+    // Includes exactly clear pixels; sub-byte Gaussian tails leave RGBA8 unchanged.
     if (sigma < 0.125) return;
+    float2 p = float2(xy - config.source.xy) + 0.5;
     if (sigma <= 1.0) {
         target_texture[xy] = shallow_blur(p, sigma, asfloat(level_metadata.Load4(0)));
         return;

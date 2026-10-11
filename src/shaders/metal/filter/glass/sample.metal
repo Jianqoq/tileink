@@ -4,7 +4,7 @@ float4 glass_sample(constant FilterConfig& c,texture2d<float,access::read> sourc
     if(blurred && c.downsample>1) {
         uint2 lower(c.source_x0,c.source_y0),upper(c.source_x1,c.source_y1);
         if(any(lower>=upper)) return float4(0);
-        p=clamp((p+0.5f)/float(max(c.downsample,1u))-0.5f,float2(lower),float2(upper-1));
+        p=clamp((p+0.5f)/float(c.downsample)-0.5f,float2(lower),float2(upper-1));
         if(!c.upsample_filter) return glass_straight(float4(byte_channels(pack_pixel(auxiliary.read(uint2(rint(p))))))/255.0f);
     }
     return glass_straight(blurred?sample_premul(auxiliary,uint2(c.width,c.height),p):sample_premul(source,uint2(c.width,c.height),p));

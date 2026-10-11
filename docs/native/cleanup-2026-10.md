@@ -2201,9 +2201,69 @@ cleanup. Degenerate SDF normals, transparent sampling boundaries, narrow Gaussia
 underflow handling, SVG miter-clip/zero-length stroke lowering and empty transfer
 tables define current rendering behavior and must stay correct.
 
+## Phase 44: SVG lowering modules and redundant shader branches
+
+Split the 2087-line SVG entry into traversal/API, clipping, paint, scene images,
+geometry, filter graph, primitive conversion and color conversion modules. The
+entry is now 226 lines; the largest new production module is 470 lines. Function
+body comparison confirms that drawing, clipping, image ownership and SVG stroke
+outlines are unchanged. This is a permanent organization and lowering cleanup.
+
+Color matrix and component-transfer conversion now return `Option<Filter>`
+directly: neither operation had an error case. usvg's parser and tree contract
+normalize its matrix Vec to twenty coefficients. Capture that contract once as
+`&[f32; 20]`; remove repeated length checks, optional coefficient access and the
+extra temporary copy. Preserve arbitrary coefficients, recognized standard
+matrices, empty transfer-function identity and lookup quantization.
+
+Filter source domains now use the already lowered parameters and resolved graph
+edges. This removes repeated affine radius conversion and impossible Merge/Tile
+kind substitutes. Use the inherent Bounds union and construct the rectangular
+filter region directly; the generic region helper had no path caller. Real empty
+Tile domains and primitive clipping retain their previous behavior.
+
+Metal and HLSL progressive resolve use one subpixel threshold check, which also
+preserves exactly clear pixels. Liquid-glass sampling removes the redundant
+`max(downsample, 1)` inside its `downsample > 1` branch. HLSL folds two single-call
+sampling wrappers into the common sampler and drops an unused green constant.
+Transparent domains, nearest/linear sampling, premultiplied conversion and the
+zero-times-infinity displacement rule remain intact.
+
+Seven new semantic tests pass before and after the change. Focused serial
+release tests pass 15 SVG, 11 progressive and four glass cases. Full release tests
+pass 1100 cases, with the same three known failures: two missing pinned-DXC checks
+and the turbulence canonical mismatch. Release formatting, clippy, backend-free
+compilation and example builds pass with unchanged lint warnings. All 1730 SVG
+PNGs and seven image examples exactly match baseline bytes. Native presentation
+completes eight frames and the expected resize. Metal artifact manifests change
+with the recorded glass/progressive sources; native ABI declarations and the
+backend-free manifest are unchanged. Actual HLSL compilation remains unavailable.
+
+The [application report](benchmarks/cleanup-phase44-metal-2026-10-12.json) retains
+baseline/current and identical-current controls with two warmups per label and
+ten alternating timed pairs for the full SVG renderer and native window. Timing
+includes whole-process initialization, completion and teardown, with SVG parsing,
+readback and PNG saving. Verification follows each stopped timer. Metal validation
+is disabled while timing; the window selects registry ID 0000000100000575 and SVG
+uses the default on the freshly verified single-GPU M5.
+
+The report retains 96 observations, 83040 verified SVG PNG hashes and 384 window
+frames. SVG medians change 4309.462 to 4281.288 ms (-0.65%), with identical-current
+control +0.14%; window medians change 233.511 to 232.679 ms (-0.36%), control
+-0.12%. Alternating-pair median percent changes are +0.074% and -0.449%; their
+95% descriptive bootstrap intervals include zero and overlap controls. No stable
+material application timing regression was identified. These measurements do not
+prove an isolated cleanup speedup. All samples and tails are retained. The
+validation script and four copied measurement executables have been removed.
+All 50 benchmark JSON/gzip files parse; generated npm root declarations match.
+
+All 984 current implementation files, including the nine new SVG modules and
+test files, are fully reviewed. Reading completion does not close the outstanding
+proofs and runtime validation work below.
+
 ## Remaining audit work
 
-- All current implementation files are fully read. Complete the recorded progressive/glass shader and SVG cleanup, splitting the SVG entry into cohesive modules. Prove coarse stack emitter inputs before removing duplicate validity skips. Fine specialization retry and dormant HLSL/runtime text coverage settings have been removed. Empty Metal upload/readback encoders, duplicate clear-shortcut checks, unused cumsum config closure branch and unreachable Metal resource-kind errors have been removed. Test DX12 lock-poison policy and prove packed uniform handle presence. Trace exact retained metadata patching for clip-bound updates inside filters and prove offscreen clip exclusion before removing its error wrapper. Add focused regressions for the recorded large filter/text integer-arithmetic concerns. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
+- All current implementation files are fully read. The progressive/glass shader and SVG cleanup is implemented and verified on Metal. Prove coarse stack emitter inputs, retained compiled membership bounds and plan eligibility before removing their remaining substitutes. Test DX12 lock-poison policy and prove packed uniform handle presence. Trace exact retained metadata patching for clip-bound updates inside filters and prove offscreen clip exclusion before removing its error wrapper. Add focused regressions for the recorded large filter/text integer-arithmetic concerns. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
 - Execute the HLSL editor test against the actual ShaderTools language server; local protocol regressions pass, but the server is unavailable locally.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

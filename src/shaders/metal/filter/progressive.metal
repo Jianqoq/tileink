@@ -97,9 +97,9 @@ kernel void progressive_blur_resolve(constant ProgressiveBlurConfig& config [[bu
     float t = all(config.gradient.zw == 0) ? 1.0f
         : clamp(dot(float2(xy) + 0.5f - config.gradient.xy, config.gradient.zw), 0.0f, 1.0f);
     float sigma = config.max_std_dev * t * t * (3.0f - 2.0f * t);
-    if (sigma == 0) return;
-    float2 p = float2(xy - config.source.xy) + 0.5f;
+    // Includes exactly clear pixels; sub-byte Gaussian tails leave RGBA8 unchanged.
     if (sigma < 0.125f) return;
+    float2 p = float2(xy - config.source.xy) + 0.5f;
     if (sigma <= 1.0f) {
         target_texture.write(progressive_shallow(texture_table, p, sigma, level_metadata[0], image_sampler), xy);
         return;

@@ -28,35 +28,19 @@ float4 liquid_glass_premul_to_straight_rgba(float4 premul) {
     return rgba;
 }
 
-float4 liquid_glass_downsampled_blur_straight_rgba_at_full_res(ConstantBuffer<FilterConfig> config, Texture2D<float4> auxiliary, float x, float y) {
-    float factor = float(max(config.downsample, 1u));
-    float max_x = float(config.source_x1 - 1u);
-    float max_y = float(config.source_y1 - 1u);
-    float sample_x = clamp((x + 0.5) / factor - 0.5, float(config.source_x0), max_x);
-    float sample_y = clamp((y + 0.5) / factor - 0.5, float(config.source_y0), max_y);
-    if (config.upsample_filter == 0u) {
-        return liquid_glass_pixel_straight_rgba(unorm_to_rgba8(auxiliary.Load(int3(int2(round(float2(sample_x,sample_y))),0))));
-    }
-    return liquid_glass_premul_to_straight_rgba(filter_sample_premul(auxiliary, uint2(config.width,config.height), float2(sample_x,sample_y)));
-}
-
-float4 liquid_glass_sample_downsampled_blur_straight_rgba(ConstantBuffer<FilterConfig> config, Texture2D<float4> auxiliary, float x, float y) {
-    if (config.source_x0 >= config.source_x1 || config.source_y0 >= config.source_y1) {
-        return float4(0.0,0.0,0.0,0.0);
-    }
-    float sx = clamp(x, 0.0, float(config.width - 1u));
-    float sy = clamp(y, 0.0, float(config.height - 1u));
-    return liquid_glass_downsampled_blur_straight_rgba_at_full_res(config, auxiliary, sx, sy);
-}
-
 float4 liquid_glass_sample_straight_rgba(ConstantBuffer<FilterConfig> config, Texture2D<float4> source, Texture2D<float4> auxiliary, uint image_kind, float x, float y) {
-    if (image_kind == 1u && config.downsample > 1u) {
-        return liquid_glass_sample_downsampled_blur_straight_rgba(config, auxiliary, x, y);
-    }
-
     float sx = clamp(x, 0.0, float(config.width - 1u));
     float sy = clamp(y, 0.0, float(config.height - 1u));
     if (image_kind == 1u) {
+        if (config.downsample > 1u) {
+            if (config.source_x0 >= config.source_x1 || config.source_y0 >= config.source_y1) return 0;
+            float factor = float(config.downsample);
+            sx = clamp((sx + 0.5) / factor - 0.5, float(config.source_x0), float(config.source_x1 - 1u));
+            sy = clamp((sy + 0.5) / factor - 0.5, float(config.source_y0), float(config.source_y1 - 1u));
+            if (config.upsample_filter == 0u) {
+                return liquid_glass_pixel_straight_rgba(unorm_to_rgba8(auxiliary.Load(int3(int2(round(float2(sx,sy))),0))));
+            }
+        }
         return liquid_glass_premul_to_straight_rgba(filter_sample_premul(auxiliary, uint2(config.width,config.height), float2(sx,sy)));
     }
     return liquid_glass_premul_to_straight_rgba(filter_sample_premul(source, uint2(config.width,config.height), float2(sx,sy)));
