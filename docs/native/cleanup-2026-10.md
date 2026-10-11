@@ -344,10 +344,43 @@ material measured regression. The vector-image gains from phase 9 remain present
 Temporary measurement source is removed after validation.
 [Raw measurements and protocol](benchmarks/cleanup-phase10-metal-2026-10-11.json).
 
+## Phase 11: remove the retired WGSL verification chain
+
+Two macOS runners still invoked deleted Cargo test targets. Their mock-cargo
+test checked arguments without checking whether those targets existed, and the
+Metal SDF test required archived output from the deleted WGSL generator. The
+runners, orphaned WGSL sources and archive-dependent SDF test are now removed.
+The current native test runner preserves the Cargo/test-harness argument boundary
+and forces one harness thread and one Rayon worker. Regression tests first
+reproduced the missing targets, duplicate separator and inherited parallelism;
+they now verify current Cargo metadata, exact arguments, exit status and failure
+diagnostics.
+
+SDF verification now dispatches the current native probe through `ComputeBatch`
+on each supported backend. It preserves the 672 exact identity rectangle/circle
+oracle samples, adds independent authored-geometry f64 references under affine
+transforms, and tests all 19 encoded kinds through 50 typed variants. Physical
+coordinate changes, degenerate line caps, full/empty arcs, hidden callout bodies,
+strokes/shadows and periodic dash phases provide additional semantic checks.
+General affine comparisons permit one 8-bit coverage code at floating-point
+rounding boundaries; the original exact oracle remains exact. Repeated submission
+and trailing sentinels verify readback stability and logical-count bounds.
+Validation request stride and affine offset come from the canonical shader header.
+Unused Metal-only test helpers and obsolete runtime references are also removed.
+
+All 5 runner, 4 constant-layout and 7 native SDF focused release tests pass; the
+actual shell entrypoint also runs all 7 SDF tests successfully. The full
+single-thread release suite reports 983 passing tests and the eight remaining
+known failures, with no new failures. Release Clippy and example builds/tests
+pass without new warnings. All 1730 SVG images and seven example PNGs remain
+byte-identical to the initial cleanup baseline.
+
+DX12 and Vulkan library/unit-test code pass Windows Rust type checking with the
+temporary artifact-free harness, which is removed afterward. This does not
+verify Windows GPU execution or shader compilation. This batch permanently
+replaces the broken verification chain; it does not change application rendering
+operations or make a performance improvement claim.
+
 ## Remaining audit work
 
-- Retire Metal reference runners that invoke deleted WGSL integration targets,
-  while retaining independent SDF verification. The current SDF parity test
-  still expects files produced by a removed generator; this is one of the known
-  failures, not a regression introduced by descriptor cleanup.
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.

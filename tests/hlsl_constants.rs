@@ -48,3 +48,18 @@ fn fine_stack_host_layout_uses_shader_owned_constants() {
         );
     }
 }
+
+#[test]
+fn native_sdf_test_layout_uses_shader_owned_constants() {
+    let generated = include_str!(concat!(
+        env!("OUT_DIR"),
+        "/tileink_native_test_constants.rs"
+    ));
+    let constants = gpu_constants::read_hlsl("validation/sdf_config.hlsli").unwrap();
+    for name in ["SDF_PROBE_AFFINE_WORD", "SDF_PROBE_REQUEST_WORDS"] {
+        assert!(
+            generated.contains(&format!("const {name}: u32 = {};", constants[name])),
+            "missing shader-owned test constant {name}"
+        );
+    }
+}

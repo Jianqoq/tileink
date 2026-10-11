@@ -246,20 +246,13 @@ impl Adapter {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, any(feature = "dx12", feature = "vulkan")))]
 impl Adapter {
     pub(crate) fn import_context_for_test(
         host: &crate::NativeContext,
     ) -> Result<crate::NativeContext> {
         unsafe {
             match &*host.adapter.0.borrow() {
-                #[cfg(feature = "metal")]
-                Device::Metal(device) => Ok(crate::NativeContext::from_metal(
-                    crate::native::interop::metal::ContextDescriptor {
-                        device: device.device.clone(),
-                        queue: device.queue.clone(),
-                    },
-                )?),
                 #[cfg(feature = "dx12")]
                 Device::Dx12(device) => {
                     Ok(crate::NativeContext::from_dx12(device.import_descriptor())?)

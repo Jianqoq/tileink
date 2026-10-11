@@ -88,7 +88,7 @@ pub fn encode(
         return Err("nonfinite filter color matrix".into());
     }
     // Localized tile cells may cross the surface boundary. Preserve their period;
-    // the shader saturates negative endpoints like WGSL and zeros out-of-domain reads.
+    // the shader saturates negative endpoints and zeros out-of-domain reads.
     // Signed-range endpoints also bound the wrapping sum to u32 without overflow.
     if kernel == BasicFilter::Tile {
         let rect = [

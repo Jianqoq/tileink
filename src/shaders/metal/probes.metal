@@ -44,7 +44,7 @@ uint read_texel(const device uint* source, constant ProbeParams& params,
     return bytes.x | (bytes.y << 8) | (bytes.z << 16) | (bytes.w << 24);
 }
 
-// Same-device clear/copy/layout/sampling acceptance: tests/metal_probes.rs.
+// Native clear/copy/layout/sampling oracles: src/native/runtime/tests/cases.rs.
 kernel void sample_words(device uint* destination [[buffer(0)]],
     const device uint* source [[buffer(1)]], constant ProbeParams& params [[buffer(2)]],
     texture2d<float, access::read> texels [[texture(3)]], uint id [[thread_position_in_grid]]) {

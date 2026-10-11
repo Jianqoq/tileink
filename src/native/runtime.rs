@@ -2,7 +2,7 @@
 pub(super) mod adapter;
 #[cfg(feature = "dx12")]
 mod dx12;
-#[cfg(test)]
+#[cfg(all(test, any(feature = "dx12", feature = "vulkan")))]
 #[path = "runtime/tests/isolation.rs"]
 mod isolation;
 #[cfg(all(test, not(feature = "metal")))]
@@ -38,6 +38,10 @@ mod buffer;
 #[cfg(all(test, tileink_native_runtime))]
 #[path = "runtime/tests/mesh_gpu.rs"]
 mod mesh_gpu;
+
+#[cfg(all(test, tileink_native_runtime))]
+#[path = "runtime/tests/sdf_gpu.rs"]
+mod sdf_gpu;
 
 #[cfg(all(test, tileink_native_runtime))]
 #[path = "runtime/tests/gpu_support.rs"]

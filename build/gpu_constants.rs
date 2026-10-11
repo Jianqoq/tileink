@@ -106,11 +106,8 @@ pub fn write_rust(out: &Path) -> io::Result<()> {
         }
     }
     fs::write(out.join("tileink_gpu_constants.rs"), rust_constants(&host))?;
-    // The Metal SDF probe is the remaining host consumer of these validation
-    // headers. Shader-only declarations must not become unused Rust globals.
-    let mut sdf = read_hlsl("validation/sdf_config.hlsli")?;
-    sdf.retain(|name, _| name == "SDF_PROBE_REQUEST_WORDS");
-    let validation = rust_constants(&sdf);
+    // Native SDF tests share both request stride and affine offset with shaders.
+    let validation = rust_constants(&read_hlsl("validation/sdf_config.hlsli")?);
     fs::write(out.join("tileink_native_test_constants.rs"), validation)
 }
 

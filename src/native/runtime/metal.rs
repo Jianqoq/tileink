@@ -10,8 +10,6 @@ mod pipeline;
 #[cfg(test)]
 mod render_tests;
 #[cfg(test)]
-mod sdf_tests;
-#[cfg(test)]
 mod tests;
 use super::{
     Result,

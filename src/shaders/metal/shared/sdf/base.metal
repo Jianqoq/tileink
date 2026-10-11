@@ -1,6 +1,5 @@
-// Use the explicit geometric functions selected by the WGSL Metal runtime.
-// The offline compiler also preserves invariance under the runtime math mode.
-// Mixing safe-mode compilation with that runtime shifts half-alpha boundaries.
+// Keep distance and normal calculations in the same math mode so quantized
+// coverage remains stable at half-alpha boundaries.
 #include "../affine.metal"
 struct SdfSample { float distance; float2 normal; };
 float2 normalized_or(float2 value, float2 fallback) {

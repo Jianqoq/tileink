@@ -1,4 +1,4 @@
-//! Packed range uploads use the production WGSL word layout. Validation rules
+//! Packed range uploads use the shared native word layout. Validation rules
 //! out shader out-of-bounds access and cross-workgroup write races before recording.
 use crate::shared::gpu_constants::{RANGE_SCATTER_DESCRIPTOR_WORDS, RANGE_SCATTER_HEADER_WORDS};
 

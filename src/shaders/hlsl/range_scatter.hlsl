@@ -1,9 +1,8 @@
 #include "constants.hlsli"
 #include "shared/range_scatter_constants.hlsli"
 
-// Production range_scatter.wgsl layout, with explicit native binding remapping:
-// WGSL upload binding 0 -> native source t1 / binding 1;
-// WGSL destination binding 1 -> native destination u0 / binding 0.
+// Shared packed range-upload layout, with explicit native binding slots:
+// Source records use t1 / binding 1; destination words use u0 / binding 0.
 ByteAddressBuffer source : register(t1);
 RWByteAddressBuffer destination : register(u0);
 
