@@ -34,6 +34,10 @@ buffer 必须由同一个 font system 创建。
 - `push_text_layout`：保留 glyph/run records，由 GPU text path 渲染；必须调用 `render_with_text*`。
 - `push_text_layout_as_path`：把 glyph outline 记录为普通 path；不依赖 text renderer，但失去 bitmap/color emoji 与 text-specific caching。
 
+位图文本的平移与 DPI 换算使用宽精度，字形锚点和最终范围限制在 `i32` 像素坐标域内。
+大坐标不会回绕到另一侧，范围计算在完成缩放和 padding 后才限制端点。
+`push_text_layout` 和 `push_text_layout_clipped` 对非有限原点或坐标域外的空范围返回 `None`，不记录空 glyph/run。
+
 ## Raster options
 
 `TextRasterOptions` 控制 composite/subpixel 策略。`TextSubpixelMode` 可选择 none、RGB/BGR 等模式；`TextCompositeMode` 控制 coverage 如何应用到颜色。窗口目标与字体 atlas 参数变化会使相关资源重新准备。

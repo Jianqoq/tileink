@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
-use cosmic_text::{Buffer, CacheKey, FontSystem, Metrics, Shaping};
+use cosmic_text::{Buffer, CacheKey, FontSystem, Metrics, Shaping, SubpixelBin};
 use peniko::kurbo::{BezPath, Point};
 use swash::scale::ScaleContext;
 
 use crate::shared::bounds::Bounds;
 
 use super::{
-    layout::{TextGlyph, TextLayout},
+    layout::{CanvasGlyph, TextGlyph, TextLayout},
     options::{TextLayoutOptions, TextRasterOptions},
     outline::{append_outline_path, outline_cache_key, outline_glyph_path},
     raster::{GlyphRasterImage, RasterGlyphKey, raster_glyph_image},
@@ -91,7 +91,26 @@ impl TextContext {
                     (glyph.x + glyph.font_size * glyph.x_offset) as f64,
                     (run.line_y + glyph.y - glyph.font_size * glyph.y_offset) as f64,
                 );
-                let physical = glyph.physical((0.0, run.line_y), 1.0);
+                // Preserve Cosmic Text's Y hinting and key metadata, but use
+                // the same bounded position conversion as recording/append.
+                // physical() passes full positions to its overflowing bin carry.
+                let physical = CanvasGlyph::at_position(
+                    CacheKey {
+                        font_id: glyph.font_id,
+                        glyph_id: glyph.glyph_id,
+                        font_size_bits: glyph.font_size.to_bits(),
+                        x_bin: SubpixelBin::Zero,
+                        y_bin: SubpixelBin::Zero,
+                        font_weight: glyph.font_weight,
+                        flags: glyph.cache_key_flags,
+                    },
+                    f64::from(glyph.x + glyph.font_size * glyph.x_offset),
+                    f64::from(
+                        (glyph.y - glyph.font_size * glyph.y_offset)
+                            .mul_add(1.0, run.line_y)
+                            .trunc(),
+                    ),
+                );
                 glyphs.push(TextGlyph {
                     cache_key: physical.cache_key,
                     x: physical.x,

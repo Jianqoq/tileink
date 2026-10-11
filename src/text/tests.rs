@@ -61,6 +61,7 @@ fn raw_glyph(content: SwashContent, data: Vec<u8>) -> SwashImage {
     image
 }
 
+mod bounds;
 mod layout;
 mod lcd;
 mod prepared;

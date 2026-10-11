@@ -9,7 +9,7 @@ use crate::shared::bounds::Bounds;
 
 use super::{
     context::TextContext,
-    layout::{CanvasGlyph, TextRun},
+    layout::{CanvasGlyph, TextRun, glyph_image_bounds},
     options::{TextCompositeMode, TextRasterOptions},
     raster::{GlyphContent, GlyphRasterImage},
 };
@@ -117,7 +117,14 @@ impl PreparedTextData {
     pub(crate) fn glyph_bounds(&self, glyph_id: u32) -> Option<Bounds> {
         let glyph = self.glyph(glyph_id)?;
         let image = self.image(glyph.image?)?;
-        Some(glyph.bounds(image))
+        Some(glyph_image_bounds(
+            glyph.x,
+            glyph.y,
+            image.left,
+            image.top,
+            image.width,
+            image.height,
+        ))
     }
 
     pub(crate) fn image(&self, image_id: u32) -> Option<&PreparedGlyphImage> {
@@ -254,14 +261,6 @@ pub(crate) struct PreparedGlyph {
     pub(crate) image: Option<u32>,
     pub(crate) x: i32,
     pub(crate) y: i32,
-}
-
-impl PreparedGlyph {
-    fn bounds(&self, image: &PreparedGlyphImage) -> Bounds {
-        let x0 = self.x + image.left;
-        let y0 = self.y - image.top;
-        Bounds::new(x0, y0, x0 + image.width as i32, y0 + image.height as i32)
-    }
 }
 
 #[derive(Clone, Debug)]

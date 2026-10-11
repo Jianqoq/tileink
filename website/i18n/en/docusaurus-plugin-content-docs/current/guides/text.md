@@ -15,6 +15,11 @@ renderer.render_with_text(&canvas, &mut fonts, &mut text);
 
 `push_text_layout` records glyph/run data and supports bitmap/color glyphs through the text renderer. `push_text_layout_as_path` converts scalable outlines to ordinary paths and does not require a text-aware render call. `TextRasterOptions` selects subpixel and compositing behavior.
 
+Bitmap-text translation and DPI conversion use wide precision. Glyph anchors and final bounds
+are limited to the signed `i32` pixel domain without wrapping; bounds are limited only after
+scaling and padding. `push_text_layout` and `push_text_layout_clipped` return `None` for a
+nonfinite origin or an empty range outside that domain, without recording empty glyph/run data.
+
 RGB/BGR use Harmony LCD coverage for ordinary outline glyphs; `None` uses a single
 alpha channel. Color fonts retain their color outlines or bitmap strikes in every
 subpixel mode, so changing the mode does not turn color emoji into monochrome glyphs.

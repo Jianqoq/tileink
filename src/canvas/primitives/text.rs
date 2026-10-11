@@ -40,11 +40,14 @@ impl Canvas {
         clip: Option<PixelBounds>,
         brush: Brush,
     ) -> Option<DrawId> {
-        if layout.is_empty() {
+        if layout.is_empty() || !origin.is_finite() {
             return None;
         }
 
         let layout_bounds = layout_bounds_at_scaled_origin(layout, origin, self.scale_factor);
+        if layout_bounds.is_empty() {
+            return None;
+        }
         let mut bounds = PixelBounds {
             x0: layout_bounds.x0,
             y0: layout_bounds.y0,

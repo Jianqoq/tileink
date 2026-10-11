@@ -2309,9 +2309,82 @@ establish an isolated speedup. All samples and tails are retained. The temporary
 validation script and four copied executables have been removed. All 51 benchmark
 JSON/gzip files parse; generated npm root declarations still match package.json.
 
+## Phase 46: unified text coordinates and retired example removal
+
+Shaping, bitmap text recording and Canvas append now share one bounded glyph
+position conversion. Translation and DPI math keep `f64` precision until the
+signed pixel anchor and cache bin are resolved. Only a safe fractional position
+reaches cosmic-text's binning code; passing a full saturated position could
+overflow its signed carry and wrap positive text to negative coordinates or the
+reverse. Large integer translations no longer erase quarter-pixel offsets.
+Normal cache-bin thresholds, font/key metadata and cosmic-text Y hinting are
+verified against the actual dependency. Outline placement and required font or
+missing-glyph behavior remain unchanged.
+
+Layout range calculation keeps translation, scaling and padding wide until final
+endpoint conversion. Raster and prepared glyph images use one wide endpoint
+calculation, including bearings and unsigned dimensions before clamping. This
+removes the separate unit-origin route, duplicate cache-key construction and
+PreparedGlyph bounds implementation. Nonfinite bitmap origins and empty output
+outside the coordinate domain return `None` before recording glyph/run/paint
+data. These are permanent range and precision fixes, without compatibility
+substitutes. Nine host regressions and one actual Metal rendering regression
+failed before their corresponding fixes; two further semantic tests verify
+normal bin thresholds and physical-glyph metadata. The Metal regression compares
+large-append round trips with direct quarter-pixel placement and reuses the same
+renderer for out-of-domain text.
+
+Current Cargo module entry points also reveal retired example code. Fourteen
+scene modules have no current caller; the old liquid-glass helper is only declared
+and never consumed, and font snapshots are used only by their own tests. Remove
+these implementations and the old common module: seventeen files, 1855 lines.
+The four current SVG loader functions move unchanged to `examples/common/svg.rs`;
+their bodies exactly match after whitespace normalization. Seven current callers
+use that explicit module. The three current shader-example helpers stay in use.
+Fourteen duplicated snapshot tests, compiled in seven targets, disappear with
+their unused implementation.
+
+Focused single-thread release suites pass 72 text, 86 Canvas, 31 GPU planning,
+111 retained and one dedicated native rendering test. After the orphan removal,
+full release tests pass 1106 cases with the same three known failures: two
+unavailable pinned-DXC checks and the turbulence canonical mismatch. The total
+includes twelve new semantic/regression tests and excludes fourteen obsolete
+snapshot copies. Both website text guides document the coordinate contract.
+
+Formatting, release clippy, backend-free compilation and all current examples
+pass, with the same one library/eight library-test lint warnings. Redundant
+unused-import suppressions disappear from the six SVG test callers. All 1730 SVG
+PNGs, seven current image examples and seven text/emoji outputs match baseline
+bytes. Native presentation completes eight frames and the expected resize; the
+text workload completes 224 frames per process. Metal and backend-free artifact
+manifests are unchanged. Actual HLSL compilation and the website dependency build
+remain unavailable on this host.
+
+The [application report](benchmarks/cleanup-phase46-metal-2026-10-12.json) retains
+272 whole-process observations: 144 initial SVG/text/window observations and
+128 additional text observations, including every warmup and tail. Ten initial
+alternating pairs per comparison use identical-current controls. SVG medians
+change 4415.309 to 4442.671 ms (+0.620%), control -0.035%; window medians change
+233.173 to 231.740 ms (-0.614%), control -0.556%. Their paired median 95%
+descriptive bootstrap intervals include zero and overlap the controls.
+
+Initial text startup times are multimodal: separate medians change 486.995 to
+583.032 ms (+19.720%), while the paired median change is +0.457%. Retaining these
+samples, the additional thirty alternating pairs give 432.017 to 433.989 ms
+(+0.456%), control +0.543%. The paired median is +0.378%, interval
+[-2.362%, +1.276%]; the identical-current interval is [-1.335%, +1.584%]. No
+stable material application timing regression is identified, and no isolated
+speedup is claimed. Verification after each stopped timer checks 83040 SVG PNG
+hashes, 1232 text PNG hashes, 39424 completed text frames and 384 window frames;
+SVG sources stay unchanged. Validation is enabled for correctness and disabled
+for timing. The temporary Rust/Python measurement code and six copied executables
+are removed. All 52 benchmark JSON/gzip files parse and generated npm root
+declarations match package.json. All 970 current implementation files are fully
+read; unresolved producer proofs and platform execution remain separate work.
+
 ## Remaining audit work
 
-- All current implementation files are fully read. The progressive/glass shader, SVG lowering and filter distance cleanup are implemented and verified on Metal. Prove coarse stack emitter inputs, retained compiled membership bounds and plan eligibility before removing their remaining substitutes. Test DX12 lock-poison policy and prove packed uniform handle presence. Trace exact retained metadata patching for clip-bound updates inside filters and prove offscreen clip exclusion before removing its error wrapper. Add focused regressions for the recorded text integer-arithmetic concern. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
+- All current implementation files are fully read. The progressive/glass shader, SVG lowering, filter distance and text coordinate cleanup are implemented and verified on Metal. Prove coarse stack emitter inputs, retained compiled membership bounds and plan eligibility before removing their remaining substitutes. Test DX12 lock-poison policy and prove packed uniform handle presence. Trace exact retained metadata patching for clip-bound updates inside filters and prove offscreen clip exclusion before removing its error wrapper. Continue checking current Cargo/module reachability for retired code after the orphan example removal. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
 - Execute the HLSL editor test against the actual ShaderTools language server; local protocol regressions pass, but the server is unavailable locally.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

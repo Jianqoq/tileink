@@ -1,7 +1,6 @@
 #![cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
 
-#[allow(unused_imports)]
-#[path = "../examples/common/mod.rs"]
+#[path = "../examples/common/svg.rs"]
 mod common;
 
 use std::path::Path;

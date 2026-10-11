@@ -1,7 +1,6 @@
 #[path = "support/native_gpu.rs"]
 mod backend;
-#[allow(unused_imports)]
-#[path = "../examples/common/mod.rs"]
+#[path = "../examples/common/svg.rs"]
 mod common;
 
 #[test]

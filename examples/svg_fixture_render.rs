@@ -1,5 +1,5 @@
 //! Render SVG fixtures through the selected native backend.
-#[path = "common/mod.rs"]
+#[path = "common/svg.rs"]
 mod common;
 
 use std::{

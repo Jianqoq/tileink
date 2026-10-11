@@ -1,29 +1,10 @@
-// This helper module is compiled into each example binary; every example uses
-// a different subset of the shared scene/render utilities.
-#![allow(dead_code)]
-
-pub mod fonts;
-pub mod liquid_glass_fast_path;
-
+//! Native SVG fixture loading with bundled fonts.
+use peniko::kurbo::Affine;
 use std::{
     fs,
     path::{Path, PathBuf},
 };
-
-use peniko::{
-    Color,
-    kurbo::{Affine, BezPath, Circle, Rect, Shape, Stroke},
-};
-use tileink::{Canvas, FillRule, Radius, Region, SvgOptions};
-
-pub const EXAMPLE_WIDTH: u32 = 1920;
-pub const EXAMPLE_HEIGHT: u32 = 1080;
-
-pub fn example_asset(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("examples")
-        .join(name)
-}
+use tileink::{Canvas, SvgOptions};
 
 pub fn load_svg_scene(
     input: impl AsRef<Path>,
@@ -82,56 +63,4 @@ fn load_svg_fonts(options: &mut usvg::Options<'_>) {
     fontdb.set_monospace_family("Noto Mono");
     fontdb.set_cursive_family("Yellowtail");
     fontdb.set_fantasy_family("Sedgwick Ave Display");
-}
-
-pub fn rect_path(rect: Rect, radius: Radius) -> BezPath {
-    if radius.top_left == 0.0
-        && radius.top_right == 0.0
-        && radius.bottom_left == 0.0
-        && radius.bottom_right == 0.0
-    {
-        return rect.to_path(0.0);
-    }
-    peniko::kurbo::RoundedRect::new(
-        rect.x0,
-        rect.y0,
-        rect.x1,
-        rect.y1,
-        (
-            radius.top_left as f64,
-            radius.top_right as f64,
-            radius.bottom_right as f64,
-            radius.bottom_left as f64,
-        ),
-    )
-    .to_path(0.1)
-}
-
-pub fn fill_rect(scene: &mut Canvas, rect: Rect, radius: Radius, brush: impl Into<tileink::Brush>) {
-    scene.push_path(
-        rect_path(rect, radius),
-        brush,
-        Affine::IDENTITY,
-        FillRule::NonZero,
-        0.1,
-    );
-}
-
-pub fn stroke_rect(scene: &mut Canvas, rect: Rect, radius: Radius, stroke: Stroke, color: Color) {
-    scene.push_rect_stroke(rect, radius, stroke, color);
-}
-
-pub fn fill_circle(scene: &mut Canvas, circle: Circle, brush: impl Into<tileink::Brush>) {
-    scene.push_circle(circle, brush);
-}
-
-pub fn stroke_circle(scene: &mut Canvas, circle: Circle, stroke: Stroke, color: Color) {
-    scene.push_circle_stroke(circle, stroke, color);
-}
-
-pub fn canvas_region(width: u32, height: u32) -> Region {
-    Region::rect(
-        Rect::new(0.0, 0.0, width as f64, height as f64),
-        Radius::ZERO,
-    )
 }
