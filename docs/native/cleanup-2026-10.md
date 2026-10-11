@@ -2441,6 +2441,76 @@ executables are removed. All 53 benchmark JSON/gzip files parse and npm root
 declarations match package.json. All 972 current implementation files are fully
 read; platform execution and the remaining producer proofs are still pending.
 
+## Phase 48: resolve the three outstanding test failures
+
+The two HLSL failures were `every_hlsl_header_compiles_without_callers_globals`
+and `pinned_dxc_reports_invalid_source_for_both_targets`: the full ignored-test
+run had no explicitly pinned DXC. Building Microsoft DXC v1.8.2502 at revision
+`b4711839eb9a87da7c3436d9b212e0492359fbbd` exposed a real discovery bug: macOS
+hashed the Linux `.so` filename instead of `libdxcompiler.dylib`. Discovery now
+uses the host library name, retaining required compiler identity checks for
+adjacent and sibling-library packages. A process regression first fails with
+the macOS fixture, then verifies that changing the library invalidates the cache
+and removing it fails discovery without invoking compilation. No compiler error
+is skipped or replaced with a successful result.
+
+Review also finds an identity gap for the optional Unix `libdxil` validator.
+DXC selects its external validator when installed, or its built-in validator
+when absent; cache identity must distinguish those states. A regression fails
+before the fix when validator bytes change. Discovery now records the validator
+alongside the compiler on every host; tests verify replacement, removal and
+restoration, including reuse of the original cache after restoration. This fixes
+cache invalidation without rejecting valid compiler-only packages.
+
+Actual DXC also exposed two shader compilation errors concealed by the missing
+toolchain: occlusion reads the undefined `COARSE_TILE_PTCL_END`, and Mesh Gradient
+uses a single-argument vector constructor rejected by HLSL. The constant now
+matches the host record's eight-byte offset, with a host-layout regression; the
+vector has two explicit components. A new catalog test compiles all 84 entries
+for both DXIL and SPIR-V and checks reflected DXIL resource ABI. All 168 pairs,
+108 standalone headers on both targets, and intentional invalid-source checks
+pass. This verifies actual compilation, not DX12/Vulkan GPU execution on macOS.
+
+The third failure, `scaled_turbulence_matches_canonical_rgba`, compared a
+1600-pixel-wide image with an archived GPU hash. This is a test-oracle correction,
+not a change to turbulence rendering. An independent f64 implementation of the
+SVG algorithm uses direct Park–Miller modulo arithmetic, normalized gradients
+and bilinear cubic interpolation. Analytic lattice, seeded-gradient and
+closed-form interpolation tests validate the oracle. Every noise-region pixel
+at widths 300 and 1600 differs by at most one RGBA8 channel unit; 2526/32400 and
+70963/921600 pixels respectively have any difference. Those counts compare the
+GPU with the new mathematical reference, not the archived image. Same-backend
+repeat renders must remain byte-exact; filter bounds and integral-scale frame
+pixels are checked separately. The Metal shader and its existing output stay
+unchanged, and the old archived hash is not claimed to match.
+
+Focused single-thread release tests pass all 21 cases. Full release tests with
+ignored tests enabled pass 1122 cases, zero failures and zero ignored. Formatting,
+release clippy, backend-free compilation and all examples pass; the existing
+one library/eight library-test lint warnings remain. All 1730 SVG PNGs, seven
+image examples and both turbulence sizes match baseline bytes. Native
+presentation completes eight frames at the expected two sizes. Metal and
+backend-free artifact manifests are unchanged. The macOS runner README and both
+website installation guides explain the pinned DXC requirement.
+
+The [application report](benchmarks/cleanup-phase48-metal-2026-10-12.json) records
+correctness checks and sequential SVG, turbulence and window application timings.
+The three before/after executable pairs have identical SHA-256, providing an
+identical-code timing control. There is no Metal runtime change or speedup claim.
+All 72 observations and tails are retained, with two warmups per label and ten
+alternating pairs per workload. SVG medians change 4632.240 to 4656.588 ms
+(+0.526%), turbulence 276.213 to 280.180 ms (+1.436%), and window 228.797 to
+227.605 ms (-0.521%). The turbulence paired median is +2.280%, with a descriptive
+bootstrap interval [+0.608%, +7.798%], despite identical code; these measurements
+therefore cannot attribute a runtime regression to this change. Verification
+after every stopped timer checks 41520 SVG PNGs, 48 noise PNGs and 48 raw RGBA
+outputs, 768 noise frames and 192 window frames. API validation is enabled for
+correctness and disabled for timing; SVG sources stay unchanged. Temporary
+measurement code and copied executables are removed. All 54 benchmark JSON/gzip
+files parse and npm root declarations match. All 974 current implementation
+files are fully read; the remaining producer proofs and platform execution work
+continue separately.
+
 ## Remaining audit work
 
 - All current implementation files are fully read. The progressive/glass shader, SVG lowering, filter distance, text coordinate and retained layer descriptor cleanup are implemented and verified on Metal. Prove coarse stack emitter inputs, retained compiled membership bounds and other plan eligibility before removing their remaining substitutes. Test DX12 lock-poison policy and prove packed uniform handle presence. Trace exact retained metadata patching for clip-bound updates inside filters. The offscreen clip producer read proof is complete; add an invariant regression and remove its impossible error wrapper. Continue checking current Cargo/module reachability for retired code after the orphan example removal. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.

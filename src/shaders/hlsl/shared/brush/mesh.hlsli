@@ -15,7 +15,7 @@ bool mesh_candidate(float u,float2 q,float2 b,float2 c,float2 d,out float2 uv) {
     if(!isfinite(determinant)||determinant<=0) return false;
     // Convert normalized-coordinate rounding into parameter error through the
     // inverse Jacobian; a fixed UV epsilon creates holes in thin valid quads.
-    float2 tolerance=max(float2(0.00002),float2(abs(axis.x)+abs(axis.y),abs(du.x)+abs(du.y))*(0.0000009536743164/determinant));
+    float2 tolerance=max(float2(0.00002,0.00002),float2(abs(axis.x)+abs(axis.y),abs(du.x)+abs(du.y))*(0.0000009536743164/determinant));
     if(any(float2(u,v)< -tolerance)||any(float2(u,v)>1.0+tolerance)) return false;
     uv=clamp(float2(u,v),0.0,1.0);return true;
 }

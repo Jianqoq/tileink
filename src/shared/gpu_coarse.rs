@@ -173,6 +173,38 @@ mod tests {
     use super::*;
 
     #[test]
+    fn hlsl_tile_record_offsets_match_host_fields() {
+        let source = include_str!("../shaders/hlsl/coarse_records.hlsli");
+        for (name, offset) in [
+            (
+                "COARSE_TILE_RECORD_STRIDE",
+                std::mem::size_of::<TileCoarseRecord>(),
+            ),
+            (
+                "COARSE_TILE_PTCL_START",
+                std::mem::offset_of!(TileCoarseRecord, ptcl_start),
+            ),
+            (
+                "COARSE_TILE_PTCL_END",
+                std::mem::offset_of!(TileCoarseRecord, ptcl_end),
+            ),
+            (
+                "COARSE_TILE_GLYPH_COUNT",
+                std::mem::offset_of!(TileCoarseRecord, glyph_count),
+            ),
+            (
+                "COARSE_TILE_GLYPH_START",
+                std::mem::offset_of!(TileCoarseRecord, glyph_start),
+            ),
+        ] {
+            assert!(
+                source.contains(&format!("static const uint {name} = {offset}u;")),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
     fn tile_coarse_record_is_gpu_word_layout() {
         assert_eq!(std::mem::size_of::<TileCoarseRecord>(), 24);
         let record = TileCoarseRecord {

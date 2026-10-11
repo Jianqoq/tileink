@@ -21,27 +21,31 @@ impl Dxc {
         let version = run(Command::new(&executable).arg("--version"), "DXC version")?;
         let mut files = BTreeMap::new();
         let parent = executable.parent().unwrap();
-        let mut inputs = vec![executable.clone()];
-        if cfg!(windows) {
-            inputs.push(parent.join("dxcompiler.dll"));
-            inputs.push(parent.join("dxil.dll"));
+        let (compiler_name, validator_name) = if cfg!(windows) {
+            ("dxcompiler.dll", "dxil.dll")
+        } else if cfg!(target_os = "macos") {
+            ("libdxcompiler.dylib", "libdxil.dylib")
         } else {
-            // Linux packages may use a sibling lib directory. Require a known
-            // library location rather than silently omitting compiler identity.
-            let adjacent = parent.join("libdxcompiler.so");
-            inputs.push(if adjacent.is_file() {
-                adjacent
-            } else {
-                parent.join("../lib/libdxcompiler.so").canonicalize()?
-            });
-        }
-        for input in inputs {
+            ("libdxcompiler.so", "libdxil.so")
+        };
+        let adjacent = parent.join(compiler_name);
+        // Unix packages may use a sibling lib directory. The compiler is required.
+        let compiler = if cfg!(windows) || adjacent.is_file() {
+            adjacent
+        } else {
+            parent.join("../lib").join(compiler_name).canonicalize()?
+        };
+        // DXC selects an external validator when present, otherwise its built-in
+        // validator. Both the library bytes and its absence affect cache identity.
+        let validator = compiler.with_file_name(validator_name);
+        for (input, optional) in [
+            (executable.clone(), false),
+            (compiler, false),
+            (validator, true),
+        ] {
             let hash = match fs::read(&input) {
                 Ok(bytes) => digest(&bytes),
-                Err(error)
-                    if error.kind() == io::ErrorKind::NotFound
-                        && input.file_name().is_some_and(|name| name == "dxil.dll") =>
-                {
+                Err(error) if optional && error.kind() == io::ErrorKind::NotFound => {
                     "absent".to_owned()
                 }
                 Err(error) => {

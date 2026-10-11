@@ -4,6 +4,26 @@ use tileink::{ShaderBinding, ShaderBindingKind};
 
 const SOURCE: &str = "RWByteAddressBuffer destination : register(u3); [numthreads(256,1,1)] void paint() { destination.Store(0, 1); }";
 
+fn compiler_library() -> &'static str {
+    if cfg!(windows) {
+        "dxcompiler.dll"
+    } else if cfg!(target_os = "macos") {
+        "libdxcompiler.dylib"
+    } else {
+        "libdxcompiler.so"
+    }
+}
+
+fn validator_library() -> &'static str {
+    if cfg!(windows) {
+        "dxil.dll"
+    } else if cfg!(target_os = "macos") {
+        "libdxil.dylib"
+    } else {
+        "libdxil.so"
+    }
+}
+
 fn in_worker(name: &str, run: impl FnOnce(&Path)) {
     if let Some(root) = std::env::var_os("TILEINK_DXC_PROCESS_TEST_ROOT") {
         run(Path::new(&root));
@@ -25,12 +45,13 @@ fn in_worker(name: &str, run: impl FnOnce(&Path)) {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    for name in if cfg!(windows) {
-        &["dxcompiler.dll", "dxil.dll"][..]
-    } else {
-        &["libdxcompiler.so"][..]
-    } {
-        fs::write(root.path().join(name), b"compiler identity fixture").unwrap();
+    fs::write(
+        root.path().join(compiler_library()),
+        b"compiler identity fixture",
+    )
+    .unwrap();
+    if cfg!(windows) {
+        fs::write(root.path().join("dxil.dll"), b"validator identity fixture").unwrap();
     }
     fs::write(root.path().join("mode"), "valid").unwrap();
     let output = Command::new(std::env::current_exe().unwrap())
@@ -113,6 +134,55 @@ fn cached_abi_errors_are_returned_without_recompiling() {
     in_worker(
         "cached_abi_errors_are_returned_without_recompiling",
         |root| cached_error(root, "wrong-abi", "DXIL workgroup"),
+    );
+}
+
+#[test]
+fn compiler_library_changes_invalidate_runtime_cache_identity() {
+    in_worker(
+        "compiler_library_changes_invalidate_runtime_cache_identity",
+        |root| {
+            let source = source(SOURCE);
+            let initial = runtime_dxc::compile(&source, "dxil").unwrap();
+            fs::write(root.join(compiler_library()), b"updated compiler library").unwrap();
+            let updated = runtime_dxc::compile(&source, "dxil").unwrap();
+            assert_ne!(initial.key, updated.key);
+            assert_eq!(compiles(root), 2);
+            fs::remove_file(root.join(compiler_library())).unwrap();
+            assert!(runtime_dxc::compile(&source, "dxil").is_err());
+            assert_eq!(compiles(root), 2, "missing libraries must fail discovery");
+        },
+    );
+}
+
+#[test]
+fn validator_library_changes_and_presence_invalidate_runtime_cache_identity() {
+    in_worker(
+        "validator_library_changes_and_presence_invalidate_runtime_cache_identity",
+        |root| {
+            let source = source(SOURCE);
+            let library = root.join(validator_library());
+            fs::write(&library, b"validator identity fixture").unwrap();
+            let initial = runtime_dxc::compile(&source, "dxil").unwrap();
+            fs::write(&library, b"updated validator library").unwrap();
+            let updated = runtime_dxc::compile(&source, "dxil").unwrap();
+            assert_ne!(initial.key, updated.key);
+            fs::remove_file(&library).unwrap();
+            let absent = runtime_dxc::compile(&source, "dxil").unwrap();
+            assert_ne!(initial.key, absent.key);
+            assert_ne!(updated.key, absent.key);
+            assert_eq!(compiles(root), 3);
+            fs::write(&library, b"validator identity fixture").unwrap();
+            assert_eq!(
+                initial.key,
+                runtime_dxc::compile(&source, "dxil").unwrap().key
+            );
+            assert_eq!(
+                compiles(root),
+                3,
+                "restoring the library must reuse its cache"
+            );
+        },
     );
 }
 #[test]

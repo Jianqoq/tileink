@@ -5,6 +5,7 @@
 static const uint COARSE_TILE_RECORD_STRIDE = 24u;
 static const uint COARSE_TILE_GLYPH_COUNT = 12u;
 static const uint COARSE_TILE_PTCL_START = 4u;
+static const uint COARSE_TILE_PTCL_END = 8u;
 static const uint COARSE_TILE_GLYPH_START = 16u;
 static const uint COARSE_CHUNK_RECORD_STRIDE = 16u;
 static const uint COARSE_CHUNK_GLYPH_TOTAL = 8u;

@@ -5,6 +5,15 @@ mod dxc;
 #[path = "../build/gpu_constants.rs"]
 mod gpu_constants;
 
+#[path = "native_shader_compiler/entries.rs"]
+mod entries;
+
+fn pinned_compiler() -> dxc::Dxc {
+    let path = std::env::var_os("TILEINK_NATIVE_DXC_PATH")
+        .expect("set TILEINK_NATIVE_DXC_PATH to an absolute pinned DXC executable");
+    dxc::Dxc::discover(path.into()).unwrap()
+}
+
 #[test]
 fn unavailable_compilers_and_unknown_targets_fail_explicitly() {
     assert!(dxc::Dxc::discover("relative/dxc.exe".into()).is_err());
@@ -21,8 +30,7 @@ fn unavailable_compilers_and_unknown_targets_fail_explicitly() {
 #[test]
 #[ignore = "requires explicitly pinned TILEINK_NATIVE_DXC_PATH"]
 fn pinned_dxc_reports_invalid_source_for_both_targets() {
-    let compiler =
-        dxc::Dxc::discover(std::env::var_os("TILEINK_NATIVE_DXC_PATH").unwrap().into()).unwrap();
+    let compiler = pinned_compiler();
     assert!(
         !compiler.identity["version"]
             .as_str()
@@ -30,23 +38,28 @@ fn pinned_dxc_reports_invalid_source_for_both_targets() {
             .trim()
             .is_empty()
     );
-    let work = std::env::temp_dir().join(format!("tileink-dxc-negative-{}", std::process::id()));
+    let work = tempfile::tempdir().unwrap();
     for target in ["dxil", "spirv"] {
         let flags = dxc::Dxc::flags(target, "clear_words").unwrap();
         let error = compiler
             .compile(
                 "[numthreads(64,1,1)] void clear_words(){ undefined_name = 1; }",
                 &flags,
-                &work.join(target),
+                &work.path().join(target),
                 target,
             )
             .unwrap_err();
         let message = error.to_string();
         assert!(message.contains("undefined_name"), "{message}");
         assert!(message.contains(target), "{message}");
-        assert!(!work.join(target).join(format!("shader.{target}")).exists());
+        assert!(
+            !work
+                .path()
+                .join(target)
+                .join(format!("shader.{target}"))
+                .exists()
+        );
     }
-    std::fs::remove_dir_all(work).unwrap();
 }
 
 #[path = "../build/native/source.rs"]
@@ -73,11 +86,9 @@ fn headers(root: &std::path::Path) -> Vec<std::path::PathBuf> {
 #[test]
 #[ignore = "requires explicitly pinned TILEINK_NATIVE_DXC_PATH"]
 fn every_hlsl_header_compiles_without_callers_globals() {
-    let compiler =
-        dxc::Dxc::discover(std::env::var_os("TILEINK_NATIVE_DXC_PATH").unwrap().into()).unwrap();
+    let compiler = pinned_compiler();
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/shaders/hlsl");
-    let work = std::env::temp_dir().join(format!("tileink-header-contract-{}", std::process::id()));
-    std::fs::create_dir(&work).unwrap();
+    let work = tempfile::tempdir().unwrap();
     for (index, file) in headers(&root).iter().enumerate() {
         let name = file.strip_prefix(&root).unwrap().to_str().unwrap();
         let graph = source::SourceGraph::load(&root, name).unwrap();
@@ -92,13 +103,12 @@ fn every_hlsl_header_compiles_without_callers_globals() {
                 .compile(
                     &text,
                     &dxc::Dxc::flags(target, "header_probe").unwrap(),
-                    &work.join(format!("{index}-{target}")),
+                    &work.path().join(format!("{index}-{target}")),
                     target,
                 )
                 .unwrap_or_else(|error| panic!("{name} ({target}): {error}"));
         }
     }
-    std::fs::remove_dir_all(work).unwrap();
 }
 
 #[test]
