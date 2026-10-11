@@ -80,3 +80,110 @@ fn repeated_reorder_with_groups_preserves_painter_order() {
         );
     }
 }
+
+#[test]
+fn successful_rebalance_reports_every_sibling_with_a_new_order_key() {
+    let root = RetainedNodeId::for_owner(20);
+    let first = RetainedNodeId::for_owner(21);
+    let tail = RetainedNodeId::for_owner(22);
+    let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            first,
+            leaf(Color::WHITE),
+            Affine::IDENTITY,
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            tail,
+            leaf(Color::BLACK),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+
+    let mut owner = 23;
+    loop {
+        let children = &scene.nodes[&root].content;
+        let upper = children.key_of(tail).unwrap();
+        let lower = children.order.range(..upper).next_back().unwrap().0;
+        if upper - lower == 1 {
+            break;
+        }
+        scene
+            .transaction()
+            .insert_scene(
+                RetainedParent::content(root),
+                Some(tail),
+                RetainedNodeId::for_owner(owner),
+                leaf(Color::WHITE),
+                Affine::IDENTITY,
+            )
+            .commit()
+            .unwrap();
+        owner += 1;
+    }
+
+    let previous_version = scene.version();
+    let previous_siblings = scene.nodes[&root]
+        .content
+        .values()
+        .copied()
+        .collect::<Vec<_>>();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            Some(tail),
+            RetainedNodeId::for_owner(owner),
+            leaf(Color::WHITE),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+
+    let changes = scene.changes_since(previous_version).unwrap();
+    assert!(
+        previous_siblings
+            .iter()
+            .all(|id| changes.changed_nodes.contains(id)),
+        "rebalance changes every existing sibling order key"
+    );
+}
+
+#[test]
+fn move_before_changes_materialized_painter_order() {
+    let root = RetainedNodeId::for_owner(1);
+    let a = RetainedNodeId::for_owner(2);
+    let b = RetainedNodeId::for_owner(3);
+    let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
+    let mut transaction = scene.transaction();
+    transaction
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            a,
+            leaf(Color::WHITE),
+            Affine::translate((0.0, 0.0)),
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            b,
+            leaf(Color::BLACK),
+            Affine::translate((0.0, 0.0)),
+        );
+    transaction.commit().unwrap();
+    let mut transaction = scene.transaction();
+    transaction.move_before(b, a).commit().unwrap();
+    let materializer = PersistentSceneMaterializer::new(&scene);
+    let frame = materializer.canvas.persistent_frame.as_ref().unwrap();
+    assert_eq!(
+        frame.nodes.iter().map(|node| node.id).collect::<Vec<_>>(),
+        vec![b, a]
+    );
+}

@@ -43,6 +43,7 @@ pub(crate) use prelude::*;
 
 mod materializer;
 mod model;
+mod mutation;
 mod scene;
 mod transaction;
 mod validation;

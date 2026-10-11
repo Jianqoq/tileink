@@ -882,7 +882,7 @@ impl PersistentSceneMaterializer {
         nodes: &mut Vec<crate::canvas::RetainedNodeState>,
     ) {
         let children = scene.nodes[&parent.node]
-            .children(parent.branch)
+            .children(parent)
             .expect("validated retained branch");
         for &id in children.values() {
             let node = &scene.nodes[&id];

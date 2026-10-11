@@ -213,7 +213,7 @@ pub(super) fn collect_branch_batch(
 ) -> Option<u32> {
     let mut batch = None;
     for &child in scene.nodes[&parent.node]
-        .children(parent.branch)
+        .children(parent)
         .expect("validated retained branch")
         .values()
     {
@@ -243,7 +243,7 @@ pub(super) fn painter_path(scene: &RetainedScene, mut id: RetainedNodeId) -> Rc<
             .parent
             .expect("non-root retained node has parent");
         let children = scene.nodes[&parent.node]
-            .children(parent.branch)
+            .children(parent)
             .expect("validated retained branch");
         reversed.push((
             parent.branch,

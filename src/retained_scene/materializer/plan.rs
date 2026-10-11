@@ -41,7 +41,10 @@ impl PersistentSceneMaterializer {
         target: usize,
     ) {
         let children = scene.nodes[&parent]
-            .children(branch)
+            .children(RetainedParent {
+                node: parent,
+                branch,
+            })
             .expect("validated retained branch")
             .values()
             .copied()

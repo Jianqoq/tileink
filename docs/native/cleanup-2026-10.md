@@ -409,6 +409,49 @@ warnings; all 1730 SVG images and seven example PNGs remain byte-identical to th
 initial cleanup baseline. This permanently corrects stale test semantics; it
 does not change application execution or claim a performance improvement.
 
+## Phase 13: validate retained hierarchy once
+
+An empty child list previously ignored an explicit `before` sibling and silently
+appended. Scene leaves also accepted retained children even though materialization
+treats their immutable Canvas as a leaf and never renders those children. Invalid
+mask-branch errors reported the target's parent (or invented owner zero at the
+root), and moving a missing node before itself returned success.
+
+The transaction model now has one child-branch contract: groups and layers own
+content children, only mask layers own mask children, and Scene leaves own neither.
+An explicit sibling must exist even in an empty branch. Self-reorder validates
+node existence first, while remaining a no-op for existing nodes. Errors identify
+the actual requested parent. Four regressions reproduced the old failures before
+the fixes and now cover root/group/mask branches, both leaf branches, insert and
+reparent rejection, rollback, order keys and subsequent valid operations.
+
+With that invariant enforced before publishing transactions, command-container
+and sibling traversal no longer treat impossible missing ancestors, branches or
+order keys as an empty result or a reason to recompile. Actual structural changes
+that need a different compiled plan retain their required reconciliation logic.
+Transaction application moves out of scene storage/rollback into its own module;
+36 existing tests move unchanged into focused modules instead of one 2088-line
+file. This fixes the hierarchy contract directly and removes its downstream
+fallbacks permanently, without a compatibility or temporary implementation.
+
+All 102 retained focused release tests pass. The full single-thread release suite
+reports 993 passing tests and the same three known failures described in phase 12.
+Release Clippy and example builds/tests pass without new warnings. All 1730 SVG
+images and seven example PNGs remain byte-identical to the cleanup baseline.
+DX12 and Vulkan library and test types pass Windows Rust type checking using a
+temporary artifact-free harness, removed afterward; this does not verify Windows
+GPU execution or shader compilation. Chinese and English retained API guides
+document the validated branches and sibling rules. The website build remains
+unrun because dependencies are not installed.
+
+Seven paired actual retained-renderer workloads compare against the immediate
+parent commit `8c030b29`, including sparse/dense translation, opacity, resize,
+sibling reorder with order-key rebalance, insertion/removal, and reparenting.
+Every case preserves exact initial, first/second mutation and final pixels. On
+M5, p50 changes +0.23% to +1.57% (0.69 to 3.25 microseconds), without a material
+measured regression or a speedup claim. Temporary measurement source is removed.
+[Raw measurements and protocol](benchmarks/cleanup-phase13-metal-2026-10-11.json).
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.

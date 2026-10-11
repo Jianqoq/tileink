@@ -76,9 +76,7 @@ impl PersistentSceneMaterializer {
 
         let mut insertion_targets = HashMap::default();
         for &id in &insertions {
-            let Some(container) = command_container(scene, scene.nodes[&id].parent) else {
-                return false;
-            };
+            let container = command_container(scene, id);
             let Some(parent_list) = self.command_list_for_container(scene, container) else {
                 return false;
             };
@@ -168,9 +166,7 @@ impl PersistentSceneMaterializer {
         id: RetainedNodeId,
         location: &SceneCommandLocation,
     ) -> bool {
-        let Some(container) = command_container(scene, scene.nodes[&id].parent) else {
-            return false;
-        };
+        let container = command_container(scene, id);
         let Some(parent_list) = self.command_list_for_container(scene, container) else {
             return false;
         };
@@ -300,22 +296,16 @@ impl PersistentSceneMaterializer {
     }
 }
 
-fn command_container(
-    scene: &RetainedScene,
-    mut parent: Option<RetainedParent>,
-) -> Option<RetainedParent> {
+fn command_container(scene: &RetainedScene, mut id: RetainedNodeId) -> RetainedParent {
+    // Transactions publish only Group/Layer parents. Every live scene leaf
+    // therefore reaches its command container through existing ancestors.
     loop {
-        let current = parent?;
-        if current.node == scene.root
-            || matches!(scene.nodes.get(&current.node)?.kind, NodeKind::Layer(_))
+        let parent = scene.nodes[&id].parent.expect("non-root node has parent");
+        if parent.node == scene.root || matches!(scene.nodes[&parent.node].kind, NodeKind::Layer(_))
         {
-            return Some(current);
+            return parent;
         }
-        let node = scene.nodes.get(&current.node)?;
-        if !matches!(node.kind, NodeKind::Group) {
-            return None;
-        }
-        parent = node.parent;
+        id = parent.node;
     }
 }
 
@@ -335,9 +325,13 @@ fn next_command_node(
     container: RetainedParent,
 ) -> Option<RetainedNodeId> {
     loop {
-        let parent = scene.nodes.get(&id)?.parent?;
-        let siblings = scene.nodes[&parent.node].children(parent.branch).ok()?;
-        let key = siblings.key_of(id)?;
+        let parent = scene.nodes[&id].parent.expect("non-root node has parent");
+        let siblings = scene.nodes[&parent.node]
+            .children(parent)
+            .expect("validated retained branch");
+        let key = siblings
+            .key_of(id)
+            .expect("retained child has an order key");
         if let Some(next) = siblings
             .order
             .range((std::ops::Bound::Excluded(key), std::ops::Bound::Unbounded))

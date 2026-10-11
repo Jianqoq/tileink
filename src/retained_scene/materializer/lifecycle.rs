@@ -1069,7 +1069,7 @@ impl PersistentSceneMaterializer {
         let node = &scene.nodes[&id];
         let order_key = node.parent.map(|parent| {
             scene.nodes[&parent.node]
-                .children(parent.branch)
+                .children(parent)
                 .expect("validated retained branch")
                 .key_of(id)
                 .expect("retained child has an order key")

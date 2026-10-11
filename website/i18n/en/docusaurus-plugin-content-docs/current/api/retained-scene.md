@@ -11,6 +11,8 @@ Create identity with `RetainedNodeId::new(owner, slot)` or `for_owner(owner)`. S
 
 Transaction methods chain and mutate only on `commit()`:
 
+Groups and layers can own content children. A Canvas leaf created by `insert_scene` has no retained child branches and cannot be a parent. Only mask layers can own mask children. `before: Some(id)` must identify an existing sibling in the same branch, including when that branch is empty; `None` appends. `move_before(id, id)` is a no-op only for an existing node. Invalid-branch errors identify the requested parent.
+
 | Method | Purpose |
 |---|---|
 | `insert_scene(parent, before, id, Rc<Canvas>, Affine)` | Insert a leaf |
