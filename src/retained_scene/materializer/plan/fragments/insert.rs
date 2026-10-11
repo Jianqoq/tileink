@@ -92,23 +92,6 @@ impl PersistentSceneMaterializer {
         if after_batch.is_some() {
             ops.end += 1;
         }
-        let retained_batches = plan
-            .retained_batch_ids
-            .iter()
-            .filter(|(owner, _)| node_set.contains(&owner.node))
-            .map(|(owner, &batch)| {
-                (
-                    RetainedParent {
-                        node: owner.node,
-                        branch: match owner.branch {
-                            RetainedBatchBranch::Content => RetainedChildBranch::Content,
-                            RetainedBatchBranch::Mask => RetainedChildBranch::Mask,
-                        },
-                    },
-                    batch,
-                )
-            })
-            .collect::<Vec<_>>();
         if let Some((removed, _)) = &removed_batch {
             for fragment in self.root_plan_fragments.values_mut() {
                 if fragment.ops.start > *removed {
@@ -131,26 +114,8 @@ impl PersistentSceneMaterializer {
                 &reassigned_batches.keys().copied().collect::<HashSet<_>>(),
             );
         }
-        self.install_fragment_batches(&draw_batches);
-        let physical_batches = draw_batches.into_iter().collect::<HashMap<_, _>>();
-        for &node_id in &nodes {
-            if !matches!(scene.nodes[&node_id].kind, NodeKind::Scene { .. }) {
-                continue;
-            }
-            let batch = {
-                let mut batches = self
-                    .node_physical_draws(node_id)
-                    .map(|draw| physical_batches[&draw]);
-                batches
-                    .next()
-                    .filter(|&batch| batches.all(|candidate| candidate == batch))
-            };
-            if let Some(batch) = batch {
-                self.node_batches.insert(node_id, batch);
-            }
-        }
-        collect_container_batches(scene, id, &self.node_batches, &mut self.container_batches);
-        self.container_batches.extend(retained_batches);
+        self.install_fragment_batches(scene, &nodes, &draw_batches);
+        self.refresh_empty_branches(scene, id);
         self.root_fragment_owners
             .extend(nodes.iter().copied().map(|node| (node, id)));
         self.root_plan_fragments.insert(

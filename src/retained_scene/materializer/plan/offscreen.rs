@@ -215,51 +215,13 @@ impl PersistentSceneMaterializer {
             [old_location.command_index] = command;
         self.layer_command_locations.insert(id, old_location);
 
-        self.install_fragment_batches(&draw_batches);
-        let physical_batches = draw_batches.into_iter().collect::<HashMap<_, _>>();
         let mut nodes = Vec::new();
         scene.collect_subtree(id, &mut nodes);
-        for &node in &nodes {
-            if !matches!(scene.nodes[&node].kind, NodeKind::Scene { .. }) {
-                continue;
-            }
-            let batch = {
-                let mut batches = self
-                    .node_physical_draws(node)
-                    .map(|draw| physical_batches[&draw]);
-                batches
-                    .next()
-                    .filter(|&batch| batches.all(|candidate| candidate == batch))
-            };
-            if let Some(batch) = batch {
-                self.node_batches.insert(node, batch);
-            }
-        }
+        self.install_fragment_batches(scene, &nodes, &draw_batches);
         let subtree = nodes.into_iter().collect::<HashSet<_>>();
-        self.container_batches
+        self.empty_branch_batches
             .retain(|parent, _| !subtree.contains(&parent.node));
-        collect_container_batches(scene, id, &self.node_batches, &mut self.container_batches);
-        let retained_batches = Rc::make_mut(&mut self.canvas)
-            .compiled_plan
-            .as_ref()
-            .unwrap()
-            .retained_batch_ids
-            .iter()
-            .filter(|(owner, _)| subtree.contains(&owner.node))
-            .map(|(owner, &batch)| {
-                (
-                    RetainedParent {
-                        node: owner.node,
-                        branch: match owner.branch {
-                            RetainedBatchBranch::Content => RetainedChildBranch::Content,
-                            RetainedBatchBranch::Mask => RetainedChildBranch::Mask,
-                        },
-                    },
-                    batch,
-                )
-            })
-            .collect::<Vec<_>>();
-        self.container_batches.extend(retained_batches);
+        self.refresh_empty_branches(scene, id);
         true
     }
 }

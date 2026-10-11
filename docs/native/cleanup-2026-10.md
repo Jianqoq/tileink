@@ -2771,9 +2771,80 @@ introduced. Both renderer API guides document the creation error. All 58
 benchmark JSON/gzip files parse and npm root declarations match package.json.
 All 982 current implementation files have one audit owner and are fully read.
 
+## Phase 53: synchronize retained plan ownership and insertion batches
+
+Three additional retained-state failures are reproduced before production edits.
+Changing a root clip containing a filter into an opacity group replaces two root
+operations with one, but the old fragment range survived; removing that layer
+then removed its sibling's operation. Replacing a plain three-draw leaf with a
+three-draw leaf spanning a filter kept its old scalar batch classification, so
+the next revision assigned the wrong memberships and lost pixels. Finally, the
+container collector skipped a multibatch sibling and selected a later plain
+leaf's batch; insertion before that sibling rendered after its filter instead.
+Actual Metal readback comparisons reproduce all three visual failures.
+
+Full-plan installation now replaces leaf batch classifications, empty-branch
+membership and root operation ranges together. Root ranges come from the actual
+current operations in one traversal, removing per-root temporary compilation and
+three owner-offset helpers. Root and nested offscreen fragment installation share
+the same classification replacement and remove obsolete scalar entries. The
+redundant full-table padding is deleted: the full compiler already sizes the
+membership table to the synchronized draw arena. These are permanent ownership
+fixes rather than a substitute rendering route.
+
+The obsolete global container-batch inference is replaced by membership at the
+leaf's actual painter position. Neighbour lookup flattens groups and stops at
+layers or nonplain leaves. Only adjacent execution runs can supply a reusable
+batch; empty content and mask branches retain their independent compiler-owned
+batches. Per-update memoization covers an entire newly inserted run. An initial
+conservative whole-container eligibility change broke existing expanding-clip
+delta sharing and was discarded; the final algorithm preserves that contract.
+
+Eleven permanent tests cover the three regressions, all 128 combinations of eight
+layer kinds and empty/nonempty children, non-tail removal, immutable old plans,
+1024 inserted leaves sharing their previous plan, and independent empty mask
+branches. Five new GPU tests compare 42 incremental frames with fresh renderers,
+including grouped insertions around clips in both content and mask branches.
+The existing root-reparent regression now starts with three draws, preventing
+arena compaction from hiding the original stale-classification failure.
+
+Focused release checks pass 187 retained cases and seven insertion cases. Full
+single-thread release tests, including ignored tests, pass 1149 cases with zero
+failures and zero ignored. Formatting, release clippy, backend-free compilation,
+all examples and Windows DX12/Vulkan all-target checks pass. The existing one
+library/eight library-test clippy warnings remain. Native artifact manifests and
+the pinned DXC compiler/validator identities are unchanged from phase 52. These
+Windows checks do not execute Windows GPU drivers.
+
+All 1730 freshly written SVG PNGs and seven image examples match baseline bytes;
+SVG sources stay unchanged. Native presentation completes eight frames at
+640×360 and 480×270. Three before/after dashboard PNGs also match exactly. The
+dashboard renders 32 clipped chart cards with nested filters at 1280×800, covering
+initial materialization, clip/opacity topology changes and unchanged frames.
+The [application report](benchmarks/cleanup-phase53-metal-2026-10-12.json) records
+ten alternating before/after pairs followed by a separate ten-pair identical-code
+control block, with all 40 observations. Each process warms up 25 frames and
+measures 75 frames; API validation is disabled for timing, and PNG readback stays
+outside the render timer.
+
+The measured render-total median changes 471.021 to 472.177 ms (+0.245%), with a
+descriptive paired bootstrap interval of [-5.095%, +5.300%]. Changed-frame means
+have medians of 11.747 and 11.699 ms (-0.409%), interval [-5.824%, +5.160%]. Initial
+frame medians change 15.972 to 16.883 ms (+5.705%), interval [-2.012%, +9.999%].
+Identical-current total medians vary +0.073%, interval [-6.785%, +4.270%]. These
+runs establish no attributable speedup or resolved timing change; they do not
+rule out smaller regressions within the reported intervals. This workload
+measures full-plan/root-index lifecycle changes, not insertion-path latency.
+
+The temporary Rust workload and eight copied/compiled artifacts are removed.
+Bilingual retained architecture guides document the ownership and insertion
+rules. All 59 benchmark JSON/gzip files parse and npm root declarations match
+package.json. All 989 current implementation files have one audit owner and are
+fully read; remaining producer proofs and platform execution continue separately.
+
 ## Remaining audit work
 
-- All current implementation files are fully read. The progressive/glass shader, SVG lowering, filter distance, text coordinate, retained layer descriptor, typed offscreen, recording geometry, coarse stack and native creation/resource policy cleanup are implemented. Metal GPU correctness and portable native-policy regressions pass; DX12 resource runtime still needs Windows verification. Prove retained compiled membership bounds and other plan eligibility before removing their remaining substitutes. Clip geometry replacement inside/outside filters has fresh-renderer and analytic GPU coverage; continue tracing the wider retained metadata patching rules. Continue checking current Cargo/module reachability for retired code after the orphan example removal. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
+- All current implementation files are fully read. The progressive/glass shader, SVG lowering, filter distance, text coordinate, retained layer descriptor, typed offscreen, recording geometry, coarse stack, native creation/resource policy and retained plan ownership cleanup are implemented. Metal GPU correctness and portable native-policy regressions pass; DX12 resource runtime still needs Windows verification. Full-plan membership length, root-range replacement and adjacent-run insertion now have direct semantic coverage. Prove the remaining root-fragment plan/range/parent-list contracts and offscreen shape eligibility before removing their substitutes. Clip geometry replacement inside/outside filters has fresh-renderer and analytic GPU coverage; continue tracing the wider retained metadata patching rules. Continue checking current Cargo/module reachability for retired code after the orphan example removal. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
 - Execute the HLSL editor test against the actual ShaderTools language server; local protocol regressions pass, but the server is unavailable locally.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

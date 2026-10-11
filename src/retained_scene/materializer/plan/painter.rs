@@ -33,46 +33,8 @@ impl PersistentSceneMaterializer {
                 };
             }
         }
-        let plan = Rc::new(
-            Rc::make_mut(&mut self.canvas).compile(crate::shared::execution::ROOT_COMMAND_LIST_ID),
-        );
-        let mut batches = (*plan.draw_batch_ids).clone();
-        Rc::make_mut(&mut self.canvas).compiled_plan = Some(plan.clone());
-        batches.resize(draw_capacity, u32::MAX);
-        self.node_batches.clear();
-        for id in leaves {
-            let batch = {
-                let mut ids = self
-                    .node_physical_draws(id)
-                    .filter_map(|draw| (batches[draw] != u32::MAX).then_some(batches[draw]));
-                ids.next()
-                    .filter(|&batch| ids.all(|candidate| candidate == batch))
-            };
-            if let Some(batch) = batch {
-                self.node_batches.insert(id, batch);
-            }
-        }
-        self.container_batches.clear();
-        collect_container_batches(
-            scene,
-            scene.root,
-            &self.node_batches,
-            &mut self.container_batches,
-        );
-        self.container_batches
-            .extend(plan.retained_batch_ids.iter().map(|(owner, &batch)| {
-                (
-                    RetainedParent {
-                        node: owner.node,
-                        branch: match owner.branch {
-                            RetainedBatchBranch::Content => RetainedChildBranch::Content,
-                            RetainedBatchBranch::Mask => RetainedChildBranch::Mask,
-                        },
-                    },
-                    batch,
-                )
-            }));
-        self.flat_plan_has_draws = exec_ops_have_batches(&plan.ops);
+        self.refresh_compiled_plan(scene);
+        let batches = (*self.canvas.compiled_plan.as_ref().unwrap().draw_batch_ids).clone();
         let canvas = Rc::make_mut(&mut self.canvas);
         if let Some(changes) = &mut canvas.buffer_changes {
             let mut dirty = changed_value_ranges(&old.keys, &keys);
@@ -91,27 +53,6 @@ impl PersistentSceneMaterializer {
 
     pub(crate) fn update_painter_metadata(&mut self, changed: &HashSet<RetainedNodeId>) {
         self.update_painter_metadata_with_additional(changed, &[]);
-    }
-
-    /// Install the fragment's actual per-draw assignments. A layered leaf has no
-    /// single node batch; an older compiled plan cannot supply its new memberships.
-    pub(crate) fn install_fragment_batches(&mut self, assignments: &[(usize, u32)]) {
-        let draw_capacity = self.arenas.draws.values().len();
-        let canvas = Rc::make_mut(&mut self.canvas);
-        let painter = &mut canvas.painter;
-        painter.keys.resize(draw_capacity, PainterKey::inactive());
-        painter.batch_ids.resize(draw_capacity, u32::MAX);
-        for &(draw, batch) in assignments {
-            if set_stable_batch(
-                &mut painter.batch_ids,
-                &mut painter.batch_counts,
-                draw,
-                batch,
-            ) && let Some(changes) = &mut canvas.buffer_changes
-            {
-                changes.painter.push(draw..draw + 1);
-            }
-        }
     }
 
     pub(crate) fn update_painter_metadata_with_additional(
@@ -190,39 +131,5 @@ impl PersistentSceneMaterializer {
         if let Some(changes) = &mut canvas.buffer_changes {
             changes.painter = merge_index_ranges(dirty);
         }
-    }
-
-    pub(crate) fn refresh_compiled_plan(&mut self) {
-        let canvas = Rc::make_mut(&mut self.canvas);
-        if canvas.compiled_plan.is_some() {
-            return;
-        }
-        canvas.compiled_plan = Some(Rc::new(
-            canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID),
-        ));
-    }
-
-    /// Synchronizes stable GPU batch membership after a full execution-plan rebuild.
-    ///
-    /// A non-plain retained leaf can own draws on both sides of an offscreen layer, so it has no
-    /// single `node_batches` entry. Clearing that leaf's dirty draw slots before recompiling used
-    /// to leave them inactive even though the rebuilt plan still referenced them. Deriving the
-    /// table from the new plan is the authoritative path whenever plan structure is rebuilt and
-    /// also covers same-length content mutations that renumber later batches.
-    pub(crate) fn sync_stable_batches_from_plan(&mut self) {
-        let canvas = Rc::make_mut(&mut self.canvas);
-        let plan = canvas
-            .compiled_plan
-            .as_ref()
-            .expect("plan was refreshed before batch synchronization");
-        let mut batches = (*plan.draw_batch_ids).clone();
-        batches.resize(self.arenas.draws.values().len(), u32::MAX);
-        let dirty = changed_value_ranges(&canvas.painter.batch_ids, &batches);
-        if let Some(changes) = &mut canvas.buffer_changes {
-            changes.painter.extend(dirty);
-            changes.painter = merge_index_ranges(std::mem::take(&mut changes.painter));
-        }
-        canvas.painter.batch_counts = count_stable_batches(&batches);
-        canvas.painter.batch_ids = batches;
     }
 }

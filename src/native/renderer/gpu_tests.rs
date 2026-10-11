@@ -3,8 +3,10 @@ use super::*;
 mod clip_geometry;
 mod fragment_membership;
 mod incremental;
+mod insertion_order;
 mod layer_updates;
 mod offscreen_clips;
+mod plan_fragments;
 mod retained_damage;
 
 fn context() -> Result<NativeContext, Box<dyn std::error::Error>> {

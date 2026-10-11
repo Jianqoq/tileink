@@ -55,6 +55,11 @@ Opacity／Blend 包含离屏子层时，在该子树合成完成后应用到整�
 更新参数会直接修改实际的融合栈或离屏操作，保持 batch 顺序和成员稳定；结果与全新渲染一致。
 空组也保留可更新的计划条目。改变层类型时重新编译对应执行结构。
 
+全量编译同时重建每个 leaf 的 batch 分类和 root fragment 的操作范围。
+跨多个 batch 的 leaf 不再保留旧的单 batch 分类；随后删除或更新使用当前计划的成员和范围。
+普通 leaf 插入只复用其实际绘制位置相邻的执行 batch，不能跨越 clip、filter 等执行边界。
+Group 在查找相邻命令时展开；空 layer 的 content 和 mask 分支各自保留独立 batch。
+
 ## Resize fast path
 
 Responsive hierarchy changes committed with a resize preserve the previous immutable frame and

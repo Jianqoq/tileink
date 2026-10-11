@@ -74,7 +74,7 @@ impl PersistentSceneMaterializer {
             self.node_batches.remove(&node);
             self.painter_bases.remove(&node);
             self.painter_parents.remove(&node);
-            self.container_batches
+            self.empty_branch_batches
                 .retain(|parent, _| parent.node != node);
         }
         self.update_painter_metadata(&restored.keys().copied().collect());

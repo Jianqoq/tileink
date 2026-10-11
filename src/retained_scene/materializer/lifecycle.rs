@@ -49,7 +49,7 @@ impl PersistentSceneMaterializer {
             spatial_tiles_size: (0, 0),
             surface_metadata_stale: false,
             node_batches: HashMap::default(),
-            container_batches: HashMap::default(),
+            empty_branch_batches: HashMap::default(),
             root_plan_fragments: HashMap::default(),
             root_fragment_owners: HashMap::default(),
             node_metadata: HashMap::default(),
@@ -412,26 +412,22 @@ impl PersistentSceneMaterializer {
             changes.topology_changed && removed_plain_leaves && !root_reorder_candidate;
         let mut topology_batch_updates = Vec::new();
         if plain_topology_candidate {
+            let mut insertion_batches = HashMap::default();
             for &id in &changes.changed_nodes {
                 let Some(node) = scene.nodes.get(&id) else {
                     continue;
                 };
-                let Some(chunk) = self.chunks.get(&id) else {
-                    plain_topology_candidate = false;
-                    break;
-                };
-                let Some(parent) = node.parent else {
-                    plain_topology_candidate = false;
-                    break;
-                };
-                let Some(&batch) = self.container_batches.get(&parent) else {
-                    plain_topology_candidate = false;
-                    break;
-                };
-                if !matches!(node.kind, NodeKind::Scene { .. }) || !chunk.plain_fragment {
+                if !matches!(node.kind, NodeKind::Scene { .. }) || !self.chunks[&id].plain_fragment
+                {
                     plain_topology_candidate = false;
                     break;
                 }
+                let Some(batch) =
+                    self.insertion_batch(scene, id, &changes.changed_nodes, &mut insertion_batches)
+                else {
+                    plain_topology_candidate = false;
+                    break;
+                };
                 topology_batch_updates.push((id, batch));
             }
         }
@@ -585,7 +581,7 @@ impl PersistentSceneMaterializer {
                         self.node_batches.remove(removed);
                         self.painter_bases.remove(removed);
                         self.painter_parents.remove(removed);
-                        self.container_batches
+                        self.empty_branch_batches
                             .retain(|parent, _| parent.node != *removed);
                     }
                 }
@@ -780,7 +776,7 @@ impl PersistentSceneMaterializer {
             self.plan_cache_key = next_plan_cache_key();
             if !plan_compiled_during_update {
                 Rc::make_mut(&mut self.canvas).compiled_plan = None;
-                self.refresh_compiled_plan();
+                self.refresh_compiled_plan(scene);
                 self.sync_stable_batches_from_plan();
             }
         }
@@ -961,7 +957,7 @@ impl PersistentSceneMaterializer {
         self.spatial_tiles_size = (0, 0);
         self.surface_metadata_stale = false;
         self.node_batches.clear();
-        self.container_batches.clear();
+        self.empty_branch_batches.clear();
         self.root_plan_fragments.clear();
         self.root_fragment_owners.clear();
         self.node_metadata.clear();
@@ -984,7 +980,6 @@ impl PersistentSceneMaterializer {
         self.sync_canvas_data(self.chunks.len() as u32, true);
         self.rebuild_commands(scene);
         self.rebuild_painter_metadata(scene);
-        self.index_root_plan_fragments(scene);
         Rc::make_mut(&mut self.canvas)
             .buffer_changes
             .as_mut()

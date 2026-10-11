@@ -92,6 +92,9 @@ mod fragment_membership;
 #[path = "tests/root_layer_classification.rs"]
 mod root_layer_classification;
 
+#[path = "tests/plan_fragments.rs"]
+mod plan_fragments;
+
 #[path = "tests/placement.rs"]
 mod placement;
 

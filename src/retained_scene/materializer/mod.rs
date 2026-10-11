@@ -3,6 +3,7 @@ pub(crate) use super::prelude::*;
 pub(crate) use super::scene::RetainedScene;
 
 mod chunks;
+mod command_order;
 mod command_topology;
 mod damage;
 mod draw_order;
@@ -259,7 +260,7 @@ pub(crate) struct PersistentSceneMaterializer {
     pub(crate) spatial_tiles_size: (u32, u32),
     pub(crate) surface_metadata_stale: bool,
     pub(crate) node_batches: HashMap<RetainedNodeId, u32>,
-    container_batches: HashMap<RetainedParent, u32>,
+    empty_branch_batches: HashMap<RetainedParent, u32>,
     root_plan_fragments: HashMap<RetainedNodeId, RootPlanFragment>,
     root_fragment_owners: HashMap<RetainedNodeId, RetainedNodeId>,
     node_metadata: HashMap<RetainedNodeId, MaterializedNodeMetadata>,

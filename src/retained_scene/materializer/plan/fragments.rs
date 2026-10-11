@@ -75,40 +75,15 @@ impl PersistentSceneMaterializer {
     }
 
     pub(crate) fn index_root_plan_fragments(&mut self, scene: &RetainedScene) {
-        let Some(root_owner_ops) = Rc::make_mut(&mut self.canvas)
-            .compiled_plan
-            .as_ref()
-            .map(|plan| plan.root_owner_op_indices())
-        else {
-            return;
-        };
-        let layers = scene.nodes[&scene.root]
+        use crate::shared::execution::ExecOp;
+
+        self.root_plan_fragments.clear();
+        self.root_fragment_owners.clear();
+        for &id in scene.nodes[&scene.root]
             .content
-            .order
             .values()
-            .copied()
             .filter(|id| matches!(scene.nodes[id].kind, NodeKind::Layer(_)))
-            .collect::<Vec<_>>();
-        for id in layers {
-            let Some(&location) = self.layer_command_locations.get(&id) else {
-                continue;
-            };
-            let command = Rc::make_mut(&mut self.canvas).command_lists[0].commands
-                [location.command_index]
-                .clone();
-            let temporary = self.push_command_list();
-            Rc::make_mut(&mut self.canvas).command_lists[temporary]
-                .commands
-                .push(command);
-            let fragment = Rc::make_mut(&mut self.canvas).compile(temporary);
-            let _ = Rc::make_mut(&mut self.canvas).command_lists.pop();
-            let Some(ops) = Rc::make_mut(&mut self.canvas)
-                .compiled_plan
-                .as_ref()
-                .and_then(|plan| plan.root_fragment_range(&fragment, id, &root_owner_ops))
-            else {
-                continue;
-            };
+        {
             let mut nodes = Vec::new();
             scene.collect_subtree(id, &mut nodes);
             self.root_fragment_owners
@@ -116,7 +91,7 @@ impl PersistentSceneMaterializer {
             self.root_plan_fragments.insert(
                 id,
                 RootPlanFragment {
-                    ops,
+                    ops: 0..0,
                     // Initial command lists can be interleaved with later root siblings. They
                     // remain stable tombstones when this fragment is removed; appended fragments
                     // still record reclaimable tail ranges.
@@ -126,6 +101,32 @@ impl PersistentSceneMaterializer {
                     removed_batch: None,
                 },
             );
+        }
+        let plan = self
+            .canvas
+            .compiled_plan
+            .as_ref()
+            .expect("fresh retained plan");
+        // Root layer operations are contiguous: fused layers have distinct hidden
+        // clip/group draws, and offscreen layers own complete nested operations.
+        // Index the actual plan once instead of recompiling each root subtree.
+        for (index, op) in plan.ops.iter().enumerate() {
+            let owner = match op {
+                ExecOp::DrawBatch { owners, .. } => owners
+                    .iter()
+                    .find_map(|owner| self.root_fragment_owners.get(&owner.node)),
+                ExecOp::OffscreenLayer { retained_id, .. }
+                | ExecOp::OffscreenMaskLayer { retained_id, .. } => {
+                    retained_id.and_then(|id| self.root_fragment_owners.get(&id.node))
+                }
+            };
+            if let Some(owner) = owner {
+                let fragment = self.root_plan_fragments.get_mut(owner).unwrap();
+                if fragment.ops.is_empty() {
+                    fragment.ops.start = index;
+                }
+                fragment.ops.end = index + 1;
+            }
         }
     }
 }

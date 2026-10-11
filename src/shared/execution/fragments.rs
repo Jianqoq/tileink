@@ -26,48 +26,6 @@ impl ExecPlan {
         (index..index + len, draw_batches)
     }
 
-    /// Locates a separately compiled root subtree inside this plan. The retained content owner
-    /// is present in both plans even when a fused layer itself has no retained-id-bearing op, so
-    /// the relative owner position gives an exact contiguous fragment range.
-    pub(crate) fn root_fragment_range(
-        &self,
-        fragment: &Self,
-        id: RetainedNodeId,
-        root_owner_ops: &HashMap<RetainedNodeId, usize>,
-    ) -> Option<Range<usize>> {
-        let owner = RetainedBatchOwner {
-            node: id,
-            branch: RetainedBatchBranch::Content,
-        };
-        let fragment_owner = root_owner_op_index(&fragment.ops, owner)?;
-        let plan_owner = *root_owner_ops.get(&id)?;
-        let start = plan_owner.checked_sub(fragment_owner)?;
-        let end = start.checked_add(fragment.ops.len())?;
-        (end <= self.ops.len()).then_some(start..end)
-    }
-
-    /// Builds the root owner index once when a full plan is materialized. Indexing every root
-    /// fragment can then remain O(plan ops) total instead of rescanning the whole plan per layer.
-    pub(crate) fn root_owner_op_indices(&self) -> HashMap<RetainedNodeId, usize> {
-        let mut indices = HashMap::new();
-        for (index, op) in self.ops.iter().enumerate() {
-            match op {
-                ExecOp::DrawBatch { owners, .. } => {
-                    for owner in owners.iter() {
-                        indices.entry(owner.node).or_insert(index);
-                    }
-                }
-                ExecOp::OffscreenLayer { retained_id, .. }
-                | ExecOp::OffscreenMaskLayer { retained_id, .. } => {
-                    if let Some(retained) = retained_id {
-                        indices.entry(retained.node).or_insert(index);
-                    }
-                }
-            }
-        }
-        indices
-    }
-
     pub(crate) fn remove_fragment(&mut self, range: Range<usize>) -> bool {
         if range.start > range.end || range.end > self.ops.len() {
             return false;
@@ -114,16 +72,6 @@ impl ExecPlan {
         self.refresh_direct_root_batch_ops();
         Some(draw_batches)
     }
-}
-
-fn root_owner_op_index(ops: &[ExecOp], owner: RetainedBatchOwner) -> Option<usize> {
-    ops.iter().position(|op| match op {
-        ExecOp::DrawBatch { owners, .. } => owners.contains(&owner),
-        ExecOp::OffscreenLayer { retained_id, .. }
-        | ExecOp::OffscreenMaskLayer { retained_id, .. } => {
-            retained_id.is_some_and(|retained| retained.node == owner.node)
-        }
-    })
 }
 
 fn collect_fragment_draw_batches(ops: &[ExecOp], out: &mut Vec<(usize, u32)>) {

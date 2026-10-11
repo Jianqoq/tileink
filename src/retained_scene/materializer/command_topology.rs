@@ -1,3 +1,4 @@
+use super::command_order::{Direction, command_container, command_neighbor};
 use super::helpers::painter_path;
 use super::*;
 
@@ -219,7 +220,7 @@ impl PersistentSceneMaterializer {
         container: RetainedParent,
         parent_list: usize,
     ) -> Option<LayerCommandLocation> {
-        let mut next = next_command_node(scene, id, container);
+        let mut next = command_neighbor(scene, id, container, Direction::Next);
         while let Some(id) = next {
             let location = match &scene.nodes[&id].kind {
                 NodeKind::Scene { .. } => {
@@ -236,7 +237,7 @@ impl PersistentSceneMaterializer {
             if location.is_some_and(|location| location.parent_list == parent_list) {
                 return location;
             }
-            next = next_command_node(scene, id, container);
+            next = command_neighbor(scene, id, container, Direction::Next);
         }
         None
     }
@@ -293,55 +294,5 @@ impl PersistentSceneMaterializer {
                 _ => unreachable!("retained container lists only contain retained commands"),
             }
         }
-    }
-}
-
-fn command_container(scene: &RetainedScene, mut id: RetainedNodeId) -> RetainedParent {
-    // Transactions publish only Group/Layer parents. Every live scene leaf
-    // therefore reaches its command container through existing ancestors.
-    loop {
-        let parent = scene.nodes[&id].parent.expect("non-root node has parent");
-        if parent.node == scene.root || matches!(scene.nodes[&parent.node].kind, NodeKind::Layer(_))
-        {
-            return parent;
-        }
-        id = parent.node;
-    }
-}
-
-fn first_command_node(scene: &RetainedScene, id: RetainedNodeId) -> Option<RetainedNodeId> {
-    if !matches!(scene.nodes[&id].kind, NodeKind::Group) {
-        return Some(id);
-    }
-    scene.nodes[&id]
-        .content
-        .values()
-        .find_map(|&child| first_command_node(scene, child))
-}
-
-fn next_command_node(
-    scene: &RetainedScene,
-    mut id: RetainedNodeId,
-    container: RetainedParent,
-) -> Option<RetainedNodeId> {
-    loop {
-        let parent = scene.nodes[&id].parent.expect("non-root node has parent");
-        let siblings = scene.nodes[&parent.node]
-            .children(parent)
-            .expect("validated retained branch");
-        let key = siblings
-            .key_of(id)
-            .expect("retained child has an order key");
-        if let Some(next) = siblings
-            .order
-            .range((std::ops::Bound::Excluded(key), std::ops::Bound::Unbounded))
-            .find_map(|(_, &sibling)| first_command_node(scene, sibling))
-        {
-            return Some(next);
-        }
-        if parent == container {
-            return None;
-        }
-        id = parent.node;
     }
 }

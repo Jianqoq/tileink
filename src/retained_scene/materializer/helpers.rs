@@ -182,60 +182,6 @@ pub(super) fn set_stable_batch(
     true
 }
 
-pub(super) fn collect_container_batches(
-    scene: &RetainedScene,
-    id: RetainedNodeId,
-    leaf_batches: &HashMap<RetainedNodeId, u32>,
-    containers: &mut HashMap<RetainedParent, u32>,
-) -> Option<u32> {
-    let node = &scene.nodes[&id];
-    let content =
-        collect_branch_batch(scene, RetainedParent::content(id), leaf_batches, containers);
-    if let Some(batch) = content {
-        containers.insert(RetainedParent::content(id), batch);
-    }
-    if matches!(node.kind, NodeKind::Layer(RetainedLayerDescriptor::Mask(_))) {
-        let mask = collect_branch_batch(scene, RetainedParent::mask(id), leaf_batches, containers);
-        if let Some(batch) = mask {
-            containers.insert(RetainedParent::mask(id), batch);
-        }
-    }
-    matches!(node.kind, NodeKind::Group)
-        .then_some(content)
-        .flatten()
-}
-
-pub(super) fn collect_branch_batch(
-    scene: &RetainedScene,
-    parent: RetainedParent,
-    leaf_batches: &HashMap<RetainedNodeId, u32>,
-    containers: &mut HashMap<RetainedParent, u32>,
-) -> Option<u32> {
-    let mut batch = None;
-    for &child in scene.nodes[&parent.node]
-        .children(parent)
-        .expect("validated retained branch")
-        .values()
-    {
-        let candidate = match scene.nodes[&child].kind {
-            NodeKind::Scene { .. } => leaf_batches.get(&child).copied(),
-            NodeKind::Group => collect_container_batches(scene, child, leaf_batches, containers),
-            NodeKind::Layer(_) => {
-                collect_container_batches(scene, child, leaf_batches, containers);
-                None
-            }
-        };
-        let Some(candidate) = candidate else {
-            continue;
-        };
-        if batch.is_some_and(|batch| batch != candidate) {
-            return None;
-        }
-        batch = Some(candidate);
-    }
-    batch
-}
-
 pub(super) fn painter_path(scene: &RetainedScene, mut id: RetainedNodeId) -> Rc<[u128]> {
     let mut reversed = Vec::new();
     while id != scene.root {

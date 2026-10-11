@@ -34,7 +34,7 @@ fn root_fragment_reclassifies_a_reparented_leaf_that_now_spans_batches() {
             RetainedParent::content(id(96_000)),
             None,
             id(96_001),
-            leaf(Color::WHITE),
+            multi_draw_leaf(3),
             Affine::IDENTITY,
         )
         .commit()
@@ -140,4 +140,92 @@ fn appended_root_fragment_preserves_every_batch_of_a_layered_leaf() {
     batches.sort_unstable();
     batches.dedup();
     assert_eq!(batches.len(), 3);
+}
+
+#[test]
+fn content_recompilation_reclassifies_a_leaf_before_its_next_revision() {
+    let id = RetainedNodeId::for_owner;
+    let root = id(98_000);
+    let child = id(98_001);
+    let mut scene = RetainedScene::new(64, 32, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            child,
+            multi_draw_leaf(3),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+    let mut state = PersistentSceneMaterializer::new(&scene);
+    assert!(state.node_batches.contains_key(&child));
+    for _ in 0..2 {
+        scene
+            .transaction()
+            .replace_scene(child, layered_leaf())
+            .commit()
+            .unwrap();
+        assert!(update_materializer(&mut state, &scene));
+        assert!(
+            !state.node_batches.contains_key(&child),
+            "full recompilation must retire the leaf's old scalar batch classification"
+        );
+        let plan = state.canvas.compile(ROOT_COMMAND_LIST_ID);
+        for draw in state.node_physical_draws(child) {
+            assert!(contains_draw(
+                &plan.ops,
+                draw,
+                state.canvas.painter.batch_ids[draw]
+            ));
+        }
+    }
+}
+
+#[test]
+fn inserted_plain_leaf_before_a_multibatch_sibling_uses_the_first_batch() {
+    let id = RetainedNodeId::for_owner;
+    let root = id(99_000);
+    let layered = id(99_001);
+    let later = id(99_002);
+    let inserted = id(99_003);
+    let mut scene = RetainedScene::new(64, 32, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            layered,
+            layered_leaf(),
+            Affine::IDENTITY,
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            later,
+            leaf(Color::WHITE),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+    let mut state = PersistentSceneMaterializer::new(&scene);
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            Some(layered),
+            inserted,
+            leaf(Color::BLACK),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+    assert!(update_materializer(&mut state, &scene));
+    let first = state.node_physical_draws(layered).next().unwrap();
+    let added = state.node_physical_draws(inserted).next().unwrap();
+    assert_eq!(
+        state.canvas.painter.batch_ids[added], state.canvas.painter.batch_ids[first],
+        "a multibatch sibling cannot be skipped when classifying its parent branch"
+    );
 }

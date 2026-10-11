@@ -28,7 +28,7 @@ mod prelude {
         shared::{
             bounds::Bounds,
             draw_record::{DrawRecord, DrawTagWord, FillRuleWord},
-            execution::{Command, CommandList, RetainedBatchBranch},
+            execution::{Command, CommandList},
             image_resource::{ImageKey, ImageResourceStore},
             layer::{Layer, filter},
             line::Line,
