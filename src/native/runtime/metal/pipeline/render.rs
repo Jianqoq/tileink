@@ -8,7 +8,7 @@ pub(super) fn create(
     device: &ProtocolObject<dyn MTLDevice>,
     library: &ProtocolObject<dyn MTLLibrary>,
     tile: &ProtocolObject<dyn MTLFunction>,
-    shader: &NativeShaderArtifact,
+    shader: &ShaderArtifact<'_>,
 ) -> Result<(State, Vec<Retained<MTLArgument>>)> {
     let vertex = library
         .newFunctionWithName(&NSString::from_str("fine_tile_vertex"))

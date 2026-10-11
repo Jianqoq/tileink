@@ -43,6 +43,15 @@ impl ComputeBatch {
                 }
             }
         }
+        let (Resource::Texture(source), Resource::Texture(destination)) = (
+            &self.resources[copy.source.index()],
+            &self.resources[copy.destination.index()],
+        ) else {
+            unreachable!()
+        };
+        if source.format != destination.format {
+            return Err("native texture copy format mismatch".into());
+        }
         if !copy.extent.contains(&0) {
             self.commands.push(Command::CopyTexture(copy));
         }

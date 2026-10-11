@@ -26,8 +26,8 @@ pub(super) type Object<T> = Retained<ProtocolObject<T>>;
 pub struct Metal {
     pub(super) device: Object<dyn MTLDevice>,
     pub(super) queue: Object<dyn MTLCommandQueue>,
-    libraries: BTreeMap<&'static str, Object<dyn MTLLibrary>>,
-    pipelines: BTreeMap<&'static str, pipeline::Pipeline>,
+    libraries: BTreeMap<String, Object<dyn MTLLibrary>>,
+    pipelines: BTreeMap<String, pipeline::Pipeline>,
     pending: Pending<frame::Frame>,
     failed: bool,
 }
@@ -96,25 +96,33 @@ impl Metal {
         size: [u32; 2],
         layers: u32,
         array: bool,
+        format: crate::ShaderTextureFormat,
     ) -> Result<super::texture::Allocation> {
-        Ok(super::texture::Allocation::Metal(memory::texture(
+        Ok(super::texture::Allocation::Metal(memory::texture_format(
             &self.device,
             size,
             layers,
             array,
+            format,
         )?))
     }
     pub fn submit_compute(&mut self, batch: &ComputeBatch) -> Result<Ticket> {
         if self.failed {
             return Err("Metal context failed".into());
         }
+        if self.pending.len() == 0
+            && self
+                .pipelines
+                .keys()
+                .filter(|k| k.starts_with("program:"))
+                .count()
+                >= 128
+        {
+            self.pipelines.retain(|key, _| !key.starts_with("program:"));
+            self.libraries.retain(|key, _| !key.starts_with("program:"));
+        }
         for pass in batch.passes() {
-            pipeline::ensure(
-                &self.device,
-                &mut self.libraries,
-                &mut self.pipelines,
-                pass.shader,
-            )?;
+            pipeline::ensure_pass(&self.device, &mut self.libraries, &mut self.pipelines, pass)?;
         }
         let frame = frame::Frame::record(self, batch)?;
         let command = frame.command.clone();

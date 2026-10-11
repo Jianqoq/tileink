@@ -12,6 +12,12 @@ pub(crate) enum ColorFilterKind {
 }
 #[derive(Debug)]
 pub(crate) enum FilterKernel<'a> {
+    ShaderPipelineToTarget {
+        inputs: &'a [RenderTargetId],
+        target: RenderTargetId,
+        bounds: Bounds,
+        pipeline: &'a crate::ShaderPipeline,
+    },
     ProgressiveBlur {
         target: RenderTargetId,
         bounds: Bounds,

@@ -2,16 +2,17 @@
 //! Driver-specific pipeline creation/caching belongs to the native adapters.
 
 #[derive(Clone, Copy, Debug)]
-pub struct NativeShaderArtifact {
-    pub format: &'static str,
-    pub entry: &'static str,
-    pub cache_key: &'static str,
+pub struct ShaderArtifact<'a> {
+    pub format: &'a str,
+    pub entry: &'a str,
+    pub cache_key: &'a str,
     pub workgroup: [u32; 3],
-    pub(crate) bindings: &'static [Binding],
+    pub(crate) bindings: &'a [Binding],
     #[cfg(feature = "metal")]
-    pub(crate) uniforms: &'static [UniformLayout],
-    pub bytes: &'static [u8],
+    pub(crate) uniforms: &'a [UniformLayout],
+    pub bytes: &'a [u8],
 }
+pub type NativeShaderArtifact = ShaderArtifact<'static>;
 
 include!(concat!(env!("OUT_DIR"), "/tileink_native_artifacts.rs"));
 
@@ -22,6 +23,7 @@ pub(crate) enum BindingKind {
     Write,
     Texture,
     TextureWrite,
+    TextureReadWrite,
     TextureArray,
     TextureTable,
     Sampler,
@@ -37,7 +39,10 @@ pub(crate) struct Binding {
 
 impl BindingKind {
     pub(crate) fn writable(self) -> bool {
-        matches!(self, Self::Write | Self::TextureWrite)
+        matches!(
+            self,
+            Self::Write | Self::TextureWrite | Self::TextureReadWrite
+        )
     }
 }
 

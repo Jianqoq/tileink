@@ -90,7 +90,11 @@ impl Image {
             this.image = device.create_image(
                 &vk::ImageCreateInfo::default()
                     .image_type(vk::ImageType::TYPE_2D)
-                    .format(vk::Format::R8G8B8A8_UNORM)
+                    .format(match texture.format {
+                        crate::ShaderTextureFormat::Rgba8Unorm => vk::Format::R8G8B8A8_UNORM,
+                        crate::ShaderTextureFormat::Rgba16Float => vk::Format::R16G16B16A16_SFLOAT,
+                        crate::ShaderTextureFormat::Rgba32Float => vk::Format::R32G32B32A32_SFLOAT,
+                    })
                     .extent(this.extent)
                     .mip_levels(1)
                     .array_layers(texture.layers)
@@ -129,7 +133,11 @@ impl Image {
                     } else {
                         vk::ImageViewType::TYPE_2D
                     })
-                    .format(vk::Format::R8G8B8A8_UNORM)
+                    .format(match texture.format {
+                        crate::ShaderTextureFormat::Rgba8Unorm => vk::Format::R8G8B8A8_UNORM,
+                        crate::ShaderTextureFormat::Rgba16Float => vk::Format::R16G16B16A16_SFLOAT,
+                        crate::ShaderTextureFormat::Rgba32Float => vk::Format::R32G32B32A32_SFLOAT,
+                    })
                     .subresource_range(this.range()),
                 None,
             )?;

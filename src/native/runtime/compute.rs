@@ -19,6 +19,8 @@ impl ResourceId {
 mod filter_tiles;
 #[path = "compute/persistent.rs"]
 mod persistent;
+#[path = "compute/shader_resources.rs"]
+mod shader_resources;
 #[path = "compute/surfaces.rs"]
 mod surfaces;
 pub(crate) use surfaces::SurfacePool;
@@ -30,8 +32,42 @@ pub use resource::{Resource, SamplerFilter, Texture};
 pub struct Pass {
     pub initialization: Option<ResourceId>,
     pub shader: &'static NativeShaderArtifact,
+    pub(crate) native_source: Option<std::rc::Rc<super::program_shader::NativeSource>>,
     pub bindings: Vec<(Binding, ResourceId)>,
     pub grid: [u32; 3],
+}
+impl Pass {
+    pub(crate) fn artifact(&self) -> crate::native::shaders::ShaderArtifact<'_> {
+        let mut artifact = *self.shader;
+        if let Some(source) = &self.native_source {
+            artifact.entry = &source.entry;
+            artifact.bindings = &source.bindings;
+            artifact.workgroup = source.workgroup;
+            #[cfg(feature = "metal")]
+            {
+                artifact.uniforms = if source
+                    .bindings
+                    .iter()
+                    .any(|b| b.slot == 0 && b.kind == BindingKind::Uniform && source.config)
+                {
+                    super::program_shader::config_layout()
+                } else {
+                    &[]
+                };
+            }
+        }
+        artifact
+    }
+    pub(crate) fn key(&self) -> &str {
+        self.native_source
+            .as_ref()
+            .map_or(self.shader.entry, |source| source.key.as_str())
+    }
+    pub(crate) fn entry(&self) -> &str {
+        self.native_source
+            .as_ref()
+            .map_or(self.shader.entry, |s| &s.entry)
+    }
 }
 pub struct ComputeBatch {
     pub(crate) synchronization: Option<(ResourceId, crate::native::interop::Synchronization)>,
@@ -160,12 +196,24 @@ impl ComputeBatch {
             .iter()
             .find(|a| a.entry == entry && !a.bindings.is_empty())
             .ok_or_else(|| format!("unknown native compute program: {entry}"))?;
+        self.dispatch_with_shader(shader, None, bindings, grid)
+    }
+    pub(crate) fn dispatch_with_shader(
+        &mut self,
+        shader: &'static NativeShaderArtifact,
+        native_source: Option<std::rc::Rc<super::program_shader::NativeSource>>,
+        bindings: &[(u32, ResourceId)],
+        grid: [u32; 3],
+    ) -> Result<()> {
         if grid.iter().any(|n| *n > 65535)
             || grid.iter().map(|v| *v as u64).product::<u64>() > u32::MAX as u64
         {
             return Err("native compute dispatch exceeds dimensions/addressing".into());
         }
-        let expected: Vec<_> = shader.bindings.iter().filter(|b| !b.internal).collect();
+        let layout = native_source
+            .as_ref()
+            .map_or(shader.bindings, |s| s.bindings.as_slice());
+        let expected: Vec<_> = layout.iter().filter(|b| !b.internal).collect();
         if bindings.len() != expected.len() {
             return Err("native compute binding count mismatch".into());
         }
@@ -195,7 +243,10 @@ impl ComputeBatch {
                 }
                 let texture_binding = matches!(
                     binding.kind,
-                    BindingKind::Texture | BindingKind::TextureWrite | BindingKind::TextureArray
+                    BindingKind::Texture
+                        | BindingKind::TextureWrite
+                        | BindingKind::TextureReadWrite
+                        | BindingKind::TextureArray
                 );
                 if texture_binding != matches!(self.resources[id.index], Resource::Texture(_)) {
                     return Err("native compute resource kind mismatch".into());
@@ -204,6 +255,15 @@ impl ComputeBatch {
                     && texture.array != (binding.kind == BindingKind::TextureArray)
                 {
                     return Err("native compute texture view dimension mismatch".into());
+                }
+                if let Resource::Texture(texture) = &self.resources[id.index]
+                    && matches!(
+                        binding.kind,
+                        BindingKind::TextureWrite | BindingKind::TextureReadWrite
+                    )
+                    && texture.format.bytes_per_pixel() != binding.size as usize
+                {
+                    return Err("native writable texture format mismatch".into());
                 }
             }
             if ordered
@@ -232,6 +292,7 @@ impl ComputeBatch {
         self.passes.push(Pass {
             initialization: None,
             shader,
+            native_source,
             bindings: ordered,
             grid,
         });

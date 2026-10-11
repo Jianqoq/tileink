@@ -301,4 +301,5 @@ fn effects_stop_at_every_failed_kernel_and_release_scratch() {
     }
 }
 
+mod graph_shader;
 mod work;

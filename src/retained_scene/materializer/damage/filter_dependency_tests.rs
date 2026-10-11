@@ -111,3 +111,98 @@ fn composing_a_farther_filter_cannot_revive_an_empty_nearer_clip() {
             .is_empty()
     );
 }
+
+#[test]
+fn retained_filter_damage_uses_the_encoded_physical_filter_at_high_dpi() {
+    let root = RetainedNodeId::for_owner(929_320);
+    let layer = RetainedNodeId::for_owner(929_321);
+    let leaf = RetainedNodeId::for_owner(929_322);
+    let mut child = Canvas::new(96, 64, 2.0);
+    child.push_rect(
+        Rect::new(8.0, 8.0, 10.0, 10.0),
+        crate::Radius::ZERO,
+        Color::BLACK,
+    );
+    let mut scene = RetainedScene::new(96, 64, 2.0, root).unwrap();
+    let descriptor = RetainedLayerDescriptor::Filter {
+        filter: filter::Filter::Offset { dx: 4.0, dy: -2.0 },
+        sample_region: Region::rect(Rect::new(8.0, 8.0, 18.0, 14.0), crate::Radius::ZERO),
+    };
+    scene
+        .transaction()
+        .insert_layer(
+            RetainedParent::content(root),
+            None,
+            layer,
+            descriptor.clone(),
+        )
+        .insert_scene(
+            RetainedParent::content(layer),
+            None,
+            leaf,
+            Rc::new(child),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+    let materializer = PersistentSceneMaterializer::new(&scene);
+    let changed = Bounds::new(16, 16, 20, 20);
+    let expected = Bounds::new(8, 8, 28, 28);
+    assert_eq!(
+        materializer.influenced_bounds(&scene, leaf, changed),
+        expected
+    );
+    assert_eq!(
+        materializer
+            .local_bounds_influence(layer, &descriptor)
+            .apply(changed),
+        expected
+    );
+}
+
+#[test]
+fn retained_mask_damage_uses_its_encoded_physical_region_at_high_dpi() {
+    let root = RetainedNodeId::for_owner(929_330);
+    let layer = RetainedNodeId::for_owner(929_331);
+    let leaf = RetainedNodeId::for_owner(929_332);
+    let mut child = Canvas::new(96, 64, 2.0);
+    child.push_rect(
+        Rect::new(8.0, 8.0, 10.0, 10.0),
+        crate::Radius::ZERO,
+        Color::BLACK,
+    );
+    let mut scene = RetainedScene::new(96, 64, 2.0, root).unwrap();
+    let descriptor = RetainedLayerDescriptor::Mask(crate::Mask {
+        kind: crate::MaskKind::Alpha,
+        region: Region::rect(Rect::new(8.0, 8.0, 18.0, 14.0), crate::Radius::ZERO),
+    });
+    scene
+        .transaction()
+        .insert_layer(
+            RetainedParent::content(root),
+            None,
+            layer,
+            descriptor.clone(),
+        )
+        .insert_scene(
+            RetainedParent::content(layer),
+            None,
+            leaf,
+            Rc::new(child),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+    let materializer = PersistentSceneMaterializer::new(&scene);
+    let changed = Bounds::new(16, 16, 20, 20);
+    assert_eq!(
+        materializer.influenced_bounds(&scene, leaf, changed),
+        changed
+    );
+    assert_eq!(
+        materializer
+            .local_bounds_influence(layer, &descriptor)
+            .apply(changed),
+        changed
+    );
+}

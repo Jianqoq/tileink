@@ -56,6 +56,7 @@ pub fn generate(
         ("filter-transfer", "filter/transfer.metal"),
         ("sdf-coverage", "validation/sdf.metal"),
         ("fine-main", "fine/main.metal"),
+        ("fine-brush", "validation/brush.metal"),
         ("scan-clear", "scan/clear.metal"),
         ("scan-count", "scan/count.metal"),
         ("scan-prefix-chunks", "scan/prefix_chunks.metal"),
@@ -83,6 +84,7 @@ pub fn generate(
         if matches!(
             family,
             "fine-main"
+                | "fine-brush"
                 | "sdf-coverage"
                 | "scan-count"
                 | "scan-emit"

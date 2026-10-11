@@ -14,7 +14,8 @@ use crate::shared::filter_config::FilterConfig;
 /// Retained surfaces pin their allocation: the pool skips pinned entries, so a
 /// new scratch lease cannot clear pixels still serving as retained history.
 pub(crate) struct SurfacePool {
-    context: NativeContext,
+    pub(super) context: NativeContext,
+    pub(super) shader_resources: super::shader_resources::ShaderResourcePool,
     resources: SceneResourcePool<NativeTexture>,
     scratch_resources: SceneResourcePool<NativeTexture>,
     #[cfg(any(feature = "dx12", feature = "vulkan"))]
@@ -25,6 +26,7 @@ impl SurfacePool {
     pub(crate) fn new(context: &NativeContext) -> Self {
         Self {
             context: context.clone(),
+            shader_resources: Default::default(),
             resources: SceneResourcePool::default(),
             scratch_resources: SceneResourcePool::default(),
             #[cfg(any(feature = "dx12", feature = "vulkan"))]
@@ -128,6 +130,7 @@ impl ComputeBatch {
             let mut pool = pool.borrow_mut();
             pool.resources.begin_frame();
             pool.scratch_resources.begin_frame();
+            pool.shader_resources.begin_frame();
             #[cfg(any(feature = "dx12", feature = "vulkan"))]
             pool.image_resources.begin_frame();
         }

@@ -68,10 +68,10 @@ impl Frame {
                     if clear::encode(&command, batch, pass, &resources)? {
                         continue;
                     }
-                    let pipeline = &device.pipelines[pass.shader.entry];
+                    let pipeline = &device.pipelines[pass.key()];
                     let encoder =
                         pass::PassEncoder::new(&command, &pipeline.state, batch, pass, &resources)?;
-                    for binding in pass.shader.bindings.iter().filter(|b| b.internal) {
+                    for binding in pass.artifact().bindings.iter().filter(|b| b.internal) {
                         let words = match binding.slot {
                             31 => vec![pass.grid[0], pass.grid[1], pass.grid[2], 0],
                             29 => {
@@ -120,6 +120,7 @@ impl Frame {
                                 }
                                 BindingKind::Texture
                                 | BindingKind::TextureWrite
+                                | BindingKind::TextureReadWrite
                                 | BindingKind::TextureArray => {
                                     encoder.texture(resource.texture()?, slot)
                                 }

@@ -59,13 +59,21 @@ pub(super) fn allocate(
                 Resource::Buffer(destination.clone())
             }
             Input::Texture(input) => {
-                if let Some(persistent) = &input.persistent {
+                let texture = if let Some(persistent) = &input.persistent {
                     let crate::native::runtime::texture::Allocation::Metal(texture) =
                         &persistent.state.allocation;
-                    Resource::Texture(texture.clone())
+                    texture.clone()
                 } else {
-                    let texture = memory::texture(device, input.size, input.layers, input.array)?;
-                    let row = input.size[0] as usize * 4;
+                    memory::texture_format(
+                        device,
+                        input.size,
+                        input.layers,
+                        input.array,
+                        input.format,
+                    )?
+                };
+                if !input.bytes.is_empty() {
+                    let row = input.size[0] as usize * input.format.bytes_per_pixel();
                     let pitch = row.next_multiple_of(256);
                     let image = pitch * input.size[1] as usize;
                     let mut bytes = vec![0; image * input.layers as usize];
@@ -78,14 +86,14 @@ pub(super) fn allocate(
                     }
                     let source = memory::upload(device, &bytes)?;
                     for layer in 0..input.layers as usize {
-                        // SAFETY: complete padded layer uploads into new storage.
+                        // SAFETY: complete padded layer uploads into owned storage.
                         unsafe {
                             encoder.copyFromBuffer_sourceOffset_sourceBytesPerRow_sourceBytesPerImage_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(&source,layer*image,pitch,image,memory::size([input.size[0],input.size[1],1]),&texture,layer,0,memory::origin([0,0]));
                         }
                     }
                     staging.push(source);
-                    Resource::Texture(texture)
                 }
+                Resource::Texture(texture)
             }
             Input::Sampler(filter) => {
                 let descriptor = MTLSamplerDescriptor::new();

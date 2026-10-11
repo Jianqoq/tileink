@@ -71,6 +71,7 @@ impl NativeContext {
                 initialized: std::cell::Cell::new(initialized),
                 content_version: std::cell::Cell::new(0),
             }),
+            format: crate::ShaderTextureFormat::Rgba8Unorm,
             context: self.clone(),
             size,
             layers: 1,

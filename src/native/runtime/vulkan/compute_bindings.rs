@@ -13,7 +13,7 @@ impl Frame {
         let device = &self.device;
         let gpu = &self.resources;
         unsafe {
-            for binding in pass.shader.bindings {
+            for binding in pass.artifact().bindings {
                 let id = if binding.internal {
                     None
                 } else {
@@ -70,7 +70,10 @@ impl Frame {
                 }
                 if matches!(
                     binding.kind,
-                    BindingKind::Texture | BindingKind::TextureWrite | BindingKind::TextureArray
+                    BindingKind::Texture
+                        | BindingKind::TextureWrite
+                        | BindingKind::TextureReadWrite
+                        | BindingKind::TextureArray
                 ) {
                     let id = id.unwrap();
                     let GpuResource::Image(image) = &gpu[id.index()] else {

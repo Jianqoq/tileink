@@ -105,7 +105,11 @@ mod tests {
     }
 }
 
-mod shaders;
+#[cfg(tileink_native_runtime)]
+mod shader_batch;
+pub(crate) mod shaders;
+#[cfg(tileink_native_runtime)]
+pub use shader_batch::{NativeShaderBatch, NativeShaderResource};
 pub use shaders::{NativeShaderArtifact, SHADER_ARTIFACTS};
 
 #[cfg(tileink_native_runtime)]
@@ -116,7 +120,7 @@ pub use shaders::{NativeShaderArtifact, SHADER_ARTIFACTS};
         reason = "Low-level conformance entry points are exercised by the native GPU matrix"
     )
 )]
-mod runtime;
+pub(crate) mod runtime;
 
 pub mod interop;
 

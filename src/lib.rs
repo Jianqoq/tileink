@@ -8,6 +8,12 @@ mod svg;
 mod text;
 
 pub use shared::gpu_constants::TILE_SIZE;
+pub use shared::shader::{
+    ProgramBrush, ShaderBinding, ShaderBindingKind, ShaderConfig, ShaderConfigDescriptor,
+    ShaderDispatch, ShaderError, ShaderExtent, ShaderInput, ShaderKernel, ShaderPass,
+    ShaderPipeline, ShaderProgram, ShaderResource, ShaderResourceKind, ShaderSampler,
+    ShaderSources, ShaderTextureFormat,
+};
 pub const TILE_SCALE: f32 = 1.0 / TILE_SIZE as f32;
 pub const BLOCK_SIZE: u32 = 16 * 16;
 
@@ -35,7 +41,9 @@ pub use retained_scene::{
 };
 pub use shared::{
     bounds::Bounds,
-    brush::{Brush, PatternBrush, PatternSampling},
+    brush::{
+        Brush, MeshGradient, MeshGradientError, MeshInterpolation, PatternBrush, PatternSampling,
+    },
     fill::FillRule,
     image::{Image, ImageSaveError},
     image_resource::ImageKey,
@@ -99,3 +107,6 @@ pub use native::interop as native_interop;
 pub use native::{NativeTargetState, NativeTargetSubmission, NativeTargetUse};
 
 mod backend_features;
+
+#[cfg(tileink_native_runtime)]
+pub use native::{NativeShaderBatch, NativeShaderResource};

@@ -42,7 +42,13 @@ impl TextureLayout {
             footprints,
             size: usize::try_from(total)?,
             rows: desc.Height as usize,
-            row_bytes: desc.Width as usize * 4,
+            row_bytes: desc.Width as usize
+                * match desc.Format {
+                    DXGI_FORMAT_R8G8B8A8_UNORM => 4,
+                    DXGI_FORMAT_R16G16B16A16_FLOAT => 8,
+                    DXGI_FORMAT_R32G32B32A32_FLOAT => 16,
+                    _ => return Err("unsupported compute texture format".into()),
+                },
         })
     }
     fn rows(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
@@ -137,6 +143,7 @@ pub(super) fn upload(
                 device,
                 input.size,
                 input.layers,
+                input.format,
                 D3D12_RESOURCE_STATE_COPY_DEST,
             )?
         };
@@ -193,6 +200,7 @@ pub(super) fn allocate(
     device: &ID3D12Device,
     size: [u32; 2],
     layers: u32,
+    format: crate::ShaderTextureFormat,
     state: D3D12_RESOURCE_STATES,
 ) -> Result<ID3D12Resource> {
     unsafe {
@@ -202,7 +210,11 @@ pub(super) fn allocate(
             Height: size[1],
             DepthOrArraySize: u16::try_from(layers)?,
             MipLevels: 1,
-            Format: DXGI_FORMAT_R8G8B8A8_UNORM,
+            Format: match format {
+                crate::ShaderTextureFormat::Rgba8Unorm => DXGI_FORMAT_R8G8B8A8_UNORM,
+                crate::ShaderTextureFormat::Rgba16Float => DXGI_FORMAT_R16G16B16A16_FLOAT,
+                crate::ShaderTextureFormat::Rgba32Float => DXGI_FORMAT_R32G32B32A32_FLOAT,
+            },
             SampleDesc: DXGI_SAMPLE_DESC {
                 Count: 1,
                 Quality: 0,

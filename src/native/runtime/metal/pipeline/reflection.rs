@@ -4,7 +4,7 @@ use super::*;
 #[allow(deprecated)]
 pub(super) fn uniform(
     argument: &MTLArgument,
-    shader: &NativeShaderArtifact,
+    shader: &ShaderArtifact<'_>,
     slot: u32,
 ) -> Result<()> {
     let binding = shader
@@ -15,11 +15,13 @@ pub(super) fn uniform(
     if argument.bufferDataSize() != binding.size as usize {
         return Err(format!("Metal {} uniform {} size mismatch", shader.entry, slot).into());
     }
-    let expected = shader
-        .uniforms
-        .iter()
-        .find(|u| u.slot == slot)
-        .ok_or("missing Metal uniform layout")?;
+    let expected = shader.uniforms.iter().find(|u| u.slot == slot);
+    let Some(expected) = expected else {
+        if shader.format == "user" {
+            return Ok(());
+        }
+        return Err("missing Metal uniform layout".into());
+    };
     let mut fields = Vec::new();
     if let Some(structure) = argument.bufferStructType() {
         for member in structure.members() {

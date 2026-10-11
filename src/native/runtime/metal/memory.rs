@@ -38,6 +38,21 @@ pub(super) fn texture(
     layers: u32,
     array: bool,
 ) -> Result<Object<dyn MTLTexture>> {
+    texture_format(
+        device,
+        size,
+        layers,
+        array,
+        crate::ShaderTextureFormat::Rgba8Unorm,
+    )
+}
+pub(super) fn texture_format(
+    device: &ProtocolDevice,
+    size: [u32; 2],
+    layers: u32,
+    array: bool,
+    format: crate::ShaderTextureFormat,
+) -> Result<Object<dyn MTLTexture>> {
     if size.contains(&0)
         || size.iter().any(|&n| n > 16384)
         || layers == 0
@@ -52,7 +67,11 @@ pub(super) fn texture(
     } else {
         MTLTextureType::Type2D
     });
-    descriptor.setPixelFormat(MTLPixelFormat::RGBA8Unorm);
+    descriptor.setPixelFormat(match format {
+        crate::ShaderTextureFormat::Rgba8Unorm => MTLPixelFormat::RGBA8Unorm,
+        crate::ShaderTextureFormat::Rgba16Float => MTLPixelFormat::RGBA16Float,
+        crate::ShaderTextureFormat::Rgba32Float => MTLPixelFormat::RGBA32Float,
+    });
     // SAFETY: dimensions were checked against the supported Metal family limits.
     unsafe {
         descriptor.setWidth(size[0] as usize);

@@ -26,6 +26,7 @@ pub(crate) mod pixel;
 pub(crate) mod scan_line;
 pub(crate) mod scene_arena;
 pub(crate) mod sdf;
+pub(crate) mod shader;
 pub(crate) mod tile_seg_range;
 
 pub(crate) mod fine_config;

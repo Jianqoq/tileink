@@ -6,13 +6,14 @@ use super::*;
 pub(crate) enum FilterDependency {
     Local(i32),
     WholeRegion,
+    WholeCanvas,
 }
 
 impl FilterDependency {
     pub(crate) fn local_radius(self) -> Option<i32> {
         match self {
             Self::Local(radius) => Some(radius),
-            Self::WholeRegion => None,
+            Self::WholeRegion | Self::WholeCanvas => None,
         }
     }
 
@@ -22,7 +23,7 @@ impl FilterDependency {
         }
         match self {
             Self::Local(radius) => output.outset(radius).intersect(domain),
-            Self::WholeRegion => domain,
+            Self::WholeRegion | Self::WholeCanvas => domain,
         }
     }
 
@@ -33,7 +34,7 @@ impl FilterDependency {
         }
         match self {
             Self::Local(radius) => changed.outset(radius).intersect(output),
-            Self::WholeRegion => output,
+            Self::WholeRegion | Self::WholeCanvas => output,
         }
     }
 
@@ -42,7 +43,7 @@ impl FilterDependency {
     pub(crate) fn damage_outset(self, domain: Bounds) -> i32 {
         match self {
             Self::Local(radius) => radius,
-            Self::WholeRegion => domain
+            Self::WholeRegion | Self::WholeCanvas => domain
                 .width()
                 .max(domain.height())
                 .saturating_sub(1)
@@ -53,20 +54,23 @@ impl FilterDependency {
     fn followed_by(self, next: Self) -> Self {
         match (self, next) {
             (Self::Local(a), Self::Local(b)) => Self::Local(a.saturating_add(b)),
+            (Self::WholeCanvas, _) | (_, Self::WholeCanvas) => Self::WholeCanvas,
             _ => Self::WholeRegion,
         }
     }
 }
 
-pub(crate) fn filter_input_bounds(filter: &Filter, region: &Region) -> Bounds {
+pub(crate) fn filter_input_bounds(filter: &Filter, region: &Region, canvas: Bounds) -> Bounds {
     match filter_dependency(filter) {
         FilterDependency::Local(radius) => region_bounds(region).outset(radius),
         FilterDependency::WholeRegion => unclipped_filtered_region_bounds(filter, region),
+        FilterDependency::WholeCanvas => canvas,
     }
 }
 
 pub(crate) fn filter_dependency(filter: &Filter) -> FilterDependency {
     match filter {
+        Filter::ShaderPipeline(pipeline) => pipeline_dependency(pipeline),
         // Rebuild a dirty pyramid in its stable source domain. Cropping a partial
         // rebuild changes decimation phase and can produce seams in retained output.
         Filter::ProgressiveBlur(_) => FilterDependency::WholeRegion,
@@ -108,6 +112,7 @@ fn convolution_dependency(matrix: &ConvolveMatrix) -> FilterDependency {
 fn primitive_dependency(primitive: &FilterPrimitive) -> FilterDependency {
     match &primitive.kind {
         FilterPrimitiveKind::Filter(filter) => filter_dependency(filter),
+        FilterPrimitiveKind::ShaderPipeline { pipeline, .. } => pipeline_dependency(pipeline),
         FilterPrimitiveKind::DisplacementMap(map) => {
             FilterDependency::Local((map.scale_x.abs().max(map.scale_y.abs()) * 0.5).ceil() as i32)
         }
@@ -124,4 +129,14 @@ fn bounds_distance(a: Bounds, b: Bounds) -> i32 {
         .max((a.y0 - b.y0).abs())
         .max((a.x1 - b.x1).abs())
         .max((a.y1 - b.y1).abs())
+}
+
+fn pipeline_dependency(pipeline: &crate::ShaderPipeline) -> FilterDependency {
+    if pipeline.reads_input() {
+        pipeline
+            .sample_outset()
+            .map_or(FilterDependency::WholeCanvas, FilterDependency::Local)
+    } else {
+        FilterDependency::Local(0)
+    }
 }

@@ -44,9 +44,9 @@ fn dispatch(
         config.output[3].div_ceil(8),
         1,
     ];
-    // SAFETY: encode validates image domains, all pixel owners are unique, reductions
-    // guard each source load and resolve guards the bounded level-table indices.
-    unsafe { batch.dispatch(entry, &bindings, grid) }
+    // The same pipeline executor owns both these compiled kernels and user
+    // kernels; the stage retains its image-domain and level-table validation.
+    crate::native::runtime::program::filter::pipeline::record(batch, entry, &bindings, grid)
 }
 
 pub(crate) fn encode(

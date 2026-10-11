@@ -34,7 +34,7 @@ pub struct Vulkan {
     pending: Pending<work::Work>,
     frame_cache: frame_cache::Cache,
     properties: vk::PhysicalDeviceProperties,
-    compute_pipelines: BTreeMap<&'static str, compute_pipeline::Pipeline>,
+    compute_pipelines: BTreeMap<String, compute_pipeline::Pipeline>,
     family: u32,
     max_storage_buffer_bytes: u32,
     max_image_width: u32,
@@ -83,9 +83,11 @@ impl Vulkan {
         size: [u32; 2],
         layers: u32,
         array: bool,
+        format: crate::ShaderTextureFormat,
     ) -> Result<super::texture::Allocation> {
         let descriptor = super::compute::Texture {
             size,
+            format,
             layers,
             array,
             bytes: Vec::new().into(),
@@ -146,6 +148,17 @@ impl Vulkan {
                 _ => return Err("DX12 synchronization requires a DX12 context".into()),
             }
         }
+        if self.pending.len() == 0
+            && self
+                .compute_pipelines
+                .keys()
+                .filter(|k| k.starts_with("program:"))
+                .count()
+                >= 128
+        {
+            self.compute_pipelines
+                .retain(|key, _| !key.starts_with("program:"));
+        }
         for pass in batch.passes() {
             if !self.texture_tables
                 && pass
@@ -160,7 +173,7 @@ impl Vulkan {
                 &self.device,
                 &self.properties,
                 &mut self.compute_pipelines,
-                pass.shader.entry,
+                pass,
             )?;
         }
         let frame = compute::Frame::record(

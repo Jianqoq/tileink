@@ -244,7 +244,12 @@ fn propagate_list_damage(
                         filter: value,
                         sample_region,
                     } => {
-                        let source_changed = propagate_filter_damage(value, sample_region, damage);
+                        let source_changed = propagate_filter_damage(
+                            value,
+                            sample_region,
+                            Bounds::canvas(canvas.physical_width(), canvas.physical_height()),
+                            damage,
+                        );
                         if source_changed
                             || retained_owner
                                 .is_some_and(|id| pending.node_bounds.contains_key(&id))
@@ -281,7 +286,12 @@ fn propagate_list_damage(
                             dirty_backdrops,
                             retained_owner,
                         );
-                        propagate_filter_damage(value, sample_region, damage);
+                        propagate_filter_damage(
+                            value,
+                            sample_region,
+                            Bounds::canvas(canvas.physical_width(), canvas.physical_height()),
+                            damage,
+                        );
                         damage.finish_scope(scope);
                     }
                     Layer::Isolate | Layer::Opacity(_) | Layer::Blend(_)
@@ -348,10 +358,11 @@ fn propagate_list_damage(
 fn propagate_filter_damage(
     value: &filter::Filter,
     sample_region: &Region,
+    canvas: Bounds,
     damage: &mut DamageBuffer,
 ) -> bool {
     let dependency = filter::filter_dependency(value);
-    let input = filter::filter_input_bounds(value, sample_region);
+    let input = filter::filter_input_bounds(value, sample_region, canvas);
     let output = filter::unclipped_filtered_region_bounds(value, sample_region);
     let initial_len = damage.current().len();
     let mut changed = false;
@@ -396,7 +407,12 @@ mod filter_dependency_tests {
             operator: filter::MorphologyOperator::Erode,
         };
         let mut damage = DamageBuffer::new(&[Bounds::new(32, 24, 33, 25)]);
-        assert!(propagate_filter_damage(&value, &region(), &mut damage));
+        assert!(propagate_filter_damage(
+            &value,
+            &region(),
+            Bounds::canvas(128, 128),
+            &mut damage
+        ));
         assert!(
             damage.current().contains(&Bounds::new(31, 23, 34, 26)),
             "output extent zero does not mean pointwise damage"
@@ -417,7 +433,12 @@ mod filter_dependency_tests {
             preserve_alpha: false,
         });
         let mut damage = DamageBuffer::new(&[Bounds::new(47, 24, 48, 25)]);
-        assert!(propagate_filter_damage(&value, &region(), &mut damage));
+        assert!(propagate_filter_damage(
+            &value,
+            &region(),
+            Bounds::canvas(128, 128),
+            &mut damage
+        ));
         assert!(damage.current().contains(&Bounds::new(16, 16, 48, 48)));
         assert!(
             damage
@@ -426,7 +447,12 @@ mod filter_dependency_tests {
                 .all(|bounds| *bounds == bounds.intersect(Bounds::new(16, 16, 48, 48)))
         );
         let mut outside = DamageBuffer::new(&[Bounds::new(96, 96, 97, 97)]);
-        assert!(!propagate_filter_damage(&value, &region(), &mut outside));
+        assert!(!propagate_filter_damage(
+            &value,
+            &region(),
+            Bounds::canvas(128, 128),
+            &mut outside
+        ));
         assert_eq!(outside.current(), &[Bounds::new(96, 96, 97, 97)]);
     }
 }

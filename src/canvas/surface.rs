@@ -1,5 +1,8 @@
 use super::*;
 
+#[cfg(test)]
+mod tests;
+
 impl Canvas {
     pub fn new(logical_width: u32, logical_height: u32, scale_factor: f32) -> Self {
         let scale = valid_scale_factor(scale_factor);
@@ -277,6 +280,10 @@ impl Canvas {
                 std_dev_y: std_dev_y * scale,
                 sampling,
             },
+            Filter::ShaderPipeline(mut pipeline) => {
+                pipeline.transform = scale_brush_transform(pipeline.transform, 1.0 / scale);
+                Filter::ShaderPipeline(pipeline)
+            }
             Filter::Flood { brush } => Filter::Flood {
                 brush: self.physical_brush(brush),
             },
@@ -314,6 +321,13 @@ impl Canvas {
     ) -> FilterPrimitiveKind {
         let scale = self.scale_f32();
         match kind {
+            FilterPrimitiveKind::ShaderPipeline {
+                mut pipeline,
+                inputs,
+            } => {
+                pipeline.transform = scale_brush_transform(pipeline.transform, 1.0 / scale);
+                FilterPrimitiveKind::ShaderPipeline { pipeline, inputs }
+            }
             FilterPrimitiveKind::Filter(filter) => {
                 FilterPrimitiveKind::Filter(Box::new(self.physical_filter(*filter)))
             }
@@ -392,6 +406,14 @@ impl Canvas {
                 gradient.bounds[2] *= scale;
                 gradient.bounds[3] *= scale;
                 Brush::FourCorner(gradient)
+            }
+            Brush::Mesh(mut gradient) => {
+                gradient.transform = scale_brush_transform(gradient.transform, inv_scale);
+                Brush::Mesh(gradient)
+            }
+            Brush::Program(mut program) => {
+                program.0.transform = scale_brush_transform(program.0.transform, inv_scale);
+                Brush::Program(program)
             }
             Brush::Pattern(mut pattern) => {
                 pattern.transform = scale_brush_transform(pattern.transform, inv_scale);

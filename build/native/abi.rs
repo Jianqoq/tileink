@@ -129,6 +129,15 @@ fn identifier(name: &str) -> bool {
         && name.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
 }
 pub fn validate(abi: &Interface) -> io::Result<()> {
+    validate_inner(abi, false)
+}
+/// User-owned constant blocks declare byte size; their field layout belongs to
+/// the supplied native source, while generated built-in ABIs retain strict fields.
+#[allow(dead_code)]
+pub fn validate_user(abi: &Interface) -> io::Result<()> {
+    validate_inner(abi, true)
+}
+fn validate_inner(abi: &Interface, raw_uniforms: bool) -> io::Result<()> {
     if abi.descriptor_set != 0
         || abi.workgroup.iter().any(|&n| n == 0 || n > 1024)
         || abi.workgroup.iter().map(|&n| u64::from(n)).product::<u64>() > 1024
@@ -149,7 +158,11 @@ pub fn validate(abi: &Interface) -> io::Result<()> {
         if r.kind == Kind::Uniform {
             let mut end = 0;
             let mut names = BTreeSet::new();
-            if r.fields.is_empty() || r.size > 65536 {
+            if (r.fields.is_empty() && !raw_uniforms)
+                || r.size == 0
+                || !r.size.is_multiple_of(4)
+                || r.size > 65536
+            {
                 return Err(invalid("invalid uniform size"));
             }
             for f in &r.fields {
@@ -163,10 +176,15 @@ pub fn validate(abi: &Interface) -> io::Result<()> {
                 }
                 end += f.lanes * 4;
             }
-            if end != r.size {
+            if !(raw_uniforms && r.fields.is_empty()) && end != r.size {
                 return Err(invalid("invalid uniform size"));
             }
-        } else if r.size != if r.kind == Kind::Sampler { 0 } else { 4 } || !r.fields.is_empty() {
+        } else if !(match r.kind {
+            Kind::Sampler => r.size == 0,
+            Kind::TextureWrite => matches!(r.size, 4 | 8 | 16),
+            _ => r.size == 4,
+        }) || !r.fields.is_empty()
+        {
             return Err(invalid("invalid resource size"));
         }
         let valid_internal = r.kind == Kind::Uniform

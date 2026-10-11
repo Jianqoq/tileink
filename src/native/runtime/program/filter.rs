@@ -1,3 +1,5 @@
+#[path = "filter/pipeline.rs"]
+pub(crate) mod pipeline;
 use crate::native::runtime::{
     Result,
     compute::{ComputeBatch, ResourceId},

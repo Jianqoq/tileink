@@ -67,6 +67,16 @@ impl<A: FilterAdapter> FilterExecutor<'_, A> {
     ) -> Option<RenderTargetId> {
         let region = primitive.region.intersect(bounds);
         match &primitive.kind {
+            filter_model::FilterPrimitiveKind::ShaderPipeline { pipeline, inputs } => self
+                .apply_shader_graph_primitive(
+                    source_graphic,
+                    bounds,
+                    region,
+                    pipeline,
+                    inputs,
+                    outputs,
+                    source_alpha,
+                ),
             filter_model::FilterPrimitiveKind::Image { brush } => {
                 let output = self.acquire_graph_output(bounds)?;
                 if self.adapter.encode(FilterKernel::FloodRegionToTarget {

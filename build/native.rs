@@ -1,5 +1,5 @@
 //! Native shader build orchestration. Runtime loads embedded compiled artifacts;
-//! source compilers run only during builds, with a persistent content cache.
+//! built-in sources compile during builds. Application shaders compile at runtime.
 #[path = "native/abi.rs"]
 mod abi;
 #[path = "native/cache.rs"]
@@ -33,6 +33,10 @@ use std::{
 };
 
 pub fn generate() -> io::Result<()> {
+    println!(
+        "cargo:rustc-env=TILEINK_BUILD_TARGET={}",
+        env::var("TARGET").unwrap()
+    );
     let root = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let out = PathBuf::from(env::var_os("OUT_DIR").unwrap());
     for variable in [
@@ -94,6 +98,9 @@ pub fn generate() -> io::Result<()> {
             .or_else(|| env::var_os("TILEINK_DXC_PATH"))
             .map(PathBuf::from);
         let compiler = Dxc::discover(toolchain::resolve(explicit, &roots)?)?;
+        for path in compiler.identity["files"].as_object().unwrap().keys() {
+            println!("cargo:rerun-if-changed={path}");
+        }
         let target_triple = env::var("TARGET").unwrap();
         let cache_root = env::var_os("TILEINK_NATIVE_SHADER_CACHE_DIR")
             .map(PathBuf::from)

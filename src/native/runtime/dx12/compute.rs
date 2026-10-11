@@ -30,7 +30,7 @@ impl Frame {
     pub fn record(
         device: &ID3D12Device,
         batch: &ComputeBatch,
-        pipelines: &BTreeMap<&'static str, Pipeline>,
+        pipelines: &BTreeMap<String, Pipeline>,
         staging: &mut super::buffer_cache::Pool,
         storage: &mut super::buffer_cache::Pool,
         tables: &mut Vec<super::compute_tables::Tables>,
@@ -132,7 +132,7 @@ impl Frame {
                         continue;
                     }
                 };
-                let pipeline = &pipelines[pass.shader.entry];
+                let pipeline = &pipelines[pass.key()];
                 if batch.skip_initialization(pass) {
                     continue;
                 }

@@ -18,6 +18,7 @@ impl FilterEncoding<'_, '_> {
             ProgressiveBlur { bounds, .. }
             | ClearRenderRegion { bounds, .. }
             | FloodRegionToTarget { bounds, .. }
+            | ShaderPipelineToTarget { bounds, .. }
             | BuildDropShadowMaskToTarget { bounds, .. }
             | SourceAlphaToTarget { bounds, .. }
             | SourceOverFilterInput { bounds, .. }
@@ -48,6 +49,23 @@ impl FilterEncoding<'_, '_> {
         let tiles = self.work.as_deref();
         let image = |target| e.targets.get(target).map(Surface::image);
         match kernel {
+            ShaderPipelineToTarget {
+                inputs,
+                target,
+                pipeline,
+                ..
+            } => crate::native::runtime::program_shader::record_pipeline(
+                e.batch,
+                pipeline,
+                c,
+                tiles,
+                &inputs
+                    .iter()
+                    .copied()
+                    .map(image)
+                    .collect::<Result<Vec<_>>>()?,
+                image(target)?,
+            ),
             ProgressiveBlur {
                 target,
                 bounds,

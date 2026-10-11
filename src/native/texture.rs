@@ -10,6 +10,7 @@ pub struct NativeTexture {
     pub(super) state: std::rc::Rc<super::runtime::texture::State>,
     pub(super) context: NativeContext,
     pub(super) size: [u32; 2],
+    pub(crate) format: crate::ShaderTextureFormat,
     pub(super) layers: u32,
     pub(super) array: bool,
 }

@@ -2,7 +2,7 @@ use super::{
     Result,
     validation::{Validation, cache_retryable},
 };
-use crate::native::shaders::{BindingKind, NativeShaderArtifact};
+use crate::native::shaders::{BindingKind, ShaderArtifact};
 use std::{collections::BTreeMap, mem::ManuallyDrop};
 use windows::{
     Win32::Graphics::{Direct3D12::*, Dxgi::*},
@@ -29,24 +29,45 @@ pub fn ensure(
     device: &ID3D12Device,
     identity: &[u8],
     messages: &Validation,
-    pipelines: &mut BTreeMap<&'static str, Pipeline>,
-    entry: &'static str,
+    pipelines: &mut BTreeMap<String, Pipeline>,
+    pass: &crate::native::runtime::compute::Pass,
 ) -> Result<()> {
-    if pipelines.contains_key(entry) {
+    let entry = pass.entry();
+    if pipelines.contains_key(pass.key()) {
         return Ok(());
     }
-    let shader = crate::NATIVE_SHADER_ARTIFACTS
-        .iter()
-        .find(|a| a.format == "dxil" && a.entry == entry && !a.bindings.is_empty())
-        .ok_or("native DX12 compute shader unavailable")?;
-    pipelines.insert(entry, create(device, identity, messages, shader)?);
+    let shader = if pass.native_source.is_some() {
+        pass.artifact()
+    } else {
+        crate::NATIVE_SHADER_ARTIFACTS
+            .iter()
+            .find(|a| a.format == "dxil" && a.entry == entry && !a.bindings.is_empty())
+            .ok_or("native DX12 compute shader unavailable")?
+            .to_owned()
+    };
+    let compiled = pass
+        .native_source
+        .as_ref()
+        .map(|source| crate::native::runtime::program_shader::dxc::compile(source, entry, "dxil"))
+        .transpose()?;
+    let (bytes, key) = compiled
+        .as_ref()
+        .map_or((shader.bytes, shader.cache_key), |s| {
+            (s.bytes.as_slice(), s.key.as_str())
+        });
+    pipelines.insert(
+        pass.key().to_owned(),
+        create(device, identity, messages, &shader, bytes, key)?,
+    );
     Ok(())
 }
 fn create(
     device: &ID3D12Device,
     identity: &[u8],
     messages: &Validation,
-    shader: &NativeShaderArtifact,
+    shader: &ShaderArtifact<'_>,
+    shader_bytes: &[u8],
+    shader_key: &str,
 ) -> Result<Pipeline> {
     unsafe {
         let table = |sampler: bool| -> Result<Vec<D3D12_DESCRIPTOR_RANGE>> {
@@ -65,9 +86,9 @@ fn create(
                         | BindingKind::Texture
                         | BindingKind::TextureArray
                         | BindingKind::TextureTable => D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
-                        BindingKind::Write | BindingKind::TextureWrite => {
-                            D3D12_DESCRIPTOR_RANGE_TYPE_UAV
-                        }
+                        BindingKind::Write
+                        | BindingKind::TextureWrite
+                        | BindingKind::TextureReadWrite => D3D12_DESCRIPTOR_RANGE_TYPE_UAV,
                     },
                     NumDescriptors: b.count,
                     BaseShaderRegister: b.slot,
@@ -141,8 +162,8 @@ fn create(
             let mut desc = D3D12_COMPUTE_PIPELINE_STATE_DESC {
                 pRootSignature: ManuallyDrop::new(Some(signature.clone())),
                 CS: D3D12_SHADER_BYTECODE {
-                    pShaderBytecode: shader.bytes.as_ptr().cast(),
-                    BytecodeLength: shader.bytes.len(),
+                    pShaderBytecode: shader_bytes.as_ptr().cast(),
+                    BytecodeLength: shader_bytes.len(),
                 },
                 CachedPSO: D3D12_CACHED_PIPELINE_STATE {
                     pCachedBlob: if data.is_empty() {
@@ -166,7 +187,7 @@ fn create(
         };
         let hit = super::super::pipeline_cache::load_or_create_for_layout(
             identity,
-            shader.cache_key,
+            shader_key,
             if samplers.is_some() {
                 b"native-compute-sampler-table-v1"
             } else {

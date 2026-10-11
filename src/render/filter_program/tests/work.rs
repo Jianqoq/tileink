@@ -1,4 +1,55 @@
 use super::*;
+#[test]
+fn shader_pipeline_crops_partial_output_and_releases_failed_scratch() {
+    use crate::{
+        ShaderBinding, ShaderBindingKind, ShaderDispatch, ShaderExtent, ShaderKernel, ShaderPass,
+        ShaderPipeline, ShaderResource, ShaderSources, ShaderTextureFormat,
+    };
+    let kernel = ShaderKernel::new(
+        ShaderSources {
+            metal: Some("native".into()),
+            hlsl: None,
+        },
+        "main",
+        [8, 8, 1],
+        vec![ShaderBinding {
+            name: "output".into(),
+            slot: 3,
+            kind: ShaderBindingKind::WriteTexture(ShaderTextureFormat::Rgba8Unorm),
+        }],
+    )
+    .unwrap();
+    let filter = ShaderPipeline::new(
+        vec![ShaderResource::Output],
+        vec![ShaderPass {
+            kernel,
+            bindings: vec![(3, 0)],
+            dispatch: ShaderDispatch::Image(ShaderExtent::FULL),
+        }],
+    )
+    .unwrap()
+    .into();
+    for failure in [None, Some(1), Some(2)] {
+        let mut r = active_recorder();
+        r.fail_kernel = failure;
+        assert_eq!(
+            FilterExecutor::new(&mut r).apply_filter(
+                RenderTargetId::Main,
+                Bounds::new(16, 16, 32, 32),
+                &filter,
+                None,
+                false,
+                &mut FilterCursors::default()
+            ),
+            failure.is_none()
+        );
+        assert!(r.live.is_empty());
+        if failure.is_none() {
+            assert_eq!(r.kernels.len(), 2);
+            assert!(r.kernels[1].starts_with("CopyRegionToTarget"));
+        }
+    }
+}
 
 fn active_recorder() -> Recorder {
     let mut active = DamageTiles::new((64, 48));
@@ -144,5 +195,31 @@ fn glass_selects_sampled_or_materialized_blur_and_releases_failed_outputs() {
                 );
             }
         }
+    }
+}
+
+#[test]
+fn sampled_programs_release_their_immutable_input_output_on_every_exit() {
+    let filter = crate::ShaderProgram::new(
+        crate::ShaderSources {
+            metal: Some("kernel void sample() {}".into()),
+            hlsl: None,
+        },
+        "sample",
+        crate::ShaderInput::Sampled { radius: 1.0 },
+        0,
+    )
+    .unwrap()
+    .filter([])
+    .unwrap()
+    .into();
+    for failure in [None, Some(1), Some(2)] {
+        let mut recorder = active_recorder();
+        recorder.fail_kernel = failure;
+        assert_eq!(run(&mut recorder, &filter), failure.is_none());
+        assert!(recorder.live.is_empty());
+        assert!(recorder.kernels[0].contains("inputs: [Main]"));
+        assert!(recorder.kernels[0].contains("target: Scratch"));
+        assert_eq!(recorder.kernels.len(), failure.unwrap_or(2));
     }
 }

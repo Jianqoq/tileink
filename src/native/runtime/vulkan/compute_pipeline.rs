@@ -17,23 +17,41 @@ pub fn descriptor(kind: BindingKind) -> vk::DescriptorType {
         BindingKind::Texture | BindingKind::TextureArray | BindingKind::TextureTable => {
             vk::DescriptorType::SAMPLED_IMAGE
         }
-        BindingKind::TextureWrite => vk::DescriptorType::STORAGE_IMAGE,
+        BindingKind::TextureWrite | BindingKind::TextureReadWrite => {
+            vk::DescriptorType::STORAGE_IMAGE
+        }
         BindingKind::Read | BindingKind::Write => vk::DescriptorType::STORAGE_BUFFER,
     }
 }
 pub fn ensure(
     device: &ash::Device,
     properties: &vk::PhysicalDeviceProperties,
-    pipelines: &mut BTreeMap<&'static str, Pipeline>,
-    entry: &str,
+    pipelines: &mut BTreeMap<String, Pipeline>,
+    pass: &crate::native::runtime::compute::Pass,
 ) -> Result<()> {
-    if pipelines.contains_key(entry) {
+    let entry = pass.entry();
+    if pipelines.contains_key(pass.key()) {
         return Ok(());
     }
-    let artifact = crate::NATIVE_SHADER_ARTIFACTS
-        .iter()
-        .find(|a| a.format == "spirv" && a.entry == entry && !a.bindings.is_empty())
-        .ok_or("missing native SPIR-V compute artifact")?;
+    let artifact = if pass.native_source.is_some() {
+        pass.artifact()
+    } else {
+        crate::NATIVE_SHADER_ARTIFACTS
+            .iter()
+            .find(|a| a.format == "spirv" && a.entry == entry && !a.bindings.is_empty())
+            .ok_or("missing native SPIR-V compute artifact")?
+            .to_owned()
+    };
+    let compiled = pass
+        .native_source
+        .as_ref()
+        .map(|source| crate::native::runtime::program_shader::dxc::compile(source, entry, "spirv"))
+        .transpose()?;
+    let (bytes, key) = compiled
+        .as_ref()
+        .map_or((artifact.bytes, artifact.cache_key), |s| {
+            (s.bytes.as_slice(), s.key.as_str())
+        });
     super::limits::descriptors(artifact.bindings, &properties.limits)?;
     super::limits::workgroup(
         artifact.workgroup,
@@ -67,8 +85,7 @@ pub fn ensure(
             None,
         )?;
         let name = CString::new(entry)?;
-        let words: Vec<_> = artifact
-            .bytes
+        let words: Vec<_> = bytes
             .chunks_exact(4)
             .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
             .collect();
@@ -118,7 +135,7 @@ pub fn ensure(
             };
             let loaded = super::super::pipeline_cache::load_or_create_for_layout(
                 &identity,
-                artifact.cache_key,
+                key,
                 b"native-compute-buffer-table-v1",
                 |data| {
                     if !super::pipeline::cache_header_matches(
@@ -152,7 +169,7 @@ pub fn ensure(
             "native Vulkan compute {entry}: {}",
             if hit { "cache hit" } else { "compiled" }
         );
-        pipelines.insert(artifact.entry, result);
+        pipelines.insert(pass.key().to_owned(), result);
         Ok(())
     }
 }

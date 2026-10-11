@@ -13,6 +13,8 @@ pub(crate) mod brush {
     pub(crate) const GPU_BRUSH_FOUR_CORNER: u32 = 5;
     pub(crate) const GPU_BRUSH_PATTERN: u32 = 6;
     pub(crate) const GPU_BRUSH_PATTERN_RESOURCE: u32 = 7;
+    pub(crate) const GPU_BRUSH_MESH: u32 = 8;
+    pub(crate) const GPU_BRUSH_PROGRAM: u32 = 9;
     pub(crate) const GPU_RESOURCE_TEXTURE_PLACEMENT_BIT: u32 = 0x8000_0000;
     pub(crate) const GPU_RESOURCE_TEXTURE_INDEX_MASK: u32 = 0x7fff_ffff;
 
@@ -60,6 +62,8 @@ mod tests {
             ("BRUSH_FOUR_CORNER", brush::GPU_BRUSH_FOUR_CORNER),
             ("BRUSH_PATTERN", brush::GPU_BRUSH_PATTERN),
             ("BRUSH_PATTERN_RESOURCE", brush::GPU_BRUSH_PATTERN_RESOURCE),
+            ("BRUSH_MESH", brush::GPU_BRUSH_MESH),
+            ("BRUSH_PROGRAM", brush::GPU_BRUSH_PROGRAM),
             ("BRUSH_EXTEND_REPEAT", brush::GPU_EXTEND_REPEAT),
             ("BRUSH_EXTEND_REFLECT", brush::GPU_EXTEND_REFLECT),
         ] {

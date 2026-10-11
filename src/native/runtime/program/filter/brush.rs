@@ -11,6 +11,8 @@ use crate::shared::{filter_config::FilterConfig, gpu_brush::GpuBrushUpload};
 pub(crate) struct Brushes {
     buffer: ResourceId,
     offsets: Vec<u32>,
+    programs: Vec<u32>,
+    texture_start: usize,
 }
 impl Brushes {
     pub(crate) fn record(
@@ -32,6 +34,8 @@ impl Brushes {
             return Err("filter brush byte addressing overflow".into());
         }
         Ok(Some(Self {
+            programs: upload.blob.clone(),
+            texture_start: images.textures().len(),
             buffer: batch.buffer(bytemuck::cast_slice(&upload.blob).to_vec())?,
             offsets: upload.offsets,
         }))
@@ -51,6 +55,15 @@ impl Brushes {
             return Err("filter brush offset is not a prepared record start".into());
         }
         let reads = shadow.map(|id| (2, id));
+        let (buffer, owned_images) = crate::native::runtime::program_shader::brushes_for_filter(
+            batch,
+            &self.programs,
+            &self.offsets,
+            self.texture_start,
+            config,
+            images,
+        )?;
+        let images = &owned_images;
         region::record(
             batch,
             if shadow.is_some() {
@@ -64,11 +77,12 @@ impl Brushes {
             region::ReadBindings {
                 textures: reads.as_slice(),
                 texture_extent: [config.width, config.height],
-                buffers: &[(10, self.buffer)],
+                buffers: &[(10, buffer.unwrap_or(self.buffer))],
                 images: Some(images),
             },
             target,
-        )
+        )?;
+        Ok(())
     }
 }
 

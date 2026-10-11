@@ -156,9 +156,14 @@ pub(super) fn record(
     if let Some(images) = reads.images {
         bindings.extend([(12, images.atlas), (13, images.sampler), (30, images.table)]);
     }
-    // SAFETY: region/source bounds are checked above; each stage validates its table addresses. Distinct textures,
-    // unique tiles and injective offset translation give every written pixel exactly one owner.
-    unsafe { batch.dispatch(entry, &bindings, [config.dispatch_width, rows, 1]) }
+    // Stage checks above establish table bounds, unique tiles and pixel owners.
+    // Resolve these resident resources through the common ShaderPipeline executor.
+    crate::native::runtime::program::filter::pipeline::record(
+        batch,
+        entry,
+        &bindings,
+        [config.dispatch_width, rows, 1],
+    )
 }
 
 // Validate the logical image against its allocation, independently for each pass's

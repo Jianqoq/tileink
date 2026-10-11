@@ -13,7 +13,7 @@ use crate::{
         bounds::Bounds,
         execution::{ExecOp, ExecPlan},
         layer::{
-            filter::{Filter, filtered_region_bounds},
+            filter::{Filter, filter_dependency, filtered_region_bounds},
             region::Region,
         },
     },
@@ -172,10 +172,15 @@ pub(crate) fn execute<A: BackdropAdapter>(
             source_slot = Some(source);
             // Clean root pixels include the previous backdrop and foreground.
             // Keep their unfiltered painter-order input in an independent image.
+            // Read footprints are independent of the final coverage rectangle.
+            // Refraction/convolution can reach background outside that rectangle;
+            // keeping only output pixels silently substitutes pooled/stale pixels.
+            let input = filter_dependency(layer.filter)
+                .source_bounds(bounds, Bounds::canvas(size.0, size.1));
             let update = if cached_source.is_some() {
-                active_region(a, bounds)
+                active_region(a, input)
             } else {
-                Some(bounds)
+                Some(input)
             };
             if let Some(source_history) = cached_source {
                 a.install_scratch(source, source_history);

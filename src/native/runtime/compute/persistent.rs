@@ -30,6 +30,12 @@ impl ComputeBatch {
         }) {
             return Ok(ResourceId { owner: self.owner, index });
         }
+        if initialize
+            && texture.format != crate::ShaderTextureFormat::Rgba8Unorm
+            && !texture.state.initialized.get()
+        {
+            return Err("uninitialized float texture requires an explicit writer".into());
+        }
         if initialize && texture.array && !texture.state.initialized.get() {
             return Err("new array textures require a complete GPU copy before sampling".into());
         }
@@ -39,6 +45,7 @@ impl ComputeBatch {
         };
         self.resources.push(Resource::Texture(Texture {
             size: texture.size,
+            format: texture.format,
             layers: texture.layers,
             array: texture.array,
             bytes: Vec::new().into(),

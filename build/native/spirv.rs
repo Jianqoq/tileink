@@ -9,6 +9,7 @@ struct Reflection {
     member_names: BTreeMap<(u32, u32), String>,
     decorations: BTreeMap<(u32, u32), Vec<u32>>,
     offsets: BTreeMap<(u32, u32), u32>,
+    member_decorations: BTreeMap<(u32, u32, u32), Vec<u32>>,
     constants: BTreeMap<u32, u32>,
     types: BTreeMap<u32, (u32, Vec<u32>)>,
     variables: BTreeMap<u32, u32>,
@@ -17,10 +18,24 @@ struct Reflection {
 }
 
 pub fn validate(bytes: &[u8], entry: &str, abi: &Interface) -> io::Result<()> {
-    super::abi::validate(abi)?;
+    validate_inner(bytes, entry, abi, false)
+}
+#[allow(dead_code)] // Also reused by the runtime application-shader compiler.
+pub fn validate_user(bytes: &[u8], entry: &str, abi: &Interface) -> io::Result<()> {
+    validate_inner(bytes, entry, abi, true)
+}
+fn validate_inner(bytes: &[u8], entry: &str, abi: &Interface, optional: bool) -> io::Result<()> {
+    if optional {
+        super::abi::validate_user(abi)?;
+    } else {
+        super::abi::validate(abi)?;
+    }
     let words: Vec<u32> = bytes
-        .chunks_exact(4)
-        .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .copied()
+        .map(u32::from_le_bytes)
         .collect();
     require(
         bytes.len().is_multiple_of(4) && words.len() >= 5 && words[0] == 0x07230203,
@@ -55,7 +70,11 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &Interface) -> io::Result<()> {
             (72, [id, member, 35, offset]) => {
                 r.offsets.insert((*id, *member), *offset);
             }
-            (21 | 22 | 23 | 25 | 26 | 28 | 29 | 30 | 32, [id, value @ ..]) => {
+            (72, [id, member, decoration, value @ ..]) => {
+                r.member_decorations
+                    .insert((*id, *member, *decoration), value.to_vec());
+            }
+            (21 | 22 | 23 | 24 | 25 | 26 | 28 | 29 | 30 | 32, [id, value @ ..]) => {
                 r.types.insert(*id, (opcode, value.to_vec()));
             }
             (43, [_ty, id, value]) => {
@@ -76,7 +95,25 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &Interface) -> io::Result<()> {
         r.groups.get(&r.entries[0].0).map(Vec::as_slice) == Some(abi.workgroup.as_slice()),
         "SPIR-V workgroup",
     )?;
-    let expected = abi.resources_for(entry)?;
+    let expected: Vec<_> = abi
+        .resources_for(entry)?
+        .into_iter()
+        .filter(|(name, _)| {
+            !optional
+                || r.names
+                    .iter()
+                    .any(|(id, n)| n == name && r.decorations.contains_key(&(*id, 33)))
+        })
+        .collect();
+    if optional {
+        require(
+            abi.resources_for(entry)?
+                .iter()
+                .filter(|(_, r)| matches!(r.kind, Kind::Write | Kind::TextureWrite))
+                .all(|(name, _)| expected.iter().any(|(active, _)| active == name)),
+            "SPIR-V user shader output missing",
+        )?;
+    }
     require(
         r.decorations.keys().filter(|(_, dec)| *dec == 33).count() == expected.len(),
         "SPIR-V binding count",
@@ -159,7 +196,19 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &Interface) -> io::Result<()> {
                                 0,
                             ]
                         } else {
-                            [1, 2, 0, 0, 2, 4]
+                            [
+                                1,
+                                2,
+                                0,
+                                0,
+                                2,
+                                match resource.size {
+                                    4 => 4,
+                                    8 => 2,
+                                    16 => 1,
+                                    _ => return Err(invalid("SPIR-V storage image format")),
+                                },
+                            ]
                         },
                 "SPIR-V sampled 2D image",
             )?;
@@ -182,6 +231,14 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &Interface) -> io::Result<()> {
             .ok_or_else(|| invalid("SPIR-V resource structure"))?;
         require(*op == 30, "SPIR-V resource structure")?;
         if resource.kind == Kind::Uniform {
+            if optional && resource.fields.is_empty() {
+                require(
+                    r.decorations.contains_key(&(structure, 2))
+                        && uniform::size(&r, structure, None, 0)? == resource.size,
+                    "SPIR-V raw uniform size",
+                )?;
+                continue;
+            }
             require(
                 members.len() == resource.fields.len()
                     && r.decorations.contains_key(&(structure, 2)),
@@ -238,6 +295,9 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &Interface) -> io::Result<()> {
     }
     Ok(())
 }
+
+#[path = "spirv/uniform.rs"]
+mod uniform;
 
 fn is_scalar(ty: &(u32, Vec<u32>), scalar: super::abi::Scalar) -> bool {
     match scalar {

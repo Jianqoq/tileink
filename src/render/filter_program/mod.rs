@@ -17,6 +17,7 @@ mod blur;
 mod effects;
 mod glass;
 mod graph;
+mod graph_shader;
 
 pub(crate) trait FilterAdapter {
     type Work;

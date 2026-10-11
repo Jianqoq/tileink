@@ -93,6 +93,16 @@ impl NativeContext {
         layers: u32,
         array: bool,
     ) -> Result<super::NativeTexture, NativeError> {
+        self.create_texture_format(size, layers, array, crate::ShaderTextureFormat::Rgba8Unorm)
+    }
+    #[cfg(tileink_native_runtime)]
+    pub(crate) fn create_texture_format(
+        &self,
+        size: [u32; 2],
+        layers: u32,
+        array: bool,
+        format: crate::ShaderTextureFormat,
+    ) -> Result<super::NativeTexture, NativeError> {
         let [width, height] = size;
         if layers == 0
             || layers > self.adapter.limits().atlas_pages
@@ -100,7 +110,7 @@ impl NativeContext {
             || (width as usize)
                 .checked_mul(height as usize)
                 .and_then(|n| n.checked_mul(layers as usize))
-                .and_then(|n| n.checked_mul(4))
+                .and_then(|n| n.checked_mul(format.bytes_per_pixel()))
                 .is_none()
         {
             return Err(NativeError::Recording(
@@ -112,13 +122,14 @@ impl NativeContext {
             state: std::rc::Rc::new(super::runtime::texture::State {
                 allocation: self
                     .adapter
-                    .allocate_texture([width, height], layers, array)
+                    .allocate_texture([width, height], layers, array, format)
                     .map_err(NativeError::Initialization)?,
                 initialized: std::cell::Cell::new(false),
                 content_version: std::cell::Cell::new(0),
             }),
             context: self.clone(),
             size: [width, height],
+            format,
             layers,
             array,
         })

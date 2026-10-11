@@ -8,6 +8,7 @@
 #include "radial.hlsli"
 #include "sweep.hlsli"
 #include "four_corner.hlsli"
+#include "mesh.hlsli"
 #include "texture.hlsli"
 #include "../texture_table_constants.hlsli"
 
@@ -24,6 +25,7 @@ uint sample_brush(ByteAddressBuffer paint, uint brush_base, uint data_base,
     if(kind==BRUSH_RADIAL) return sample_radial(paint,brush_base,x,y,base,extend,payload,len);
     if(kind==BRUSH_SWEEP) return sample_sweep(paint,brush_base,x,y,base,extend,payload,len);
     if(kind==BRUSH_FOUR_CORNER) return sample_four_corner(paint,brush_base,x,y,base,payload);
+    if(kind==BRUSH_MESH) return sample_mesh(paint,brush_base,float2(x,y),data_base,base,payload,len);
     if(kind==BRUSH_PATTERN) return 0u;
     if(kind!=BRUSH_PATTERN_RESOURCE) return color;
     uint placement=brush_word(paint,brush_base,data_base+4u);

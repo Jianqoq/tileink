@@ -62,14 +62,14 @@ impl Commands {
     fn prepare_descriptors(&mut self, passes: &[Pass]) -> Result<()> {
         let mut counts = [0u32; 5];
         for pass in passes {
-            for binding in pass.shader.bindings {
+            for binding in pass.artifact().bindings {
                 let index = match binding.kind {
                     BindingKind::Uniform => 0,
                     BindingKind::Read | BindingKind::Write => 1,
                     BindingKind::Texture
                     | BindingKind::TextureArray
                     | BindingKind::TextureTable => 2,
-                    BindingKind::TextureWrite => 3,
+                    BindingKind::TextureWrite | BindingKind::TextureReadWrite => 3,
                     BindingKind::Sampler => 4,
                 };
                 counts[index] = counts[index]

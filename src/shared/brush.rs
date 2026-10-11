@@ -1,3 +1,6 @@
+mod mesh;
+pub use mesh::{MeshGradient, MeshGradientError, MeshInterpolation};
+
 use std::rc::Rc;
 
 use peniko::{
@@ -8,10 +11,10 @@ use peniko::{
 
 use crate::shared::{
     gpu_layout::brush::{
-        GPU_BRUSH_FOUR_CORNER, GPU_BRUSH_LINEAR, GPU_BRUSH_PARAM_STRIDE,
-        GPU_BRUSH_PATTERN_RESOURCE, GPU_BRUSH_RADIAL, GPU_BRUSH_SOLID, GPU_BRUSH_SWEEP,
-        GPU_BRUSH_U32_STRIDE, GPU_EXTEND_PAD, GPU_EXTEND_REFLECT, GPU_EXTEND_REPEAT,
-        GPU_PATTERN_BILINEAR, GPU_PATTERN_NEAREST,
+        GPU_BRUSH_FOUR_CORNER, GPU_BRUSH_LINEAR, GPU_BRUSH_MESH, GPU_BRUSH_PARAM_STRIDE,
+        GPU_BRUSH_PATTERN_RESOURCE, GPU_BRUSH_PROGRAM, GPU_BRUSH_RADIAL, GPU_BRUSH_SOLID,
+        GPU_BRUSH_SWEEP, GPU_BRUSH_U32_STRIDE, GPU_EXTEND_PAD, GPU_EXTEND_REFLECT,
+        GPU_EXTEND_REPEAT, GPU_PATTERN_BILINEAR, GPU_PATTERN_NEAREST,
     },
     image::unpack_rgba8,
     image_resource::{ImageKey, ImageResourceId},
@@ -32,6 +35,8 @@ pub enum Brush {
     Radial(RadialGradient),
     Sweep(SweepGradient),
     FourCorner(FourCornerGradient),
+    Mesh(MeshGradient),
+    Program(super::shader::ProgramBrush),
     Pattern(PatternBrush),
 }
 
@@ -272,6 +277,20 @@ pub(crate) fn push_encoded_brush(blob: &mut Vec<u32>, brush: &Brush) -> (u32, u3
             blob.extend_from_slice(&gradient.colors);
             return (offset, blob.len() as u32 - offset);
         }
+        Brush::Mesh(gradient) => {
+            data[0] = GPU_BRUSH_MESH;
+            data[4] = gradient.bins[0];
+            data[5] = gradient.bins[1];
+            data[6] = gradient.patch_base;
+            data[7] = u32::from(gradient.interpolation == MeshInterpolation::Smooth);
+            copy_f32_bits(&mut params[..6], &gradient.transform);
+            copy_f32_bits(&mut params[6..10], &gradient.bounds);
+            set_local_payload(&mut data, gradient.payload.len());
+            push_encoded_header(blob, data, params);
+            blob.extend_from_slice(&gradient.payload);
+            return (offset, blob.len() as u32 - offset);
+        }
+        Brush::Program(brush) => return brush.0.encode(blob),
         Brush::Pattern(pattern) => {
             data[1] = encode_gpu_extend(pattern.extend);
             copy_f32_bits(&mut params[0..6], &pattern.transform);
@@ -304,6 +323,8 @@ pub(crate) fn encoded_brush_word_len(brush: &Brush) -> usize {
             Brush::Radial(gradient) => gradient.ramp.len(),
             Brush::Sweep(gradient) => gradient.ramp.len(),
             Brush::FourCorner(gradient) => gradient.colors.len(),
+            Brush::Mesh(gradient) => gradient.payload.len(),
+            Brush::Program(brush) => brush.0.word_len() - ENCODED_BRUSH_HEADER_WORDS,
             Brush::Pattern(_) => 3,
         }
 }
@@ -350,6 +371,37 @@ pub(crate) fn decode_encoded_brush(blob: &[u32], offset: u32, len: u32) -> Optio
             bounds: params[0..4].try_into().ok()?,
             colors: payload.try_into().ok()?,
         })),
+        GPU_BRUSH_MESH => {
+            let bins = [data[4], data[5]];
+            let bin_count = bins[0].checked_mul(bins[1])? as usize;
+            let patch_base = data[6] as usize;
+            if bins
+                .iter()
+                .any(|&v| v == 0 || v > mesh::MESH_MAX_BINS as u32)
+                || patch_base < bin_count + 1
+                || patch_base > payload.len()
+                || !(payload.len() - patch_base).is_multiple_of(mesh::MESH_PATCH_WORDS)
+                || payload.first().copied()? as usize != bin_count + 1
+                || payload.get(bin_count).copied()? as usize != patch_base
+            {
+                return None;
+            }
+            Some(Brush::Mesh(MeshGradient {
+                transform: params[..6].try_into().ok()?,
+                bounds: params[6..10].try_into().ok()?,
+                bins,
+                patch_base: data[6],
+                interpolation: if data[7] == 0 {
+                    MeshInterpolation::Bilinear
+                } else {
+                    MeshInterpolation::Smooth
+                },
+                payload: Rc::from(payload),
+            }))
+        }
+        GPU_BRUSH_PROGRAM => Some(Brush::Program(super::shader::ProgramBrush(
+            super::shader::ProgramInstance::decode(payload, params[..6].try_into().ok()?, false)?,
+        ))),
         GPU_BRUSH_PATTERN_RESOURCE => {
             if payload.len() < 3 {
                 return None;
@@ -365,6 +417,12 @@ pub(crate) fn decode_encoded_brush(blob: &[u32], offset: u32, len: u32) -> Optio
             }))
         }
         _ => None,
+    }
+}
+
+impl From<MeshGradient> for Brush {
+    fn from(value: MeshGradient) -> Self {
+        Self::Mesh(value)
     }
 }
 

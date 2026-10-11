@@ -53,6 +53,8 @@ pub(crate) struct SceneCache {
     staging: SceneUploadStaging,
     preparation: ScenePreparation,
     plan: Option<Rc<ExecPlan>>,
+    has_programs: bool,
+    programs_initialized: bool,
 }
 
 pub(crate) struct SceneOptions<'a> {
@@ -108,6 +110,7 @@ pub(crate) struct Scene {
     spills: ResourceId,
     fine_params: FineParams,
     clip_dispatch: clip_tiles::ClipDispatch,
+    program_images: Option<super::super::program_shader::BrushImages>,
 }
 
 /// These texture handles must come from the upload whose placements patched the
@@ -205,6 +208,19 @@ impl SceneCache {
             self.buffers = SceneBuffers::default();
         }
         self.pending = Some(batch.acceptance());
+        if !self.programs_initialized
+            || !prepared.reused_metadata
+            || canvas
+                .buffer_changes
+                .as_ref()
+                .is_some_and(|c| !c.brushes.is_empty())
+        {
+            self.has_programs = canvas.draw_records.iter().any(|d| {
+                canvas.brush_blob.get(d.brush_offset as usize)
+                    == Some(&crate::shared::gpu_layout::brush::GPU_BRUSH_PROGRAM)
+            });
+            self.programs_initialized = true;
+        }
         let limit = options.limit;
         let (scan, lengths) = PreparedScan::for_scene(canvas, &mut self.staging, text, &prepared);
         let work_words = validate_work_layout(lengths)?;
@@ -212,36 +228,57 @@ impl SceneCache {
         let dirty = scan.dirty;
         self.staging.path_plans.recycle_dirty(dirty);
         let scan = output;
-        let draws = self.buffers.draws.upload(
-            batch,
-            &canvas.draw_records,
-            canvas
-                .buffer_changes
-                .as_ref()
-                .map(|changes| changes.draws.as_slice()),
-        )?;
+        let custom = self
+            .has_programs
+            .then(|| super::super::program_shader::prepare_brushes(batch, canvas, images))
+            .transpose()?;
+        let draws = if let Some(custom) = &custom {
+            // These remapped offsets are frame-local. Never install them into
+            // the retained dirty-journal cache of original Canvas records.
+            self.buffers.draws = Default::default();
+            self.buffers.paint = Default::default();
+            batch.buffer(bytemuck::cast_slice(&custom.draws).to_vec())?
+        } else {
+            self.buffers.draws.upload(
+                batch,
+                &canvas.draw_records,
+                canvas.buffer_changes.as_ref().map(|c| c.draws.as_slice()),
+            )?
+        };
         let paint = self.staging.paint.prepare(canvas, images);
         let paint_offsets = (paint.shadow_base, paint.brush_base);
-        let paint = match paint.data {
-            PaintData::Immediate {
-                sdfs,
-                shadows,
-                brushes,
-            } => {
-                let bytes = [
-                    bytemuck::cast_slice::<_, u8>(sdfs),
-                    bytemuck::cast_slice(shadows),
-                    bytemuck::cast_slice(brushes),
-                ]
-                .concat();
-                if bytes.is_empty() {
-                    allocate(batch, 1, size_of::<u32>())?
-                } else {
-                    batch.buffer(bytes)?
+        let paint = if let Some(custom) = &custom {
+            // Repack native paints as ordinary GPU image records. Shader source
+            // stays on the CPU and is never uploaded as interpreted paint data.
+            let mut words = vec![0; paint_offsets.1 as usize];
+            words[..canvas.sdf_blob.len()].copy_from_slice(&canvas.sdf_blob);
+            words
+                [paint_offsets.0 as usize..paint_offsets.0 as usize + canvas.sdf_shadow_blob.len()]
+                .copy_from_slice(&canvas.sdf_shadow_blob);
+            words.extend_from_slice(&custom.blob);
+            batch.buffer(bytemuck::cast_slice(&words).to_vec())?
+        } else {
+            match paint.data {
+                PaintData::Immediate {
+                    sdfs,
+                    shadows,
+                    brushes,
+                } => {
+                    let bytes = [
+                        bytemuck::cast_slice::<_, u8>(sdfs),
+                        bytemuck::cast_slice(shadows),
+                        bytemuck::cast_slice(brushes),
+                    ]
+                    .concat();
+                    if bytes.is_empty() {
+                        allocate(batch, 1, size_of::<u32>())?
+                    } else {
+                        batch.buffer(bytes)?
+                    }
                 }
-            }
-            PaintData::Retained { words, ranges } => {
-                self.buffers.paint.upload(batch, words, Some(&ranges))?
+                PaintData::Retained { words, ranges } => {
+                    self.buffers.paint.upload(batch, words, Some(&ranges))?
+                }
             }
         };
         self.staging.text.refill(
@@ -459,6 +496,7 @@ impl SceneCache {
             .scratch(batch, spill_words, size_of::<u32>())?;
         self.plan = Some(prepared.plan.clone());
         Ok(Scene {
+            program_images: custom.map(|c| c.images),
             active_batches,
             clip_dispatch,
             layer_count: u32::try_from(prepared.plan.layer_stack_data.len())?,
@@ -623,6 +661,12 @@ impl Scene {
     ) -> Result<()> {
         // SAFETY: Canvas uploads and shared stack depths bound all record/spill
         // accesses; caller supplies associated images and stage ordering.
+        let extended = self
+            .program_images
+            .as_ref()
+            .map(|p| p.attach(batch, images))
+            .transpose()?;
+        let images = extended.as_ref().unwrap_or(images);
         unsafe {
             fine::encode(
                 batch,
@@ -639,8 +683,9 @@ impl Scene {
                     images: images.table,
                     sampler: images.sampler,
                 },
-            )
+            )?;
         }
+        Ok(())
     }
 }
 

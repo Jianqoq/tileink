@@ -154,7 +154,7 @@ impl PassEncoder {
         match self {
             Self::Compute(e) => e.dispatchThreadgroups_threadsPerThreadgroup(
                 memory::size(pass.grid),
-                memory::size(pass.shader.workgroup),
+                memory::size(pass.artifact().workgroup),
             ),
             Self::Tile(e) => e.dispatchThreadsPerTile(memory::size([16, 16, 1])),
             Self::Sparse(e, count) => {

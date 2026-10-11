@@ -36,7 +36,6 @@ impl Dxc {
             });
         }
         for input in inputs {
-            println!("cargo:rerun-if-changed={}", input.display());
             let hash = match fs::read(&input) {
                 Ok(bytes) => digest(&bytes),
                 Err(error)

@@ -108,7 +108,11 @@ impl BackdropAdapter for Execution<'_> {
                 None => Err("native partial backdrop recording failed".into()),
             };
         }
-        self.copy_filter_region(pass.source, pass.target, pass.bounds)?;
+        let input = crate::shared::layer::filter::filter_dependency(pass.filter).source_bounds(
+            pass.bounds,
+            Bounds::canvas(self.targets.size().0, self.targets.size().1),
+        );
+        self.copy_filter_region(pass.source, pass.target, input)?;
         self.apply_filter(
             pass.target,
             pass.bounds,

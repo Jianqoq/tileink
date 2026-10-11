@@ -342,6 +342,14 @@ impl SceneOffset {
                 gradient.bounds[3] += dy;
                 Brush::FourCorner(gradient)
             }
+            Brush::Mesh(mut gradient) => {
+                gradient.transform = self.brush_transform(gradient.transform);
+                Brush::Mesh(gradient)
+            }
+            Brush::Program(mut program) => {
+                program.0.transform = self.brush_transform(program.0.transform);
+                Brush::Program(program)
+            }
             Brush::Pattern(mut pattern) => {
                 pattern.transform = self.brush_transform(pattern.transform);
                 Brush::Pattern(pattern)
@@ -418,6 +426,10 @@ impl SceneOffset {
                     .collect(),
                 fixed_region,
             },
+            Filter::ShaderPipeline(mut pipeline) => {
+                pipeline.transform = self.brush_transform(pipeline.transform);
+                Filter::ShaderPipeline(pipeline)
+            }
             Filter::Flood { brush } => Filter::Flood {
                 brush: self.brush(brush),
             },
@@ -478,6 +490,13 @@ impl SceneOffset {
 
     fn primitive_kind(self, kind: FilterPrimitiveKind) -> FilterPrimitiveKind {
         match kind {
+            FilterPrimitiveKind::ShaderPipeline {
+                mut pipeline,
+                inputs,
+            } => {
+                pipeline.transform = self.brush_transform(pipeline.transform);
+                FilterPrimitiveKind::ShaderPipeline { pipeline, inputs }
+            }
             FilterPrimitiveKind::Filter(filter) => {
                 FilterPrimitiveKind::Filter(Box::new(self.filter(*filter)))
             }

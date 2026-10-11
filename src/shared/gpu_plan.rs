@@ -1389,6 +1389,7 @@ fn max_scratch_for_ops(ops: &[ExecOp], held: usize) -> usize {
 
 pub(crate) fn filter_scratch_extra(filter: &Filter) -> usize {
     match filter {
+        Filter::ShaderPipeline(_) => 1, // Upper bound: partial outputs need a cropped copy.
         Filter::Chain { filters, .. } => {
             filters.iter().map(filter_scratch_extra).max().unwrap_or(0)
         }
@@ -1414,13 +1415,21 @@ pub(crate) fn filter_scratch_extra(filter: &Filter) -> usize {
 
 fn graph_scratch_extra(primitives: &[FilterPrimitive]) -> usize {
     let source_alpha = primitives.iter().any(|primitive| {
-        primitive.input == FilterInput::SourceAlpha
-            || primitive.input2 == Some(FilterInput::SourceAlpha)
+        // Vector-input primitives use their own edges, not the shared fields.
+        match &primitive.kind {
+            FilterPrimitiveKind::ShaderPipeline { inputs, .. }
+            | FilterPrimitiveKind::Merge { inputs } => inputs.contains(&FilterInput::SourceAlpha),
+            _ => {
+                primitive.input == FilterInput::SourceAlpha
+                    || primitive.input2 == Some(FilterInput::SourceAlpha)
+            }
+        }
     });
     let unary_temp = primitives
         .iter()
         .filter_map(|primitive| match &primitive.kind {
             FilterPrimitiveKind::Filter(filter) => Some(1 + filter_scratch_extra(filter)),
+            FilterPrimitiveKind::ShaderPipeline { .. } => Some(1),
             _ => None,
         })
         .max()

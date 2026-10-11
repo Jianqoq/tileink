@@ -10,6 +10,42 @@ impl<A: FilterAdapter> FilterExecutor<'_, A> {
         filter_cursors: &mut FilterCursors,
     ) -> bool {
         match filter {
+            Filter::ShaderPipeline(pipeline) => {
+                if !pipeline.is_canvas_filter() || pipeline.input_count() > 1 {
+                    return false;
+                }
+                let inputs = if pipeline.reads_input() {
+                    std::slice::from_ref(&target)
+                } else {
+                    &[]
+                };
+                let (width, height) = self.adapter.size();
+                // Native compute has no scissor. Arbitrary user kernels write
+                // their declared extent; crop partial results through copy-back.
+                if !pipeline.requires_output_scratch() && bounds == Bounds::canvas(width, height) {
+                    return self.adapter.encode(FilterKernel::ShaderPipelineToTarget {
+                        inputs,
+                        target,
+                        bounds,
+                        pipeline,
+                    });
+                }
+                let Some(output) = self.adapter.acquire_scratch() else {
+                    return false;
+                };
+                let ok = self.adapter.encode(FilterKernel::ShaderPipelineToTarget {
+                    inputs,
+                    target: output,
+                    bounds,
+                    pipeline,
+                }) && self.adapter.encode(FilterKernel::CopyRegionToTarget {
+                    source: output,
+                    target,
+                    bounds,
+                });
+                self.adapter.release_scratch(output);
+                ok
+            }
             Filter::ProgressiveBlur(blur) => self.adapter.encode(FilterKernel::ProgressiveBlur {
                 target,
                 bounds,

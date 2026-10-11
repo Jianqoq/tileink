@@ -26,6 +26,8 @@ pub type ComponentTransferTable = [u32; COMPONENT_TRANSFER_TABLE_LEN];
 
 #[derive(Clone, Debug)]
 pub enum Filter {
+    /// Explicit native GPU resources and passes, including multiresolution/HDR intermediates.
+    ShaderPipeline(crate::shared::shader::ShaderPipeline),
     /// Smooth spatial blur using a multiscale GPU approximation.
     ProgressiveBlur(ProgressiveBlur),
     Chain {
@@ -124,6 +126,13 @@ pub enum FilterInput {
 pub enum FilterPrimitiveKind {
     Identity,
     Filter(Box<Filter>),
+    /// Binds SourceGraphic, SourceAlpha and preceding primitive results directly
+    /// to pipeline Input(0..N). Inputs stay immutable and resident on the GPU.
+    /// The primitive's explicit region clips output; `input`/`input2` are unused.
+    ShaderPipeline {
+        pipeline: crate::ShaderPipeline,
+        inputs: Vec<FilterInput>,
+    },
     /// Produces an image without reading a graph input, matching SVG `feImage`.
     ///
     /// The brush is sampled in absolute canvas coordinates and the primitive
@@ -520,10 +529,16 @@ pub(crate) fn filter_outset(filter: &Filter) -> i32 {
             if *fixed_region {
                 0
             } else {
-                filters.iter().map(filter_outset).sum()
+                // Large valid output declarations must saturate before canvas
+                // clipping; wrapping the sum would shrink or invert the region.
+                filters
+                    .iter()
+                    .map(filter_outset)
+                    .fold(0, i32::saturating_add)
             }
         }
         Filter::Graph { .. } => 0,
+        Filter::ShaderPipeline(pipeline) => pipeline.output_outset(),
         Filter::RectLiquidGlass(glass) => glass.sample_outset(),
         Filter::ProgressiveBlur(blur) => blur.sample_outset(),
         Filter::Blur {

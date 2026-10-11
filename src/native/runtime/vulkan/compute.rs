@@ -69,7 +69,7 @@ impl Frame {
         properties: &vk::PhysicalDeviceProperties,
         family: u32,
         batch: &ComputeBatch,
-        pipelines: &BTreeMap<&'static str, Pipeline>,
+        pipelines: &BTreeMap<String, Pipeline>,
         frame_cache: &mut super::frame_cache::Cache,
     ) -> Result<Self> {
         let limits = &properties.limits;
@@ -152,7 +152,7 @@ impl Frame {
                 source_offsets.push(offset);
                 continue;
             }
-            source_offsets.push(upload.push(buffer.bytes(), 1)? as u64);
+            source_offsets.push(upload.push(buffer.bytes(), buffer.transfer_alignment())? as u64);
         }
         let grid_bytes: Vec<[u8; 16]> = batch
             .passes()
@@ -174,6 +174,10 @@ impl Frame {
         }
         for id in batch.outputs() {
             let size = batch.size(*id)?;
+            this.readback_size = this
+                .readback_size
+                .checked_next_multiple_of(batch.resources()[id.index()].transfer_alignment())
+                .ok_or("native readback alignment overflow")?;
             this.outputs.push((this.readback_size, size));
             this.readback_size = this
                 .readback_size
@@ -373,7 +377,7 @@ impl Frame {
                 if batch.skip_initialization(pass) {
                     continue;
                 }
-                let pipeline = &pipelines[pass.shader.entry];
+                let pipeline = &pipelines[pass.key()];
                 let set = device.allocate_descriptor_sets(
                     &vk::DescriptorSetAllocateInfo::default()
                         .descriptor_pool(this.commands.descriptors)

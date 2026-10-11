@@ -114,6 +114,14 @@ impl LocalSpace {
                 gradient.bounds[3] -= oy;
                 Brush::FourCorner(gradient)
             }
+            Brush::Mesh(mut gradient) => {
+                gradient.transform = self.brush_transform(gradient.transform);
+                Brush::Mesh(gradient)
+            }
+            Brush::Program(mut program) => {
+                program.0.transform = self.brush_transform(program.0.transform);
+                Brush::Program(program)
+            }
             Brush::Pattern(mut pattern) => {
                 pattern.transform = self.brush_transform(pattern.transform);
                 Brush::Pattern(pattern)
@@ -712,6 +720,11 @@ fn translate_filter_to_local(filter: &Filter, local: LocalSpace) -> Filter {
                 .collect(),
             fixed_region: *fixed_region,
         },
+        Filter::ShaderPipeline(pipeline) => {
+            let mut pipeline = pipeline.clone();
+            pipeline.transform = local.brush_transform(pipeline.transform);
+            Filter::ShaderPipeline(pipeline)
+        }
         Filter::Flood { brush } => Filter::Flood {
             brush: local.brush(brush.clone()),
         },
@@ -735,6 +748,14 @@ fn translate_primitive_kind_to_local(
     local: LocalSpace,
 ) -> FilterPrimitiveKind {
     match kind {
+        FilterPrimitiveKind::ShaderPipeline { pipeline, inputs } => {
+            let mut pipeline = pipeline.clone();
+            pipeline.transform = local.brush_transform(pipeline.transform);
+            FilterPrimitiveKind::ShaderPipeline {
+                pipeline,
+                inputs: inputs.clone(),
+            }
+        }
         FilterPrimitiveKind::Filter(filter) => {
             FilterPrimitiveKind::Filter(Box::new(translate_filter_to_local(filter, local)))
         }

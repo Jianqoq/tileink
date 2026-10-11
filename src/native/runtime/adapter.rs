@@ -165,14 +165,15 @@ impl Adapter {
         size: [u32; 2],
         layers: u32,
         array: bool,
+        format: crate::ShaderTextureFormat,
     ) -> Result<super::texture::Allocation> {
         match &*self.0.borrow() {
             #[cfg(feature = "dx12")]
-            Device::Dx12(device) => device.allocate_texture(size, layers, array),
+            Device::Dx12(device) => device.allocate_texture(size, layers, array, format),
             #[cfg(feature = "metal")]
-            Device::Metal(device) => device.allocate_texture(size, layers, array),
+            Device::Metal(device) => device.allocate_texture(size, layers, array, format),
             #[cfg(feature = "vulkan")]
-            Device::Vulkan(device) => device.allocate_texture(size, layers, array),
+            Device::Vulkan(device) => device.allocate_texture(size, layers, array, format),
         }
     }
     #[cfg(test)]

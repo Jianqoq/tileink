@@ -44,6 +44,7 @@ impl Adapter {
         let layers = texture.arrayLength() as u32;
         let array = texture.textureType() == MTLTextureType::Type2DArray;
         Ok(NativeTexture {
+            format: crate::ShaderTextureFormat::Rgba8Unorm,
             context: context.clone(),
             size,
             layers,

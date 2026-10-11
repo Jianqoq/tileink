@@ -46,16 +46,16 @@ impl PersistentSceneMaterializer {
                             let clip = draw.pixel_bounds;
                             bounds.intersect(Bounds::new(clip.x0, clip.y0, clip.x1, clip.y1))
                         }),
-                    RetainedLayerDescriptor::Filter {
-                        filter: value,
-                        sample_region,
-                    } => filter::filter_dependency(value).affected_output(
-                        bounds,
-                        filter::filter_input_bounds(value, sample_region),
-                        filter::unclipped_filtered_region_bounds(value, sample_region),
-                    ),
-                    RetainedLayerDescriptor::Mask(mask) => {
-                        bounds.intersect(filter::region_bounds(&mask.region))
+                    RetainedLayerDescriptor::Filter { .. } => {
+                        let (value, sample_region) = chunk_filter(&self.chunks[&parent.node]);
+                        filter::filter_dependency(value).affected_output(
+                            bounds,
+                            filter::filter_input_bounds(value, sample_region, canvas_bounds),
+                            filter::unclipped_filtered_region_bounds(value, sample_region),
+                        )
+                    }
+                    RetainedLayerDescriptor::Mask(_) => {
+                        bounds.intersect(chunk_layer_influence_bounds(&self.chunks[&parent.node]))
                     }
                     RetainedLayerDescriptor::Backdrop { .. } => bounds,
                 };
@@ -166,6 +166,12 @@ impl PersistentSceneMaterializer {
                 Bounds::new(0, 0, 0, 0)
             };
             for dependency in &chunk.backdrop_dependencies {
+                if source_nodes.contains(&backdrop) {
+                    // Replacing a backdrop discards its unfiltered history. Replay
+                    // its entire read footprint in painter order: clean halo tiles
+                    // may still contain later foreground from the previous frame.
+                    affected_output = affected_output.union(dependency.dependency);
+                }
                 let sampled =
                     self.indexed_damage_intersection(&damage_tiles, dependency.dependency);
                 if !sampled.is_empty() {
@@ -973,11 +979,13 @@ impl PersistentSceneMaterializer {
                     Bounds::new(clip.x0, clip.y0, clip.x1, clip.y1)
                 }),
             },
-            RetainedLayerDescriptor::Filter {
-                filter: value,
-                sample_region,
-            } => {
-                let input = filter::filter_input_bounds(value, sample_region);
+            RetainedLayerDescriptor::Filter { .. } => {
+                let (value, sample_region) = chunk_filter(&self.chunks[&id]);
+                let input = filter::filter_input_bounds(
+                    value,
+                    sample_region,
+                    Bounds::canvas(self.canvas.physical_width(), self.canvas.physical_height()),
+                );
                 let output = filter::unclipped_filtered_region_bounds(value, sample_region);
                 let outset = filter::filter_dependency(value).damage_outset(input.union(output));
                 BoundsInfluence {
@@ -987,9 +995,9 @@ impl PersistentSceneMaterializer {
                     clip: Some(input.outset(outset).intersect(output)),
                 }
             }
-            RetainedLayerDescriptor::Mask(mask) => BoundsInfluence {
+            RetainedLayerDescriptor::Mask(_) => BoundsInfluence {
                 outset: 0,
-                clip: Some(filter::region_bounds(&mask.region)),
+                clip: Some(chunk_layer_influence_bounds(&self.chunks[&id])),
             },
             RetainedLayerDescriptor::Backdrop { .. } => BoundsInfluence {
                 outset: 0,

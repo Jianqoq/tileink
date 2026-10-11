@@ -18,7 +18,7 @@ pub(super) unsafe fn write(
             BindingKind::Texture | BindingKind::TextureTable => device.CreateShaderResourceView(
                 resource,
                 Some(&D3D12_SHADER_RESOURCE_VIEW_DESC {
-                    Format: windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R8G8B8A8_UNORM,
+                    Format: resource.GetDesc().Format,
                     ViewDimension: D3D12_SRV_DIMENSION_TEXTURE2D,
                     Shader4ComponentMapping: D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
                     Anonymous: D3D12_SHADER_RESOURCE_VIEW_DESC_0 {
@@ -33,7 +33,7 @@ pub(super) unsafe fn write(
             BindingKind::TextureArray => device.CreateShaderResourceView(
                 resource,
                 Some(&D3D12_SHADER_RESOURCE_VIEW_DESC {
-                    Format: windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R8G8B8A8_UNORM,
+                    Format: resource.GetDesc().Format,
                     ViewDimension: D3D12_SRV_DIMENSION_TEXTURE2DARRAY,
                     Shader4ComponentMapping: D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
                     Anonymous: D3D12_SHADER_RESOURCE_VIEW_DESC_0 {
@@ -46,18 +46,19 @@ pub(super) unsafe fn write(
                 }),
                 handle,
             ),
-            BindingKind::TextureWrite => device.CreateUnorderedAccessView(
-                resource,
-                None,
-                Some(&D3D12_UNORDERED_ACCESS_VIEW_DESC {
-                    Format: windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R8G8B8A8_UNORM,
-                    ViewDimension: D3D12_UAV_DIMENSION_TEXTURE2D,
-                    Anonymous: D3D12_UNORDERED_ACCESS_VIEW_DESC_0 {
-                        Texture2D: D3D12_TEX2D_UAV::default(),
-                    },
-                }),
-                handle,
-            ),
+            BindingKind::TextureWrite | BindingKind::TextureReadWrite => device
+                .CreateUnorderedAccessView(
+                    resource,
+                    None,
+                    Some(&D3D12_UNORDERED_ACCESS_VIEW_DESC {
+                        Format: resource.GetDesc().Format,
+                        ViewDimension: D3D12_UAV_DIMENSION_TEXTURE2D,
+                        Anonymous: D3D12_UNORDERED_ACCESS_VIEW_DESC_0 {
+                            Texture2D: D3D12_TEX2D_UAV::default(),
+                        },
+                    }),
+                    handle,
+                ),
             BindingKind::Uniform => device.CreateConstantBufferView(
                 Some(&D3D12_CONSTANT_BUFFER_VIEW_DESC {
                     BufferLocation: resource.GetGPUVirtualAddress() + uniform_offset,
@@ -137,7 +138,7 @@ impl RequiredStates {
                 | BindingKind::Texture
                 | BindingKind::TextureArray
                 | BindingKind::TextureTable => D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-                BindingKind::Write | BindingKind::TextureWrite => {
+                BindingKind::Write | BindingKind::TextureWrite | BindingKind::TextureReadWrite => {
                     D3D12_RESOURCE_STATE_UNORDERED_ACCESS
                 }
             };
@@ -262,6 +263,7 @@ fn required_states_merges_repeated_texture_table_images() {
     let table = batch.texture_table(&images).unwrap();
     let pass = super::super::compute::Pass {
         initialization: None,
+        native_source: None,
         shader,
         bindings: vec![(binding, table)],
         grid: [1, 1, 1],

@@ -7,7 +7,7 @@ title: Paint、Geometry 与 Filter
 
 ## Brush
 
-`Brush` variants：solid、linear、radial、sweep、four-corner 与 pattern。常用 constructors：
+`Brush` variants：solid、linear、radial、sweep、four-corner、mesh、program 与 pattern。常用 constructors：
 
 | 方法 | 说明 |
 |---|---|
@@ -18,7 +18,21 @@ title: Paint、Geometry 与 Filter
 | `Brush::from_gradient(&Gradient)` | 默认 ramp size |
 | `Brush::from_gradient_with_ramp_size(...)` | 显式 ramp resolution |
 | `Brush::four_corner(bounds, [Color; 4])` | 四角插值 |
-| `Brush::for_origin_resource(...)` | 调整 resource brush 到 local origin |
+| `MeshGradient::new(columns, rows, positions, colors)` | 验证并编译可移动控制点网格；可直接传给绘制 API |
+| `MeshGradient::with_interpolation(...)` | `Smooth`（默认）或 `Bilinear` |
+| `ShaderProgram::new(sources, entry, input, uniform_words)` | 按原文编译用户提供的 Metal／HLSL 完整源码 |
+| `ShaderProgram::brush(uniforms)` / `filter(uniforms)` | 创建程序化 Brush 或 Filter |
+| `ShaderInput::{None, Current, Sampled { radius }}` | 声明输入依赖；采样范围用于背景捕获和 retained 刷新 |
+| `ShaderProgram::samples_input()` / `sample_radius()` | 查询采样声明及最大每轴逻辑位移 |
+| `ProgramBrush::with_uniforms(...)` / `ShaderPipeline::with_resource(...)` | 共享原生程序，只替换参数 |
+| `ShaderKernel::new(...)` / `ShaderPipeline::new(...)` | 用户原生源码、动态资源、多 pass 与多分辨率调度 |
+| `ShaderKernel::precompiled(...)` | 用同一公开接口加载构建时编译的原生 kernel |
+| `ShaderResource::Uniform(...)` / `External { index, kind }` | 任意常量块或按调用绑定的 GPU 资源 |
+| `NativeShaderBatch::record(...)` / `submit()` | 绑定原生资源并提交同一管线，支持纹理数组和纹理表 |
+| `ShaderPipeline::with_resource(...)` / `with_input_radius(...)` | 更新资源快照或声明完整管线的采样范围 |
+| `ShaderPipeline::with_output_outset(...)` | 声明逻辑输出外扩，与输入采样范围独立，参与 DPI、离屏及 retained 处理 |
+| `ShaderResource::Input(index)` / `ShaderPipeline::input_count()` | 从 0 连续编号的动态图像输入及调用所需数量 |
+| `FilterPrimitiveKind::ShaderPipeline { pipeline, inputs }` | 直接绑定多个 GPU 图节点、SourceGraphic／SourceAlpha；region 裁剪输出 |
 
 `DEFAULT_GRADIENT_RAMP_SIZE` 为 4096。`PatternSampling` 决定 nearest/linear 等采样策略。
 

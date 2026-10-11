@@ -366,7 +366,11 @@ pub(super) fn backdrop_dependencies(canvas: &Canvas) -> Vec<BackdropDependency> 
                     {
                         result.push(BackdropDependency {
                             scoped,
-                            dependency: filter::filter_input_bounds(value, sample_region),
+                            dependency: filter::filter_input_bounds(
+                                value,
+                                sample_region,
+                                Bounds::canvas(canvas.physical_width(), canvas.physical_height()),
+                            ),
                             output: filter::unclipped_filtered_region_bounds(value, sample_region),
                             read: filter::filter_dependency(value),
                         });
@@ -424,6 +428,23 @@ pub(super) fn chunk_layer_influence_bounds(chunk: &SceneChunk) -> Bounds {
         } => filter::unclipped_filtered_region_bounds(value, sample_region),
         Command::MaskLayer { layer, .. } => filter::region_bounds(&layer.region),
         _ => unreachable!("retained layer chunk has one root layer command"),
+    }
+}
+
+/// Damage bounds are physical pixels. Use the already-encoded filter/region so
+/// DPI and shader coordinates agree with execution; logical descriptors cannot
+/// be intersected with physical child bounds without dropping dirty pixels.
+pub(super) fn chunk_filter(chunk: &SceneChunk) -> (&filter::Filter, &Region) {
+    match &chunk.canvas.command_lists[chunk.canvas.root_commands].commands[0] {
+        Command::Layer {
+            layer:
+                Layer::Filter {
+                    filter,
+                    sample_region,
+                },
+            ..
+        } => (filter, sample_region),
+        _ => unreachable!("retained filter chunk has one root filter command"),
     }
 }
 

@@ -79,7 +79,7 @@ pub(super) fn descriptors(
             BindingKind::Uniform => 0,
             BindingKind::Read | BindingKind::Write => 1,
             BindingKind::Texture | BindingKind::TextureArray | BindingKind::TextureTable => 2,
-            BindingKind::TextureWrite => 3,
+            BindingKind::TextureWrite | BindingKind::TextureReadWrite => 3,
             BindingKind::Sampler => 4,
         };
         counts[index] += u64::from(binding.count);

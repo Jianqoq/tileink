@@ -2,7 +2,18 @@ use super::abi::{Interface, Kind};
 use std::io;
 
 pub fn validate(text: &str, entry: &str, abi: &Interface) -> io::Result<()> {
-    super::abi::validate(abi)?;
+    validate_inner(text, entry, abi, false)
+}
+#[allow(dead_code)] // Also reused by the runtime application-shader compiler.
+pub fn validate_user(text: &str, entry: &str, abi: &Interface) -> io::Result<()> {
+    validate_inner(text, entry, abi, true)
+}
+fn validate_inner(text: &str, entry: &str, abi: &Interface, optional: bool) -> io::Result<()> {
+    if optional {
+        super::abi::validate_user(abi)?;
+    } else {
+        super::abi::validate(abi)?;
+    }
     let lines: Vec<_> = text
         .lines()
         .map(|l| l.trim_start_matches(';').trim())
@@ -21,7 +32,40 @@ pub fn validate(text: &str, entry: &str, abi: &Interface) -> io::Result<()> {
         ),
         "DXIL workgroup",
     )?;
-    let expected = abi.resources_for(entry)?;
+    let start = lines
+        .iter()
+        .position(|l| *l == "Resource Bindings:")
+        .ok_or_else(|| io::Error::other("missing DXIL bindings"))?;
+    let mut bindings = Vec::new();
+    for line in &lines[start + 1..] {
+        if line.starts_with("target datalayout") || (line.is_empty() && !bindings.is_empty()) {
+            break;
+        }
+        if line.is_empty()
+            || line.starts_with("Name ")
+            || line.chars().all(|c| c == '-' || c.is_whitespace())
+        {
+            continue;
+        }
+        let tokens: Vec<_> = line.split_whitespace().collect();
+        // Count every row, including arrays; filtering Count=1 would hide extra resources.
+        require(tokens.len() == 7, "DXIL resource row")?;
+        bindings.push(tokens);
+    }
+    let expected: Vec<_> = abi
+        .resources_for(entry)?
+        .into_iter()
+        .filter(|(name, _)| !optional || bindings.iter().any(|b| b[0] == *name))
+        .collect();
+    if optional {
+        require(
+            abi.resources_for(entry)?
+                .iter()
+                .filter(|(_, r)| matches!(r.kind, Kind::Write | Kind::TextureWrite))
+                .all(|(name, _)| expected.iter().any(|(active, _)| active == name)),
+            "DXIL user shader output missing",
+        )?;
+    }
     for &(name, resource) in &expected {
         if resource.kind != Kind::Uniform {
             continue;
@@ -62,26 +106,6 @@ pub fn validate(text: &str, entry: &str, abi: &Interface) -> io::Result<()> {
                 .and_then(|v| v.trim().parse::<u32>().ok());
             require(offset == Some(field.offset), "DXIL uniform offset/type")?;
         }
-    }
-    let start = lines
-        .iter()
-        .position(|l| *l == "Resource Bindings:")
-        .ok_or_else(|| io::Error::other("missing DXIL bindings"))?;
-    let mut bindings = Vec::new();
-    for line in &lines[start + 1..] {
-        if line.starts_with("target datalayout") || (line.is_empty() && !bindings.is_empty()) {
-            break;
-        }
-        if line.is_empty()
-            || line.starts_with("Name ")
-            || line.chars().all(|c| c == '-' || c.is_whitespace())
-        {
-            continue;
-        }
-        let tokens: Vec<_> = line.split_whitespace().collect();
-        // Count every row, including arrays; filtering Count=1 would hide extra resources.
-        require(tokens.len() == 7, "DXIL resource row")?;
-        bindings.push(tokens);
     }
     require(bindings.len() == expected.len(), "DXIL resource count")?;
     for (name, resource) in expected {

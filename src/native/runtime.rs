@@ -13,6 +13,7 @@ mod metal;
 mod metal_lifecycle_gpu_tests;
 mod pipeline_cache;
 mod program;
+pub(crate) mod program_shader;
 mod submissions;
 pub(super) mod texture;
 #[cfg(feature = "vulkan")]
@@ -29,3 +30,18 @@ pub(super) mod compute;
 pub(super) mod renderer;
 
 mod buffer;
+
+#[cfg(all(test, tileink_native_runtime))]
+#[path = "runtime/tests/mesh_gpu.rs"]
+mod mesh_gpu;
+
+#[cfg(all(test, tileink_native_runtime))]
+#[path = "runtime/tests/brush_support.rs"]
+mod brush_support;
+
+#[cfg(all(test, tileink_native_runtime))]
+#[path = "runtime/tests/shader_gpu.rs"]
+mod shader_gpu;
+#[cfg(all(test, tileink_native_runtime))]
+#[path = "runtime/tests/shader_pipeline_gpu.rs"]
+mod shader_pipeline_gpu;

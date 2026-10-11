@@ -42,7 +42,7 @@ struct GpuOwners {
     storage: buffer_cache::Pool,
     tables: Vec<compute_tables::Tables>,
     commands: Vec<command_cache::Commands>,
-    compute_pipelines: BTreeMap<&'static str, compute_pipeline::Pipeline>,
+    compute_pipelines: BTreeMap<String, compute_pipeline::Pipeline>,
     cache_identity: Vec<u8>,
 }
 
@@ -70,9 +70,15 @@ impl Dx12 {
         size: [u32; 2],
         layers: u32,
         _array: bool,
+        format: crate::ShaderTextureFormat,
     ) -> Result<super::texture::Allocation> {
-        let resource =
-            compute_texture::allocate(&self.gpu.device, size, layers, D3D12_RESOURCE_STATE_COMMON)?;
+        let resource = compute_texture::allocate(
+            &self.gpu.device,
+            size,
+            layers,
+            format,
+            D3D12_RESOURCE_STATE_COMMON,
+        )?;
         Ok(super::texture::Allocation::Dx12(std::rc::Rc::new(
             super::texture::Dx12Allocation {
                 resource,
@@ -116,13 +122,26 @@ impl Dx12 {
     }
     pub fn submit_compute(&mut self, batch: &super::compute::ComputeBatch) -> Result<Ticket> {
         self.retirement.wait_value()?;
+        if self.gpu.pending.len() == 0
+            && self
+                .gpu
+                .compute_pipelines
+                .keys()
+                .filter(|k| k.starts_with("program:"))
+                .count()
+                >= 128
+        {
+            self.gpu
+                .compute_pipelines
+                .retain(|key, _| !key.starts_with("program:"));
+        }
         for pass in batch.passes() {
             compute_pipeline::ensure(
                 &self.gpu.device,
                 &self.gpu.cache_identity,
                 &self.gpu.messages,
                 &mut self.gpu.compute_pipelines,
-                pass.shader.entry,
+                pass,
             )?;
         }
         let frame = compute::Frame::record(

@@ -43,7 +43,12 @@ pub(super) fn record(
         let resource = &resources[id.index()];
         let (row, pitch, rows) = match resource {
             Resource::Texture(texture) => {
-                let row = texture.width() * 4;
+                let crate::native::runtime::compute::Resource::Texture(input) =
+                    &batch.resources()[id.index()]
+                else {
+                    unreachable!()
+                };
+                let row = texture.width() * input.format.bytes_per_pixel();
                 (
                     row,
                     row.next_multiple_of(256),

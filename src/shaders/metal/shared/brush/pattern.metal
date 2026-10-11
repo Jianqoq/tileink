@@ -1,3 +1,4 @@
+#include "mesh.metal"
 struct TextureTable { array<texture2d<float>,64> images [[id(0)]]; };
 uint extend_coordinate(int value,uint size,uint mode) {
     if(size<=1) return 0;
@@ -43,6 +44,7 @@ uint sample_brush(Words paint,uint base,texture2d_array<float> atlas,sampler sam
     if(kind==3) return radial_gradient(paint,p,params,extend,payload,count);
     if(kind==4) return sweep_gradient(paint,p,params,extend,payload,count);
     if(kind==5) return four_corner_gradient(paint,p,params,payload);
+    if(kind==8) return mesh_gradient(paint,p,base,params,payload,count);
     if(kind==6) return 0;
     if(kind!=7) return color;
     uint placement=paint[base+4];

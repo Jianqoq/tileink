@@ -9,11 +9,23 @@ pub enum Resource {
     Texture(Texture),
 }
 impl Resource {
+    /// Vulkan image transfers require offsets aligned to one texel block; raw
+    /// buffer transfers require four bytes. Keep format-dependent packing shared.
+    #[cfg(any(feature = "vulkan", test))]
+    pub fn transfer_alignment(&self) -> usize {
+        match self {
+            Self::Texture(t) => t.format.bytes_per_pixel(),
+            _ => 4,
+        }
+    }
     pub fn byte_len(&self) -> usize {
         match self {
             Self::PersistentBuffer(upload) => upload.buffer.state.size,
             Self::Texture(texture) => {
-                texture.size[0] as usize * texture.size[1] as usize * texture.layers as usize * 4
+                texture.size[0] as usize
+                    * texture.size[1] as usize
+                    * texture.layers as usize
+                    * texture.format.bytes_per_pixel()
             }
             _ => self.bytes().len(),
         }
@@ -27,8 +39,32 @@ impl Resource {
         }
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn float_texture_byte_extent_and_transfer_alignment_include_precision() {
+        use crate::ShaderTextureFormat as F;
+        for (format, size) in [
+            (F::Rgba8Unorm, 4),
+            (F::Rgba16Float, 8),
+            (F::Rgba32Float, 16),
+        ] {
+            let texture = Resource::Texture(
+                Texture::with_format([3, 2], 1, false, format, vec![0; 6 * size].into()).unwrap(),
+            );
+            assert_eq!(texture.byte_len(), 6 * size);
+            assert_eq!(texture.transfer_alignment(), size);
+            assert!(
+                Texture::with_format([3, 2], 1, false, format, vec![0; 6 * size - 1].into())
+                    .is_err()
+            );
+        }
+    }
+}
 
 pub struct Texture {
+    pub format: crate::ShaderTextureFormat,
     pub size: [u32; 2],
     pub layers: u32,
     pub array: bool,
@@ -42,10 +78,25 @@ impl Texture {
         array: bool,
         bytes: TextureBytes,
     ) -> Result<Self> {
+        Self::with_format(
+            size,
+            layers,
+            array,
+            crate::ShaderTextureFormat::Rgba8Unorm,
+            bytes,
+        )
+    }
+    pub(super) fn with_format(
+        size: [u32; 2],
+        layers: u32,
+        array: bool,
+        format: crate::ShaderTextureFormat,
+        bytes: TextureBytes,
+    ) -> Result<Self> {
         let count = (size[0] as usize)
             .checked_mul(size[1] as usize)
             .and_then(|n| n.checked_mul(layers as usize))
-            .and_then(|n| n.checked_mul(4));
+            .and_then(|n| n.checked_mul(format.bytes_per_pixel()));
         if layers == 0
             || layers > u16::MAX as u32
             || (!array && layers != 1)
@@ -57,6 +108,7 @@ impl Texture {
         }
         Ok(Self {
             size,
+            format,
             layers,
             array,
             bytes,
