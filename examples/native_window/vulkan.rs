@@ -185,14 +185,8 @@ impl Host {
         }
     }
     fn resize(&mut self, size: [u32; 2]) -> Result {
+        self.retire()?;
         unsafe {
-            // Resize is a host policy boundary; retire render and presentation work.
-            self.device.device.device_wait_idle()?;
-            for pending in &mut self.pending {
-                if let Some(submission) = pending.take() {
-                    submission.wait()?;
-                }
-            }
             self.images.clear();
             self.swapchain = None;
             let owner = &self.device;
@@ -283,8 +277,24 @@ impl Host {
             Ok(())
         }
     }
+    fn retire(&mut self) -> Result {
+        // Both resize and normal shutdown must complete rendering and WSI
+        // presentation, and report their failures to the application.
+        unsafe {
+            self.device.device.device_wait_idle()?;
+        }
+        for pending in &mut self.pending {
+            if let Some(submission) = pending.take() {
+                submission.wait()?;
+            }
+        }
+        Ok(())
+    }
 }
 impl super::app::Host for Host {
+    fn preserves_target(&self) -> bool {
+        false
+    }
     fn context(&self) -> &NativeContext {
         &self.context
     }
@@ -375,6 +385,9 @@ impl super::app::Host for Host {
         }
         self.slot = (self.slot + 1) % self.pending.len();
         Ok(())
+    }
+    fn finish(&mut self) -> Result {
+        self.retire()
     }
 }
 impl Drop for Host {

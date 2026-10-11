@@ -22,10 +22,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     all(target_os = "windows", any(feature = "dx12", feature = "vulkan")),
     all(target_os = "macos", feature = "metal")
 )))]
-fn main() {
-    eprintln!(
-        "This example requires --no-default-features --features metal on macOS, or dx12/vulkan on Windows."
-    );
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    Err("This example requires --no-default-features --features metal on macOS, or dx12/vulkan on Windows.".into())
 }
 
 #[cfg(all(target_os = "macos", feature = "metal"))]

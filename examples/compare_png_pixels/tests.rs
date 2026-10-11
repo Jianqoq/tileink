@@ -315,3 +315,26 @@ fn git_baseline_checks_all_pngs_without_rewriting_them_or_trusting_the_index() {
     assert_eq!(old.byte_equal + old.pixel_equal, 0);
     assert!(old.failed > 0);
 }
+
+#[test]
+fn git_blob_stream_handles_binary_empty_repeated_and_missing_objects() {
+    let repo = Repository::new();
+    let contents = [vec![], vec![0, b'\n', 0xff], vec![0x80; 70_000]];
+    let mut ids = Vec::new();
+    for (index, data) in contents.iter().enumerate() {
+        let name = format!("blob-{index}");
+        fs::write(repo.0.join(&name), data).unwrap();
+        ids.push(
+            String::from_utf8(git::command(&repo.0, &["hash-object", "-w", &name]).unwrap())
+                .unwrap()
+                .trim()
+                .to_owned(),
+        );
+    }
+    let mut blobs = git::Blobs::new(&repo.0).unwrap();
+    for index in [2, 0, 1, 2, 0] {
+        assert_eq!(blobs.read(&ids[index]).unwrap(), contents[index]);
+    }
+    assert!(blobs.read(&"0".repeat(40)).is_err());
+    assert_eq!(blobs.read(&ids[1]).unwrap(), contents[1]);
+}

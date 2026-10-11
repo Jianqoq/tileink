@@ -647,6 +647,62 @@ hashes are saved in
 Temporary measurement, snapshot and validation source is removed after recording
 the results.
 
+## Phase 18: initialized window state, explicit completion and owned Git pipes
+
+The native-window example constructs its complete State before entering the event
+loop. Its impossible absent-state branches, unwraps and redundant smoke draw cap
+are removed. Target preservation and `finish` are required host methods instead
+of default policies. DX12 explicitly retires host copy/present fences and rendering
+receipts; Vulkan shares its actual device/receipt retirement with resize. Normal
+shutdown now propagates failures. Metal continues its existing explicit drain.
+Minimized/out-of-date surfaces and ownership retention on unknown GPU completion
+remain required native lifecycle semantics.
+
+Unsupported platform/backend builds still compile, but executing the example
+now returns an error instead of printing a requirement and exiting successfully.
+Win32 client-size and resize failures propagate through the shared window API;
+failed geometry queries no longer invent a zero-sized window. Frame insets are
+computed separately and added to requested extents with wide arithmetic before
+conversion to native signed dimensions, avoiding truncation and rectangle-size
+overflow. The rectangle calculation follows the documented
+[AdjustWindowRectEx contract](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-adjustwindowrectex).
+These fix the actual error-reporting paths permanently.
+
+The PNG comparison tool owns its required ChildStdin at batch-process creation.
+Each blob read writes directly to that pipe instead of rechecking Child's optional
+stdin. The spawn, I/O and Git protocol errors and process kill/wait ownership
+remain explicit. No missing-pipe compatibility path is retained.
+
+The featureless CLI regression first reproduced the old false-success exit.
+A new real Git-stream test covers empty, binary, oversized-buffer, repeated and
+missing objects followed by a valid read; it passes before and after the ownership
+refactor. All eight focused release tests pass. Three additional Windows tests
+cover invalid geometry handles, unrepresentable/frame-expanded extents and real
+hidden-window resizing. DX12/Vulkan Windows library/example/test types compile
+through a temporary type-only harness; its empty shader artifact table does not
+validate shader compilation or GPU execution. The three Win32 tests still require
+Windows runtime execution. The harness is removed after checking.
+
+The full serial Metal release suite reports 1023 passing tests and the same three
+known failures described in phase 12. All 12 example tests pass. Release Clippy
+has no new warnings, and the backend-free library compiles. The real Metal host
+completes eight frames and the 640x360 to 480x270 resize with validation enabled.
+All 1730 SVG images and seven example PNGs remain exactly equal to phase 17.
+
+Actual application measurements compare the before/after release executables,
+alternating process order per pair with validation disabled. Six timed pairs of
+the full 3442-PNG repository check produce identical PASS reports: p50 changes
+from 1681.844 to 1687.511 ms (+0.34%). Ten timed pairs of native window startup,
+eight frames, resize and shutdown change from 233.515 to 233.747 ms (+0.10%),
+with identical successful completion reports. These whole-process measurements
+do not establish GPU frame throughput or a speedup; no material regression is
+identified in the affected applications. Warmup counts, raw samples and executable/
+source hashes are saved in
+[`cleanup-phase18-metal-2026-10-11.json`](benchmarks/cleanup-phase18-metal-2026-10-11.json).
+Temporary measurement and validation source and copied executables are removed
+after recording results.
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
+- Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

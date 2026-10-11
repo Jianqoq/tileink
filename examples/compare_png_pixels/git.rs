@@ -2,7 +2,7 @@ use std::{
     collections::BTreeMap,
     io::{BufRead, BufReader, Read, Write},
     path::Path,
-    process::{Child, ChildStdout, Command, Stdio},
+    process::{Child, ChildStdin, ChildStdout, Command, Stdio},
 };
 
 use crate::Result;
@@ -68,6 +68,7 @@ pub fn files(root: &Path, revision: &str) -> Result<BTreeMap<String, Option<Stri
 
 pub struct Blobs {
     child: Child,
+    input: ChildStdin,
     output: BufReader<ChildStdout>,
 }
 
@@ -80,14 +81,19 @@ impl Blobs {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()?;
-        let output = BufReader::new(child.stdout.take().ok_or("missing git stdout")?);
-        Ok(Self { child, output })
+        // Both streams are owned for the lifetime of this batch process.
+        let input = child.stdin.take().expect("piped git stdin");
+        let output = BufReader::new(child.stdout.take().expect("piped git stdout"));
+        Ok(Self {
+            child,
+            input,
+            output,
+        })
     }
 
     pub fn read(&mut self, oid: &str) -> Result<Vec<u8>> {
-        let input = self.child.stdin.as_mut().ok_or("missing git stdin")?;
-        writeln!(input, "{oid}")?;
-        input.flush()?;
+        writeln!(self.input, "{oid}")?;
+        self.input.flush()?;
         let mut header = String::new();
         self.output.read_line(&mut header)?;
         let parts: Vec<_> = header.split_whitespace().collect();

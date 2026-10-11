@@ -37,7 +37,7 @@ impl Window {
         this.request_inner_size(Size {
             width: 640,
             height: 360,
-        });
+        })?;
         this.window.center();
         if visible {
             this.window.makeKeyAndOrderFront(None);
@@ -46,17 +46,18 @@ impl Window {
         }
         Ok(this)
     }
-    pub fn inner_size(&self) -> Size {
+    pub fn inner_size(&self) -> Result<Size> {
         let s = self.view.convertSizeToBacking(self.view.bounds().size);
-        Size {
+        Ok(Size {
             width: s.width.round() as u32,
             height: s.height.round() as u32,
-        }
+        })
     }
-    pub fn request_inner_size(&self, s: Size) {
+    pub fn request_inner_size(&self, s: Size) -> Result {
         let scale = self.window.backingScaleFactor();
         self.window
             .setContentSize(NSSize::new(s.width as f64 / scale, s.height as f64 / scale));
+        Ok(())
     }
     pub fn pump(&self) -> bool {
         objc2::rc::autoreleasepool(|_| {

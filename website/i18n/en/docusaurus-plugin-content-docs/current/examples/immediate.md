@@ -18,3 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 For direct host presentation, see `examples/native_window/`.
+
+The example initializes before entering its event loop and explicitly completes rendering and
+presentation on shutdown, reporting failures to its caller. Unsupported backend configurations
+exit with an error. `metal --smoke` verifies eight presented frames and a real window resize.

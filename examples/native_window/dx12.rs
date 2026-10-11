@@ -57,7 +57,7 @@ impl Host {
             let RawWindowHandle::Win32(handle) = window.window_handle()?.as_raw() else {
                 return Err("expected Win32 window".into());
             };
-            let size = window.inner_size();
+            let size = window.inner_size()?;
             let swapchain: IDXGISwapChain3 = factory
                 .CreateSwapChainForHwnd(
                     &queue,
@@ -243,6 +243,9 @@ impl super::app::Host for Host {
             self.unconfirmed = false;
         }
         Ok(())
+    }
+    fn finish(&mut self) -> Result {
+        self.retire()
     }
 }
 impl Drop for Host {

@@ -18,3 +18,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 直接输出到宿主窗口时，参考 `examples/native_window/`。
+
+该示例在进入事件循环前完成初始化，关闭时显式等待渲染和呈现结束，并向调用者报告错误。
+不支持的后端配置会以失败状态退出；`metal --smoke` 验证八帧呈现和一次真实窗口缩放。

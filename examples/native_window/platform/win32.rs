@@ -49,51 +49,51 @@ impl Window {
             window.request_inner_size(Size {
                 width: 640,
                 height: 360,
-            });
+            })?;
             if visible {
                 let _ = ShowWindow(hwnd, SW_SHOW);
             }
             Ok(window)
         }
     }
-    pub fn inner_size(&self) -> Size {
+    pub fn inner_size(&self) -> Result<Size> {
         unsafe {
             if IsIconic(self.hwnd).as_bool() {
-                return Size {
+                return Ok(Size {
                     width: 0,
                     height: 0,
-                };
+                });
             }
             let mut r = RECT::default();
-            let _ = GetClientRect(self.hwnd, &mut r);
-            Size {
+            GetClientRect(self.hwnd, &mut r)?;
+            Ok(Size {
                 width: (r.right - r.left) as u32,
                 height: (r.bottom - r.top) as u32,
-            }
+            })
         }
     }
-    pub fn request_inner_size(&self, s: Size) {
+    pub fn request_inner_size(&self, s: Size) -> Result {
         unsafe {
-            let mut r = RECT {
-                right: s.width as i32,
-                bottom: s.height as i32,
-                ..Default::default()
-            };
-            let _ = AdjustWindowRectEx(
+            // Calculate the frame insets separately, then add the requested
+            // client extent in wide arithmetic so neither RECT nor subtraction
+            // can wrap before SetWindowPos receives its signed dimensions.
+            let mut r = RECT::default();
+            AdjustWindowRectEx(
                 &mut r,
                 WS_OVERLAPPEDWINDOW,
                 false,
                 WINDOW_EX_STYLE::default(),
-            );
-            let _ = SetWindowPos(
+            )?;
+            SetWindowPos(
                 self.hwnd,
                 None,
                 0,
                 0,
-                r.right - r.left,
-                r.bottom - r.top,
+                (i64::from(s.width) + i64::from(r.right) - i64::from(r.left)).try_into()?,
+                (i64::from(s.height) + i64::from(r.bottom) - i64::from(r.top)).try_into()?,
                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
-            );
+            )?;
+            Ok(())
         }
     }
     pub fn pump(&self) -> bool {
@@ -123,3 +123,6 @@ impl HasWindowHandle for Window {
         Ok(unsafe { WindowHandle::borrow_raw(RawWindowHandle::Win32(h)) })
     }
 }
+
+#[cfg(test)]
+mod tests;
