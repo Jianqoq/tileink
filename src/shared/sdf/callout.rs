@@ -18,12 +18,13 @@ impl CalloutSide {
         self as u32 as f32
     }
 
-    pub(crate) const fn from_value(value: f32) -> Self {
-        match value as u32 {
-            value if value == Self::Top as u32 => Self::Top,
-            value if value == Self::Right as u32 => Self::Right,
-            value if value == Self::Left as u32 => Self::Left,
-            _ => Self::Bottom,
+    pub(crate) const fn from_value(value: f32) -> Option<Self> {
+        match value {
+            0.0 => Some(Self::Top),
+            1.0 => Some(Self::Right),
+            2.0 => Some(Self::Bottom),
+            3.0 => Some(Self::Left),
+            _ => None,
         }
     }
 }

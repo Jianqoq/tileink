@@ -48,11 +48,12 @@ impl ImageResourceId {
         }
     }
 
-    pub(crate) fn decode(scope: u32, low: u32, high: u32) -> Self {
+    pub(crate) fn decode(scope: u32, low: u32, high: u32) -> Option<Self> {
         let key = ImageKey(low as u64 | ((high as u64) << 32));
         match scope {
-            1 => Self::Scene(key),
-            _ => Self::Renderer(key),
+            0 => Some(Self::Renderer(key)),
+            1 => Some(Self::Scene(key)),
+            _ => None,
         }
     }
 }

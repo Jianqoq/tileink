@@ -341,7 +341,8 @@ pub(crate) fn decode_encoded_brush(blob: &[u32], offset: u32, len: u32) -> Optio
     let record = encoded_brush_words(blob, offset, len)?;
     let data = &record[..GPU_BRUSH_U32_STRIDE];
     // Header validation guarantees every fixed parameter. Variable payloads and
-    // encoded descriptor values still require validation below.
+    // encoded descriptor values still require validation below: unknown values are
+    // malformed records, not alternate spellings of the default enum variant.
     let params: [f32; GPU_BRUSH_PARAM_STRIDE] =
         std::array::from_fn(|i| f32::from_bits(record[GPU_BRUSH_U32_STRIDE + i]));
     let payload = encoded_brush_payload(blob, offset, len)?;
@@ -351,7 +352,7 @@ pub(crate) fn decode_encoded_brush(blob: &[u32], offset: u32, len: u32) -> Optio
             start: [params[0], params[1]],
             end: [params[2], params[3]],
             transform: std::array::from_fn(|i| params[4 + i]),
-            extend: decode_gpu_extend(data[1]),
+            extend: decode_gpu_extend(data[1])?,
             ramp: Rc::from(payload),
         })),
         GPU_BRUSH_RADIAL => Some(Brush::Radial(RadialGradient {
@@ -360,14 +361,14 @@ pub(crate) fn decode_encoded_brush(blob: &[u32], offset: u32, len: u32) -> Optio
             start_radius: params[4],
             end_radius: params[5],
             transform: std::array::from_fn(|i| params[6 + i]),
-            extend: decode_gpu_extend(data[1]),
+            extend: decode_gpu_extend(data[1])?,
             ramp: Rc::from(payload),
         })),
         GPU_BRUSH_SWEEP => Some(Brush::Sweep(SweepGradient {
             center: [params[0], params[1]],
             start_angle: params[2],
             end_angle: params[3],
-            extend: decode_gpu_extend(data[1]),
+            extend: decode_gpu_extend(data[1])?,
             ramp: Rc::from(payload),
         })),
         GPU_BRUSH_FOUR_CORNER => Some(Brush::FourCorner(FourCornerGradient {
@@ -394,10 +395,10 @@ pub(crate) fn decode_encoded_brush(blob: &[u32], offset: u32, len: u32) -> Optio
                 bounds: std::array::from_fn(|i| params[6 + i]),
                 bins,
                 patch_base: data[6],
-                interpolation: if data[7] == 0 {
-                    MeshInterpolation::Bilinear
-                } else {
-                    MeshInterpolation::Smooth
+                interpolation: match data[7] {
+                    0 => MeshInterpolation::Bilinear,
+                    1 => MeshInterpolation::Smooth,
+                    _ => return None,
                 },
                 payload: Rc::from(payload),
             }))
@@ -410,17 +411,17 @@ pub(crate) fn decode_encoded_brush(blob: &[u32], offset: u32, len: u32) -> Optio
             )?,
         ))),
         GPU_BRUSH_PATTERN_RESOURCE => {
-            if payload.len() < 3 {
+            if payload.len() != 3 {
                 return None;
             }
             Some(Brush::Pattern(PatternBrush {
                 image: PatternImage::Resource(ImageResourceId::decode(
                     payload[0], payload[1], payload[2],
-                )),
+                )?),
                 transform: std::array::from_fn(|i| params[i]),
-                extend: decode_gpu_extend(data[1]),
-                sampling: decode_gpu_pattern_sampling(data[8]),
-                opacity: data[7].min(255) as u8,
+                extend: decode_gpu_extend(data[1])?,
+                sampling: decode_gpu_pattern_sampling(data[8])?,
+                opacity: data[7].try_into().ok()?,
             }))
         }
         _ => None,
@@ -713,11 +714,12 @@ pub(crate) fn encode_gpu_extend(extend: Extend) -> u32 {
     }
 }
 
-fn decode_gpu_extend(extend: u32) -> Extend {
+fn decode_gpu_extend(extend: u32) -> Option<Extend> {
     match extend {
-        GPU_EXTEND_REPEAT => Extend::Repeat,
-        GPU_EXTEND_REFLECT => Extend::Reflect,
-        _ => Extend::Pad,
+        GPU_EXTEND_PAD => Some(Extend::Pad),
+        GPU_EXTEND_REPEAT => Some(Extend::Repeat),
+        GPU_EXTEND_REFLECT => Some(Extend::Reflect),
+        _ => None,
     }
 }
 
@@ -728,10 +730,11 @@ pub(crate) fn encode_gpu_pattern_sampling(sampling: PatternSampling) -> u32 {
     }
 }
 
-fn decode_gpu_pattern_sampling(sampling: u32) -> PatternSampling {
+fn decode_gpu_pattern_sampling(sampling: u32) -> Option<PatternSampling> {
     match sampling {
-        GPU_PATTERN_BILINEAR => PatternSampling::Bilinear,
-        _ => PatternSampling::Nearest,
+        GPU_PATTERN_NEAREST => Some(PatternSampling::Nearest),
+        GPU_PATTERN_BILINEAR => Some(PatternSampling::Bilinear),
+        _ => None,
     }
 }
 

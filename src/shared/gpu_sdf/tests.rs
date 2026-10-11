@@ -1,6 +1,52 @@
 use super::*;
 
 #[test]
+fn sdf_enum_fields_reject_unknown_fractional_and_nonfinite_values() {
+    for (kind, word, valid_count) in [
+        (GPU_SDF_LINE, 6, 3),
+        (GPU_SDF_DASH_LINE, 6, 3),
+        (GPU_SDF_ARC, 7, 3),
+        (GPU_SDF_LINE_SHADOW, 6, 3),
+        (GPU_SDF_ARC_SHADOW, 7, 3),
+        (GPU_SDF_CALLOUT, 10, 4),
+        (GPU_SDF_CALLOUT_STROKE, 10, 4),
+        (GPU_SDF_CALLOUT_SHADOW, 10, 4),
+        (GPU_SDF_CALLOUT, 12, 2),
+        (GPU_SDF_CALLOUT_STROKE, 12, 2),
+        (GPU_SDF_CALLOUT_SHADOW, 12, 2),
+    ] {
+        let shadow = matches!(
+            kind,
+            GPU_SDF_LINE_SHADOW | GPU_SDF_ARC_SHADOW | GPU_SDF_CALLOUT_SHADOW
+        );
+        let decode = |words: &[u32]| {
+            if shadow {
+                decode_sdf_shadow(words, 0, ENCODED_SDF_WORDS as u32).is_some()
+            } else {
+                decode_sdf(words, 0, ENCODED_SDF_WORDS as u32).is_some()
+            }
+        };
+        let mut words = vec![0; ENCODED_SDF_WORDS];
+        words[0] = kind;
+        for valid in 0..valid_count {
+            words[word] = (valid as f32).to_bits();
+            assert!(decode(&words), "kind {kind}, valid {valid}");
+        }
+        for invalid in [
+            -1.0,
+            0.25,
+            valid_count as f32,
+            f32::NAN,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+        ] {
+            words[word] = invalid.to_bits();
+            assert!(!decode(&words), "kind {kind}, invalid {invalid}");
+        }
+    }
+}
+
+#[test]
 fn encoded_sdf_requires_a_complete_record_and_preserves_float_bits() {
     let fields = [
         f32::from_bits(0x7fc01234),

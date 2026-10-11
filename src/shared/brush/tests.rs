@@ -60,6 +60,100 @@ fn fixed_brush_parameters_round_trip_and_truncated_payloads_are_rejected() {
     blob[3] = 3;
     assert!(decode_encoded_brush(&blob, offset, len).is_none());
 }
+
+#[test]
+fn encoded_brush_descriptors_reject_unknown_values_instead_of_substituting_defaults() {
+    let resource = Brush::from_image_key_natural(
+        ImageKey::new(7),
+        [0.0; 2],
+        (2, 2),
+        Extend::Pad,
+        PatternSampling::Nearest,
+        255,
+    )
+    .unwrap();
+    let mesh = Brush::Mesh(
+        MeshGradient::new(
+            2,
+            2,
+            [[0.0, 0.0], [2.0, 0.0], [0.0, 2.0], [2.0, 2.0]],
+            [peniko::Color::WHITE; 4],
+        )
+        .unwrap(),
+    );
+    for (brush, mutations) in [
+        (
+            Brush::from_gradient_with_ramp_size(&linear_gradient(), 4),
+            vec![(1, 3)],
+        ),
+        (
+            resource,
+            vec![(1, 3), (8, 2), (7, 256), (ENCODED_BRUSH_HEADER_WORDS, 2)],
+        ),
+        (mesh, vec![(7, 2)]),
+    ] {
+        let mut blob = Vec::new();
+        let (offset, len) = push_encoded_brush(&mut blob, &brush);
+        assert!(decode_encoded_brush(&blob, offset, len).is_some());
+        for (word, value) in mutations {
+            for invalid in [value, u32::MAX] {
+                let mut malformed = blob.clone();
+                malformed[word] = invalid;
+                assert!(
+                    decode_encoded_brush(&malformed, offset, len).is_none(),
+                    "word {word} value {invalid}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn valid_resource_descriptors_preserve_scope_sampling_extend_and_opacity() {
+    let key = ImageKey::new(0xfedc_ba98_7654_3210);
+    for id in [ImageResourceId::renderer(key), ImageResourceId::scene(key)] {
+        for extend in [Extend::Pad, Extend::Repeat, Extend::Reflect] {
+            for sampling in [PatternSampling::Nearest, PatternSampling::Bilinear] {
+                for opacity in [0, 127, 255] {
+                    let brush = Brush::Pattern(
+                        PatternBrush::new_resource(
+                            id,
+                            [2.0, 0.0, 0.0, 3.0, 4.0, 5.0],
+                            extend,
+                            sampling,
+                            opacity,
+                        )
+                        .unwrap(),
+                    );
+                    let mut words = Vec::new();
+                    let (offset, len) = push_encoded_brush(&mut words, &brush);
+                    let decoded = decode_encoded_brush(&words, offset, len).unwrap();
+                    let mut round_trip = Vec::new();
+                    push_encoded_brush(&mut round_trip, &decoded);
+                    assert_eq!(round_trip, words);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn resource_payload_requires_exactly_one_three_word_image_id() {
+    let brush = Brush::from_image_key_natural(
+        ImageKey::new(7),
+        [0.0; 2],
+        (2, 2),
+        Extend::Pad,
+        PatternSampling::Nearest,
+        255,
+    )
+    .unwrap();
+    let mut words = Vec::new();
+    let (offset, len) = push_encoded_brush(&mut words, &brush);
+    words.push(0);
+    words[3] = 4;
+    assert!(decode_encoded_brush(&words, offset, len + 1).is_none());
+}
 fn linear_gradient() -> Gradient {
     let stops = [
         ColorStop::from((0.0, AlphaColor::from_rgb8(255, 0, 0))),

@@ -123,7 +123,8 @@ fn resource_brush_header(
     // Canvas and filter brush encoders own this internal format. Resource payloads
     // contain exactly one three-word image ID; malformed records are invariant errors.
     let payload = &source[source[2] as usize..];
-    let id = ImageResourceId::decode(payload[0], payload[1], payload[2]);
+    let id = ImageResourceId::decode(payload[0], payload[1], payload[2])
+        .expect("resource brush scope is encoder-owned");
     let mut header = std::array::from_fn(|index| source[index]);
     match image_resources.and_then(|resources| resources.image_placement(id)) {
         Some(ImageResourcePlacement::Atlas(rect)) if rect.width > 0 && rect.height > 0 => {

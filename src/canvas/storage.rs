@@ -78,19 +78,29 @@ impl Canvas {
     }
 
     pub(crate) fn draw_brush_for_record(&self, draw: &DrawRecord) -> Option<Brush> {
-        decode_encoded_brush(&self.brush_blob, draw.brush_offset, draw.brush_len)
+        // NONE represents absence. A present record is encoder-owned and must
+        // decode; treating corruption as absence silently drops paint on append.
+        (draw.brush_offset != DrawRecord::NONE).then(|| {
+            decode_encoded_brush(&self.brush_blob, draw.brush_offset, draw.brush_len)
+                .expect("encoded canvas brush")
+        })
     }
 
     pub(crate) fn draw_sdf(&self, draw: &DrawRecord) -> Option<Sdf> {
-        decode_sdf(&self.sdf_blob, draw.sdf_offset, draw.sdf_len)
+        (draw.sdf_offset != DrawRecord::NONE).then(|| {
+            decode_sdf(&self.sdf_blob, draw.sdf_offset, draw.sdf_len).expect("encoded canvas SDF")
+        })
     }
 
     pub(crate) fn draw_sdf_shadow(&self, draw: &DrawRecord) -> Option<SdfShadow> {
-        decode_sdf_shadow(
-            &self.sdf_shadow_blob,
-            draw.sdf_shadow_offset,
-            draw.sdf_shadow_len,
-        )
+        (draw.sdf_shadow_offset != DrawRecord::NONE).then(|| {
+            decode_sdf_shadow(
+                &self.sdf_shadow_blob,
+                draw.sdf_shadow_offset,
+                draw.sdf_shadow_len,
+            )
+            .expect("encoded canvas SDF shadow")
+        })
     }
 
     pub(crate) fn width_in_tiles(&self) -> u32 {

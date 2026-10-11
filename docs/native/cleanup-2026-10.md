@@ -305,8 +305,49 @@ measured regression. SVG parsing/lowering and readback are outside timed regions
 Temporary measurement source is removed after validation.
 [Raw measurements and protocol](benchmarks/cleanup-phase9-metal-2026-10-11.json).
 
+## Phase 10: encoded descriptors have explicit semantics
+
+CPU brush reconstruction no longer turns unknown extend, sampling, resource
+scope or mesh-interpolation values into valid defaults. Pattern opacity must fit
+its encoded byte, and a resource payload must contain exactly one three-word
+image ID. SDF cap/side/visibility fields must equal their actual enum values;
+fractional and nonfinite values are rejected instead of truncated or thresholded.
+The SDF reconstruction code now lives in a separate decoding module.
+
+Canvas record access distinguishes an absent payload (`DrawRecord::NONE`) from
+a present malformed record. A present record must decode; append and public
+brush lookup can no longer quietly remove corrupted paint or geometry. This
+matches the existing offscreen reconstruction contract. Renderer-owned headers
+also reject an invalid resource scope rather than aliasing it to another resource.
+
+Regression tests reproduce the old unknown-value substitutions, ignored trailing
+resource words, and all three silent append omissions before their fixes. Valid
+descriptor tests retain both resource scopes, every extend/sampling combination,
+edge opacity values, all SDF cap/side/visibility values and both mesh interpolation
+modes. These changes fix the descriptor and caller contracts directly; they do
+not introduce a compatibility or temporary rendering path. Genuine missing-image
+transparency, intentionally absent geometry, and floating-point geometry fields
+retain their existing semantics.
+
+All 9 brush, 3 SDF, 8 offscreen, 77 Canvas and 8 public native-renderer focused
+release tests pass. The full single-thread release suite reports 972 passing
+tests and the same nine known failures. Release Clippy and example builds/tests
+pass without new warnings. All 1730 SVG images and seven example PNGs remain
+byte-identical to the initial cleanup baseline.
+
+The 24 paired actual renderer workloads preserve exact pixels. The two new cases
+include reset/append of a reusable child containing line/arc/callout variants,
+their shadows, and renderer/scene image patterns. On M5, append plus render changes
+p50 by +0.68%; the same content through cropped isolated blur changes -0.34%.
+The 17 established general/retained cases range from -0.89% to +0.71%, with no
+material measured regression. The vector-image gains from phase 9 remain present.
+Temporary measurement source is removed after validation.
+[Raw measurements and protocol](benchmarks/cleanup-phase10-metal-2026-10-11.json).
+
 ## Remaining audit work
 
-- Audit encoded enum values that still map invalid data to valid defaults, while
-  preserving actual brush/SDF decoding contracts and shader behavior.
+- Retire Metal reference runners that invoke deleted WGSL integration targets,
+  while retaining independent SDF verification. The current SDF parity test
+  still expects files produced by a removed generator; this is one of the known
+  failures, not a regression introduced by descriptor cleanup.
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
