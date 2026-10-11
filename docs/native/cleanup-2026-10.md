@@ -2652,9 +2652,74 @@ JSON/gzip files parse and npm root declarations match package.json. All 978
 current implementation files have one audit owner and are fully read; the
 remaining producer proofs and platform execution work continue separately.
 
+## Phase 51: emit from the accepted typed coarse stack
+
+The source-to-GPU trace proves that fused stacks have only clip, opacity and
+blend entries. `LayerStackEntry` and its exhaustive GPU conversion own those
+tags; the upload staging code uses that conversion for full and partial updates.
+Opacity and blend constructors always encode path boundaries without SDF or
+shadow geometry. Brush edits, transformed append and offscreen draw remapping
+preserve that distinction.
+
+Every scalar, parallel and chunk emitter first accepts the wrapper count for
+the same immutable scene inputs. That count rejects missing path backdrops and
+uncovered geometry before emission. Metal and HLSL therefore remove repeated
+unknown-kind and missing-backdrop skips inside the emitters, the impossible
+unknown-kind branch in counting, and SDF checks for opacity/blend. Full-tile clip
+elision, actual coverage rejection, capacity bounds, write ownership and launch
+guards remain. Begins retain nesting order and ends retain reverse order. This
+is a permanent simplification of the current pipeline contract.
+
+A producer test checks encoded tags and path/SDF ownership. Six independent GPU
+cases cover partial/full path and SDF clips, empty path/SDF rejection, negative
+EvenOdd winding, opacity/blend payloads and reverse end order across both count
+routes and all three emitters. They pass before and after the production edits.
+The obsolete active unknown-tag fixture now exercises a valid empty path clip.
+Review also corrects an occlusion fixture that overwrote its opacity boundary
+with painted SDF geometry: it now keeps a separate path boundary, with unchanged
+particle expectations.
+
+Focused single-thread release checks pass 49 coarse cases and the producer case.
+Full release tests, including ignored tests, pass 1134 cases with zero failures
+and zero ignored. The original two pinned-DXC checks and turbulence semantic
+test pass again. Formatting, release clippy, backend-free compilation, all
+examples and Windows DX12/Vulkan all-target release checks pass. The existing
+one library/eight library-test clippy warnings remain. Actual DXC validates all
+84 entries for each of DXIL and SPIR-V; eight coarse artifacts change on each
+target. The Metal manifests change and the backend-free manifest stays empty.
+Pinned compiler and validator identities remain unchanged.
+
+All 1730 SVG PNGs, seven image examples and nine mixed-stack application PNGs
+match baseline bytes. The application renders 48 frames at 1280×720 with 48
+cards, four clips per card, opacity/blend groups, three opacity phases, translated
+and scaled append, and retained leaf replacement. Native presentation completes
+eight frames at 640×360 and 480×270. The application explicitly pins the M5
+registry ID, as does the window host. The SVG fixture renderer and raw Metal
+coarse unit routes choose the default device on this single-GPU M5 host;
+enforcing the unit harness's stated explicit-pin policy remains a separate audit.
+
+The [application report](benchmarks/cleanup-phase51-metal-2026-10-12.json) retains
+144 observations, including two warmups per label, ten alternating before/after
+pairs per workload, interleaved identical-current controls and all tails.
+Full-process medians change 4295.529 to 4305.723 ms for SVG (+0.237%), 260.762 to
+259.117 ms for the mixed-stack application (-0.631%), and 232.646 to 228.169 ms
+for the window (-1.924%). Paired descriptive bootstrap intervals all include
+zero: [-1.634%, +2.939%], [-4.589%, +1.655%] and [-5.689%, +6.081%]. Identical-code
+controls also vary, including a nonzero application interval. These measurements
+show no stable material regression or attributable speedup.
+
+Verification after every stopped timer checks 83040 SVG PNGs, 432 application
+PNGs, 2304 application frames and 384 window frames. API validation is enabled
+for correctness and disabled for timing; SVG sources stay unchanged. The
+temporary measurement source and all 24 copied/compiled artifacts are removed.
+All 57 benchmark JSON/gzip files parse and npm root declarations match
+package.json. The bilingual GPU pipeline guide documents the stack contract.
+All 979 current implementation files have one audit owner and are fully read;
+the remaining producer proofs and platform execution work continue separately.
+
 ## Remaining audit work
 
-- All current implementation files are fully read. The progressive/glass shader, SVG lowering, filter distance, text coordinate, retained layer descriptor, typed offscreen and recording geometry cleanup are implemented and verified on Metal. Prove coarse stack emitter inputs, retained compiled membership bounds and other plan eligibility before removing their remaining substitutes. Test DX12 lock-poison policy and prove packed uniform handle presence. Clip geometry replacement inside/outside filters has fresh-renderer and analytic GPU coverage; continue tracing the wider retained metadata patching rules. Continue checking current Cargo/module reachability for retired code after the orphan example removal. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
+- All current implementation files are fully read. The progressive/glass shader, SVG lowering, filter distance, text coordinate, retained layer descriptor, typed offscreen, recording geometry and coarse stack cleanup are implemented and verified on Metal. Prove retained compiled membership bounds and other plan eligibility before removing their remaining substitutes. Test DX12 lock-poison policy and prove packed uniform handle presence. Enforce the Metal coarse test harness's explicit GPU pin requirement. Clip geometry replacement inside/outside filters has fresh-renderer and analytic GPU coverage; continue tracing the wider retained metadata patching rules. Continue checking current Cargo/module reachability for retired code after the orphan example removal. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
 - Execute the HLSL editor test against the actual ShaderTools language server; local protocol regressions pass, but the server is unavailable locally.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

@@ -73,7 +73,7 @@ pub(super) fn count_scene(draw_count: u32, linked: bool, stack: u32) -> CountSce
     work[tile_emit_base as usize + 1] = 0;
     let mut expected = work.clone();
     let mut particles: u32 = (0..draw_count).map(|i| pattern[(i % 8) as usize]).sum();
-    // stack: 0 absent; 1 full path clip elided; 2 opacity retained; 3 invalid tag.
+    // stack: 0 absent; 1 full path clip elided; 2 opacity retained; 3 empty path clip.
     let wrapper = u32::from(stack == 2);
     if stack == 3 {
         particles = 0;
@@ -101,7 +101,7 @@ pub(super) fn count_scene(draw_count: u32, linked: bool, stack: u32) -> CountSce
     path[9] = 1;
     let layers = [
         match stack {
-            1 => 0,
+            1 | 3 => 0,
             2 => 1,
             _ => 99,
         },
@@ -114,7 +114,7 @@ pub(super) fn count_scene(draw_count: u32, linked: bool, stack: u32) -> CountSce
         draws,
         text: vec![0],
         paths: path.to_vec(),
-        backdrops: vec![1],
+        backdrops: vec![u32::from(stack != 3)],
         ranges: vec![0, 0],
         layers: layers.to_vec(),
         work,

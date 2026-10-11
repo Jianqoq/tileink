@@ -1,6 +1,56 @@
 use super::*;
 
 #[test]
+fn fused_stack_producers_encode_only_clip_or_path_group_geometry() {
+    use crate::shared::{gpu_coarse::LayerStackRecord, gpu_types::*};
+    use peniko::kurbo::Shape;
+
+    let mut canvas = test_scene();
+    let rect = Rect::new(0.0, 0.0, 48.0, 48.0);
+    canvas.push_clip_layer(
+        rect.to_path(0.1),
+        Affine::translate((0.25, 0.25)),
+        FillRule::EvenOdd,
+        0.1,
+    );
+    canvas.push_clip_sdf_rect_layer(rect, Radius::all(4.0));
+    canvas.push_opacity_layer(rect.to_path(0.1), Affine::IDENTITY, 0.1, 0.5);
+    canvas.push_blend_layer(
+        rect.to_path(0.1),
+        Affine::IDENTITY,
+        0.1,
+        Mix::Screen,
+        Compose::SrcOver,
+    );
+    canvas.push_rect(rect, Radius::ZERO, Color::WHITE);
+    for _ in 0..4 {
+        canvas.pop_layer();
+    }
+    let plan = canvas.compile(ROOT_COMMAND_LIST_ID);
+    assert_eq!(plan.ops.len(), 1);
+    assert_eq!(plan.layer_stack_data.len(), 4);
+    for (entry, (tag, sdf, draw_tag)) in plan.layer_stack_data.iter().zip([
+        (GPU_LAYER_CLIP, false, DrawTag::Clip),
+        (GPU_LAYER_CLIP, true, DrawTag::Clip),
+        (GPU_LAYER_OPACITY, false, DrawTag::Opacity),
+        (GPU_LAYER_BLEND, false, DrawTag::Blend),
+    ]) {
+        let record = LayerStackRecord::from(*entry);
+        assert_eq!(record.tag, tag);
+        let draw = canvas.draw_records[record.draw as usize];
+        assert_eq!(draw.tag, draw_tag);
+        assert_eq!(draw.sdf_offset != DrawRecord::NONE, sdf);
+        assert_eq!(draw.path_id == DrawRecord::NONE, sdf);
+        if sdf {
+            assert!(draw.sdf_len >= 9);
+            assert!(draw.sdf_offset as usize + draw.sdf_len as usize <= canvas.sdf_blob.len());
+        } else {
+            assert!((draw.path_id as usize) < canvas.path_records.len());
+        }
+    }
+}
+
+#[test]
 fn sdf_clip_geometry_does_not_change_the_execution_topology_fingerprint() {
     let scene = |rect, radius| {
         let mut canvas = test_scene();

@@ -14,7 +14,7 @@ fn native_routes_coarse_tile_kinds_reduce_flags_and_respect_stack_precedence() -
                     scene.work[base + 6] = left;
                     scene.work[base + 7 + 6] = right;
                     let flags = left | right;
-                    // Independent truth table: wrapper/invalid stack forces interpreter;
+                    // Independent truth table: wrapper/rejected clip forces interpreter;
                     // OTHER takes precedence over mixed/SDF/color, unknown bits are ignored.
                     let expected = if empty {
                         1

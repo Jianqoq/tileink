@@ -6,16 +6,17 @@
 #include "text.hlsli"
 #include "sdf_clip.hlsli"
 
+// LayerStackRecord encodes only clip/opacity/blend; only clips have SDF geometry.
+// This pass decides tile coverage before any wrapper emission.
 uint stack_wrapper_count(ConstantBuffer<CoarseConfig> settings, ByteAddressBuffer layers, ByteAddressBuffer draws,
     ByteAddressBuffer paths, ByteAddressBuffer backdrops, ByteAddressBuffer ranges, ByteAddressBuffer sdf, uint2 tile) {
     uint count = 0u;
     uint2 dimensions = uint2(settings.tiles_width, settings.tiles_height);
     for (uint index = settings.layer_stack_start; index < settings.layer_stack_end; index++) {
         uint2 layer = layers.Load2(index * LAYER_RECORD_STRIDE);
-        if (layer.x > LAYER_BLEND) return INVALID_INDEX;
         DrawData draw = load_draw(draws, layer.y);
         if (draw_has_sdf(draw)) {
-            if (layer.x == LAYER_CLIP && sdf_clip_covers(sdf, draw, tile)) continue;
+            if (sdf_clip_covers(sdf, draw, tile)) continue;
             if (!draw_hits_tile(draw, tile, dimensions)) return INVALID_INDEX;
         } else {
             uint backdrop = draw_backdrop(paths, draw, tile, dimensions);

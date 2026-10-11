@@ -215,6 +215,9 @@ mod emit;
 #[path = "coarse_count/emit_chunks.rs"]
 mod emit_chunks;
 
+#[path = "coarse_count/stack.rs"]
+mod stack;
+
 #[path = "coarse_count/emit_scene.rs"]
 mod emit_scene;
 

@@ -9,6 +9,7 @@ fn opaque_scene(count: u32, linked: bool, stack: u32, alpha: u32, bins: bool) ->
     let paint = paint_scene(3, false);
     scene.config[14] = 12;
     scene.sdf = paint.sdf[..12].to_vec();
+    let mut group = scene.draws[2 * 31..3 * 31].to_vec();
     scene.draws.clear();
     scene.batches = vec![42; count.max(3) as usize];
     let hidden = count / 2;
@@ -20,6 +21,13 @@ fn opaque_scene(count: u32, linked: bool, stack: u32, alpha: u32, bins: bool) ->
         brush[0] = 1;
         brush[4] = (if index == hidden { alpha } else { 119 }) << 24 | 0x224466;
         scene.sdf.extend(brush);
+    }
+    if stack != 0 {
+        // Stack geometry has its own path record; painted SDF draws cannot be
+        // used as opacity boundaries by the typed scene producer.
+        group[8] = if stack == 1 { 1 } else { 2 };
+        scene.layers[1] = count.max(3);
+        scene.draws.extend(group);
     }
     let list = 6 + scene.config[7] as usize * 6 + scene.config[8] as usize + 2;
     for index in 0..count as usize {

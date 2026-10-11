@@ -1,16 +1,17 @@
 #include "../shared/draw.metal"
 #include "text.metal"
 #include "sdf_clip.metal"
+// LayerStackRecord encodes only clip/opacity/blend; only clips have SDF geometry.
+// This pass decides tile coverage before any wrapper emission.
 uint wrapper_count(constant CoarseConfig& c, Words layers, Words draws,
     Words paths, Words backdrops, const device packed_uint2* ranges,
     Words sdf, uint2 tile) {
     uint count = 0;
     for (uint i = c.layer_stack_start; i < c.layer_stack_end; ++i) {
         uint kind = layers[i * 3];
-        if (kind > 2) return invalid_index;
         DrawData d = load_draw(draws, layers[i * 3 + 1]);
         if (has_sdf(d)) {
-            if (!kind && sdf_clip_covers(sdf, d, tile)) continue;
+            if (sdf_clip_covers(sdf, d, tile)) continue;
             if (!hits_tile(d, tile, uint2(c.tiles_width, c.tiles_height))) return invalid_index;
         } else {
             uint backdrop = draw_backdrop(paths, d, tile, uint2(c.tiles_width, c.tiles_height));
