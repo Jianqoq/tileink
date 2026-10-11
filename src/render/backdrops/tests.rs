@@ -270,11 +270,7 @@ fn empty_backdrop_consumes_its_resources_and_preserves_foreground() {
     let mut cursors = render(&mut a, &canvas, &plan, &transfer(), &region, true, 0..0).unwrap();
     assert_eq!(
         a.events,
-        vec![
-            Event::BeginRootBatch,
-            Event::Draw(RenderTargetId::Main),
-            Event::Filter
-        ]
+        vec![Event::Draw(RenderTargetId::Main), Event::Filter]
     );
     assert_eq!(a.filter_transfer_indices, vec![1]);
     assert_eq!(cursors.next_transfer_index(), 2);
@@ -453,7 +449,7 @@ fn forced_redraw_does_not_capture_backdrop_history() {
 }
 
 #[test]
-fn nested_backdrop_foreground_preserves_its_scratch_target_and_root_budget() {
+fn nested_backdrop_foreground_preserves_its_scratch_target() {
     let (canvas, plan) = fixture();
     let mut a = Adapter::new(&canvas, RetainedSurfaceKind::Backdrop);
     a.expected_stack = 0..0;
@@ -474,7 +470,6 @@ fn nested_backdrop_foreground_preserves_its_scratch_target_and_root_budget() {
     )
     .unwrap();
     assert_eq!(a.draw_batches, vec![(0, parent)]);
-    assert!(!a.events.contains(&Event::BeginRootBatch));
     a.release_scratch(parent);
     idle(&a);
 }
@@ -511,12 +506,8 @@ fn downsampled_rect_shortcut_preserves_foreground_and_obeys_cache_and_clip_rules
         assert_eq!(a.events.contains(&Event::DirectBackdrop), shortcut);
         if shortcut {
             assert_eq!(
-                &a.events[..3],
-                &[
-                    Event::DirectBackdrop,
-                    Event::BeginRootBatch,
-                    Event::Draw(RenderTargetId::Main)
-                ]
+                &a.events[..2],
+                &[Event::DirectBackdrop, Event::Draw(RenderTargetId::Main)]
             );
             assert!(
                 !a.events
@@ -565,12 +556,8 @@ fn clean_rect_cache_uses_its_direct_composite_and_preserves_foreground() {
     a.retained.set_active_tiles(Some(damage));
     render(&mut a, &canvas, &plan, &transfer(), &rect(), true, 0..0).unwrap();
     assert_eq!(
-        &a.events[..3],
-        &[
-            Event::RectBackdrop(20),
-            Event::BeginRootBatch,
-            Event::Draw(RenderTargetId::Main)
-        ]
+        &a.events[..2],
+        &[Event::RectBackdrop(20), Event::Draw(RenderTargetId::Main)]
     );
     assert_eq!(cached(&mut a), Some((20, None, Some(40))));
     idle(&a);

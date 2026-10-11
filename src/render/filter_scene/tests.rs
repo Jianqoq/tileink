@@ -208,7 +208,7 @@ fn nested_wrap_retains_input_outside_the_outer_surface_in_painter_order() {
         &plan.ops,
         &Filter::Opacity(1.0),
         Bounds::new(32, 32, 64, 64),
-        || vec![2],
+        || vec![1],
     );
     let (local, _, ops) = prepared.scene();
     let crate::shared::execution::ExecOp::OffscreenLayer { children, .. } = &ops[0] else {

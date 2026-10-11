@@ -38,9 +38,7 @@ pub(crate) fn compile(source: &NativeSource, entry: &str, target: &str) -> Resul
         env!("TILEINK_BUILD_TARGET"),
         user_cache.clone(),
     );
-    let explicit = env::var_os("TILEINK_NATIVE_DXC_PATH")
-        .or_else(|| env::var_os("TILEINK_DXC_PATH"))
-        .map(PathBuf::from);
+    let explicit = env::var_os("TILEINK_NATIVE_DXC_PATH").map(PathBuf::from);
     let compiler = compiler::Dxc::discover(toolchain::resolve(explicit, &roots)?)?;
     let mut flags = compiler::Dxc::flags(target, entry)?;
     if target == "dxil" {

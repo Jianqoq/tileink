@@ -1,16 +1,18 @@
-//! Shared scheduler boundary. Native commands own input bytes; submission copies
-//! staged uniforms before CommandBatch reuses an arena. API owners retire leases.
+//! Native device ownership and submission receipts for recorded compute batches.
 #[cfg(feature = "metal")]
 mod metal;
-#[cfg(test)]
-use super::program::{Dispatch, Params};
 use super::{Result, submissions::Ticket};
-#[cfg(test)]
-use crate::render::{backend::BatchAdapter, upload::uniforms::UniformWrites};
-use crate::{native::NativeBackend, render::backend::SubmitError};
-#[cfg(test)]
-use std::hash::{Hash, Hasher};
+use crate::native::NativeBackend;
 use std::{cell::RefCell, rc::Rc};
+
+#[derive(Debug)]
+pub(crate) enum SubmitError {
+    /// The attempted submission was not accepted; earlier batches may still run.
+    Rejected(Box<dyn std::error::Error>),
+    /// Work may have been accepted without a usable completion receipt. The
+    /// adapter keeps its leases and reports recovery/device loss to the caller.
+    Unconfirmed(Box<dyn std::error::Error>),
+}
 
 #[derive(Clone)]
 pub struct Adapter(Rc<RefCell<Device>>);
@@ -51,60 +53,6 @@ enum Device {
     Dx12(Box<super::dx12::Dx12>),
     #[cfg(feature = "vulkan")]
     Vulkan(Box<super::vulkan::Vulkan>),
-}
-
-#[cfg(test)]
-// Allocation identity and device generation are separate. Rc<()> value equality
-// would equate all allocations, so only pointer identity participates in Eq/Hash.
-#[derive(Clone)]
-pub struct UniformBuffer {
-    device: Rc<RefCell<Device>>,
-    allocation: Rc<()>,
-}
-#[cfg(test)]
-impl PartialEq for UniformBuffer {
-    fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.allocation, &other.allocation)
-    }
-}
-#[cfg(test)]
-impl Eq for UniformBuffer {}
-#[cfg(test)]
-impl Hash for UniformBuffer {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        Rc::as_ptr(&self.allocation).hash(state);
-    }
-}
-
-#[cfg(test)]
-pub struct Encoder {
-    device: Rc<RefCell<Device>>,
-    commands: Vec<Command>,
-}
-#[cfg(test)]
-struct Command {
-    dispatch: Dispatch,
-    uniform: Option<(UniformBuffer, u64)>,
-}
-#[cfg(test)]
-impl Encoder {
-    pub fn dispatch(&mut self, dispatch: impl Into<Dispatch>) {
-        self.commands.push(Command {
-            dispatch: dispatch.into(),
-            uniform: None,
-        });
-    }
-    pub fn dispatch_uniform(
-        &mut self,
-        dispatch: impl Into<Dispatch>,
-        buffer: UniformBuffer,
-        offset: u64,
-    ) {
-        self.commands.push(Command {
-            dispatch: dispatch.into(),
-            uniform: Some((buffer, offset)),
-        });
-    }
 }
 
 impl Adapter {
@@ -176,22 +124,6 @@ impl Adapter {
             Device::Vulkan(device) => device.allocate_texture(size, layers, array, format),
         }
     }
-    #[cfg(test)]
-    pub fn new(backend: NativeBackend, identity: &str) -> Result<Self> {
-        #[cfg(feature = "dx12")]
-        if backend == NativeBackend::Dx12 {
-            unsafe {
-                super::enable_dx12_validation()?;
-            }
-        }
-        Self::with_options(
-            backend,
-            &crate::native::NativeContextOptions {
-                physical_adapter: Some(identity.to_owned()),
-                validation: true,
-            },
-        )
-    }
     pub fn with_options(
         backend: NativeBackend,
         options: &crate::native::NativeContextOptions,
@@ -227,7 +159,7 @@ impl Adapter {
     pub fn submit_compute(
         &self,
         batch: &super::compute::ComputeBatch,
-    ) -> std::result::Result<Receipt, SubmitError<Box<dyn std::error::Error>>> {
+    ) -> std::result::Result<Receipt, SubmitError> {
         for resource in batch.resources() {
             if let super::compute::Resource::PersistentBuffer(upload) = resource
                 && !self.same_device(&upload.buffer.adapter)
@@ -270,13 +202,6 @@ impl Adapter {
                 }
             })
     }
-    #[cfg(test)]
-    pub fn uniform_buffer(&self) -> UniformBuffer {
-        UniformBuffer {
-            device: self.0.clone(),
-            allocation: Rc::new(()),
-        }
-    }
     pub fn readback(&self, receipt: &Receipt) -> Result<Vec<Vec<u8>>> {
         if !Rc::ptr_eq(&self.0, &receipt.owner.0) {
             return Err("receipt belongs to another device generation".into());
@@ -318,95 +243,6 @@ impl Adapter {
                 }
             }
         }
-    }
-    #[cfg(test)]
-    fn resolve(
-        &self,
-        encoder: Encoder,
-        uniforms: &UniformWrites<UniformBuffer>,
-    ) -> Result<Vec<Dispatch>> {
-        if !Rc::ptr_eq(&self.0, &encoder.device) {
-            return Err("encoder belongs to another device".into());
-        }
-        for (buffer, _) in uniforms.iter() {
-            if !Rc::ptr_eq(&self.0, &buffer.device) {
-                return Err("uniform belongs to another device".into());
-            }
-        }
-        encoder
-            .commands
-            .into_iter()
-            .map(|mut command| {
-                if let Some((buffer, offset)) = command.uniform {
-                    if !Rc::ptr_eq(&self.0, &buffer.device) {
-                        return Err("uniform belongs to another device".into());
-                    }
-                    if !offset.is_multiple_of(256) {
-                        return Err("unaligned native uniform slot".into());
-                    }
-                    let start = usize::try_from(offset)?;
-                    let end = start
-                        .checked_add(std::mem::size_of::<Params>())
-                        .ok_or("uniform range overflow")?;
-                    let data = uniforms
-                        .iter()
-                        .find(|(key, _)| **key == buffer)
-                        .ok_or("uniform not staged")?
-                        .1;
-                    let Dispatch::Probe(probe) = &mut command.dispatch else {
-                        return Err("program has no uniform block".into());
-                    };
-                    probe.params = bytemuck::pod_read_unaligned(
-                        data.get(start..end).ok_or("uniform range out of bounds")?,
-                    );
-                }
-                Ok(command.dispatch)
-            })
-            .collect()
-    }
-}
-
-#[cfg(test)]
-impl BatchAdapter for Adapter {
-    type Buffer = UniformBuffer;
-    type Encoder = Encoder;
-    type Submission = Receipt;
-    type Error = Box<dyn std::error::Error>;
-    fn create_encoder(&mut self, _label: &'static str) -> Result<Encoder> {
-        Ok(Encoder {
-            device: self.0.clone(),
-            commands: Vec::new(),
-        })
-    }
-    fn submit(
-        &mut self,
-        encoder: Encoder,
-        uniforms: &UniformWrites<UniformBuffer>,
-    ) -> std::result::Result<Receipt, SubmitError<Self::Error>> {
-        let commands = self
-            .resolve(encoder, uniforms)
-            .map_err(SubmitError::Rejected)?;
-        let mut device = self.0.borrow_mut();
-        let (result, unconfirmed) = match &mut *device {
-            #[cfg(feature = "dx12")]
-            Device::Dx12(device) => (device.submit_batch(&commands), device.unconfirmed()),
-            #[cfg(feature = "metal")]
-            Device::Metal(device) => (device.submit_batch(&commands), device.unconfirmed()),
-            #[cfg(feature = "vulkan")]
-            Device::Vulkan(device) => (device.submit_batch(&commands), device.unconfirmed()),
-        };
-        result
-            .map(|ticket| Receipt {
-                owner: self.clone(),
-                ticket,
-            })
-            .map_err(|error| {
-                if unconfirmed {
-                    SubmitError::Unconfirmed(error)
-                } else {
-                    SubmitError::Rejected(error)
-                }
-            })
     }
 }
 

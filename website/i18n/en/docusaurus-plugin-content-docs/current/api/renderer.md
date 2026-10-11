@@ -13,3 +13,5 @@ Metal also supports conservative clip-local tile selection. Non-text pure-clip p
 Metal compute dispatches, texture copies, and rendering retain separate encoder boundaries to preserve resource dependencies between clip emission and drawing.
 
 Imported textures used as drawing targets require `ShaderRead | ShaderWrite | RenderTarget` usage. Sparse updates, background blending, and targets larger than the viewport load existing contents to preserve untouched pixels. Full target replacement can discard old colors.
+
+Filter recording propagates the original error, including missing or forward graph references. Allocation or native shader recording failures abort the frame and release acquired scratch surfaces while preserving the first error. Native frames record directly into their caller-owned batch; output and synchronization APIs own target copies and submission.

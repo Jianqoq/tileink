@@ -77,7 +77,7 @@ impl NativeContext {
         &self,
         batch: &super::runtime::compute::ComputeBatch,
     ) -> Result<super::NativeSubmission, NativeError> {
-        use crate::render::backend::SubmitError;
+        use crate::native::runtime::adapter::SubmitError;
         self.adapter
             .submit_compute(batch)
             .map(|receipt| super::NativeSubmission::new(self.backend(), receipt))

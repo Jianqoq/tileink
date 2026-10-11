@@ -24,9 +24,6 @@ impl DrawBatchAdapter for TraceAdapter {
     fn stats_mut(&mut self) -> &mut IncrementalRenderStats {
         &mut self.stats
     }
-    fn begin_root_batch(&mut self) -> Result<(), Self::Error> {
-        Ok(())
-    }
     fn coarse(&mut self, batches: Range<u32>, _: Range<u32>) -> Result<(), Self::Error> {
         self.batch = batches.start;
         Ok(())

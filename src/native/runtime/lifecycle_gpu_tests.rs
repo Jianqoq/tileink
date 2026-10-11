@@ -6,8 +6,6 @@ use super::program::{Params, Probe};
 use super::vulkan::Vulkan as Device;
 use super::{Result, submissions};
 
-#[path = "tests/batches.rs"]
-mod batches;
 #[path = "tests/brush_bounds_gpu.rs"]
 mod brush_bounds;
 #[path = "tests/cases.rs"]

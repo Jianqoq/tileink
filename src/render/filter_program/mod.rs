@@ -18,13 +18,15 @@ mod effects;
 mod glass;
 mod graph;
 mod graph_shader;
+mod shadow;
 
 pub(crate) trait FilterAdapter {
+    type Error: From<&'static str>;
     type Work;
     fn size(&self) -> (u32, u32);
-    fn acquire_scratch(&mut self) -> Option<RenderTargetId>;
-    fn release_scratch(&mut self, target: RenderTargetId);
-    fn encode(&mut self, kernel: FilterKernel<'_>) -> bool;
+    fn acquire_scratch(&mut self) -> Result<RenderTargetId, Self::Error>;
+    fn release_scratch(&mut self, target: RenderTargetId) -> Result<(), Self::Error>;
+    fn encode(&mut self, kernel: FilterKernel<'_>) -> Result<(), Self::Error>;
     fn active_tiles(&self) -> Option<&DamageTiles>;
     fn filter_work(&self) -> Option<Self::Work>;
     fn set_filter_work(&mut self, work: Option<Self::Work>);
@@ -39,6 +41,33 @@ pub(crate) struct FilterExecutor<'a, A: FilterAdapter> {
 impl<'a, A: FilterAdapter> FilterExecutor<'a, A> {
     pub(crate) fn new(adapter: &'a mut A) -> Self {
         Self { adapter }
+    }
+
+    /// Always release a lease, preserving the operation's original error if
+    /// cleanup also fails. Result propagation replaces the old error side channel.
+    fn with_scratch(
+        &mut self,
+        action: impl FnOnce(&mut Self, RenderTargetId) -> Result<(), A::Error>,
+    ) -> Result<(), A::Error> {
+        let target = self.adapter.acquire_scratch()?;
+        let result = action(self, target);
+        let released = self.adapter.release_scratch(target);
+        result.and(released)
+    }
+
+    /// Publish graph-owned scratch only after successful initialization.
+    fn build_output(
+        &mut self,
+        action: impl FnOnce(&mut Self, RenderTargetId) -> Result<(), A::Error>,
+    ) -> Result<RenderTargetId, A::Error> {
+        let target = self.adapter.acquire_scratch()?;
+        let result = action(self, target);
+        if result.is_err() {
+            return result
+                .and(self.adapter.release_scratch(target))
+                .map(|()| target);
+        }
+        Ok(target)
     }
 }
 

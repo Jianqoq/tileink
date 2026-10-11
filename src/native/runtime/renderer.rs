@@ -170,9 +170,6 @@ impl DrawBatchAdapter for Execution<'_> {
     fn stats_mut(&mut self) -> &mut IncrementalRenderStats {
         self.retained.stats_mut()
     }
-    fn begin_root_batch(&mut self) -> Result<()> {
-        Ok(())
-    }
     fn coarse(&mut self, batches: Range<u32>, layers: Range<u32>) -> Result<()> {
         self.fine_plan = Some(
             self.scene

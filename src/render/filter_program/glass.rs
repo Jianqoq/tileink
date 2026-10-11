@@ -1,5 +1,6 @@
 use super::*;
 impl<A: FilterAdapter> FilterExecutor<'_, A> {
+    /// False means the direct algorithm is inapplicable; recording failures are errors.
     pub(crate) fn apply_downsampled_blur_rect_composite(
         &mut self,
         target: RenderTargetId,
@@ -8,49 +9,40 @@ impl<A: FilterAdapter> FilterExecutor<'_, A> {
         std_dev_y: f32,
         sampling: filter_model::BlurSampling,
         region: &crate::shared::layer::region::Region,
-    ) -> bool {
+    ) -> Result<bool, A::Error> {
         let std_dev_x = std_dev_x.max(0.0);
         let std_dev_y = std_dev_y.max(0.0);
         let factor = sampling.factor();
         if factor <= 1 || std_dev_x <= 0.0 || std_dev_y <= 0.0 {
-            return false;
+            return Ok(false);
         }
         let Some(low_bounds) = downsampled_bounds(bounds, factor) else {
-            return false;
+            return Ok(false);
         };
-        if low_bounds.width() >= bounds.width() && low_bounds.height() >= bounds.height() {
-            return false;
+        if low_bounds.width() >= bounds.width() && low_bounds.height() >= bounds.height()
+            || !matches!(region, crate::shared::layer::region::Region::Rect { .. })
+        {
+            return Ok(false);
         }
-        if !matches!(region, crate::shared::layer::region::Region::Rect { .. }) {
-            return false;
-        }
-
-        let Some(low) = self.adapter.acquire_scratch() else {
-            return false;
-        };
-        let Some(temp) = self.adapter.acquire_scratch() else {
-            self.adapter.release_scratch(low);
-            return false;
-        };
-        let low_work = self.use_downsampled_filter_work(bounds, factor);
-        let low_ok = self.encode_downsampled_blur_stages(
-            target, low, temp, bounds, low_bounds, std_dev_x, std_dev_y, sampling,
-        );
-        self.restore_full_resolution_filter_work(low_work);
-        let ok = low_ok
-            && self
-                .adapter
-                .encode(FilterKernel::UpsampleRectCompositeRegion {
+        self.with_scratch(|s, low| {
+            s.with_scratch(|s, temp| {
+                let previous = s.use_downsampled_filter_work(bounds, factor);
+                let result = s.encode_downsampled_blur_stages(
+                    target, low, temp, bounds, low_bounds, std_dev_x, std_dev_y, sampling,
+                );
+                s.restore_full_resolution_filter_work(previous);
+                result?;
+                s.adapter.encode(FilterKernel::UpsampleRectCompositeRegion {
                     source: low,
                     target,
                     bounds,
                     low_bounds,
                     sampling,
                     region,
-                });
-        self.adapter.release_scratch(temp);
-        self.adapter.release_scratch(low);
-        ok
+                })
+            })
+        })?;
+        Ok(true)
     }
     pub(crate) fn apply_downsampled_liquid_glass_rect_composite(
         &mut self,
@@ -58,22 +50,21 @@ impl<A: FilterAdapter> FilterExecutor<'_, A> {
         bounds: Bounds,
         glass: filter_model::RectLiquidGlass,
         region: &crate::shared::layer::region::Region,
-    ) -> bool {
+    ) -> Result<bool, A::Error> {
         if glass.blur_radius == 0 || glass.blur_sampling.factor() <= 1 {
-            return false;
+            return Ok(false);
         }
         let Some(glass_region) = rect_liquid_glass_region(Some(region), bounds) else {
-            return false;
+            return Ok(false);
         };
-        let factor = glass.blur_sampling.factor();
-        let Some(low_bounds) = downsampled_bounds(bounds, factor) else {
-            return false;
+        let Some(low_bounds) = downsampled_bounds(bounds, glass.blur_sampling.factor()) else {
+            return Ok(false);
         };
         if low_bounds.width() >= bounds.width() && low_bounds.height() >= bounds.height() {
-            return false;
+            return Ok(false);
         }
-
-        self.composite_downsampled_glass(target, bounds, low_bounds, glass, glass_region)
+        self.composite_downsampled_glass(target, bounds, low_bounds, glass, glass_region)?;
+        Ok(true)
     }
     fn composite_downsampled_glass(
         &mut self,
@@ -81,82 +72,62 @@ impl<A: FilterAdapter> FilterExecutor<'_, A> {
         bounds: Bounds,
         low_bounds: Bounds,
         glass: filter_model::RectLiquidGlass,
-        glass_region: filter_model::RectLiquidGlassRegion,
-    ) -> bool {
-        let Some(source) = self.adapter.acquire_scratch() else {
-            return false;
-        };
-        let Some(low) = self.adapter.acquire_scratch() else {
-            self.adapter.release_scratch(source);
-            return false;
-        };
-        let Some(temp) = self.adapter.acquire_scratch() else {
-            self.adapter.release_scratch(low);
-            self.adapter.release_scratch(source);
-            return false;
-        };
-
-        let factor = glass.blur_sampling.factor();
-        let std_dev = glass.blur_radius as f32 * filter_model::LIQUID_GLASS_BLUR_STD_DEV_SCALE;
-        let copied = self.adapter.encode(FilterKernel::CopyRegionToTarget {
-            source: target,
-            target: source,
-            bounds,
-        });
-        let low_work = self.use_downsampled_filter_work(bounds, factor);
-        let low_ok = copied
-            && self.encode_downsampled_blur_stages(
-                source,
-                low,
-                temp,
-                bounds,
-                low_bounds,
-                std_dev,
-                std_dev,
-                glass.blur_sampling,
-            );
-        self.restore_full_resolution_filter_work(low_work);
-        let sample_low = should_sample_downsampled_blur_in_liquid_glass(glass);
-        let (blurred, blurred_bounds, sampling) = if sample_low {
-            (low, low_bounds, glass.blur_sampling)
-        } else {
-            (temp, bounds, filter_model::BlurSampling::FULL_RES)
-        };
-        // Both sampling strategies share their allocation and worklist lifetime.
-        // Materialization only inserts an upsample before the final glass kernel.
-        let ok = low_ok
-            && (sample_low
-                || self.adapter.encode(FilterKernel::UpsampleRegion {
-                    source: low,
-                    target: temp,
-                    bounds,
-                    low_bounds,
-                    sampling: glass.blur_sampling,
-                }))
-            && self
-                .adapter
-                .encode(FilterKernel::RectLiquidGlassCompositeRegion {
-                    source,
-                    blurred,
-                    target,
-                    bounds,
-                    blurred_bounds,
-                    sampling,
-                    glass,
-                    region: glass_region,
-                });
-        self.adapter.release_scratch(temp);
-        self.adapter.release_scratch(low);
-        self.adapter.release_scratch(source);
-        ok
+        region: filter_model::RectLiquidGlassRegion,
+    ) -> Result<(), A::Error> {
+        self.with_scratch(|s, source| {
+            s.with_scratch(|s, low| {
+                s.with_scratch(|s, temp| {
+                    s.adapter.encode(FilterKernel::CopyRegionToTarget {
+                        source: target,
+                        target: source,
+                        bounds,
+                    })?;
+                    let std_dev =
+                        glass.blur_radius as f32 * filter_model::LIQUID_GLASS_BLUR_STD_DEV_SCALE;
+                    let previous =
+                        s.use_downsampled_filter_work(bounds, glass.blur_sampling.factor());
+                    let result = s.encode_downsampled_blur_stages(
+                        source,
+                        low,
+                        temp,
+                        bounds,
+                        low_bounds,
+                        std_dev,
+                        std_dev,
+                        glass.blur_sampling,
+                    );
+                    s.restore_full_resolution_filter_work(previous);
+                    result?;
+                    let (blurred, blurred_bounds, sampling) =
+                        if should_sample_downsampled_blur_in_liquid_glass(glass) {
+                            (low, low_bounds, glass.blur_sampling)
+                        } else {
+                            s.adapter.encode(FilterKernel::UpsampleRegion {
+                                source: low,
+                                target: temp,
+                                bounds,
+                                low_bounds,
+                                sampling: glass.blur_sampling,
+                            })?;
+                            (temp, bounds, filter_model::BlurSampling::FULL_RES)
+                        };
+                    s.adapter
+                        .encode(FilterKernel::RectLiquidGlassCompositeRegion {
+                            source,
+                            blurred,
+                            target,
+                            bounds,
+                            blurred_bounds,
+                            sampling,
+                            glass,
+                            region,
+                        })
+                })
+            })
+        })
     }
-
-    /// Recomputes only the damaged output of a cached full-resolution liquid-glass backdrop.
-    ///
-    /// `source` is the complete painter-order history captured before the backdrop. The blurred
-    /// temporary needs a rectangular refraction halo beyond the compact root worklist, so that
-    /// halo is generated with compact dispatch temporarily suspended; the final glass pass then
-    /// returns to the exact dirty-tile worklist and leaves clean cached output untouched.
+    /// The refraction halo is blurred without compact output work, then the
+    /// exact dirty-tile list is restored before updating the cached glass image.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn apply_liquid_glass_from_source_partial(
         &mut self,
@@ -166,43 +137,99 @@ impl<A: FilterAdapter> FilterExecutor<'_, A> {
         sample_bounds: Bounds,
         glass: filter_model::RectLiquidGlass,
         region: filter_model::RectLiquidGlassRegion,
-    ) -> bool {
+    ) -> Result<(), A::Error> {
         debug_assert_eq!(glass.blur_sampling.factor(), 1);
-        let Some(blurred) = self.adapter.acquire_scratch() else {
-            return false;
-        };
-        let blur_output = output_bounds
-            .outset(glass.sample_outset())
-            .intersect(sample_bounds);
-        let active = self.adapter.suspend_incremental_filter_work();
-        let blur_ok = if glass.blur_radius == 0 {
-            self.adapter.encode(FilterKernel::CopyRegionToTarget {
-                source,
-                target: blurred,
-                bounds: blur_output,
-            })
-        } else {
-            let std_dev = glass.blur_radius as f32 * filter_model::LIQUID_GLASS_BLUR_STD_DEV_SCALE;
-            self.apply_blur_from_source_partial(
-                source,
-                blurred,
-                blur_output,
-                sample_bounds,
-                std_dev,
-                std_dev,
-            )
-        };
-        self.adapter.restore_incremental_filter_work(active);
-        let ok = blur_ok
-            && self.adapter.encode(FilterKernel::LiquidGlassToTarget {
+        self.with_scratch(|s, blurred| {
+            let blur_output = output_bounds
+                .outset(glass.sample_outset())
+                .intersect(sample_bounds);
+            let active = s.adapter.suspend_incremental_filter_work();
+            let result = if glass.blur_radius == 0 {
+                s.adapter.encode(FilterKernel::CopyRegionToTarget {
+                    source,
+                    target: blurred,
+                    bounds: blur_output,
+                })
+            } else {
+                let std_dev =
+                    glass.blur_radius as f32 * filter_model::LIQUID_GLASS_BLUR_STD_DEV_SCALE;
+                s.apply_blur_from_source_partial(
+                    source,
+                    blurred,
+                    blur_output,
+                    sample_bounds,
+                    std_dev,
+                    std_dev,
+                )
+            };
+            s.adapter.restore_incremental_filter_work(active);
+            result?;
+            s.adapter.encode(FilterKernel::LiquidGlassToTarget {
                 source,
                 blurred,
                 target,
                 bounds: output_bounds,
                 glass,
                 region,
-            });
-        self.adapter.release_scratch(blurred);
-        ok
+            })
+        })
+    }
+    pub(super) fn apply_liquid_glass(
+        &mut self,
+        target: RenderTargetId,
+        bounds: Bounds,
+        glass: filter_model::RectLiquidGlass,
+        region: filter_model::RectLiquidGlassRegion,
+    ) -> Result<(), A::Error> {
+        self.with_scratch(|s, source| {
+            s.with_scratch(|s, blurred| {
+                s.adapter.encode(FilterKernel::CopyRegionToTarget {
+                    source: target,
+                    target: source,
+                    bounds,
+                })?;
+                if glass.blur_radius > 0 {
+                    let std_dev =
+                        glass.blur_radius as f32 * filter_model::LIQUID_GLASS_BLUR_STD_DEV_SCALE;
+                    if glass.blur_sampling.factor() > 1 {
+                        s.with_scratch(|s, temp| {
+                            s.downsampled_blur_to_target(
+                                source,
+                                blurred,
+                                temp,
+                                blurred,
+                                bounds,
+                                std_dev,
+                                std_dev,
+                                glass.blur_sampling,
+                            )
+                        })?;
+                    } else {
+                        s.apply_blur_from_source(
+                            source,
+                            blurred,
+                            bounds,
+                            std_dev,
+                            std_dev,
+                            filter_model::BlurSampling::FULL_RES,
+                        )?;
+                    }
+                } else {
+                    s.adapter.encode(FilterKernel::CopyRegionToTarget {
+                        source,
+                        target: blurred,
+                        bounds,
+                    })?;
+                }
+                s.adapter.encode(FilterKernel::LiquidGlassToTarget {
+                    source,
+                    blurred,
+                    target,
+                    bounds,
+                    glass,
+                    region,
+                })
+            })
+        })
     }
 }

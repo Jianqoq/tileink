@@ -5,17 +5,9 @@ pub(crate) mod incremental;
 pub(crate) mod profile;
 pub(crate) mod upload;
 
-pub(crate) mod backend;
-pub(crate) mod batches;
 pub(crate) mod binning;
-#[cfg(test)]
-pub(crate) mod commands;
-#[cfg(test)]
-pub(crate) mod dispatch;
 pub(crate) mod filter_resources;
 pub(crate) mod output;
-#[cfg(test)]
-pub(crate) mod resource_writes;
 pub(crate) mod retained;
 pub(crate) mod retained_surfaces;
 #[cfg(any(tileink_native_runtime, test))]
@@ -41,7 +33,6 @@ pub(crate) mod filters;
 
 pub(crate) mod backdrops;
 
-pub(crate) mod frame;
 pub(crate) mod layers;
 
 pub(crate) mod prepare;

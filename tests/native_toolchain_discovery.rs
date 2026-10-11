@@ -62,6 +62,10 @@ fn missing_defaults_report_searched_paths_and_configuration() {
         "{error}"
     );
     assert!(error.contains("TILEINK_NATIVE_DXC_PATH"), "{error}");
+    assert!(
+        !error.contains("TILEINK_DXC_PATH"),
+        "obsolete environment alias: {error}"
+    );
 }
 
 #[test]

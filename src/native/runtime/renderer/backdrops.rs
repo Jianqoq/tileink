@@ -25,12 +25,11 @@ impl BackdropAdapter for Execution<'_> {
         let mut encoding = FilterEncoding {
             execution: self,
             work,
-            error: None,
         };
         // Use the shared direct schedule: materializing low-resolution glass first
         // changes interpolation/rounding and cannot preserve identical pixels.
         let mut executor = FilterExecutor::new(&mut encoding);
-        let applied = match filter {
+        match filter {
             Filter::Blur {
                 std_dev_x,
                 std_dev_y,
@@ -40,11 +39,7 @@ impl BackdropAdapter for Execution<'_> {
             ),
             Filter::RectLiquidGlass(glass) => executor
                 .apply_downsampled_liquid_glass_rect_composite(target, bounds, *glass, region),
-            _ => false,
-        };
-        match encoding.error {
-            Some(error) => Err(error),
-            None => Ok(applied),
+            _ => Ok(false),
         }
     }
     fn suspend_backdrop_work(&mut self) -> Self::WorkState {
@@ -68,10 +63,9 @@ impl BackdropAdapter for Execution<'_> {
             let mut encoding = super::filter_encoding::FilterEncoding {
                 execution: self,
                 work,
-                error: None,
             };
             let mut executor = crate::render::filter_program::FilterExecutor::new(&mut encoding);
-            let success = match pass.filter {
+            return match pass.filter {
                 Filter::Blur {
                     std_dev_x,
                     std_dev_y,
@@ -101,11 +95,6 @@ impl BackdropAdapter for Execution<'_> {
                     )
                 }
                 _ => return Err("unsupported native partial backdrop operation".into()),
-            };
-            return match encoding.error {
-                Some(error) => Err(error),
-                None if success => Ok(()),
-                None => Err("native partial backdrop recording failed".into()),
             };
         }
         let input = crate::shared::layer::filter::filter_dependency(pass.filter).source_bounds(

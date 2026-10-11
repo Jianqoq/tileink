@@ -45,3 +45,7 @@ mod shader_gpu;
 #[cfg(all(test, tileink_native_runtime))]
 #[path = "runtime/tests/shader_pipeline_gpu.rs"]
 mod shader_pipeline_gpu;
+
+#[cfg(test)]
+#[path = "runtime/tests/batches.rs"]
+mod batch_gpu_tests;

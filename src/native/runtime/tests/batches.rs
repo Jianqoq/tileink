@@ -1,124 +1,108 @@
-use super::{Result, cases};
-use crate::native::runtime::adapter::Adapter;
-use crate::render::commands::CommandBatch;
+//! Conformance checks exercise the production ComputeBatch, not an alternate
+//! encoder/uniform-arena model that the renderer never submits.
+use crate::native::runtime::{
+    Result,
+    adapter::Adapter,
+    compute::ComputeBatch,
+    program::filter::{self, BasicFilter},
+};
+use crate::{
+    NativeBackend, NativeContext, NativeContextOptions, shared::filter_config::FilterConfig,
+};
+
+fn context() -> Result<NativeContext> {
+    #[cfg(feature = "dx12")]
+    let backend = NativeBackend::Dx12;
+    #[cfg(feature = "vulkan")]
+    let backend = NativeBackend::Vulkan;
+    #[cfg(feature = "metal")]
+    let backend = NativeBackend::Metal;
+    NativeContext::new(
+        backend,
+        &NativeContextOptions {
+            physical_adapter: Some(std::env::var("TILEINK_NATIVE_GPU")?),
+            validation: true,
+        },
+    )
+    .map_err(Into::into)
+}
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
-fn shared_batches_submit_once_stage_uniforms_and_preserve_prefixes() -> Result<()> {
-    let identity = std::env::var("TILEINK_NATIVE_GPU")?;
-    for backend in [super::backend()] {
-        let adapter = Adapter::new(backend, &identity)?;
-        let fixtures = cases::cases();
-        let mut batch = CommandBatch::from_adapter(adapter.clone(), "M3 multi-dispatch");
-        for case in &fixtures {
-            batch.try_encoder().unwrap().dispatch(case.dispatch.clone());
-        }
-        let receipt = batch.try_finish().unwrap();
-        assert_eq!(receipt.submissions, 1);
-        assert_eq!(adapter.pending_count(), 1);
-        let bytes = adapter.readback(&receipt.last_submission.unwrap())?;
-        assert_eq!(
-            bytes,
-            fixtures
-                .iter()
-                .map(|c| c.expected.clone())
-                .collect::<Vec<_>>()
-        );
-        assert_eq!(adapter.pending_count(), 0);
-
-        // Slot rollover submits the prefix before offset zero is reused.
-        let buffer = adapter.uniform_buffer();
-        let mut batch = CommandBatch::from_adapter(adapter.clone(), "M3 uniforms");
-        let fixture = &fixtures[1];
-        for value in [0x12345678u32, 0x87654321, 0x11223344] {
-            let mut params = fixture.params;
-            params.value[0] = value;
-            let offset = batch
-                .try_write_uniform_slot(&buffer, 32, 256, 2, bytemuck::bytes_of(&params))
-                .unwrap();
-            batch.try_encoder().unwrap().dispatch_uniform(
-                fixture.dispatch.clone(),
-                buffer.clone(),
-                offset,
-            );
-        }
-        let prefix = batch.abort();
-        assert_eq!(prefix.submissions, 1);
-        let outputs = adapter.readback(&prefix.last_submission.unwrap())?;
-        assert_eq!(outputs.len(), 2);
-        for (output, value) in outputs.iter().zip([0x12345678u32, 0x87654321]) {
-            let mut expected = fixture.expected.clone();
-            expected[8..12].copy_from_slice(&value.to_le_bytes());
-            assert_eq!(*output, expected);
-        }
-        assert_eq!(adapter.pending_count(), 0);
-        adapter.assert_valid()?;
+fn compute_batch_submits_once_and_keeps_each_dispatch_uniform_immutable() -> Result<()> {
+    let context = context()?;
+    let mut batch = ComputeBatch::new();
+    let colors = [0xff123456u32, 0x7f876543, 0x00112233];
+    for color in colors {
+        let image = batch.texture_rgba8([3, 2], vec![0; 24])?;
+        filter::encode(
+            &mut batch,
+            BasicFilter::Clear,
+            FilterConfig {
+                width: 3,
+                height: 2,
+                region_width: 3,
+                region_height: 2,
+                clear_color: color,
+                ..Default::default()
+            },
+            None,
+            None,
+            image,
+        )?;
+        batch.readback(image)?;
     }
+    let receipt = context
+        .adapter
+        .submit_compute(&batch)
+        .map_err(|e| format!("{e:?}"))?;
+    assert_eq!(context.adapter.pending_count(), 1);
+    drop(batch);
+    assert_eq!(
+        receipt.readback()?,
+        colors.map(|c| c.to_le_bytes().repeat(6))
+    );
+    assert_eq!(context.adapter.pending_count(), 0);
+    receipt.assert_valid()?;
     Ok(())
 }
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
-fn rejected_work_preserves_device_and_receipts_pin_the_context() -> Result<()> {
-    use crate::render::{
-        backend::{BatchAdapter, SubmitError},
-        upload::uniforms::UniformWrites,
-    };
-    let identity = std::env::var("TILEINK_NATIVE_GPU")?;
-    for backend in [super::backend()] {
-        let mut adapter = Adapter::new(backend, &identity)?;
-        let mut other = Adapter::new(backend, &identity)?;
-        let fixtures = cases::cases();
-        let mut foreign = other.create_encoder("foreign").unwrap();
-        foreign.dispatch(fixtures[1].dispatch.clone());
-        assert!(matches!(
-            adapter.submit(foreign, &UniformWrites::default()),
-            Err(SubmitError::Rejected(_))
-        ));
-        let mut encoder = adapter.create_encoder("bad bounds").unwrap();
-        let mut bad = fixtures[1].dispatch.clone();
-        bad.params.count = u32::MAX;
-        encoder.dispatch(bad);
-        assert!(matches!(
-            adapter.submit(encoder, &UniformWrites::default()),
-            Err(SubmitError::Rejected(_))
-        ));
-        for offset in [1u64, 256, u64::MAX] {
-            let buffer = adapter.uniform_buffer();
-            let mut uniforms = UniformWrites::default();
-            uniforms.write(&buffer, 32, 256, 1, bytemuck::bytes_of(&fixtures[1].params));
-            let mut encoder = adapter.create_encoder("bad uniform range").unwrap();
-            encoder.dispatch_uniform(fixtures[1].dispatch.clone(), buffer, offset);
-            assert!(matches!(
-                adapter.submit(encoder, &uniforms),
-                Err(SubmitError::Rejected(_))
-            ));
-        }
-        let buffer = other.uniform_buffer();
-        let mut uniforms = UniformWrites::default();
-        uniforms.write(&buffer, 32, 256, 1, bytemuck::bytes_of(&fixtures[1].params));
-        let mut encoder = adapter.create_encoder("foreign uniform").unwrap();
-        encoder.dispatch_uniform(fixtures[1].dispatch.clone(), buffer, 0);
-        assert!(matches!(
-            adapter.submit(encoder, &uniforms),
-            Err(SubmitError::Rejected(_))
-        ));
-        assert_eq!(adapter.pending_count(), 0);
-        let mut batch = CommandBatch::from_adapter(adapter.clone(), "receipt owner");
-        batch
-            .try_encoder()
-            .unwrap()
-            .dispatch(fixtures[1].dispatch.clone());
-        let receipt = batch.try_finish().unwrap().last_submission.unwrap();
-        assert!(other.readback(&receipt).is_err());
-        drop(adapter);
-        let recreated = Adapter::new(backend, &identity)?;
-        assert!(recreated.readback(&receipt).is_err());
-        assert_eq!(receipt.readback()?, vec![fixtures[1].expected.clone()]);
-        assert!(receipt.readback().is_err());
-        receipt.assert_valid()?;
-        other.assert_valid()?;
-        recreated.assert_valid()?;
-    }
+fn rejected_compute_work_preserves_device_and_receipts_pin_the_context() -> Result<()> {
+    use crate::native::runtime::adapter::SubmitError;
+    let context = context()?;
+    let other = self::context()?;
+    let texture = context.create_texture(3, 2)?;
+    let mut batch = ComputeBatch::new();
+    let id = batch.import_texture(&texture)?;
+    batch.readback(id)?;
+    assert!(matches!(
+        other.adapter.submit_compute(&batch),
+        Err(SubmitError::Rejected(_))
+    ));
+    assert_eq!(context.adapter.pending_count(), 0);
+    let receipt = context
+        .adapter
+        .submit_compute(&batch)
+        .map_err(|e| format!("{e:?}"))?;
+    assert!(other.adapter.readback(&receipt).is_err());
+    let backend = context.backend();
+    drop(batch);
+    drop(texture);
+    drop(context);
+    let recreated = Adapter::with_options(
+        backend,
+        &NativeContextOptions {
+            physical_adapter: Some(std::env::var("TILEINK_NATIVE_GPU")?),
+            validation: true,
+        },
+    )?;
+    assert!(recreated.readback(&receipt).is_err());
+    assert_eq!(receipt.readback()?, vec![vec![0; 24]]);
+    assert!(receipt.readback().is_err());
+    receipt.assert_valid()?;
+    other.check_validation()?;
+    recreated.assert_valid()?;
     Ok(())
 }

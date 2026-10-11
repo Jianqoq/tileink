@@ -41,7 +41,6 @@ pub fn generate() -> io::Result<()> {
     let out = PathBuf::from(env::var_os("OUT_DIR").unwrap());
     for variable in [
         "TILEINK_NATIVE_DXC_PATH",
-        "TILEINK_DXC_PATH",
         "TILEINK_NATIVE_SHADER_CACHE_DIR",
         "CARGO_TARGET_DIR",
         "LOCALAPPDATA",
@@ -94,9 +93,7 @@ pub fn generate() -> io::Result<()> {
                 .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
         };
         let roots = toolchain::cache_roots(&root, &out, &env::var("TARGET").unwrap(), user_cache);
-        let explicit = env::var_os("TILEINK_NATIVE_DXC_PATH")
-            .or_else(|| env::var_os("TILEINK_DXC_PATH"))
-            .map(PathBuf::from);
+        let explicit = env::var_os("TILEINK_NATIVE_DXC_PATH").map(PathBuf::from);
         let compiler = Dxc::discover(toolchain::resolve(explicit, &roots)?)?;
         for path in compiler.identity["files"].as_object().unwrap().keys() {
             println!("cargo:rerun-if-changed={path}");

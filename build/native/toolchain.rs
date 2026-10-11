@@ -24,7 +24,7 @@ pub fn resolve(explicit: Option<PathBuf>, cache_roots: &[PathBuf]) -> io::Result
         .collect();
     candidates.iter().find(|path| path.is_file()).cloned().ok_or_else(|| {
         io::Error::other(format!(
-            "native DXC not found; set TILEINK_NATIVE_DXC_PATH (or TILEINK_DXC_PATH) to an absolute compiler path, or install DXC v1.8.2502 in a default cache. Searched: {}",
+            "native DXC not found; set TILEINK_NATIVE_DXC_PATH to an absolute compiler path, or install DXC v1.8.2502 in a default cache. Searched: {}",
             candidates.iter().map(|path| path.display().to_string()).collect::<Vec<_>>().join(", ")
         ))
     })

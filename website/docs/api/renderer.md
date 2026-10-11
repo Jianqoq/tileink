@@ -19,3 +19,5 @@ Metal compute dispatch、纹理拷贝和绘制保留独立的 encoder 边界，�
 The dense-update heuristic compares changed draw/tile memberships against the current full index's membership count, rather than a small fraction of viewport tiles. Local motion therefore stays incremental when that costs less than a full rebuild. Transient/persistent transitions also retain per-tile vector capacities. These changes address index rebuild and allocation spikes during settling animations; draw ordering, coverage, and rendered pixels are unchanged.
 
 A retained root-layer removal fast path applies only when the transaction has no changed live nodes. Mixed removal/insertion or removal/update transactions reconcile the full execution plan; removing a page must not discard the new page’s draw operations. CPU plan coverage and native GPU fresh-render comparison cover successive clipped-page replacements. This fixes missing first-activation content at the plan-classification root cause.
+
+滤镜录制直接返回原始错误，包括 graph 的缺失或前向输入引用；分配或原生 shader 录制失败会中止该帧，释放已取得的临时表面，并保留最先发生的错误。原生帧直接在调用者持有的批次中录制，目标拷贝和提交由对应输出与同步接口负责。

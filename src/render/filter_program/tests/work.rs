@@ -33,14 +33,16 @@ fn shader_pipeline_crops_partial_output_and_releases_failed_scratch() {
         let mut r = active_recorder();
         r.fail_kernel = failure;
         assert_eq!(
-            FilterExecutor::new(&mut r).apply_filter(
-                RenderTargetId::Main,
-                Bounds::new(16, 16, 32, 32),
-                &filter,
-                None,
-                false,
-                &mut FilterCursors::default()
-            ),
+            FilterExecutor::new(&mut r)
+                .apply_filter(
+                    RenderTargetId::Main,
+                    Bounds::new(16, 16, 32, 32),
+                    &filter,
+                    None,
+                    false,
+                    &mut FilterCursors::default()
+                )
+                .is_ok(),
             failure.is_none()
         );
         assert!(r.live.is_empty());
@@ -74,7 +76,7 @@ fn downsampled_blur_uses_low_work_then_restores_output_work_on_every_exit() {
     for failure in [None, Some(1), Some(2), Some(3), Some(4)] {
         let mut recorder = active_recorder();
         recorder.fail_kernel = failure;
-        assert_eq!(run(&mut recorder, &filter), failure.is_none());
+        assert_eq!(run(&mut recorder, &filter).is_ok(), failure.is_none());
         assert_eq!(recorder.work, Some(vec![5]));
         assert_eq!(recorder.work_changes, [Some(vec![0]), Some(vec![5])]);
         assert!(recorder.live.is_empty());
@@ -102,7 +104,7 @@ fn partial_blur_expands_vertical_halo_without_changing_output_work() {
             2.0,
             3.0,
         );
-        assert_eq!(ok, failure.is_none());
+        assert_eq!(ok.is_ok(), failure.is_none());
         assert_eq!(recorder.work_changes, [Some(vec![1, 5, 9]), Some(vec![5])]);
         assert!(
             recorder.kernels[0]
@@ -131,7 +133,7 @@ fn partial_glass_restores_incremental_state_even_when_a_blur_pass_fails() {
             glass,
             region,
         );
-        assert_eq!(ok, failure.is_none());
+        assert_eq!(ok.is_ok(), failure.is_none());
         assert_eq!(recorder.active.as_ref().unwrap().list(), &[5]);
         assert_eq!(recorder.work, Some(vec![5]));
         assert_eq!(recorder.work_changes.first(), Some(&None));
@@ -172,7 +174,7 @@ fn glass_selects_sampled_or_materialized_blur_and_releases_failed_outputs() {
                     glass,
                     &region,
                 );
-            assert_eq!(ok, failure.is_none());
+            assert_eq!(ok.is_ok(), failure.is_none());
             assert_eq!(recorder.work, Some(vec![5]));
             assert!(recorder.live.is_empty());
             if let Some(failure) = failure {
@@ -216,7 +218,7 @@ fn sampled_programs_release_their_immutable_input_output_on_every_exit() {
     for failure in [None, Some(1), Some(2)] {
         let mut recorder = active_recorder();
         recorder.fail_kernel = failure;
-        assert_eq!(run(&mut recorder, &filter), failure.is_none());
+        assert_eq!(run(&mut recorder, &filter).is_ok(), failure.is_none());
         assert!(recorder.live.is_empty());
         assert!(recorder.kernels[0].contains("inputs: [Main]"));
         assert!(recorder.kernels[0].contains("target: Scratch"));

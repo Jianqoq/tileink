@@ -39,7 +39,6 @@ pub(crate) enum Event {
     ClearRegion(RenderTargetId, Bounds),
     Draw(RenderTargetId),
     Filter,
-    BeginRootBatch,
     SuspendBackdrop,
     RestoreBackdrop,
     BackdropPass(RenderTargetId, RenderTargetId, Option<Bounds>, bool),
@@ -164,14 +163,6 @@ impl DrawBatchAdapter for Adapter {
     type Error = &'static str;
     fn stats_mut(&mut self) -> &mut IncrementalRenderStats {
         self.retained.stats_mut()
-    }
-    fn begin_root_batch(&mut self) -> Result<(), Self::Error> {
-        assert_eq!(
-            self.kind,
-            RetainedSurfaceKind::Backdrop,
-            "only backdrop foreground may use this fixture's root submission budget"
-        );
-        self.record(Event::BeginRootBatch, "root-batch")
     }
     fn coarse(&mut self, batches: Range<u32>, _: Range<u32>) -> Result<(), Self::Error> {
         self.last_batch = batches.start;
@@ -373,7 +364,7 @@ pub(crate) fn fixture() -> (Canvas, ExecPlan) {
             children: Vec::new(),
         },
     ];
-    let plan = ExecPlan {
+    let mut plan = ExecPlan {
         ops,
         layer_stack_data: Vec::new(),
         draw_order: Rc::default(),
@@ -382,6 +373,7 @@ pub(crate) fn fixture() -> (Canvas, ExecPlan) {
         layer_stack_locations: Default::default(),
         direct_root_batch_ops: None,
     };
+    plan.finalize_draw_batches(canvas.draw_records.len());
     (canvas, plan)
 }
 
