@@ -33,6 +33,8 @@ Pattern sampling 由 `PatternSampling` 控制；自然尺寸、显式 source/des
 
 资源更新后 renderer 会失效相关 retained history；无需手动重建无关 scene chunks。
 
+SVG pattern 和嵌套 SVG 图片保留为矢量子场景，在 GPU 上渲染后参与图片采样。独立纹理直接绑定子场景输出，缓存持有其 GPU 存储，无需上传整张透明占位图或复制整图；图集图片仍填充一像素边框以保证边缘采样正确。
+
 ## Mesh Gradient
 
 `MeshGradient` 使用至少 2×2、按行排列的位置与颜色数组。每个网格块是直边凸四边形，控制点可以移动。构造函数拒绝折叠、退化、方向不一致以及边界自交的网格；顺时针和逆时针方向均可。

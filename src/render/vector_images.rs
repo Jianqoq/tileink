@@ -1,10 +1,10 @@
 //! Deferred vector-image identity and exact GPU copy planning.
 
-use crate::{Canvas, shared::image_resource::ImageResourcePlacement};
+use crate::{Canvas, shared::image_resource::AtlasRect};
 use rustc_hash::FxHashMap;
 use std::rc::{Rc, Weak};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ImageCopyRegion {
     pub(crate) source: [u32; 2],
     pub(crate) destination: [u32; 3],
@@ -13,57 +13,34 @@ pub(crate) struct ImageCopyRegion {
 
 /// Reproduce the raster uploader's one-pixel clamp border using texture copies.
 /// All copies read the child image, so no overlapping same-texture copy is needed.
-pub(crate) fn image_copy_regions(
-    placement: ImageResourcePlacement,
-) -> impl Iterator<Item = ImageCopyRegion> {
-    let mut regions = [ImageCopyRegion::default(); 9];
-    let count = match placement {
-        ImageResourcePlacement::Texture(rect) => {
-            assert!(
-                rect.width > 0 && rect.height > 0,
-                "image placement must be nonempty"
-            );
-            regions[0] = ImageCopyRegion {
-                source: [0, 0],
-                destination: [0, 0, 0],
-                extent: [rect.width, rect.height],
-            };
-            1
+pub(crate) fn atlas_copy_regions(rect: AtlasRect) -> [ImageCopyRegion; 9] {
+    assert!(
+        rect.width > 0 && rect.height > 0,
+        "atlas image must be nonempty"
+    );
+    assert!(
+        rect.x > 0 && rect.y > 0,
+        "atlas image requires its reserved border"
+    );
+    let xs = [
+        (0, rect.x - 1, 1),
+        (0, rect.x, rect.width),
+        (rect.width - 1, rect.x + rect.width, 1),
+    ];
+    let ys = [
+        (0, rect.y - 1, 1),
+        (0, rect.y, rect.height),
+        (rect.height - 1, rect.y + rect.height, 1),
+    ];
+    std::array::from_fn(|index| {
+        let (sx, dx, width) = xs[index % 3];
+        let (sy, dy, height) = ys[index / 3];
+        ImageCopyRegion {
+            source: [sx, sy],
+            destination: [dx, dy, rect.page],
+            extent: [width, height],
         }
-        ImageResourcePlacement::Atlas(rect) => {
-            assert!(
-                rect.width > 0 && rect.height > 0,
-                "image placement must be nonempty"
-            );
-            assert!(
-                rect.x > 0 && rect.y > 0,
-                "atlas image requires its reserved border"
-            );
-            let xs = [
-                (0, rect.x - 1, 1),
-                (0, rect.x, rect.width),
-                (rect.width - 1, rect.x + rect.width, 1),
-            ];
-            let ys = [
-                (0, rect.y - 1, 1),
-                (0, rect.y, rect.height),
-                (rect.height - 1, rect.y + rect.height, 1),
-            ];
-            for (index, ((sy, dy, height), (sx, dx, width))) in ys
-                .into_iter()
-                .flat_map(|y| xs.into_iter().map(move |x| (y, x)))
-                .enumerate()
-            {
-                regions[index] = ImageCopyRegion {
-                    source: [sx, sy],
-                    destination: [dx, dy, rect.page],
-                    extent: [width, height],
-                };
-            }
-            9
-        }
-    };
-    regions.into_iter().take(count)
+    })
 }
 
 pub(crate) struct CachedVectorImage<T> {

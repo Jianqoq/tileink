@@ -6,7 +6,7 @@ use crate::{
         Result,
         compute::{ComputeBatch, Resource, ResourceId, TextureCopy},
     },
-    render::vector_images::image_copy_regions,
+    render::vector_images::atlas_copy_regions,
     shared::image_resource::{GpuImageResourceUpload, ImageResourcePlacement},
 };
 use std::rc::Rc;
@@ -20,38 +20,38 @@ impl SceneImages {
         upload: &GpuImageResourceUpload,
         mut render: impl FnMut(&mut ComputeBatch, &Rc<Canvas>) -> Result<ResourceId>,
     ) -> Result<Self> {
-        let images = Self::allocate(batch, upload)?;
+        let mut images = Self::allocate(batch, upload)?;
         for vector in upload.vectors() {
             let source = render(batch, &vector.canvas)?;
             batch.size(source)?;
             let size = vector.canvas.physical_size();
             if !matches!(&batch.resources()[source.index()], Resource::Texture(texture)
-                if !texture.array && texture.size == [size.0, size.1])
+                if !texture.array && texture.size == [size.0, size.1]
+                    && texture.format == crate::ShaderTextureFormat::Rgba8Unorm)
             {
-                return Err("native vector output must match its Canvas dimensions".into());
+                return Err(
+                    "native vector output must be RGBA8 and match its Canvas dimensions".into(),
+                );
             }
-            let destination = match vector.placement {
-                ImageResourcePlacement::Atlas(_) => images.atlas,
+            match vector.placement {
                 ImageResourcePlacement::Texture(rect) => {
-                    let Resource::TextureTable(table) = &batch.resources()[images.table.index()]
-                    else {
-                        unreachable!("owned image table")
-                    };
-                    *table
-                        .get(rect.index as usize)
-                        .ok_or("native vector texture index exceeds table")?
+                    // Bind the child's complete image directly. Cloning the native
+                    // lease later pins it for the immutable renderer image cache.
+                    images.textures[rect.index as usize] = source;
                 }
-            };
-            for region in image_copy_regions(vector.placement) {
-                batch.copy_texture(TextureCopy {
-                    source,
-                    destination,
-                    source_origin: [region.source[0], region.source[1], 0],
-                    destination_origin: region.destination,
-                    extent: [region.extent[0], region.extent[1], 1],
-                })?;
+                ImageResourcePlacement::Atlas(rect) => {
+                    for region in atlas_copy_regions(rect) {
+                        batch.copy_texture(TextureCopy {
+                            source,
+                            destination: images.atlas,
+                            source_origin: [region.source[0], region.source[1], 0],
+                            destination_origin: region.destination,
+                            extent: [region.extent[0], region.extent[1], 1],
+                        })?;
+                    }
+                }
             }
         }
-        Ok(images)
+        images.finish(batch)
     }
 }

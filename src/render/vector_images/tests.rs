@@ -1,5 +1,5 @@
 use super::*;
-use crate::shared::image_resource::{AtlasRect, TextureRect};
+use crate::shared::image_resource::AtlasRect;
 use std::cell::Cell;
 
 #[test]
@@ -14,7 +14,7 @@ fn atlas_copies_duplicate_all_edges_and_corners_without_neighbor_bleed() {
         };
         let source: Vec<_> = (0..width * height).map(|i| i + 1000).collect();
         let mut destination = vec![0xdead_beef; 16 * 16 * 3];
-        for copy in image_copy_regions(ImageResourcePlacement::Atlas(rect)) {
+        for copy in atlas_copy_regions(rect) {
             for y in 0..copy.extent[1] {
                 for x in 0..copy.extent[0] {
                     let src = ((copy.source[1] + y) * width + copy.source[0] + x) as usize;
@@ -53,31 +53,15 @@ fn atlas_copies_duplicate_all_edges_and_corners_without_neighbor_bleed() {
 }
 
 #[test]
-fn standalone_textures_copy_once_without_an_atlas_border() {
-    let copies: Vec<_> = image_copy_regions(ImageResourcePlacement::Texture(TextureRect {
-        index: 5,
-        width: 17,
-        height: 9,
-    }))
-    .collect();
-    assert_eq!(
-        copies,
-        vec![ImageCopyRegion {
-            source: [0, 0],
-            destination: [0, 0, 0],
-            extent: [17, 9]
-        }]
-    );
-}
-
-#[test]
 #[should_panic(expected = "nonempty")]
-fn zero_sized_placement_is_rejected() {
-    let _ = image_copy_regions(ImageResourcePlacement::Texture(TextureRect {
-        index: 0,
+fn zero_sized_atlas_placement_is_rejected() {
+    let _ = atlas_copy_regions(AtlasRect {
+        page: 0,
+        x: 1,
+        y: 1,
         width: 0,
         height: 2,
-    }));
+    });
 }
 
 #[test]

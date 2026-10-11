@@ -255,9 +255,58 @@ p50 is 0.435 ms; no before/after speed claim is made for incorrect baseline pixe
 Temporary measurement source is removed after validation.
 [Raw measurements and protocol](benchmarks/cleanup-phase8-metal-2026-10-11.json).
 
+## Phase 9: bind completed vector textures directly
+
+Standalone vector images previously uploaded a full-size transparent CPU image,
+copied the completed child rendering into it, then retained another native
+snapshot. Image allocation now delays the texture table until children are ready
+and binds each standalone child output directly. Repeated keys can share the same
+child resource and cached native owner. GPU image retention clones an existing
+native lease; no second allocation or copy is required for that output.
+
+Atlas placements still copy their center and eight padded border regions, which
+preserves clamp sampling without neighbor bleed. Their planner now returns the
+fixed nine-region array directly; the obsolete standalone-copy branch and default
+region filling are removed. Unused shader table slots retain their required
+initialized one-pixel transparent binding.
+
+The existing immutable-cache contract forbids writing an image after retention.
+Native owners pin pooled storage, submitted batches retain their resources, and
+cache acceptance still occurs only after successful submission. Tests exercise
+queued readbacks, lease reuse, alias keys and an abandoned batch that must rebuild
+its cache. Vector output dimensions, batch ownership, array shape and RGBA8 format
+remain validated. The explicit format check preserves the rejection previously
+provided by the deleted copy operation.
+
+The direct-binding and native-retention regressions fail before the optimization
+and pass afterward. Mixed raster/vector placement and border tests verify the
+remaining atlas path. This removes the redundant work itself; it does not replace
+it with a fallback allocation.
+
+All 11 image-assembly, 4 native image-lifetime and 6 vector-planning focused
+release tests pass. The full single-thread release suite reports 965 passing
+tests and the same nine known failures. Release Clippy and example builds/tests
+pass without new warnings. All 1730 SVG images and seven example PNGs remain
+byte-identical to the initial cleanup baseline.
+
+DX12 and Vulkan library/unit-test code also pass Windows Rust type checking using
+the temporary artifact-free harness described in phase 2. The harness is removed;
+this does not verify Windows GPU execution or shader compilation. Chinese and
+English image guides describe direct vector texture binding. The website build
+remains unrun because dependencies are not installed.
+
+The benchmark now covers 22 paired actual renderer workloads. The five new SVG
+cases use the public lowering/rendering APIs and swap pre-lowered resource content
+every frame, exercising image-cache rebuilds. All preserve exact pixels. On M5,
+large vector patterns improve p50 by 9.7%, repeated SVG images by 23.3%, nested
+images by 16.8%, and mixed placements by 5.6%. The small-atlas control changes
++0.66%; the 17 existing cases range from -1.36% to +1.55%, without a material
+measured regression. SVG parsing/lowering and readback are outside timed regions.
+Temporary measurement source is removed after validation.
+[Raw measurements and protocol](benchmarks/cleanup-phase9-metal-2026-10-11.json).
+
 ## Remaining audit work
 
-- Standalone vector-image placements still upload a zero-filled placeholder before
-  copying the completed child image. Trace direct native retention and lifetime
-  semantics before removing that upload and copy.
+- Audit encoded enum values that still map invalid data to valid defaults, while
+  preserving actual brush/SDF decoding contracts and shader behavior.
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.

@@ -8,6 +8,106 @@ use std::{cell::RefCell, rc::Rc};
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn native_image_retention_pins_gpu_output_without_copying_or_pool_reuse() -> Result<()> {
+    let context = crate::native::runtime::gpu_support::context()?;
+    let pool = Rc::new(RefCell::new(SurfacePool::new(&context)));
+    let mut batch = ComputeBatch::with_surfaces(pool.clone());
+    let color = [10, 20, 30, 255];
+    let source = batch.reusable_surface([5, 3], u32::from_le_bytes(color))?;
+    let original = batch.persistent_texture(source)?.unwrap().clone();
+    let commands = batch.commands().len();
+    let retained = batch.retain_image(source)?;
+    assert!(Rc::ptr_eq(&original.state, &retained.state));
+    assert_eq!(commands, batch.commands().len());
+    let again = batch.retain_image(source)?;
+    assert!(Rc::ptr_eq(&again.state, &retained.state));
+    assert_eq!(batch.import_texture(&retained)?, source);
+    batch.readback(source)?;
+    let first = context
+        .adapter
+        .submit_compute(&batch)
+        .map_err(|error| format!("{error:?}"))?;
+    drop(batch);
+    drop(original);
+    drop(again);
+
+    // A cached image pins its lease while later batches acquire and write other storage.
+    let mut next = ComputeBatch::with_surfaces(pool.clone());
+    let other = next.reusable_surface([5, 3], u32::from_le_bytes([80, 90, 100, 255]))?;
+    assert!(!Rc::ptr_eq(
+        &retained.state,
+        &next.persistent_texture(other)?.unwrap().state
+    ));
+    next.readback(other)?;
+    let second = context
+        .adapter
+        .submit_compute(&next)
+        .map_err(|error| format!("{error:?}"))?;
+    drop(next);
+    drop(pool);
+    assert_eq!(second.readback()?, vec![[80, 90, 100, 255].repeat(15)]);
+    assert_eq!(first.readback()?, vec![color.repeat(15)]);
+    assert_eq!(
+        retained.readback()?.readback()?.pixels,
+        vec![u32::from_le_bytes(color); 15]
+    );
+    context.check_validation()?;
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn abandoned_vector_cache_is_rebuilt_before_sampling() -> Result<()> {
+    use crate::{Canvas, ImageKey, shared::image_resource::ImageResourceStore};
+    let context = crate::native::runtime::gpu_support::context()?;
+    let pool = Rc::new(RefCell::new(SurfacePool::new(&context)));
+    let mut resources = ImageResourceStore::default();
+    resources.insert(ImageKey(1), Rc::new(Canvas::new(2050, 1, 1.0)));
+    let empty = ImageResourceStore::default();
+    let table_len = crate::shared::gpu_constants::NATIVE_TEXTURE_TABLE_CAPACITY;
+    let signature = resources.upload_signature(&empty, 4096, 4, table_len);
+    let upload = resources.upload_merged(&empty, 4096, 4, table_len, None);
+    let mut cache = None;
+    let mut renders = 0;
+    let mut previous = None;
+    for (frame, color) in [[10, 20, 30, 255], [80, 90, 100, 255]]
+        .into_iter()
+        .enumerate()
+    {
+        let mut batch = ComputeBatch::with_surfaces(pool.clone());
+        let images =
+            Images::record_cached(&mut batch, &upload, &mut cache, signature, |batch, _| {
+                renders += 1;
+                batch.reusable_surface([2050, 1], u32::from_le_bytes(color))
+            })?;
+        let Resource::TextureTable(table) = &batch.resources()[images.textures().table.index()]
+        else {
+            panic!()
+        };
+        let source = table[0];
+        let texture = batch.persistent_texture(source)?.unwrap().clone();
+        if frame == 0 {
+            previous = Some(texture);
+            // Drop the batch without publishing either its native pixels or cache acceptance.
+        } else {
+            let previous = previous.as_ref().unwrap();
+            assert!(!previous.state.initialized.get());
+            assert!(!Rc::ptr_eq(&previous.state, &texture.state));
+            batch.readback(source)?;
+            let receipt = context
+                .adapter
+                .submit_compute(&batch)
+                .map_err(|error| format!("{error:?}"))?;
+            assert_eq!(receipt.readback()?, vec![color.repeat(2050)]);
+        }
+    }
+    assert_eq!(renders, 2);
+    context.check_validation()?;
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn native_image_cache_reuses_initialized_arrays_without_upload() -> Result<()> {
     #[cfg(feature = "dx12")]
     unsafe {
@@ -83,24 +183,6 @@ fn native_vector_aliases_share_one_recording_per_batch() -> Result<()> {
     // brush bounds guard: the child image uploads correctly but the parent is empty.
     use crate::{Canvas, ImageKey, PatternSampling, Radius};
     use peniko::{Color, Extend, kurbo::Rect};
-    let mut child = Canvas::new(4, 4, 1.0);
-    child.push_rect(
-        Rect::new(0.0, 0.0, 4.0, 4.0),
-        Radius::ZERO,
-        Color::from_rgb8(71, 19, 23),
-    );
-    let child = Rc::new(child);
-    let mut canvas = Canvas::new(8, 4, 1.0);
-    for (key, x) in [(ImageKey(1), 0.0), (ImageKey(2), 4.0)] {
-        canvas
-            .push_image_key(
-                Rect::new(x, 0.0, x + 4.0, 4.0),
-                key,
-                Extend::Pad,
-                PatternSampling::Nearest,
-            )
-            .unwrap();
-    }
     let backend = super::backend();
     let context = NativeContext::new(
         backend,
@@ -109,32 +191,70 @@ fn native_vector_aliases_share_one_recording_per_batch() -> Result<()> {
             validation: true,
         },
     )?;
-    let mut resources = crate::shared::image_resource::ImageResourceStore::default();
-    resources.insert(ImageKey(1), child.clone());
-    resources.insert(ImageKey(2), child.clone());
-    let mut recording = super::super::renderer::recording::Recording::default();
-    let pool = Rc::new(RefCell::new(SurfacePool::new(&context)));
-    for _ in 0..2 {
-        let mut batch = ComputeBatch::with_surfaces(pool.clone());
-        let target = recording.record(
-            &mut batch,
-            &canvas,
-            &resources,
-            None,
-            super::super::renderer::recording::Limits {
-                image_dimension: 64,
-                atlas_pages: 4,
-                texture_table_len: 0,
-                dispatch_dimension: 65535,
-            },
-            Default::default(),
-        )?;
-        batch.readback(target)?;
-        let receipt = context
-            .adapter
-            .submit_compute(&batch)
-            .map_err(|error| format!("{error:?}"))?;
-        assert_eq!(receipt.readback()?, vec![[71, 19, 23, 255].repeat(32)]);
+    for width in [4, 2050] {
+        let mut child = Canvas::new(width, 4, 1.0);
+        child.push_rect(
+            Rect::new(0.0, 0.0, f64::from(width), 4.0),
+            Radius::ZERO,
+            Color::from_rgb8(71, 19, 23),
+        );
+        let child = Rc::new(child);
+        let mut canvas = Canvas::new(width * 2, 4, 1.0);
+        for (key, x) in [(ImageKey(1), 0.0), (ImageKey(2), f64::from(width))] {
+            canvas
+                .push_image_key(
+                    Rect::new(x, 0.0, x + f64::from(width), 4.0),
+                    key,
+                    Extend::Pad,
+                    PatternSampling::Nearest,
+                )
+                .unwrap();
+        }
+        let mut resources = crate::shared::image_resource::ImageResourceStore::default();
+        resources.insert(ImageKey(1), child.clone());
+        resources.insert(ImageKey(2), child.clone());
+        let mut recording = super::super::renderer::recording::Recording::default();
+        let pool = Rc::new(RefCell::new(SurfacePool::new(&context)));
+        for _ in 0..2 {
+            let mut batch = ComputeBatch::with_surfaces(pool.clone());
+            let target = recording.record(
+                &mut batch,
+                &canvas,
+                &resources,
+                None,
+                super::super::renderer::recording::Limits {
+                    image_dimension: 4096,
+                    atlas_pages: 4,
+                    texture_table_len: crate::shared::gpu_constants::NATIVE_TEXTURE_TABLE_CAPACITY,
+                    dispatch_dimension: 65535,
+                },
+                Default::default(),
+            )?;
+            if width == 2050 {
+                let table = batch
+                    .resources()
+                    .iter()
+                    .rev()
+                    .find_map(|resource| match resource {
+                        Resource::TextureTable(table) => Some(table),
+                        _ => None,
+                    })
+                    .unwrap();
+                assert_eq!(
+                    table[0], table[1],
+                    "alias keys must bind the same child image"
+                );
+            }
+            batch.readback(target)?;
+            let receipt = context
+                .adapter
+                .submit_compute(&batch)
+                .map_err(|error| format!("{error:?}"))?;
+            assert_eq!(
+                receipt.readback()?,
+                vec![[71, 19, 23, 255].repeat(width as usize * 8)]
+            );
+        }
     }
     context.check_validation()?;
     Ok(())
@@ -187,10 +307,8 @@ fn retained_image_uploads_preserve_queued_array_versions() -> Result<()> {
             };
             let retained = batch.retain_image(id)?;
             assert_eq!(batch.import_texture(&retained)?, id);
-            assert!(
-                batch.retain_image(id).is_err(),
-                "retention must not alias an already published image"
-            );
+            let repeated = batch.retain_image(id)?;
+            assert!(Rc::ptr_eq(&retained.state, &repeated.state));
             if revision == 0 {
                 pinned.push(retained);
             }

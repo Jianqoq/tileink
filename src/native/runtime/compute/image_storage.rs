@@ -7,16 +7,20 @@ impl ComputeBatch {
     /// Transfer a fully initialized image to the renderer's immutable image cache.
     /// Its source stage may write before this call; later commands may only read it.
     /// Windows uploads directly into a pooled lease, removing the duplicate atlas
-    /// allocation/copy at its source. Metal retains its existing copy implementation.
+    /// allocation/copy at its source. GPU-rendered images already own a native lease;
+    /// clone that owner instead of allocating and copying another complete image.
     pub(crate) fn retain_image(&mut self, source: ResourceId) -> Result<NativeTexture> {
         self.size(source)?;
         let Resource::Texture(input) = &self.resources()[source.index()] else {
             return Err("native image snapshot requires a texture".into());
         };
+        if let Some(texture) = &input.persistent {
+            return Ok(texture.clone());
+        }
         let (size, layers, array) = (input.size, input.layers, input.array);
         #[cfg(any(feature = "dx12", feature = "vulkan"))]
         {
-            if input.persistent.is_some() || input.bytes.is_empty() {
+            if input.bytes.is_empty() {
                 return Err("image retention requires initialized batch-owned storage".into());
             }
             let texture = self

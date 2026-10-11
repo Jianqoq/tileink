@@ -188,7 +188,33 @@ fn vector_output_failures_never_return_ready_image_handles() {
 }
 
 #[test]
-fn vector_texture_without_cpu_pixels_gets_complete_gpu_storage() -> Result<()> {
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn vector_outputs_reject_float_formats_for_atlas_and_texture_placements() -> Result<()> {
+    let context = crate::native::runtime::gpu_support::context()?;
+    for (width, height) in [(4, 4), (2050, 1)] {
+        let mut store = ImageResourceStore::default();
+        store.insert(ImageKey(1), Rc::new(Canvas::new(width, height, 1.0)));
+        let upload = store.upload_merged(
+            &ImageResourceStore::default(),
+            4096,
+            4,
+            NATIVE_TEXTURE_TABLE_CAPACITY,
+            None,
+        );
+        let mut batch = crate::native::runtime::gpu_support::batch(&context);
+        assert!(
+            SceneImages::record_with_vectors(&mut batch, &upload, |batch, _| {
+                batch.shader_texture([width, height], crate::ShaderTextureFormat::Rgba16Float)
+            })
+            .is_err()
+        );
+        assert!(batch.commands().is_empty());
+    }
+    Ok(())
+}
+
+#[test]
+fn vector_texture_placement_binds_child_output_without_placeholder_or_copy() -> Result<()> {
     let mut store = ImageResourceStore::default();
     store.insert(ImageKey(1), Rc::new(Canvas::new(2050, 1, 1.0)));
     let upload = store.upload_merged(
@@ -201,19 +227,34 @@ fn vector_texture_without_cpu_pixels_gets_complete_gpu_storage() -> Result<()> {
     assert_eq!(upload.textures().len(), 1);
     assert!(upload.textures()[0].pixels.is_empty());
     let mut batch = ComputeBatch::new();
+    let mut source = None;
     let images = SceneImages::record_with_vectors(&mut batch, &upload, |batch, _| {
-        batch.texture_rgba8([2050, 1], vec![0; 2050 * 4])
+        let output = batch.texture_rgba8([2050, 1], [10, 20, 30, 255].repeat(2050))?;
+        source = Some(output);
+        Ok(output)
     })?;
     let Resource::TextureTable(table) = &batch.resources()[images.table.index()] else {
         panic!()
     };
+    assert_eq!(table[upload.textures()[0].index as usize], source.unwrap());
     let Resource::Texture(texture) =
         &batch.resources()[table[upload.textures()[0].index as usize].index()]
     else {
         panic!()
     };
     assert_eq!(texture.bytes.len(), 2050 * 4);
-    assert_eq!(batch.commands().len(), 1);
+    assert_eq!(&*texture.bytes, [10, 20, 30, 255].repeat(2050));
+    assert_eq!(
+        batch
+            .resources()
+            .iter()
+            .filter(|resource| matches!(resource,
+                Resource::Texture(texture) if texture.size == [2050, 1]
+            ))
+            .count(),
+        1
+    );
+    assert!(batch.commands().is_empty());
     Ok(())
 }
 
@@ -235,6 +276,50 @@ fn oversized_vector_dimensions_are_rejected_before_pixel_allocation() {
         panic!("invalid destination cannot invoke child rendering")
     });
     assert!(result.is_err());
+}
+
+#[test]
+fn mixed_vector_and_raster_images_keep_atlas_copies_and_direct_texture_slots() -> Result<()> {
+    let mut store = ImageResourceStore::default();
+    store.insert(ImageKey(1), Rc::new(Canvas::new(4, 3, 1.0)));
+    store.insert(ImageKey(2), Rc::new(Canvas::new(2050, 2, 1.0)));
+    store.insert(
+        ImageKey(3),
+        Image::from_rgba8(2051, 1, [80, 90, 100, 255].repeat(2051)),
+    );
+    let upload = store.upload_merged(
+        &ImageResourceStore::default(),
+        4096,
+        4,
+        NATIVE_TEXTURE_TABLE_CAPACITY,
+        None,
+    );
+    let mut batch = ComputeBatch::new();
+    let mut source = None;
+    let images = SceneImages::record_with_vectors(&mut batch, &upload, |batch, canvas| {
+        let (width, height) = canvas.physical_size();
+        let image = batch.texture_rgba8(
+            [width, height],
+            [10, 20, 30, 255].repeat((width * height) as usize),
+        )?;
+        if width == 2050 {
+            source = Some(image);
+        }
+        Ok(image)
+    })?;
+    let Resource::TextureTable(table) = &batch.resources()[images.table.index()] else {
+        panic!()
+    };
+    assert_eq!(table[0], source.unwrap());
+    let Resource::Texture(raster) = &batch.resources()[table[1].index()] else {
+        panic!()
+    };
+    assert_eq!(&*raster.bytes, [80, 90, 100, 255].repeat(2051));
+    assert_eq!(batch.commands().len(), 9);
+    assert!(batch.commands().iter().all(|command| matches!(command,
+        crate::native::runtime::compute::Command::CopyTexture(copy) if copy.destination == images.atlas
+    )));
+    Ok(())
 }
 
 #[test]

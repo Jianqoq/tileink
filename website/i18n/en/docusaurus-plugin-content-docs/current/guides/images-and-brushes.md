@@ -11,6 +11,8 @@ APIs accepting `impl Into<Brush>` accept a `Color` directly. Other brushes inclu
 
 Replacing an image registry entry invalidates only the required resource tables and retained history; unrelated scene chunks remain intact.
 
+SVG patterns and nested SVG images remain vector subscenes rendered on the GPU before image sampling. Standalone textures bind the child output directly, and the cache owns its GPU storage without a full transparent upload or image copy. Atlas images still receive a one-pixel border for correct edge sampling.
+
 ## Mesh Gradient
 
 `MeshGradient` takes row-major position and color arrays for a grid of at least 2×2 vertices. Each cell is a straight-sided convex quad with movable vertices. Construction rejects folded, degenerate, inconsistently wound, or self-intersecting meshes; either consistent winding direction is accepted.
