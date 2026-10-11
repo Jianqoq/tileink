@@ -61,7 +61,9 @@ pub(super) fn record(
                 )
             }
             Resource::Buffer(buffer) => (buffer.length(), buffer.length(), 1),
-            _ => return Err("Metal descriptor resources cannot be read back".into()),
+            // Readback validation excludes descriptors; inline classification
+            // excludes all output buffers, preserving their allocation identity.
+            _ => unreachable!(),
         };
         let buffer = memory::buffer(device, pitch * rows, MTLResourceOptions::StorageModeShared)?;
         // SAFETY: allocation dimensions and texture row pitch were computed

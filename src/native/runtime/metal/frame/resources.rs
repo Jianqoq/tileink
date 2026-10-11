@@ -8,17 +8,19 @@ pub(super) enum Resource {
     Table(Vec<Object<dyn MTLTexture>>),
 }
 impl Resource {
-    pub fn buffer(&self) -> Result<&objc2::runtime::ProtocolObject<dyn MTLBuffer>> {
-        match self {
-            Self::Buffer(buffer) => Ok(buffer),
-            _ => Err("Metal resource is not a buffer".into()),
-        }
+    // ComputeBatch validates binding/copy kinds before recording; allocation
+    // preserves them. Inline constants never alias storage or readback outputs.
+    pub fn buffer(&self) -> &objc2::runtime::ProtocolObject<dyn MTLBuffer> {
+        let Self::Buffer(buffer) = self else {
+            unreachable!()
+        };
+        buffer
     }
-    pub fn texture(&self) -> Result<&objc2::runtime::ProtocolObject<dyn MTLTexture>> {
-        match self {
-            Self::Texture(texture) => Ok(texture),
-            _ => Err("Metal resource is not a texture".into()),
-        }
+    pub fn texture(&self) -> &objc2::runtime::ProtocolObject<dyn MTLTexture> {
+        let Self::Texture(texture) = self else {
+            unreachable!()
+        };
+        texture
     }
 }
 pub(super) fn allocate(
@@ -27,10 +29,7 @@ pub(super) fn allocate(
     batch: &ComputeBatch,
     staging: &mut Vec<Object<dyn MTLBuffer>>,
 ) -> Result<Vec<Resource>> {
-    let encoder = command
-        .blitCommandEncoder()
-        .ok_or("Metal upload encoder failed")?;
-    let encoding = Encoding(objc2::runtime::ProtocolObject::from_ref(&*encoder));
+    let mut upload_encoder = super::encoding::Upload::new(command);
     let inline = super::inline::uniforms(batch);
     let mut resources = Vec::with_capacity(batch.resources().len());
     for (index, input) in batch.resources().iter().enumerate() {
@@ -42,6 +41,7 @@ pub(super) fn allocate(
                     &upload.buffer.state.allocation;
                 if !upload.bytes.is_empty() {
                     let source = memory::upload(device, &upload.bytes)?;
+                    let encoder = upload_encoder.encoder()?;
                     for &[start, offset, count] in &upload.copies {
                         // SAFETY: shared BufferUpload validates all copy ranges.
                         unsafe {
@@ -85,6 +85,7 @@ pub(super) fn allocate(
                         destination[..row].copy_from_slice(source);
                     }
                     let source = memory::upload(device, &bytes)?;
+                    let encoder = upload_encoder.encoder()?;
                     for layer in 0..input.layers as usize {
                         // SAFETY: complete padded layer uploads into owned storage.
                         unsafe {
@@ -115,15 +116,18 @@ pub(super) fn allocate(
                 let images = ids
                     .iter()
                     .map(|id| match &resources[id.index()] {
-                        Resource::Texture(texture) => Ok(texture.clone()),
-                        _ => Err("Metal table requires 2D textures".into()),
+                        Resource::Texture(texture) => texture.clone(),
+                        _ => unreachable!(), // Validated by ComputeBatch::texture_table.
                     })
-                    .collect::<Result<Vec<_>>>()?;
+                    .collect();
                 Resource::Table(images)
             }
         };
         resources.push(resource);
     }
-    drop(encoding);
+    drop(upload_encoder);
     Ok(resources)
 }
+
+#[cfg(test)]
+mod tests;

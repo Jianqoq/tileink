@@ -2135,9 +2135,75 @@ New confirmed work includes the empty upload encoder and the cumsum config
 closure's unused empty-word branch. Remaining Metal resource-kind errors require
 all-caller proof before removal. No temporary measurement Rust code was added.
 
+## Phase 43: upload encoders and validated Metal resource kinds
+
+Metal opens the resource-upload blit encoder only at the first persistent-buffer
+or texture transfer. Ordinary shared buffers, inline uniforms, samplers, tables,
+unchanged imports and empty submissions do not need it. A small owning guard
+ends the encoder on success and allocation errors, before command recording
+continues. Actual upload staging remains owned through submission completion.
+This permanently removes empty encoding work while preserving transfer order.
+
+ComputeBatch checks resource ownership, binding kinds, texture dimensions,
+writable aliases, table members and readback eligibility before native recording.
+Allocation preserves each validated kind; inline classification excludes storage
+aliases and all output buffers. Traced every Metal buffer/texture accessor caller,
+including texture copies, fine attachments and clear attachments. Removed the
+duplicated resource-kind errors from those accessors, sampler/table binding,
+table construction and readback. Native allocation/API failures and imported
+attachment usage/viewport checks still report real failures at their boundaries.
+
+The cumsum config upload now directly encodes its four initialized words. Its
+single-call local helper's empty-word placeholder branch had no producer. Empty
+persistent chunk/row arenas retain their separate, required storage semantics.
+Semantic assertions cover the exact four-word ABI for a multichunk row and a
+valid zero-row arena containing an empty chunk.
+
+Two new GPU regressions exercise uploads after host resources, odd-width arrays,
+descriptor tables, readback ordering and host-batch destruction, and reuse a
+command buffer after a later allocation fails with an upload encoder open.
+Before changing production code, 14 frame and eight cumsum tests pass. Afterward,
+69 Metal, eight cumsum and 28 ComputeBatch checks pass. Full serial all-target
+release tests pass 1093 cases, with the same three known failures: the two missing
+pinned-DXC checks and turbulence canonical mismatch. Release clippy, formatting,
+backend-free compilation and example builds pass with unchanged lint warnings.
+All 1730 SVG PNGs and seven image examples match baseline bytes exactly; native
+presentation completes eight frames and the expected resize. Both Metal artifact
+manifests and the backend-free manifest remain unchanged.
+
+The [application report](benchmarks/cleanup-phase43-metal-2026-10-12.json)
+compares the baseline/current SVG and native-window applications, with
+identical-current controls, two warmups per label and ten alternating timed pairs.
+Whole-process timings include initialization, completion and teardown; SVG also
+includes parsing, readback and PNG saving. Verification follows each stopped
+timer. Metal validation is disabled while timing; window selects registry ID
+0000000100000575 and SVG uses the default on the freshly verified single-GPU M5.
+
+The report retains 96 observations, 83040 verified SVG PNG hashes and 384
+completed window frames. Whole-process medians change 4266.412 to 4317.461 ms
+for SVG (+1.20%, identical-current control +0.12%) and 232.551 to 233.412 ms
+for window (+0.37%, control -0.14%). Within alternating pairs, the median
+percent changes are +0.057% and +0.713%; their descriptive 95% bootstrap
+intervals include zero and overlap the corresponding controls. No stable material
+timing regression was identified in these applications. This does not establish
+an isolated encoder speedup; all samples and tails remain available. The temporary
+validation script and four copied executables are removed. All 49 benchmark
+JSON/gzip files parse and generated npm root declarations match.
+
+All 975 current implementation files have now been fully read, including every
+production shader and the complete SVG entry. File reading is complete; the
+confirmed findings below still need implementation/proof and validation. Newly
+identified work includes repeated progressive-blur zero checks, unused glass
+constants/sampling wrappers, SVG's duplicate bounds extension, impossible
+primitive-kind alternatives, infallible color conversion wrappers and fixed-size
+matrix handling. The 2087-line SVG entry needs cohesive modules during that
+cleanup. Degenerate SDF normals, transparent sampling boundaries, narrow Gaussian
+underflow handling, SVG miter-clip/zero-length stroke lowering and empty transfer
+tables define current rendering behavior and must stay correct.
+
 ## Remaining audit work
 
-- Continue the 94 pending shader and SVG-entry reads. Prove coarse stack emitter inputs before removing duplicate validity skips. Fine specialization retry and dormant HLSL/runtime text coverage settings have been removed. The empty Metal readback encoder and duplicate clear-shortcut checks have been removed. Remove the empty upload encoder, unused cumsum config closure branch and unreachable Metal resource-kind errors after focused ordering/caller proof; preserve partial/compact targets and GPU-written uniform behavior. Test DX12 lock-poison policy and prove packed uniform handle presence. Trace exact retained metadata patching for clip-bound updates inside filters and prove offscreen clip exclusion before removing its error wrapper. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
+- All current implementation files are fully read. Complete the recorded progressive/glass shader and SVG cleanup, splitting the SVG entry into cohesive modules. Prove coarse stack emitter inputs before removing duplicate validity skips. Fine specialization retry and dormant HLSL/runtime text coverage settings have been removed. Empty Metal upload/readback encoders, duplicate clear-shortcut checks, unused cumsum config closure branch and unreachable Metal resource-kind errors have been removed. Test DX12 lock-poison policy and prove packed uniform handle presence. Trace exact retained metadata patching for clip-bound updates inside filters and prove offscreen clip exclusion before removing its error wrapper. Add focused regressions for the recorded large filter/text integer-arithmetic concerns. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
 - Execute the HLSL editor test against the actual ShaderTools language server; local protocol regressions pass, but the server is unavailable locally.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

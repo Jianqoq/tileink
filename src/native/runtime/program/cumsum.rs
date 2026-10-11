@@ -193,14 +193,12 @@ impl<'a> CumsumPlan<'a> {
             return Err("cumsum dispatch exceeds device grid".into());
         }
         let grid = [x, y, 1];
-        let add = |batch: &mut ComputeBatch, words: &[u32]| {
-            batch.buffer(if words.is_empty() {
-                vec![0; 4]
-            } else {
-                words.iter().flat_map(|w| w.to_le_bytes()).collect()
-            })
-        };
-        let config = add(batch, &[self.starts.len() as u32, chunks, 0, 0])?;
+        let config = batch.buffer(
+            [self.starts.len() as u32, chunks, 0, 0]
+                .into_iter()
+                .flat_map(u32::to_le_bytes)
+                .collect(),
+        )?;
         let offsets = buffers.offsets.upload(
             batch,
             &self.offsets,

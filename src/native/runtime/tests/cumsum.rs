@@ -80,6 +80,16 @@ fn cumsum_encodes_ordered_stages_and_guards_padded_two_dimensional_groups() {
         ]
     );
     assert_eq!(batch.passes()[0].grid, [3, 2, 1]);
+    let config = batch.passes()[0]
+        .bindings
+        .iter()
+        .find(|(b, _)| b.slot == 0)
+        .unwrap()
+        .1;
+    assert_eq!(
+        batch.resources()[config.index()].bytes(),
+        bytemuck::cast_slice(&[1u32, 5, 0, 0])
+    );
     assert_eq!(batch.size(output.totals).unwrap(), 20);
     assert_eq!(batch.size(output.offsets).unwrap(), 20);
     let plan = CumsumPlan::new(vec![0, 1], vec![1; 2], vec![0, 1], vec![1, 2], 2).unwrap();
@@ -114,4 +124,14 @@ fn cumsum_accepts_empty_arena_rows_and_unowned_empty_chunks() {
     let backdrops = batch.buffer(vec![0; 4]).unwrap();
     empty.encode(&mut batch, backdrops, 65535).unwrap();
     assert_eq!(batch.passes().len(), 1);
+    let config = batch.passes()[0]
+        .bindings
+        .iter()
+        .find(|(b, _)| b.slot == 0)
+        .unwrap()
+        .1;
+    assert_eq!(
+        batch.resources()[config.index()].bytes(),
+        bytemuck::cast_slice(&[0u32, 1, 0, 0])
+    );
 }

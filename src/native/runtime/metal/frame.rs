@@ -49,8 +49,8 @@ impl Frame {
                         .blitCommandEncoder()
                         .ok_or("Metal blit encoder failed")?;
                     let encoding = Encoding(objc2::runtime::ProtocolObject::from_ref(&*encoder));
-                    let source = resources[copy.source.index()].texture()?;
-                    let destination = resources[copy.destination.index()].texture()?;
+                    let source = resources[copy.source.index()].texture();
+                    let destination = resources[copy.destination.index()].texture();
                     for layer in 0..copy.extent[2] {
                         // SAFETY: ComputeBatch validates both complete regions and
                         // prohibits aliased copies before adding this command.
@@ -116,23 +116,23 @@ impl Frame {
                                     encoder.bytes(batch.resources()[id.index()].bytes(), slot)
                                 }
                                 BindingKind::Uniform | BindingKind::Read | BindingKind::Write => {
-                                    encoder.buffer(resource.buffer()?, slot)
+                                    encoder.buffer(resource.buffer(), slot)
                                 }
                                 BindingKind::Texture
                                 | BindingKind::TextureWrite
                                 | BindingKind::TextureReadWrite
                                 | BindingKind::TextureArray => {
-                                    encoder.texture(resource.texture()?, slot)
+                                    encoder.texture(resource.texture(), slot)
                                 }
                                 BindingKind::Sampler => {
                                     let Resource::Sampler(sampler) = resource else {
-                                        return Err("Metal sampler mismatch".into());
+                                        unreachable!()
                                     };
                                     encoder.sampler(sampler, slot);
                                 }
                                 BindingKind::TextureTable => {
                                     let Resource::Table(images) = resource else {
-                                        return Err("Metal texture table mismatch".into());
+                                        unreachable!()
                                     };
                                     let arguments = &pipeline.arguments[&binding.slot];
                                     let buffer = memory::buffer(

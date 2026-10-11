@@ -22,7 +22,7 @@ pub(super) fn descriptor(
     };
     let config: FineConfig =
         bytemuck::try_pod_read_unaligned(bytes).map_err(|_| "Metal fine config size mismatch")?;
-    let target = resources[binding(1)?].texture()?;
+    let target = resources[binding(1)?].texture();
     if !target.usage().contains(MTLTextureUsage::RenderTarget) {
         return Err("Metal fine target requires RenderTarget usage".into());
     }

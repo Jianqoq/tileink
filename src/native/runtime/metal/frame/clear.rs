@@ -37,7 +37,7 @@ pub(super) fn encode(
     let bytes = batch.resources()[config].bytes();
     let config =
         bytemuck::pod_read_unaligned::<FilterConfig>(&bytes[..std::mem::size_of::<FilterConfig>()]);
-    let target = resources[target].texture()?;
+    let target = resources[target].texture();
     if !target.usage().contains(MTLTextureUsage::RenderTarget)
         || !full_attachment(&config, pass.grid, [target.width(), target.height()])
     {

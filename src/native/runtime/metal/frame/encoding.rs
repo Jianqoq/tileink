@@ -2,12 +2,44 @@
 //! Releasing an encoder does not implicitly end it; leaving one open poisons
 //! the command buffer and triggers Metal API validation during unwinding.
 use objc2::runtime::ProtocolObject;
-use objc2_metal::MTLCommandEncoder;
+use objc2_metal::{MTLBlitCommandEncoder, MTLCommandBuffer, MTLCommandEncoder};
 
 pub(super) struct Encoding<'a>(pub &'a ProtocolObject<dyn MTLCommandEncoder>);
 impl Drop for Encoding<'_> {
     fn drop(&mut self) {
         self.0.endEncoding();
+    }
+}
+
+/// Host-visible and unchanged resources need no transfer encoder. Open one at
+/// the first upload, then end it on every exit before workload recording begins.
+pub(super) struct Upload<'a> {
+    command: &'a ProtocolObject<dyn MTLCommandBuffer>,
+    encoder: Option<objc2::rc::Retained<ProtocolObject<dyn MTLBlitCommandEncoder>>>,
+}
+impl<'a> Upload<'a> {
+    pub fn new(command: &'a ProtocolObject<dyn MTLCommandBuffer>) -> Self {
+        Self {
+            command,
+            encoder: None,
+        }
+    }
+    pub fn encoder(&mut self) -> super::Result<&ProtocolObject<dyn MTLBlitCommandEncoder>> {
+        if self.encoder.is_none() {
+            self.encoder = Some(
+                self.command
+                    .blitCommandEncoder()
+                    .ok_or("Metal upload encoder failed")?,
+            );
+        }
+        Ok(self.encoder.as_deref().unwrap())
+    }
+}
+impl Drop for Upload<'_> {
+    fn drop(&mut self) {
+        if let Some(encoder) = &self.encoder {
+            encoder.endEncoding();
+        }
     }
 }
 
