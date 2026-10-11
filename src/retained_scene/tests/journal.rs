@@ -77,7 +77,11 @@ fn journal_gap_detects_remove_and_reinsert_of_the_same_node_id() {
 
     assert!(update_materializer(&mut materializer, &scene));
     assert!(Rc::ptr_eq(
-        materializer.chunks[&child].source_canvas.as_ref().unwrap(),
+        &materializer.chunks[&child]
+            .placement
+            .as_ref()
+            .unwrap()
+            .source,
         &replacement
     ));
     assert!(

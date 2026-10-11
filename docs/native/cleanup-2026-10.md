@@ -554,6 +554,49 @@ hashes are preserved in
 An incomplete capacity diagnostic is excluded. Temporary measurement, snapshot,
 validation and Windows typecheck sources were removed after recording results.
 
+## Phase 16: represent retained placement once and reuse resolved paths
+
+Scene chunks now store one optional `ScenePlacement` containing their source
+Canvas and affine bits. Layers have no placement. The previous independent
+options permitted combinations no producer created and required a redundant
+presence check plus an unwrap in the transform-only path. Matching two placements
+now directly checks source identity and changed affine bits, updating the stored
+bits without another source clone. Full content replacement still re-encodes the
+chunk. The single-use tuple-construction helper is removed.
+
+Path backdrop allocation passes its already-resolved PathRecord to the geometry
+bound calculation. The second lookup and impossible missing-index empty bound
+are removed. Actual empty paths and layer paths without an ordinary draw in the
+allocation range still use their correct geometry. An unrelated tautological
+assertion in the touched path test is removed. These are permanent structural
+simplifications; public APIs and supported rendering semantics are unchanged.
+
+Three added semantic tests cover content replacement followed by repeated
+transform-only edits, reuse of one node ID across Scene/Layer/Scene transitions,
+and empty/fractional/partly offscreen path-only allocations. The content and path
+tests also pass before this restructuring. All 22 placement-focused, one
+path-focused, 79 Canvas and 107 retained release tests pass. The complete serial
+release suite reports 1007 passing tests and the same three known failures.
+Example builds and all 11 example tests pass; release Clippy has no new warnings
+and the backend-free library compiles. All 1730 SVG images and seven example PNGs
+remain byte-identical to phase 15.
+
+Two paired Metal rounds measure 29 real workloads against commit `39a0c44d`,
+with 100 warmup pairs and 600 alternating samples per version in each round.
+All initial, mutated and final pixels match. Combined p50 changes range from
+-0.28% to +1.86%; retained cases range from -0.16% to +0.82%, and mixed append
+cases change by +0.08% and +0.24%. Four brush cases show small positive changes,
+so six-case diagnostics reverse construction order without changing either
+renderer artifact, then use the baseline renderer on both sides. Reversal changes
+ordinary-scene p50 from +0.62%/+1.16% to -1.63% and reduces brush changes to
++0.26%..+0.96%. Same-version controls also show small timing differences. These
+results show sensitivity to creation order; no speedup is claimed, and no
+material regression is identified in the affected retained/append workloads.
+Both complete rounds and both controls, including raw samples and artifact
+hashes, are retained in
+[`cleanup-phase16-metal-2026-10-11.json`](benchmarks/cleanup-phase16-metal-2026-10-11.json).
+Temporary snapshot, measurement and validation sources were removed afterward.
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.

@@ -52,7 +52,15 @@ impl PersistentSceneMaterializer {
         id: RetainedNodeId,
     ) -> NodeRebuild {
         let node = &scene.nodes[&id];
-        let (source_canvas, transform_bits) = scene_node_placement(node);
+        let placement = match &node.kind {
+            NodeKind::Scene {
+                canvas, transform, ..
+            } => Some(ScenePlacement {
+                source: canvas.clone(),
+                transform_bits: transform.as_coeffs().map(f64::to_bits),
+            }),
+            _ => None,
+        };
         let updated = {
             // Borrow the materializer fields independently so an existing chunk stays in its map
             // slot while encoding, arena remapping, and resource refcounts are updated.
@@ -64,15 +72,11 @@ impl PersistentSceneMaterializer {
                 ..
             } = self;
             chunks.get_mut(&id).map(|chunk| {
-                let transform_only = chunk
-                    .source_canvas
-                    .as_ref()
-                    .zip(source_canvas.as_ref())
-                    .is_some_and(|(old, new)| Rc::ptr_eq(old, new))
-                    && chunk.transform_bits != transform_bits
-                    && source_canvas.is_some();
-                if transform_only {
-                    let transform = Affine::new(transform_bits.unwrap().map(f64::from_bits));
+                if let Some((old, new)) = chunk.placement.as_mut().zip(placement.as_ref())
+                    && Rc::ptr_eq(&old.source, &new.source)
+                    && old.transform_bits != new.transform_bits
+                {
+                    let transform = Affine::new(new.transform_bits.map(f64::from_bits));
                     chunk.canvas.edit().set_retained_transform(transform);
                     let old_plan = chunk.plan_fingerprint;
                     let new_plan = chunk.canvas.execution_plan_fingerprint();
@@ -88,7 +92,7 @@ impl PersistentSceneMaterializer {
                     }
                     chunk.instance = node.instance;
                     chunk.generation = node.generation;
-                    chunk.transform_bits = transform_bits;
+                    old.transform_bits = new.transform_bits;
                     if old_plan != new_plan {
                         let metadata = chunk_plan_metadata(&chunk.canvas);
                         chunk.plain_fragment = metadata.plain_fragment;
@@ -158,8 +162,7 @@ impl PersistentSceneMaterializer {
                 }
                 chunk.instance = node.instance;
                 chunk.generation = node.generation;
-                chunk.source_canvas = source_canvas.clone();
-                chunk.transform_bits = transform_bits;
+                chunk.placement = placement.clone();
                 if old_plan != new_plan {
                     let metadata = chunk_plan_metadata(&chunk.canvas);
                     chunk.plain_fragment = metadata.plain_fragment;
@@ -212,8 +215,7 @@ impl PersistentSceneMaterializer {
         let chunk = SceneChunk {
             instance: node.instance,
             generation: node.generation,
-            source_canvas,
-            transform_bits,
+            placement,
             lines: self.arenas.lines.insert(&encoded.lines),
             paths: self.arenas.paths.insert(&encoded.path_records),
             draws: self.arenas.draws.insert(&encoded.draw_records),

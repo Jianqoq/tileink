@@ -194,15 +194,7 @@ impl Canvas {
         }
     }
 
-    pub(super) fn path_pixel_bounds(&self, path_ix: usize) -> PixelBounds {
-        let Some(record) = self.path_records.get(path_ix) else {
-            return PixelBounds {
-                x0: 0,
-                y0: 0,
-                x1: 0,
-                y1: 0,
-            };
-        };
+    fn path_pixel_bounds(&self, record: &PathRecord) -> PixelBounds {
         let lines = &self.lines
             [record.line_start as usize..(record.line_start + record.line_count) as usize];
         if lines.is_empty() {
@@ -423,7 +415,8 @@ impl Canvas {
                 .filter(|draw| draw.path_id == record.path_id)
                 .map(|draw| draw.pixel_bounds)
                 .reduce(PixelBounds::union)
-                .unwrap_or_else(|| self.path_pixel_bounds(path_ix));
+                // The path was already resolved above. No missing-index default is needed.
+                .unwrap_or_else(|| self.path_pixel_bounds(&record));
             let tile_bbox = pixel_bounds.tile_bbox(width_in_tiles, height_in_tiles);
             let data_len = tile_bbox.tile_count();
             let segment_capacity = self.segment_capacity_for_path_record(

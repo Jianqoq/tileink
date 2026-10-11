@@ -316,18 +316,6 @@ pub(super) fn chunk_plan_metadata(canvas: &Canvas) -> ChunkPlanMetadata {
     }
 }
 
-pub(super) fn scene_node_placement(node: &SceneNode) -> (Option<Rc<Canvas>>, Option<[u64; 6]>) {
-    match &node.kind {
-        NodeKind::Scene {
-            canvas, transform, ..
-        } => (
-            Some(canvas.clone()),
-            Some(transform.as_coeffs().map(f64::to_bits)),
-        ),
-        _ => (None, None),
-    }
-}
-
 pub(super) fn chunk_has_surface_dependent_plan(canvas: &Canvas) -> bool {
     canvas.command_lists.iter().any(|list| {
         list.commands.iter().any(|command| {

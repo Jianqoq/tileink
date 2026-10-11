@@ -35,11 +35,17 @@ pub(crate) struct MaterializedNodeMetadata {
 mod chunk_canvas;
 use chunk_canvas::ChunkCanvas;
 
+/// Only scene leaves have a source and affine placement; layers have neither.
+#[derive(Clone)]
+pub(crate) struct ScenePlacement {
+    pub(crate) source: Rc<Canvas>,
+    pub(crate) transform_bits: [u64; 6],
+}
+
 pub(crate) struct SceneChunk {
     pub(crate) instance: u64,
     pub(crate) generation: u64,
-    pub(crate) source_canvas: Option<Rc<Canvas>>,
-    pub(crate) transform_bits: Option<[u64; 6]>,
+    pub(crate) placement: Option<ScenePlacement>,
     // Chunks have a single owner. Keeping their mutable encoding behind an Rc made every
     // revision pay an atomic uniqueness check and made newly inserted chunks allocate twice.
     pub(crate) canvas: ChunkCanvas,
