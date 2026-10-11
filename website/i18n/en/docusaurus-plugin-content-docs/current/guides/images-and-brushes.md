@@ -13,6 +13,8 @@ Replacing an image registry entry invalidates only the required resource tables 
 
 SVG patterns and nested SVG images remain vector subscenes rendered on the GPU before image sampling. Standalone textures bind the child output directly, and the cache owns its GPU storage without a full transparent upload or image copy. Atlas images still receive a one-pixel border for correct edge sampling.
 
+Sweep gradients accept finite start/end angles in radians. Start orientation wraps by full turns while the original signed span is retained, including reversed and multi-turn sweeps. `Brush::from_gradient*` panics for nonfinite angles. Zero or very small spans use the ramp start.
+
 ## Mesh Gradient
 
 `MeshGradient` takes row-major position and color arrays for a grid of at least 2×2 vertices. Each cell is a straight-sided convex quad with movable vertices. Construction rejects folded, degenerate, inconsistently wound, or self-intersecting meshes; either consistent winding direction is accepted.

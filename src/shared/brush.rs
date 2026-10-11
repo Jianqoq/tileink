@@ -63,8 +63,10 @@ pub struct RadialGradient {
 #[derive(Clone, Debug)]
 pub struct SweepGradient {
     pub(crate) center: [f32; 2],
+    /// Orientation in [-PI, PI]; GPU evaluation needs at most one turn correction.
     pub(crate) start_angle: f32,
-    pub(crate) end_angle: f32,
+    /// Kept separately so normalizing the orientation cannot change the sweep.
+    pub(crate) angle_span: f32,
     pub(crate) extend: Extend,
     pub(crate) ramp: Rc<[u32]>,
 }
@@ -158,10 +160,18 @@ impl Brush {
             .map(Self::Pattern)
     }
 
+    /// Creates a gradient brush with an automatically sized color ramp.
+    ///
+    /// # Panics
+    /// Panics if a sweep gradient has a nonfinite start or end angle.
     pub fn from_gradient(gradient: &Gradient) -> Self {
         Self::from_gradient_with_ramp_size(gradient, estimate_gradient_ramp_size(gradient))
     }
 
+    /// Creates a gradient brush with the requested color ramp size.
+    ///
+    /// # Panics
+    /// Panics if a sweep gradient has a nonfinite start or end angle.
     pub fn from_gradient_with_ramp_size(gradient: &Gradient, ramp_size: usize) -> Self {
         let ramp = build_ramp(gradient, ramp_size);
         match gradient.kind {
@@ -184,13 +194,30 @@ impl Brush {
                 extend: gradient.extend,
                 ramp,
             }),
-            GradientKind::Sweep(position) => Self::Sweep(SweepGradient {
-                center: [position.center.x as f32, position.center.y as f32],
-                start_angle: position.start_angle,
-                end_angle: position.end_angle,
-                extend: gradient.extend,
-                ramp,
-            }),
+            GradientKind::Sweep(position) => {
+                let start = f64::from(position.start_angle);
+                let end = f64::from(position.end_angle);
+                assert!(
+                    start.is_finite() && end.is_finite(),
+                    "sweep gradient angles must be finite"
+                );
+                // Reduce once in wide precision, rather than iterating toward a
+                // potentially huge start on every GPU pixel. Keep the original
+                // signed span; subtracting normalized endpoints loses full turns.
+                let orientation = start.rem_euclid(std::f64::consts::TAU);
+                let orientation = if orientation > std::f64::consts::PI {
+                    orientation - std::f64::consts::TAU
+                } else {
+                    orientation
+                };
+                Self::Sweep(SweepGradient {
+                    center: [position.center.x as f32, position.center.y as f32],
+                    start_angle: orientation as f32,
+                    angle_span: (end - start) as f32,
+                    extend: gradient.extend,
+                    ramp,
+                })
+            }
         }
     }
 
@@ -263,7 +290,7 @@ pub(crate) fn push_encoded_brush(blob: &mut Vec<u32>, brush: &Brush) -> (u32, u3
             params[0] = gradient.center[0].to_bits();
             params[1] = gradient.center[1].to_bits();
             params[2] = gradient.start_angle.to_bits();
-            params[3] = gradient.end_angle.to_bits();
+            params[3] = gradient.angle_span.to_bits();
             set_local_payload(&mut data, gradient.ramp.len());
             push_encoded_header(blob, data, params);
             blob.extend_from_slice(&gradient.ramp);
@@ -359,13 +386,21 @@ pub(crate) fn decode_encoded_brush(blob: &[u32], offset: u32, len: u32) -> Optio
             extend: decode_gpu_extend(data[1])?,
             ramp: Rc::from(payload),
         })),
-        GPU_BRUSH_SWEEP => Some(Brush::Sweep(SweepGradient {
-            center: [params[0], params[1]],
-            start_angle: params[2],
-            end_angle: params[3],
-            extend: decode_gpu_extend(data[1])?,
-            ramp: Rc::from(payload),
-        })),
+        GPU_BRUSH_SWEEP => {
+            if !params[2].is_finite()
+                || params[2].abs() > std::f32::consts::PI
+                || params[3].is_nan()
+            {
+                return None;
+            }
+            Some(Brush::Sweep(SweepGradient {
+                center: [params[0], params[1]],
+                start_angle: params[2],
+                angle_span: params[3],
+                extend: decode_gpu_extend(data[1])?,
+                ramp: Rc::from(payload),
+            }))
+        }
         GPU_BRUSH_FOUR_CORNER => Some(Brush::FourCorner(FourCornerGradient {
             bounds: std::array::from_fn(|i| params[i]),
             colors: payload.try_into().ok()?,

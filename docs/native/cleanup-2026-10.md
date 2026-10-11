@@ -1878,7 +1878,7 @@ filtering, empty-packer retries and impossible silent skips. Device budgets,
 missing-image transparency, renderer/scene namespaces, weak identity guards,
 unchanged-pixel reuse and vector ownership retain their required semantics.
 Split the 1049-line resource file into stores/identity (222 lines), uploads
-(363), atlas packing/copying (211), and separate semantic tests. This permanently
+(363), atlas packing/copying (213), and separate semantic tests. This permanently
 removes redundant states and branches; no substitute compatibility path is added.
 
 Three new semantic tests cover overlapping namespace keys, resource removal to
@@ -1920,9 +1920,81 @@ TAU toward unrestricted public start angles, risking excessive work or a stalled
 float increment; a bounded arithmetic fix with semantic regressions is next.
 Actual DXC/ShaderTools and DX12/Vulkan execution remain unavailable.
 
+## Phase 40: bounded sweep gradient evaluation
+
+Public peniko sweep constructors store unrestricted start/end angles, and the
+brush previously copied them directly. Both native shaders repeatedly added or
+subtracted TAU toward the start. Large starts could take excessive work or stall
+when f32 increments stopped changing. Negative starts also failed periodicity:
+a sweep from -7 to -3 radians sampled white where the independent angular
+reference expects gray 46. That GPU regression and a host upload contract test
+both fail before the fix; dangerous huge inputs are not submitted to the old loop.
+
+Normalize the start once on the CPU in f64, into [-PI, PI], and store the original
+signed span separately. The private brush parameter formerly containing the end
+now contains that span; encoding and decoding change together, without a legacy
+format path. Both Metal and HLSL replace their loops with at most one turn
+correction. Wide subtraction also handles opposing finite f32 extrema without
+losing the span before conversion. A span overflowing f32 becomes signed infinity,
+whose bounded angular numerator evaluates to the ramp start at pixel precision.
+Nonfinite public angles are explicitly rejected by a documented panic; decoded
+records reject noncanonical orientation and NaN spans. This fixes the algorithm
+and its data contract permanently, without an iteration cap or recovery shader.
+
+Four focused tests pass after the edit, plus 19 broader brush tests. GPU tests
+check 420 samples against an independent wide angular/color reference across
+positive, negative, reversed, narrow and zero spans, centers, ten directions and
+Pad/Repeat/Reflect. Inputs around 1e30 and opposing f32 extrema now complete.
+Host tests retain signed spans and exact encoded round trips. After removing the
+temporary measurement target, final serial all-target release tests pass 1084
+cases with the same three known failures: two unavailable pinned-DXC checks and
+the 1600-pixel turbulence canonical mismatch. Formatting, release clippy,
+backend-free compilation and example builds pass; the existing one library/
+eight test clippy warnings remain. HLSL source is updated, but actual DXC and
+DX12/Vulkan execution remain unavailable. Both website languages document the
+sweep angle contract; website build dependencies remain unavailable.
+
+With Metal validation enabled, 1730 SVG images and seven example images match
+the immutable baseline exactly. The existing 720x520 gradient scene also matches
+baseline pixels after 60 immediate frames and readbacks. Presentation completes
+eight frames and the expected resize. Both Metal artifact manifests change
+consistently with the new shared sweep source; the backend-free manifest remains
+unchanged. No Metal ABI binding layout changes.
+
+The [application report](benchmarks/cleanup-phase40-metal-2026-10-12.json)
+retains 144 whole-process observations: baseline/current and identical-current
+controls for the existing gradient scene, SVG fixture application and native
+window. Each series uses two warmups per label and ten alternating timed pairs.
+Gradient medians change 62.284 to 61.730 ms (-0.89%), while its same-version
+control changes -1.95%. SVG changes 4298.391 to 4267.375 ms (-0.72%), control
++0.04%. Window changes 236.718 to 233.573 ms (-1.33%), control -0.49%.
+The measured applications show no material central timing regression; short
+process timing varies substantially, so these observations do not establish an
+isolated shader speedup or every sweep workload's performance. Nearest-rank p95
+is the maximum of ten samples; all raw observations and tails remain available.
+
+Timing includes setup, rendering/completion and teardown. Gradient repeats the
+unmodified examples/common/gradient_scene.rs through NativeRenderer with 60
+completed immediate readbacks and saves the final PNG; SVG includes parsing,
+readback and PNG saving. Verification follows each stopped timer: 83040 SVG PNG
+hashes, 48 gradient outputs, 2880 gradient frames and 384 window frames pass.
+SVG source hashes remain unchanged. Timing disables Metal validation. Gradient
+and window pin registry ID 0000000100000575; SVG uses the default on the freshly
+verified single-GPU Apple M5 host. Temporary wrapper/source copies, scripts and
+measurement executables are removed.
+
+The audit has read 762 of 971 current implementation files, leaving 209 across
+native runtime, shaders and the SVG entry. All coarse and fine shader files have
+now been read. Repeated coarse stack validity skips, fine specialization's
+unexpected-tag reinterpretation and constant-zero HLSL text math are recorded
+for producer/caller proof and focused tests. Current fine particle interpreters
+perform clip/group/path/text compositing; they are unrelated to the removed
+custom-shader expression interpreter. The SVG entry has only been read through
+line 220 and is not counted as complete. Independent auditing continues.
+
 ## Remaining audit work
 
-- Continue the 286 pending native runtime, shader and SVG-entry reads. Replace unbounded sweep angle loops with bounded arithmetic and focused regressions. Test DX12 lock-poison policy and prove packed uniform handle presence. Trace exact retained metadata patching for clip-bound updates inside filters and prove offscreen clip exclusion before removing its error wrapper. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
+- Continue the 209 pending native runtime, shader and SVG-entry reads. Prove coarse stack emitter inputs, fine specialization membership across reused slots and constant-zero HLSL text callers before removing their redundant paths. Test DX12 lock-poison policy and prove packed uniform handle presence. Trace exact retained metadata patching for clip-bound updates inside filters and prove offscreen clip exclusion before removing its error wrapper. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
 - Execute the HLSL editor test against the actual ShaderTools language server; local protocol regressions pass, but the server is unavailable locally.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

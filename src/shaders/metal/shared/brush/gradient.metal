@@ -51,11 +51,13 @@ uint radial_gradient(Words paint,float2 p,uint base,uint extend,uint payload,uin
 uint sweep_gradient(Words paint,float2 p,uint base,uint extend,uint payload,uint count) {
     Words v=paint.offset(base);
     float2 center(brush_float(v,0),brush_float(v,1));
-    float start=brush_float(v,2),end=brush_float(v,3),span=end-start,t=0;
+    float start=brush_float(v,2),span=brush_float(v,3),t=0;
     if(abs(span)>0.00000011920929f) {
         float angle=all(p==center)?0.0f:atan2(p.y-center.y,p.x-center.x);
-        if(span>0){while(angle<start) angle+=6.2831855f;}else{while(angle>start) angle-=6.2831855f;}
-        t=(angle-start)/span;
+        // CPU-normalized start and atan2 are in [-PI,PI]: one correction suffices.
+        float distance=angle-start;
+        if(span>0){if(distance<0) distance+=6.2831855f;}else{if(distance>0) distance-=6.2831855f;}
+        t=distance/span;
     }
     return gradient_ramp(paint,payload,count,t,extend);
 }

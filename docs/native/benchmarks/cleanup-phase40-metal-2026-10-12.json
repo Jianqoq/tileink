@@ -1,0 +1,2016 @@
+{
+  "baseline_commit": "6e744a2f531b0f4ddefcf32b97f4002ab44f498f",
+  "gpu": "Apple M5",
+  "device_selection": {
+    "window": "Explicit registry ID 0000000100000575",
+    "gradient": "Explicit registry ID 0000000100000575",
+    "svg": "System default device on freshly verified single-GPU host"
+  },
+  "validation": {
+    "commands": {
+      "brushes": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--lib",
+          "shared::brush",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 0.1447332079987973
+      },
+      "build-examples": {
+        "command": [
+          "cargo",
+          "build",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--examples"
+        ],
+        "exit_code": 0,
+        "seconds": 2.0596042910183314
+      },
+      "release-all-final": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets",
+          "--no-fail-fast",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 101,
+        "seconds": 30.602787375013577
+      },
+      "clippy": {
+        "command": [
+          "cargo",
+          "clippy",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets"
+        ],
+        "exit_code": 0,
+        "seconds": 21.24662350001745
+      },
+      "backend-free": {
+        "command": [
+          "cargo",
+          "check",
+          "--release",
+          "--no-default-features",
+          "--lib"
+        ],
+        "exit_code": 0,
+        "seconds": 1.1198861250013579
+      },
+      "fmt-check": {
+        "command": [
+          "cargo",
+          "fmt",
+          "--check"
+        ],
+        "exit_code": 0,
+        "seconds": 0.6030637079966255
+      },
+      "gpus": {
+        "command": [
+          "system_profiler",
+          "SPDisplaysDataType",
+          "-json"
+        ],
+        "exit_code": 0,
+        "seconds": 0.21008033299585804
+      },
+      "svg": {
+        "command": [
+          "target/release/examples/svg_fixture_render",
+          "/Users/jian/tileink/target/cleanup-audit/sweep-svg"
+        ],
+        "exit_code": 0,
+        "seconds": 7.475998874986544
+      },
+      "mesh-gradient": {
+        "command": [
+          "target/release/examples/mesh_gradient",
+          "/Users/jian/tileink/target/cleanup-audit/sweep-mesh-gradient.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5311965839937329
+      },
+      "program-brush": {
+        "command": [
+          "target/release/examples/program_brush",
+          "/Users/jian/tileink/target/cleanup-audit/sweep-program-brush.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5023244580079336
+      },
+      "program-glass": {
+        "command": [
+          "target/release/examples/program_glass",
+          "/Users/jian/tileink/target/cleanup-audit/sweep-program-glass.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.45709683300810866
+      },
+      "shader-pipeline": {
+        "command": [
+          "target/release/examples/shader_pipeline",
+          "/Users/jian/tileink/target/cleanup-audit/sweep-shader-pipeline.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5133386669913307
+      },
+      "shader-graph": {
+        "command": [
+          "target/release/examples/shader_graph",
+          "/Users/jian/tileink/target/cleanup-audit/sweep-shader-graph.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.453591834026156
+      },
+      "progressive-balanced": {
+        "command": [
+          "target/release/examples/progressive_blur",
+          "/Users/jian/tileink/target/cleanup-audit/sweep-progressive-balanced.png",
+          "balanced"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5647749170020688
+      },
+      "progressive-high": {
+        "command": [
+          "target/release/examples/progressive_blur",
+          "/Users/jian/tileink/target/cleanup-audit/sweep-progressive-high.png",
+          "high"
+        ],
+        "exit_code": 0,
+        "seconds": 0.060582042002351955
+      },
+      "gradient-before": {
+        "command": [
+          "target/cleanup-audit/sweep-gradient-before",
+          "/Users/jian/tileink/target/cleanup-audit/sweep-gradient-reference.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.616014917002758
+      },
+      "gradient-after": {
+        "command": [
+          "target/cleanup-audit/sweep-gradient-after",
+          "/Users/jian/tileink/target/cleanup-audit/sweep-gradient.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.6045061249751598
+      },
+      "window": {
+        "command": [
+          "target/release/examples/native_present",
+          "metal",
+          "--smoke"
+        ],
+        "exit_code": 0,
+        "seconds": 0.9264289169805124
+      }
+    },
+    "render": {
+      "manifests": [
+        {
+          "path": "target/release/build/tileink-693345b8f8240684/out/tileink_native_artifacts.json",
+          "before_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "after_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "exact": true
+        },
+        {
+          "path": "target/release/build/tileink-24048925a7656d71/out/tileink_native_artifacts.json",
+          "before_sha256": "ec42632b20c3148f4adacacea0add55d1cb39bd5ec10043d212ee33c257f0885",
+          "after_sha256": "ddbfd66b3ac227730bbf4fafa41e5fa1477e3066b494bb7b1a18680aa182005f",
+          "exact": false
+        },
+        {
+          "path": "target/release/build/tileink-02c1122da65b8cf5/out/tileink_native_artifacts.json",
+          "before_sha256": "ec42632b20c3148f4adacacea0add55d1cb39bd5ec10043d212ee33c257f0885",
+          "after_sha256": "ddbfd66b3ac227730bbf4fafa41e5fa1477e3066b494bb7b1a18680aa182005f",
+          "exact": false
+        }
+      ],
+      "svg": {
+        "count": 1730,
+        "diffs": []
+      },
+      "examples": [
+        {
+          "name": "mesh-gradient",
+          "exact": true
+        },
+        {
+          "name": "program-brush",
+          "exact": true
+        },
+        {
+          "name": "program-glass",
+          "exact": true
+        },
+        {
+          "name": "shader-pipeline",
+          "exact": true
+        },
+        {
+          "name": "shader-graph",
+          "exact": true
+        },
+        {
+          "name": "progressive-balanced",
+          "exact": true
+        },
+        {
+          "name": "progressive-high",
+          "exact": true
+        }
+      ],
+      "gradient": {
+        "size": [
+          720,
+          520
+        ],
+        "frames_per_observation": 60,
+        "exact_baseline_pixels": true,
+        "sha256": "ceff384f8a0ca7c6168b5e3bdad31921218dd99e62f77473c30bdaeb119fadc4",
+        "scene": "Unmodified examples/common/gradient_scene.rs; immediate render_to_image/readback, all linear/radial/sweep/four-corner draws repeated each frame."
+      },
+      "window": "2026-10-12 03:05:33.588 native_present[70278:4789950] Metal API Validation Enabled\nMetal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+    },
+    "tests": {
+      "passed": 1084,
+      "failed": 3,
+      "ignored": 0,
+      "failures": [
+        "every_hlsl_header_compiles_without_callers_globals",
+        "pinned_dxc_reports_invalid_source_for_both_targets",
+        "scaled_turbulence_matches_canonical_rgba"
+      ],
+      "log": "target/cleanup-audit/sweep-release-all-final.log"
+    },
+    "focused": {
+      "before": {
+        "passed": 0,
+        "failed": 2,
+        "log": "target/cleanup-audit/sweep-before-tests.log"
+      },
+      "after": {
+        "passed": 4,
+        "failed": 0,
+        "log": "target/cleanup-audit/sweep-focused.log"
+      },
+      "broader_brushes": {
+        "passed": 19,
+        "failed": 0
+      }
+    }
+  },
+  "executables": {
+    "svg": {
+      "before": {
+        "path": "target/cleanup-audit/sweep-svg-before",
+        "sha256": "598814e07f262973e34a29b40c976d978c4a73ec8d3ef53f72de4a625034a814"
+      },
+      "after": {
+        "path": "target/cleanup-audit/sweep-svg-after",
+        "sha256": "7c781db4a0f0b0ef16758ea63e9cc8221b83a0361256469f34f2f55c19b29330"
+      }
+    },
+    "window": {
+      "before": {
+        "path": "target/cleanup-audit/sweep-window-before",
+        "sha256": "dc44938355a848518c85a7cfafc3b72eadd178dd45b7203d5aa56e81b8042848"
+      },
+      "after": {
+        "path": "target/cleanup-audit/sweep-window-after",
+        "sha256": "5619c55d29ec90a54565471f57fd3f5ac87a56529676db6a8bb1ea4246e2ac31"
+      }
+    },
+    "gradient": {
+      "before": {
+        "path": "target/cleanup-audit/sweep-gradient-before",
+        "sha256": "d27260f5d29661a06ce8b9760fbfcc5faac420cb157b3fef0833941a996f73cd"
+      },
+      "after": {
+        "path": "target/cleanup-audit/sweep-gradient-after",
+        "sha256": "4ca0fdabd6015a4c2352b48c43e18b65f7d2c69e9d6df915186606193b03c6fc"
+      }
+    }
+  },
+  "warmups_per_label": 2,
+  "timed_pairs": 10,
+  "timing_scope": "Whole process including setup, rendering/completion and teardown; SVG adds parsing/readback/PNG saving; gradient repeats existing scene for 60 immediate frames with completed readbacks and saves final PNG. Verification follows each stopped timer. No isolated kernel speedup or exhaustive workload claim.",
+  "observations": [
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "warmup",
+      "pair": 0,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 114.02416697819717,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "warmup",
+      "pair": 0,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 1014.6379170182627,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "warmup",
+      "pair": 1,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 64.47916600154713,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "warmup",
+      "pair": 1,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 61.5499579871539,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 0,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 58.18712501786649,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 0,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 61.65337498532608,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 1,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 60.271750000538304,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 1,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 62.42570801987313,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 2,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 62.142624985426664,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 2,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 61.80754100205377,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 3,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 57.694624993018806,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 3,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 62.64629200450145,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 4,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 57.17166597605683,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 4,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 60.3792910114862,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 5,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 66.31674998789094,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 5,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 62.11779100704007,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 6,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 76.14912500139326,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 6,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 84.79941700352356,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 7,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 82.65337499324232,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 7,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 94.11908301990479,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 8,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 79.06929100863636,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 8,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 57.837833010125905,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 9,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 65.31274999724701,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 9,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 59.2096250038594,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "warmup",
+      "pair": 0,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 64.81858302140608,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "warmup",
+      "pair": 0,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 60.61245800810866,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "warmup",
+      "pair": 1,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 58.035458001540974,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "warmup",
+      "pair": 1,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 58.52950000553392,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 0,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 64.64908400084823,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 0,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 60.75237499317154,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 1,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 64.49624997912906,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 1,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 59.14175001089461,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 2,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 58.363874995848164,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 2,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 61.764708982082084,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 3,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 60.91204099357128,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 3,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 85.94820799771696,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 4,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 81.8649590073619,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 4,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 88.86795799480751,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 5,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 87.44545897934586,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 5,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 83.24754101340659,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 6,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 86.29316702717915,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 6,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 82.58129100431688,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 7,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 86.18650000425987,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 7,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 83.37254202342592,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 8,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 123.93354100640863,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 8,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 93.09533398482017,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 9,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 79.30466698599048,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "gradient",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 9,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 60.283541009994224,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "warmup",
+      "pair": 0,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 4954.627624974819,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "warmup",
+      "pair": 0,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4852.657832991099,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "warmup",
+      "pair": 1,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4295.286499982467,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "warmup",
+      "pair": 1,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 4492.538833001163,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 0,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 4296.013957995456,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 0,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4234.748791990569,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 1,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4394.605750014307,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 1,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 4297.646541002905,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 2,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 4287.159792002058,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 2,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4322.608165995916,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 3,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4403.365250007482,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 3,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 4344.005332997767,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 4,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 4403.813666984206,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 4,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4263.865542015992,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 5,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4265.636083000572,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 5,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 4299.135249981191,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 6,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 4290.894457983086,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 6,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4237.291875004303,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 7,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4253.855583025143,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 7,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 4452.757542021573,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 8,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 4295.379709015833,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 8,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4293.608125008177,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 9,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4269.113834016025,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 9,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 4336.585541983368,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "warmup",
+      "pair": 0,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4322.079834004398,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "warmup",
+      "pair": 0,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4468.459000025177,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "warmup",
+      "pair": 1,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4291.896917013219,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "warmup",
+      "pair": 1,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4232.389458018588,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 0,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4280.672124994453,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 0,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4303.130624990445,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 1,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4250.307875016006,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 1,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4290.409624984022,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 2,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4302.866874990286,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 2,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4276.8697919964325,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 3,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4260.440167010529,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 3,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4270.9755419928115,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 4,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4264.244958001655,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 4,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4285.193499992602,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 5,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4376.9172499887645,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 5,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4260.508208011743,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 6,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4296.928083000239,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 6,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4224.715333984932,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 7,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4290.822125010891,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 7,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4278.0614999937825,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 8,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4327.202375017805,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 8,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4238.429750024807,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 9,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4309.739833988715,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 9,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4233.025749999797,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "warmup",
+      "pair": 0,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 2075.9299169876613,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "warmup",
+      "pair": 0,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 627.9668339993805,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "warmup",
+      "pair": 1,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 234.38562502269633,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "warmup",
+      "pair": 1,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 233.6100000247825,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 0,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 233.37816700222902,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 0,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 234.65154200675897,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 1,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 230.93254200648516,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 1,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 239.73570900852792,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 2,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 261.68829199741594,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 2,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 236.56700001447462,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 3,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 238.66783402627334,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 3,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 238.51258301874623,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 4,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 234.6382910036482,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 4,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 230.67962500499561,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 5,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 231.9817499956116,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 5,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 236.54574999818578,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 6,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 235.83433401654474,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 6,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 238.9095420076046,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 7,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 232.49483399558812,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 7,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 239.15783301345073,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 8,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 230.99716700380668,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 8,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 236.37620900990441,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 9,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 231.39983401051722,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 9,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 236.89116700552404,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "warmup",
+      "pair": 0,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 229.71641601179726,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "warmup",
+      "pair": 0,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 233.03650002344511,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "warmup",
+      "pair": 1,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 237.57616698276252,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "warmup",
+      "pair": 1,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 231.74108401872218,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 0,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 231.3704999978654,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 0,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 227.57512499811128,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 1,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 232.12941701058298,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 1,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 232.80399999930523,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 2,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 233.0694159900304,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 2,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 237.10145798395388,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 3,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 233.16658299881965,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 3,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 234.62666702107526,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 4,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 237.95470799086615,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 4,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 239.4270829972811,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 5,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 233.30941700260155,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 5,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 235.71774997981265,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 6,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 233.04854199523106,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 6,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 234.70054200151935,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 7,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 231.11300001619384,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 7,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 235.6997080205474,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 8,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 241.50762500357814,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 8,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 237.4054580286611,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 9,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 240.8085830102209,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 9,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 238.65129199111834,
+      "exit_code": 0,
+      "output_verified": true
+    }
+  ],
+  "summaries": {
+    "gradient": {
+      "baseline-current": {
+        "A": {
+          "samples": 10,
+          "median_ms": 62.284166502649896,
+          "mean_ms": 67.32383310445584,
+          "p95_nearest_rank_ms": 94.11908301990479
+        },
+        "B": {
+          "samples": 10,
+          "median_ms": 61.730457993689924,
+          "mean_ms": 65.87267069844529,
+          "p95_nearest_rank_ms": 84.79941700352356
+        },
+        "median_change_percent": -0.8890036425813208
+      },
+      "identical-current-control": {
+        "A": {
+          "samples": 10,
+          "median_ms": 82.55625001038425,
+          "mean_ms": 78.70982080930844,
+          "p95_nearest_rank_ms": 123.93354100640863
+        },
+        "B": {
+          "samples": 10,
+          "median_ms": 80.94297899515368,
+          "mean_ms": 76.54065839014947,
+          "p95_nearest_rank_ms": 93.09533398482017
+        },
+        "median_change_percent": -1.9541476448211248
+      }
+    },
+    "svg": {
+      "baseline-current": {
+        "A": {
+          "samples": 10,
+          "median_ms": 4298.390895492048,
+          "mean_ms": 4330.339179196744,
+          "p95_nearest_rank_ms": 4452.757542021573
+        },
+        "B": {
+          "samples": 10,
+          "median_ms": 4267.374958508299,
+          "mean_ms": 4293.869900007849,
+          "p95_nearest_rank_ms": 4403.365250007482
+        },
+        "median_change_percent": -0.7215708793790077
+      },
+      "identical-current-control": {
+        "A": {
+          "samples": 10,
+          "median_ms": 4279.366812494118,
+          "mean_ms": 4280.489504098659,
+          "p95_nearest_rank_ms": 4327.202375017805
+        },
+        "B": {
+          "samples": 10,
+          "median_ms": 4281.031645994517,
+          "mean_ms": 4281.656625200412,
+          "p95_nearest_rank_ms": 4376.9172499887645
+        },
+        "median_change_percent": 0.03890373443891093
+      }
+    },
+    "window": {
+      "baseline-current": {
+        "A": {
+          "samples": 10,
+          "median_ms": 236.7184585018549,
+          "mean_ms": 238.73792930680793,
+          "p95_nearest_rank_ms": 261.68829199741594
+        },
+        "B": {
+          "samples": 10,
+          "median_ms": 233.57318800117355,
+          "mean_ms": 234.26607120782137,
+          "p95_nearest_rank_ms": 238.9095420076046
+        },
+        "median_change_percent": -1.328696765172932
+      },
+      "identical-current-control": {
+        "A": {
+          "samples": 10,
+          "median_ms": 235.16318752081133,
+          "mean_ms": 235.445020798943,
+          "p95_nearest_rank_ms": 241.50762500357814
+        },
+        "B": {
+          "samples": 10,
+          "median_ms": 234.00497950206045,
+          "mean_ms": 234.67366660479456,
+          "p95_nearest_rank_ms": 240.8085830102209
+        },
+        "median_change_percent": -0.49251246802749504
+      }
+    }
+  },
+  "checked_png_hashes": 83040,
+  "completed_window_frames": 384,
+  "completed_gradient_frames": 2880,
+  "verified_gradient_outputs": 48,
+  "svg_source_manifest": {
+    "count": 1730,
+    "sha256": "9d4d6b6aaaff52670164f213924f2e98f8108144f5d4425bdb8c25075d422901"
+  },
+  "cleanup": "Temporary Rust measurement wrapper, baseline source copy, validation script and copied/measurement executables removed after successful validation.",
+  "conclusion": "Sweep normalization is bounded and negative/reversed/huge inputs pass independent GPU samples. Existing SVG/examples/gradient application pixels remain exact; report retains complete-application baseline/current and identical-current controls."
+}

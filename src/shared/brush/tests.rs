@@ -5,6 +5,70 @@ use peniko::{
 };
 
 #[test]
+fn sweep_upload_normalizes_orientation_and_keeps_the_signed_span() {
+    for (start, end) in [
+        (0.25, 1.75),
+        (-7.0, -3.0),
+        (7.0, 3.0),
+        (10000.0, 10006.0),
+        (-10000.0, -10006.0),
+        (1.0e30, 1.1e30),
+        (-1.0e30, -1.1e30),
+        (-f32::MAX, f32::MAX),
+        (f32::MAX, -f32::MAX),
+        (3.0, 3.0),
+    ] {
+        let gradient = Gradient::new_sweep((2.0, 3.0), start, end)
+            .with_stops([peniko::Color::BLACK, peniko::Color::WHITE]);
+        let brush = Brush::from_gradient_with_ramp_size(&gradient, 4);
+        let mut words = Vec::new();
+        let (offset, len) = push_encoded_brush(&mut words, &brush);
+        let params = &words[GPU_BRUSH_U32_STRIDE..];
+        let orientation = f32::from_bits(params[2]);
+        assert!(orientation.abs() <= std::f32::consts::PI, "start={start}");
+        let reduced = f64::from(start).rem_euclid(std::f64::consts::TAU);
+        let expected = if reduced > std::f64::consts::PI {
+            reduced - std::f64::consts::TAU
+        } else {
+            reduced
+        } as f32;
+        assert_eq!(orientation, expected);
+        assert_eq!(
+            f32::from_bits(params[3]),
+            (f64::from(end) - f64::from(start)) as f32
+        );
+        let decoded = decode_encoded_brush(&words, offset, len).unwrap();
+        let mut round_trip = Vec::new();
+        push_encoded_brush(&mut round_trip, &decoded);
+        assert_eq!(round_trip, words);
+    }
+}
+
+#[test]
+fn sweep_rejects_nonfinite_angles_and_noncanonical_encoded_orientation() {
+    for invalid in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        for (start, end) in [(invalid, 1.0), (0.0, invalid)] {
+            let gradient = Gradient::new_sweep((0.0, 0.0), start, end);
+            assert!(std::panic::catch_unwind(|| Brush::from_gradient(&gradient)).is_err());
+            assert!(
+                std::panic::catch_unwind(|| { Brush::from_gradient_with_ramp_size(&gradient, 4) })
+                    .is_err()
+            );
+        }
+    }
+    let brush = Brush::from_gradient_with_ramp_size(&Gradient::new_sweep((0.0, 0.0), 0.0, 1.0), 4);
+    let mut words = Vec::new();
+    let (offset, len) = push_encoded_brush(&mut words, &brush);
+    for orientation in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, 4.0, -4.0] {
+        let mut invalid = words.clone();
+        invalid[GPU_BRUSH_U32_STRIDE + 2] = orientation.to_bits();
+        assert!(decode_encoded_brush(&invalid, offset, len).is_none());
+    }
+    words[GPU_BRUSH_U32_STRIDE + 3] = f32::NAN.to_bits();
+    assert!(decode_encoded_brush(&words, offset, len).is_none());
+}
+
+#[test]
 fn fixed_brush_parameters_round_trip_and_truncated_payloads_are_rejected() {
     let transform = [2.0, 3.0, 4.0, 5.0, -6.0, 7.0];
     let brushes = [

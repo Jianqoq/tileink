@@ -40,6 +40,10 @@ mod buffer;
 mod mesh_gpu;
 
 #[cfg(all(test, tileink_native_runtime))]
+#[path = "runtime/tests/sweep_gpu.rs"]
+mod sweep_gpu;
+
+#[cfg(all(test, tileink_native_runtime))]
 #[path = "runtime/tests/sdf_gpu.rs"]
 mod sdf_gpu;
 
