@@ -46,9 +46,8 @@ impl Canvas {
     }
 
     fn prepare_append(&mut self, other: &Canvas) {
-        self.ensure_command_root();
         assert!(
-            other.command_stack.len() == 1 && other.layer_stack.is_empty(),
+            other.is_closed_for_append(),
             "cannot append a canvas with unclosed layers"
         );
         assert!(
@@ -85,7 +84,7 @@ impl Canvas {
         // copied every path, draw, glyph, brush, and command twice for each transformed icon.
         self.append_scene_ref_to_list_transformed_unchecked(
             other,
-            self.current_command_list_id(),
+            self.current_commands,
             SceneAppendMode::MergeCurrent,
             SceneOffset::new(Point::ZERO),
             command_offset,
@@ -99,7 +98,7 @@ impl Canvas {
         mode: SceneAppendMode,
         offset: SceneOffset,
     ) -> Option<CommandListId> {
-        self.append_scene_ref_to_list_unchecked(other, self.current_command_list_id(), mode, offset)
+        self.append_scene_ref_to_list_unchecked(other, self.current_commands, mode, offset)
     }
 
     pub(super) fn append_scene_ref_to_list_unchecked(
@@ -130,14 +129,10 @@ impl Canvas {
     ) -> Option<CommandListId> {
         let draw_offset = self.append_scene_data(other, data_offset, transform);
         let command_list_offset = self.command_lists.len();
-        let root_commands = other.root_commands;
         match mode {
             SceneAppendMode::MergeCurrent => {
-                let child_list_offset = command_list_offset.saturating_sub(1);
-                for (list_ix, list) in other.command_lists.iter().enumerate() {
-                    if list_ix == root_commands {
-                        continue;
-                    }
+                let child_list_offset = command_list_offset - 1;
+                for list in other.command_lists.iter().skip(1) {
                     self.command_lists
                         .push(Self::translated_remapped_command_list(
                             list,
@@ -149,8 +144,8 @@ impl Canvas {
 
                 self.command_lists[target_commands]
                     .commands
-                    .reserve(other.command_lists[root_commands].commands.len());
-                for command in &other.command_lists[root_commands].commands {
+                    .reserve(other.command_lists[ROOT_COMMAND_LIST_ID].commands.len());
+                for command in &other.command_lists[ROOT_COMMAND_LIST_ID].commands {
                     let command = Self::translated_remapped_command(
                         command,
                         draw_offset,
@@ -171,7 +166,7 @@ impl Canvas {
                             command_offset,
                         ));
                 }
-                Some(command_list_offset + root_commands)
+                Some(command_list_offset)
             }
         }
     }

@@ -18,7 +18,7 @@ title: Canvas API
 
 ## Layers
 
-Path and analytic clips use `push_clip_layer`, `push_clip_sdf_rect_layer`, `push_clip_sdf_circle_layer`, `push_clip_sdf_arc_layer`, `push_clip_sdf_line_layer`, `push_clip_sdf_layer`, or `push_clip_sdf_layer_transformed`. Composition uses `push_isolate_layer`, `push_opacity_layer`, `push_blend_layer`, `push_mask_layer`, `push_filter_layer`, and `push_backdrop_layer`. Match each successful push with `pop_layer`.
+Path and analytic clips use `push_clip_layer`, `push_clip_sdf_rect_layer`, `push_clip_sdf_circle_layer`, `push_clip_sdf_arc_layer`, `push_clip_sdf_line_layer`, `push_clip_sdf_layer`, or `push_clip_sdf_layer_transformed`. Composition uses `push_isolate_layer`, `push_opacity_layer`, `push_blend_layer`, `push_mask_layer`, `push_filter_layer`, and `push_backdrop_layer`. Match each successful push with `pop_layer`. The root canvas is not a closable layer; `pop_layer` returns `None` when no layer is open. `reset` discards open layers and resumes recording at the root.
 
 ## Geometry
 

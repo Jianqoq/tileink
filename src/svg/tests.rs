@@ -55,8 +55,8 @@ fn assert_unchanged_geometry(actual: &Canvas, expected: &Canvas) {
     assert_eq!(actual.brush_blob, expected.brush_blob);
     assert_eq!(actual.sdf_blob, expected.sdf_blob);
     assert_eq!(actual.sdf_shadow_blob, expected.sdf_shadow_blob);
-    assert_eq!(actual.root_commands, expected.root_commands);
-    assert_eq!(actual.command_stack, expected.command_stack);
+    assert_eq!(actual.current_commands, expected.current_commands);
+    assert_eq!(actual.layer_stack, expected.layer_stack);
     let draws = |canvas: &Canvas| {
         canvas
             .command_lists

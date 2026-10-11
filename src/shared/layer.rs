@@ -32,7 +32,6 @@ pub enum Layer {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LayerKind {
-    Root,
     Clip,
     ClipSdf,
     Isolate,

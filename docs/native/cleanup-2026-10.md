@@ -1319,6 +1319,78 @@ forwarders/extrema scans are traced for the next cleanup. The audit remains in
 progress with 438 current implementation files unread. Actual DXC/ShaderTools
 and DX12/Vulkan GPU execution remain unavailable on this host.
 
+## Phase 31: own Canvas recording state directly
+
+Canvas now owns one current command-list ID and a stack of parent-list/kind pairs.
+Constructor, reset and retained reconstruction establish root list zero; closing
+an actual layer restores its saved parent directly. The duplicate root field,
+parallel command/kind stacks, per-draw missing-root repair, empty-stack root
+substitute and guarded second pop are removed. The never-constructed public
+`LayerKind::Root` variant is deleted; popping at the root still returns `None`.
+This is a permanent representation cleanup, with no replacement recovery path.
+
+Layer kind is derived from its actual command, removing a second caller-supplied
+kind. Ten private forwarding entry points now live directly in their public
+methods. Append uses the established root and current list, and draw-brush lookup
+uses the index already checked by `draw_index`. Retained chunk installation
+returns one command-list range instead of separately returning its identical
+root/start indices. Image/geometry validation, stale draw-handle rejection,
+append closure rules and filter-region semantics remain necessary current
+behavior. Both website Canvas API pages document root/pop/reset behavior.
+
+Rectangle recognition computes its four-corner bounds once. An approximately
+duplicate closing point participates in recognition tolerance without expanding
+the final rectangle. Review caught the first cleanup incorrectly reusing bounds
+that included that point: a focused test failed before the correction and now
+passes. The final algorithm preserves the original corner geometry while
+removing repeated extrema scans.
+
+Three lifecycle preservation tests passed before the production changes and
+remain permanent. They exercise all eight nested layer kinds, cloning while open,
+mask/append imports into a parent and reset with 64 open groups, including stale
+draw handles. Three existing text tests previously returned without assertions
+when host font lookup produced no layout. They now load the checked-in font and
+require nonempty shaping before checking append and DPI behavior.
+
+The 609-line primitive implementation, 1322-line primitive tests and 1154-line
+retained plan module are split by responsibility. Every resulting child file is
+below 300 lines. Token-level review confirms all 32 primitive functions, 48
+original test/helper functions and 24 retained plan methods are preserved after
+the documented root-call/text-test edits; the plan split is compared against its
+edited pre-split snapshot. The checked-in-font helper is the one new primitive
+test helper. Painter initialization allocations and plan eligibility contracts
+are recorded for a subsequent audit that measures an affected retained
+application workload.
+
+Focused serial release selections pass: 116 Canvas-related tests, 163 retained
+tests and nine filter-resource tests. Selections overlap and are not added as a
+distinct-test total. The full `--all-targets` release suite, including ignored
+tests, reports 1060 passes and the same three known failures documented in phase
+12; all twelve example tests pass. Formatting, backend-free checking, release
+Clippy and example builds pass, with the existing 1/8 library/library-test
+warnings and no new ones. All 1730 SVG images and seven example PNGs exactly match
+the immutable baseline. Both active Metal manifests are byte-identical, and the
+validated native window completes eight frames and its 640x360 to 480x270 resize.
+
+The [application measurements](benchmarks/cleanup-phase31-metal-2026-10-12.json)
+retain all 48 real SVG rendering process observations: baseline/current and
+identical-current controls, each with two warmups per label and ten timed
+alternating pairs. Every process renders, reads back and saves all 1730 fixtures
+at 300px; every PNG matches the immutable baseline. Whole-process medians change
+from 4373.299 ms to 4356.943 ms (-0.37%), compared with -0.34% in the identical-current
+control. Nearest-rank p95 changes by +3.00%, compared with +2.65% in the control;
+with ten timed observations per label, this is the maximum sample. These results
+preserve the measured application workload within process variation. They include
+initialization, loading, CPU planning, GPU completion, readback, PNG writes and
+teardown, and do not establish isolated GPU or frame-time improvements. Validation
+is disabled for timing and enabled separately for tests/renders. The copied
+baseline executable and temporary measurement/edit scripts are removed afterward;
+no Rust measurement program or instrumentation was added.
+
+The Canvas group now has no unread implementation files. The wider audit remains
+in progress with 434 current implementation files unread across six groups.
+Actual DXC/ShaderTools and DX12/Vulkan GPU execution remain unavailable here.
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.

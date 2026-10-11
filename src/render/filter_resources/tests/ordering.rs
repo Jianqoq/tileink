@@ -1,6 +1,7 @@
 //! All payload kinds must share execution order across nesting, masks and localized filters.
 use super::*;
 use crate::shared::brush::push_encoded_brush;
+use crate::shared::execution::ROOT_COMMAND_LIST_ID;
 
 fn bundle(marker: u32) -> Filter {
     Filter::Chain {
@@ -57,7 +58,7 @@ fn mixed_payloads_follow_nested_backdrop_mask_and_enclosing_filter_order() {
     canvas.push_filter_layer(bundle(66), region());
     draw(&mut canvas);
     canvas.pop_layer();
-    let plan = canvas.compile(canvas.root_commands);
+    let plan = canvas.compile(ROOT_COMMAND_LIST_ID);
     let enclosing = bundle(77);
     for append in [false, true] {
         let upload = FilterResourceUpload::new(&plan.ops, append.then_some(&enclosing), None);

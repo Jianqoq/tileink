@@ -1,4 +1,5 @@
 use super::{cursors::FilterCursors, upload::FilterResourceUpload};
+use crate::shared::execution::ROOT_COMMAND_LIST_ID;
 use crate::shared::{gpu_brush::GpuBrushUpload, layer::filter::*};
 use crate::{Canvas, Radius, Region};
 use peniko::{Color, kurbo::Rect};
@@ -32,7 +33,7 @@ fn nested_transfers() -> crate::shared::execution::ExecPlan {
     canvas.push_filter_layer(transfer(44), region());
     draw(&mut canvas);
     canvas.pop_layer();
-    canvas.compile(canvas.root_commands)
+    canvas.compile(ROOT_COMMAND_LIST_ID)
 }
 
 #[test]
@@ -183,7 +184,7 @@ fn graph_image_and_flood_brush_offsets_match_the_actual_shared_encoder() {
     canvas.push_filter_layer(filter, region());
     draw(&mut canvas);
     canvas.pop_layer();
-    let plan = canvas.compile(canvas.root_commands);
+    let plan = canvas.compile(ROOT_COMMAND_LIST_ID);
     let upload = FilterResourceUpload::new(&plan.ops, None, None).brushes;
     assert!(!upload.blob.is_empty());
     let mut cursor = FilterCursors::default();

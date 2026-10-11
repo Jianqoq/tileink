@@ -1,3 +1,4 @@
+use crate::shared::execution::ROOT_COMMAND_LIST_ID;
 use std::collections::HashSet;
 
 use peniko::kurbo::Rect;
@@ -96,7 +97,7 @@ impl Canvas {
         let mut dirty_backdrops = HashSet::new();
         propagate_list_damage(
             self,
-            self.root_commands,
+            ROOT_COMMAND_LIST_ID,
             damage,
             &mut propagated,
             &mut dirty_backdrops,
@@ -119,7 +120,7 @@ impl Canvas {
 fn canvas_visual_bounds(canvas: &Canvas) -> Bounds {
     list_visual_bounds(
         canvas,
-        canvas.root_commands,
+        ROOT_COMMAND_LIST_ID,
         SceneOffset { dx: 0.0, dy: 0.0 },
     )
 }

@@ -11,8 +11,7 @@ impl Canvas {
 
     pub fn draw_brush(&self, draw: DrawId) -> Option<Brush> {
         self.draw_index(draw)
-            .and_then(|index| self.draw_records.get(index))
-            .and_then(|draw| self.draw_brush_for_record(draw))
+            .and_then(|index| self.draw_brush_for_record(&self.draw_records[index]))
     }
 
     /// Replaces a draw's brush in the semantic draw record.
@@ -53,26 +52,8 @@ impl Canvas {
         (index < self.draw_records.len()).then_some(index)
     }
 
-    pub(super) fn ensure_command_root(&mut self) {
-        if self.command_lists.is_empty() {
-            self.command_lists.push(CommandList::default());
-        }
-        self.root_commands = ROOT_COMMAND_LIST_ID;
-        if self.command_stack.is_empty() {
-            self.command_stack.push(self.root_commands);
-        }
-    }
-
-    pub(super) fn current_command_list_id(&self) -> CommandListId {
-        self.command_stack
-            .last()
-            .copied()
-            .unwrap_or(self.root_commands)
-    }
-
     pub(super) fn current_command_list_mut(&mut self) -> &mut CommandList {
-        let id = self.current_command_list_id();
-        &mut self.command_lists[id]
+        &mut self.command_lists[self.current_commands]
     }
 
     pub(super) fn push_child_command_list(&mut self) -> CommandListId {
@@ -81,7 +62,16 @@ impl Canvas {
         children
     }
 
-    pub(super) fn push_layer_command(&mut self, draw: usize, layer: Layer, kind: LayerKind) {
+    pub(super) fn push_layer_command(&mut self, draw: usize, layer: Layer) {
+        let kind = match &layer {
+            Layer::Clip => LayerKind::Clip,
+            Layer::ClipSdf { .. } => LayerKind::ClipSdf,
+            Layer::Isolate => LayerKind::Isolate,
+            Layer::Opacity(_) => LayerKind::Opacity,
+            Layer::Blend(_) => LayerKind::Blend,
+            Layer::Filter { .. } => LayerKind::Filter,
+            Layer::Backdrop { .. } => LayerKind::Backdrop,
+        };
         let children = self.push_child_command_list();
         self.current_command_list_mut()
             .commands
@@ -91,8 +81,11 @@ impl Canvas {
                 layer,
                 children,
             });
-        self.command_stack.push(children);
-        self.layer_stack.push(kind);
+        self.layer_stack.push(OpenLayer {
+            parent: self.current_commands,
+            kind,
+        });
+        self.current_commands = children;
     }
 
     pub(super) fn push_mask_command(&mut self, layer: Mask, mask_commands: CommandListId) {
@@ -105,7 +98,10 @@ impl Canvas {
                 content,
                 mask: mask_commands,
             });
-        self.command_stack.push(content);
-        self.layer_stack.push(LayerKind::Mask);
+        self.layer_stack.push(OpenLayer {
+            parent: self.current_commands,
+            kind: LayerKind::Mask,
+        });
+        self.current_commands = content;
     }
 }

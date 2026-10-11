@@ -44,7 +44,7 @@ pub fn append_transformed(&mut self, other: &Canvas, transform: Affine);
 
 ## Layer stack
 
-每次 push layer 后必须 `pop_layer()`；返回的 `LayerKind` 可用于检查关闭顺序。
+每次 push layer 后必须 `pop_layer()`；返回的 `LayerKind` 可用于检查关闭顺序。根画布不属于可关闭的层；没有打开的层时返回 `None`。`reset()` 会清除未关闭的层，后续绘制从根画布开始。
 
 | 方法 | 语义 |
 |---|---|

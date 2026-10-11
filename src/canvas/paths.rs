@@ -70,7 +70,6 @@ impl Canvas {
         tolerance: f64,
         options: PathPushOptions,
     ) -> usize {
-        self.ensure_command_root();
         let line_start = self.lines.len() as u32;
         let path_id = self.path_cnt;
         self.path_cnt += 1;
@@ -212,7 +211,6 @@ impl Canvas {
         tag: DrawTag,
         emit_draw_command: bool,
     ) -> usize {
-        self.ensure_command_root();
         let bounds = sdf.bounds();
         let (sdf_offset, sdf_len) = self.push_sdf(sdf);
         let (brush_offset, brush_len) = self.push_physical_brush(brush);
@@ -273,7 +271,6 @@ impl Canvas {
         tag: DrawTag,
         emit_draw_command: bool,
     ) -> usize {
-        self.ensure_command_root();
         let bounds = sdf_shadow.bounds();
         let (sdf_shadow_offset, sdf_shadow_len) = self.push_sdf_shadow(sdf_shadow);
         let (brush_offset, brush_len) = self.push_physical_brush(brush);

@@ -29,15 +29,9 @@ impl Canvas {
         self.text_glyphs.clear();
         self.text_runs.clear();
         self.scene_images.clear();
-        if let Some(root) = self.command_lists.first_mut() {
-            root.commands.clear();
-            self.command_lists.truncate(1);
-        } else {
-            self.command_lists.push(CommandList::default());
-        }
-        self.root_commands = ROOT_COMMAND_LIST_ID;
-        self.command_stack.clear();
-        self.command_stack.push(self.root_commands);
+        self.command_lists[ROOT_COMMAND_LIST_ID].commands.clear();
+        self.command_lists.truncate(1);
+        self.current_commands = ROOT_COMMAND_LIST_ID;
         self.layer_stack.clear();
         self.invalidated_bounds.clear();
         self.invalidate_all = false;

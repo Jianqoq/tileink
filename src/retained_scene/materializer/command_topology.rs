@@ -134,7 +134,7 @@ impl PersistentSceneMaterializer {
                     .position(|range| range.len() == count)
                     .map(|index| self.vacant_command_fragments.swap_remove(index))
             });
-            let (children, fragment_start, fragment_count) = self.install_chunk_commands(id, reuse);
+            let fragment = self.install_chunk_commands(id, reuse);
             Rc::make_mut(&mut self.canvas).command_lists[parent_list]
                 .commands
                 .insert(
@@ -142,7 +142,7 @@ impl PersistentSceneMaterializer {
                     Command::MaterializedRetainedScene {
                         id,
                         revision: NodeGeneration::new(scene.nodes[&id].generation),
-                        children,
+                        children: fragment.start,
                     },
                 );
             self.scene_command_locations.insert(
@@ -150,8 +150,8 @@ impl PersistentSceneMaterializer {
                 SceneCommandLocation {
                     parent_list,
                     command_index,
-                    fragment_start,
-                    fragment_count,
+                    fragment_start: fragment.start,
+                    fragment_count: fragment.len(),
                 },
             );
             self.refresh_command_indices(parent_list, command_index);

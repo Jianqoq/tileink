@@ -29,4 +29,5 @@ mod compile;
 mod filters;
 mod paths;
 mod primitives;
+mod recording_state;
 mod records;

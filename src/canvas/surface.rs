@@ -17,8 +17,7 @@ impl Canvas {
             text_runs: Vec::new(),
             scene_images: ImageResourceStore::default(),
             command_lists: vec![CommandList::default()],
-            root_commands: ROOT_COMMAND_LIST_ID,
-            command_stack: vec![ROOT_COMMAND_LIST_ID],
+            current_commands: ROOT_COMMAND_LIST_ID,
             layer_stack: Vec::new(),
             path_cnt: 0,
             backdrop_pool_capacity: 0,
@@ -153,7 +152,7 @@ impl Canvas {
     /// Returns whether every layer and command list opened while recording has been closed.
     /// Only a closed canvas can be appended or installed as a retained scene leaf.
     pub fn is_closed_for_append(&self) -> bool {
-        self.command_stack.len() == 1 && self.layer_stack.is_empty()
+        self.layer_stack.is_empty()
     }
 
     pub fn physical_width(&self) -> u32 {

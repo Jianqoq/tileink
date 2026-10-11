@@ -1,4 +1,5 @@
 use super::*;
+use crate::shared::execution::ROOT_COMMAND_LIST_ID;
 
 pub(super) fn sync_arena<T: Copy>(
     dst: &mut Vec<T>,
@@ -371,12 +372,12 @@ pub(super) fn backdrop_dependencies(canvas: &Canvas) -> Vec<BackdropDependency> 
         }
     }
     let mut result = Vec::new();
-    collect(canvas, canvas.root_commands, false, &mut result);
+    collect(canvas, ROOT_COMMAND_LIST_ID, false, &mut result);
     result
 }
 
 pub(super) fn chunk_layer_influence_bounds(chunk: &SceneChunk) -> Bounds {
-    let command = &chunk.canvas.command_lists[chunk.canvas.root_commands].commands[0];
+    let command = &chunk.canvas.command_lists[ROOT_COMMAND_LIST_ID].commands[0];
     match command {
         Command::Layer {
             draw,
@@ -412,7 +413,7 @@ pub(super) fn chunk_layer_influence_bounds(chunk: &SceneChunk) -> Bounds {
 /// DPI and shader coordinates agree with execution; logical descriptors cannot
 /// be intersected with physical child bounds without dropping dirty pixels.
 pub(super) fn chunk_filter(chunk: &SceneChunk) -> (&filter::Filter, &Region) {
-    match &chunk.canvas.command_lists[chunk.canvas.root_commands].commands[0] {
+    match &chunk.canvas.command_lists[ROOT_COMMAND_LIST_ID].commands[0] {
         Command::Layer {
             layer:
                 Layer::Filter {

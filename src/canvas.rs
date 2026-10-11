@@ -89,9 +89,8 @@ pub struct Canvas {
     pub(crate) text_runs: Vec<TextRun>,
     pub(crate) scene_images: ImageResourceStore,
     pub(crate) command_lists: Vec<CommandList>,
-    pub(crate) root_commands: CommandListId,
-    pub(crate) command_stack: Vec<CommandListId>,
-    pub(crate) layer_stack: Vec<LayerKind>,
+    pub(crate) current_commands: CommandListId,
+    pub(crate) layer_stack: Vec<OpenLayer>,
     pub(crate) path_cnt: u32,
     pub(crate) backdrop_pool_capacity: u32,
     pub(crate) tile_cnt: u32,
@@ -120,6 +119,14 @@ pub struct Canvas {
     /// identity; retained transform edits use the previous value to patch command metadata by a
     /// delta without ever walking path lines.
     retained_transform: GpuAffine,
+}
+
+/// An open layer owns its return address and kind together. Root recording always
+/// uses command list zero; no second stack or missing-root recovery is needed.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct OpenLayer {
+    parent: CommandListId,
+    kind: LayerKind,
 }
 
 #[derive(Clone, Debug, Default)]
