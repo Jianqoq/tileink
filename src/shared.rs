@@ -39,3 +39,18 @@ pub(crate) mod progressive_blur_config;
 // SAFETY: repr(C), contiguous four-byte scalars and five four-float vectors, with no padding.
 unsafe impl bytemuck::Zeroable for filter_config::FilterConfig {}
 unsafe impl bytemuck::Pod for filter_config::FilterConfig {}
+
+impl Default for filter_config::FilterConfig {
+    fn default() -> Self {
+        // Preserve the all-zero native uniform with its unit sampling factor.
+        // Keep runtime initialization here so build-time layout reads need no
+        // runtime dependency or duplicate list of zero-valued fields.
+        Self {
+            downsample: 1,
+            ..bytemuck::Zeroable::zeroed()
+        }
+    }
+}
+
+#[cfg(test)]
+mod filter_config_tests;

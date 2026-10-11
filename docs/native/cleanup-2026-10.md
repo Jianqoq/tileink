@@ -962,6 +962,45 @@ Native interop boundaries, the remaining renderer GPU tests and shader sampling
 tests were also read completely. Their ownership, synchronization and transparent
 sampling rules implement current semantics. The whole-repository audit continues.
 
+## Phase 25: one filter default and no unused example forwarders
+
+The filter uniform's 120-line initializer repeated zero for every scalar/vector
+except `downsample = 1`. Runtime initialization now uses its existing `Zeroable`
+implementation and explicitly sets that unit factor. The layout-only source
+remains usable by build-time reflection without importing runtime dependencies.
+No dependency, unsafe implementation or compatibility shim is added. This is a
+permanent removal of duplicate initialization; filter algorithms and ABI remain
+unchanged.
+
+A semantic preservation test passed before and after the change. It checks the
+512-byte extent, alignment, signed/float/vector offsets and every default word,
+including positive floating zero and explicit padding. All 29 focused serial
+release tests pass: the default test, fourteen native filter tests, eleven ABI/
+catalog tests and three real GPU progressive-blur tests. After the final cleanup,
+the full release suite including ignored tests reports 1050 passes and the same
+three known failures described in phase 12. All twelve example tests pass, as do
+formatting, the backend-free library check and release Clippy with no new warnings.
+Actual DXC, ShaderTools and DX12/Vulkan GPU runtimes remain unavailable.
+
+Complete reads of the twenty shared example files found three unused forwarders:
+`save_image`, `save_example_image` and `new_font_system`. Repository-wide symbol
+search confirms they have no callers. They and their unused import are removed;
+live font snapshots, SVG family resolution, path/bitmap text examples and shader
+programs keep their current behavior. The remaining nine independent integration
+test files were also read completely. Their explicit compiler errors, pinned
+backend selection, fixture pixels and font behavior are current test contracts.
+
+All 1730 SVG images and seven example PNGs match the baseline exactly. The
+validated Metal window completes eight frames and its 640x360 to 480x270 resize;
+the actual Metal shader manifest is unchanged. The real 960x600 progressive blur
+application's [whole-process measurement](benchmarks/cleanup-phase25-metal-2026-10-11.json)
+has a median of 62.31 ms before and 60.55 ms after (-2.82%), across two warmup and
+ten alternating timed pairs. Every measured PNG matches. Timings include warmed
+native-cache loading, initialization, rendering, GPU readback and PNG output;
+they do not isolate uniform initialization or GPU throughput. No speedup is
+claimed. Temporary measurement executables/output are removed. The repository
+audit has now read 408 files; eight initial file groups remain pending.
+
 ## Remaining audit work
 
 - Continue auditing retained-scene reconciliation, SVG/text semantics, native resource lifetime boundaries, shaders, examples and scripts. Necessary SVG paint/font behavior, degenerate geometry semantics and unsafe GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.

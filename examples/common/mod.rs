@@ -14,7 +14,7 @@ use peniko::{
     Color,
     kurbo::{Affine, BezPath, Circle, Rect, Shape, Stroke},
 };
-use tileink::{Canvas, FillRule, Image, Radius, Region, SvgOptions};
+use tileink::{Canvas, FillRule, Radius, Region, SvgOptions};
 
 pub const EXAMPLE_WIDTH: u32 = 1920;
 pub const EXAMPLE_HEIGHT: u32 = 1080;
@@ -84,18 +84,6 @@ fn load_svg_fonts(options: &mut usvg::Options<'_>) {
     fontdb.set_fantasy_family("Sedgwick Ave Display");
 }
 
-pub fn save_image(image: &Image, path: impl AsRef<Path>) -> Result<(), Box<dyn std::error::Error>> {
-    image.save(path)?;
-    Ok(())
-}
-
-pub fn save_example_image(
-    image: &Image,
-    path: impl AsRef<Path>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    save_image(image, path)
-}
-
 pub fn rect_path(rect: Rect, radius: Radius) -> BezPath {
     if radius.top_left == 0.0
         && radius.top_right == 0.0
@@ -146,9 +134,4 @@ pub fn canvas_region(width: u32, height: u32) -> Region {
         Rect::new(0.0, 0.0, width as f64, height as f64),
         Radius::ZERO,
     )
-}
-
-/// Use immutable captured font inputs when running explicit backend references.
-pub fn new_font_system() -> tileink::TextFontSystem {
-    tileink::TextFontSystem::new()
 }
