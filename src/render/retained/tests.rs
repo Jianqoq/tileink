@@ -4,6 +4,7 @@ use crate::{
     canvas::{RetainedNodeKind, RetainedNodeState},
     render::incremental::FullRedrawReason,
 };
+use std::collections::HashMap;
 
 struct Allocation(u64);
 
@@ -30,8 +31,8 @@ fn frame(revision: u64, bounds: Bounds) -> RetainedFrame {
         physical_size: (128, 64),
         scale_bits: 1.0f32.to_bits(),
         nodes: vec![node].into(),
-        node_index: Rc::new([(node.id, 0)].into_iter().collect()),
-        state_pages: Rc::new(Default::default()),
+        node_index: Rc::new(std::iter::once((node.id, 0)).collect()),
+        state_pages: Rc::new(HashMap::default()),
         invalidated_bounds: Vec::new(),
         invalidate_all: false,
         version: 0,
@@ -284,7 +285,7 @@ fn growing_an_earlier_surface_preserves_unvisited_backdrop_input_in_the_current_
     );
     state.finish_frame(first, true, true);
 
-    let mut changed = frame.clone();
+    let mut changed = frame;
     changed.invalidated_bounds.push(Bounds::new(1, 1, 2, 2));
     let second = state.begin_frame(Some(changed), &canvas);
     assert!(!second.stats.full_redraw);

@@ -9,7 +9,7 @@ pub struct PathFlatten<'a> {
 }
 
 impl<'a> PathFlatten<'a> {
-    pub fn new(path: &'a BezPath, tolerance: f32, path_id: u32) -> Self {
+    pub const fn new(path: &'a BezPath, tolerance: f32, path_id: u32) -> Self {
         Self {
             path,
             tolerance,
@@ -17,12 +17,12 @@ impl<'a> PathFlatten<'a> {
         }
     }
 
-    pub fn flatten(&mut self, out: &mut Vec<Line>) {
+    pub fn flatten(&self, out: &mut Vec<Line>) {
         let mut contour_start: Option<Point> = None;
         let mut last: Option<Point> = None;
         // Kurbo's flatten uses a curve-aware subdivision estimate, so it keeps
         // the same tolerance contract without over-splitting long SVG curves.
-        flatten(self.path.iter(), self.tolerance as f64, |el| match el {
+        flatten(self.path.iter(), f64::from(self.tolerance), |el| match el {
             PathEl::MoveTo(point) => {
                 if let (Some(start_pt), Some(end_pt)) = (contour_start, last)
                     && is_open_contour_close(start_pt, end_pt)

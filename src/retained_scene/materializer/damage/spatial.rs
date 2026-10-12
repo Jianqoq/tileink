@@ -1,6 +1,10 @@
 use super::*;
 
 impl PersistentSceneMaterializer {
+    #[allow(
+        clippy::expect_used,
+        reason = "Spatial rebuilding follows installation of the persistent frame"
+    )]
     pub(crate) fn rebuild_spatial_index(&mut self, scene: &RetainedScene) {
         self.node_bounds.clear();
         self.raw_node_bounds.clear();
@@ -58,7 +62,7 @@ impl PersistentSceneMaterializer {
     ///
     /// Rebuilding `RetainedFrame` can be cheaper than proving a dependency-aware delta, but that
     /// does not invalidate the unchanged nodes' tile memberships. Reinitializing every tile
-    /// HashSet here made a full-screen bounded chart translation pay O(surface tiles) each frame.
+    /// `HashSet` here made a full-screen bounded chart translation pay O(surface tiles) each frame.
     pub(crate) fn patch_changed_spatial_index(
         &mut self,
         scene: &RetainedScene,

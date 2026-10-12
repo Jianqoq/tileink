@@ -40,6 +40,10 @@ pub(crate) trait GroupAdapter: super::surfaces::SurfaceAdapter {
     ) -> Result<(), Self::Error>;
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "Matched masked group caches always contain retained mask coverage"
+)]
 pub(crate) fn execute<A: GroupAdapter>(
     adapter: &mut A,
     canvas: &Canvas,

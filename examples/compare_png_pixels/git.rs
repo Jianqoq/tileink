@@ -73,6 +73,10 @@ pub struct Blobs {
 }
 
 impl Blobs {
+    #[allow(
+        clippy::expect_used,
+        reason = "The child was spawned with piped stdin and stdout before taking ownership of both streams"
+    )]
     pub fn new(root: &Path) -> Result<Self> {
         let mut child = Command::new("git")
             .arg("-C")

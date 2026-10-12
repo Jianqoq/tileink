@@ -84,7 +84,7 @@ fn shader_graph_checks_edges_and_counts_and_releases_all_failure_paths() {
             fail_kernel: Some(failure),
             ..Default::default()
         };
-        assert!(!run(&mut recorder, &filter).is_ok());
+        assert!(run(&mut recorder, &filter).is_err());
         assert!(recorder.live.is_empty(), "kernel {failure}");
     }
     for failure in 0..success.next {
@@ -92,22 +92,22 @@ fn shader_graph_checks_edges_and_counts_and_releases_all_failure_paths() {
             fail_allocation: Some(failure),
             ..Default::default()
         };
-        assert!(!run(&mut recorder, &filter).is_ok());
+        assert!(run(&mut recorder, &filter).is_err());
         assert!(recorder.live.is_empty(), "allocation {failure}");
     }
     let invalid = graph(vec![node(vec![I::SourceAlpha, I::Primitive(0)])]);
     let mut recorder = Recorder::default();
-    assert!(!run(&mut recorder, &invalid).is_ok());
+    assert!(run(&mut recorder, &invalid).is_err());
     assert!(recorder.live.is_empty());
     let mut mismatch = node(vec![I::SourceGraphic]);
     if let filter_model::FilterPrimitiveKind::ShaderPipeline { inputs, .. } = &mut mismatch.kind {
         inputs.clear();
     }
     let mut recorder = Recorder::default();
-    assert!(!run(&mut recorder, &graph(vec![mismatch])).is_ok());
+    assert!(run(&mut recorder, &graph(vec![mismatch])).is_err());
     assert!(recorder.live.is_empty());
     let mut recorder = Recorder::default();
-    assert!(!run(&mut recorder, &pipeline(2).into()).is_ok());
+    assert!(run(&mut recorder, &pipeline(2).into()).is_err());
     assert_eq!(recorder.next, 0);
     let mut recorder = Recorder::default();
     assert!(run(&mut recorder, &graph(vec![node(vec![])])).is_ok());

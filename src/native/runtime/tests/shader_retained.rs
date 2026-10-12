@@ -58,11 +58,11 @@ fn native_shader_retained_filter_history_handles_local_source_and_uniform_edits(
             "phase={phase}"
         );
         let expected = if phase == 0 {
-            0xff7850b4
+            0xff78_50b4
         } else if phase == 1 {
-            0xff78b450
+            0xff78_b450
         } else {
-            0xff78b414
+            0xff78_b414
         };
         assert_eq!(actual[18 * 64 + 20], expected);
         assert_eq!(actual[0], 0);

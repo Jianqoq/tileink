@@ -12,7 +12,7 @@ impl Resource {
     /// Vulkan image transfers require offsets aligned to one texel block; raw
     /// buffer transfers require four bytes. Keep format-dependent packing shared.
     #[cfg(any(feature = "vulkan", test))]
-    pub fn transfer_alignment(&self) -> usize {
+    pub const fn transfer_alignment(&self) -> usize {
         match self {
             Self::Texture(t) => t.format.bytes_per_pixel(),
             _ => 4,
@@ -98,7 +98,7 @@ impl Texture {
             .and_then(|n| n.checked_mul(layers as usize))
             .and_then(|n| n.checked_mul(format.bytes_per_pixel()));
         if layers == 0
-            || layers > u16::MAX as u32
+            || layers > u32::from(u16::MAX)
             || (!array && layers != 1)
             || size.contains(&0)
             || size.iter().any(|&n| n > i32::MAX as u32)

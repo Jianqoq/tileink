@@ -4,6 +4,10 @@ impl PersistentSceneMaterializer {
     /// Patches frame metadata for local clip-like layer geometry changes without walking every
     /// descendant. Raw bounds are indexed independently from currently clipped bounds so an
     /// expanding clip can find nodes that were completely invisible in the previous frame.
+    #[allow(
+        clippy::expect_used,
+        reason = "Local layer patches are constructed with both old and new node states"
+    )]
     pub(crate) fn patch_local_layer_frame_override(
         &mut self,
         scene: &RetainedScene,
@@ -94,8 +98,12 @@ impl PersistentSceneMaterializer {
         let source_damage = patches
             .iter()
             .map(|patch| {
-                let old = patch.old.unwrap();
-                let new = patch.new.unwrap();
+                let old = patch.old.expect(
+                    "Local layer patches are constructed with both old and new node states",
+                );
+                let new = patch.new.expect(
+                    "Local layer patches are constructed with both old and new node states",
+                );
                 (Some(new.id), old.bounds.union(new.bounds))
             })
             .chain(
@@ -113,8 +121,15 @@ impl PersistentSceneMaterializer {
                 self.incremental_backdrop_damage(scene, &source_damage)
             };
         for patch in &patches {
-            let new = patch.new.unwrap();
-            if patch.old.unwrap().bounds != new.bounds {
+            let new = patch
+                .new
+                .expect("Local layer patches are constructed with both old and new node states");
+            if patch
+                .old
+                .expect("Local layer patches are constructed with both old and new node states")
+                .bounds
+                != new.bounds
+            {
                 self.set_node_bounds_spatial(
                     new.id,
                     Some(new.bounds),
@@ -150,7 +165,9 @@ impl PersistentSceneMaterializer {
         }
         frame.delta = Some(Rc::new(delta));
         let canvas = Rc::make_mut(&mut self.canvas);
-        frame.invalidated_bounds = canvas.invalidated_bounds.clone();
+        frame
+            .invalidated_bounds
+            .clone_from(&canvas.invalidated_bounds);
         frame.invalidate_all = canvas.invalidate_all;
         frame.requires_damage_propagation = !self.nonlocal_dependencies.is_empty();
         canvas.persistent_frame = Some(frame);

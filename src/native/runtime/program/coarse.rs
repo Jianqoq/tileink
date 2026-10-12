@@ -5,7 +5,7 @@ use super::super::{
 use crate::render::coarse::{CoarsePlan, CoarseProgram};
 
 /// GPU outputs from scan and uploads from the shared Canvas preparation.
-/// These handles remain in the same ComputeBatch through coarse and fine.
+/// These handles remain in the same `ComputeBatch` through coarse and fine.
 pub(crate) struct CoarseBindings {
     pub(crate) draws: ResourceId,
     pub(crate) text: ResourceId,
@@ -36,7 +36,12 @@ pub(crate) unsafe fn encode(
     }
     let config = batch.buffer(bytemuck::bytes_of(&plan.config).to_vec())?;
     for pass in plan.passes() {
-        use CoarseProgram::*;
+        use CoarseProgram::{
+            ApplyChunkOffsets, ChunkOffsets, CountBins, CountTiles, EmitApplyChunkOffsets,
+            EmitBins, EmitChunkCounts, EmitChunkOffsets, EmitChunkParticleCounts,
+            EmitChunkParticleOffsets, EmitChunkTileKinds, EmitChunks, EmitFillRefs,
+            EmitPrefixChunks, EmitTiles, PrefixChunks, TileCountsFromEmitChunks,
+        };
         let CoarseBindings {
             draws,
             text,

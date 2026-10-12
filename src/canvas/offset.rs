@@ -28,19 +28,19 @@ impl SceneOffset {
 
     pub(super) fn pixel_bounds(self, bounds: PixelBounds) -> PixelBounds {
         PixelBounds {
-            x0: (bounds.x0 as f64 + self.dx).floor() as i32,
-            y0: (bounds.y0 as f64 + self.dy).floor() as i32,
-            x1: (bounds.x1 as f64 + self.dx).ceil() as i32,
-            y1: (bounds.y1 as f64 + self.dy).ceil() as i32,
+            x0: (f64::from(bounds.x0) + self.dx).floor() as i32,
+            y0: (f64::from(bounds.y0) + self.dy).floor() as i32,
+            x1: (f64::from(bounds.x1) + self.dx).ceil() as i32,
+            y1: (f64::from(bounds.y1) + self.dy).ceil() as i32,
         }
     }
 
     pub(super) fn bounds(self, bounds: Bounds) -> Bounds {
         Bounds::new(
-            (bounds.x0 as f64 + self.dx).floor() as i32,
-            (bounds.y0 as f64 + self.dy).floor() as i32,
-            (bounds.x1 as f64 + self.dx).ceil() as i32,
-            (bounds.y1 as f64 + self.dy).ceil() as i32,
+            (f64::from(bounds.x0) + self.dx).floor() as i32,
+            (f64::from(bounds.y0) + self.dy).floor() as i32,
+            (f64::from(bounds.x1) + self.dx).ceil() as i32,
+            (f64::from(bounds.y1) + self.dy).ceil() as i32,
         )
     }
 

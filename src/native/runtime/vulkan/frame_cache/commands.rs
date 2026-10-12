@@ -21,6 +21,7 @@ impl Commands {
         cached: Option<Self>,
     ) -> Result<Self> {
         let mut this = if let Some(cached) = cached {
+            // SAFETY: Only completed slots enter the free cache; this owner exclusively resets their command pool and fence.
             unsafe {
                 device.reset_command_pool(cached.pool, vk::CommandPoolResetFlags::empty())?;
                 device.reset_fences(&[cached.fence])?;
@@ -43,6 +44,7 @@ impl Commands {
             counts: [0; 5],
             sets: 0,
         };
+        // SAFETY: The live device and compute queue family define owned command-pool, fence and command-buffer allocations.
         unsafe {
             this.pool = device.create_command_pool(
                 &vk::CommandPoolCreateInfo::default().queue_family_index(family),
@@ -85,6 +87,7 @@ impl Commands {
                 .zip(self.counts)
                 .all(|(needed, capacity)| *needed <= capacity)
         {
+            // SAFETY: The acquired slot is retired; no pending command uses its exclusively owned descriptor pool.
             unsafe {
                 self.device.reset_descriptor_pool(
                     self.descriptors,
@@ -115,6 +118,7 @@ impl Commands {
             descriptor_count,
         })
         .collect();
+        // SAFETY: Checked descriptor counts and set capacity determine a pool owned by this command slot.
         unsafe {
             let pool = self.device.create_descriptor_pool(
                 &vk::DescriptorPoolCreateInfo::default()
@@ -131,7 +135,7 @@ impl Commands {
     }
 
     #[cfg(test)]
-    pub(in crate::native::runtime::vulkan) fn handles(
+    pub(in crate::native::runtime::vulkan) const fn handles(
         &self,
     ) -> (vk::CommandPool, vk::DescriptorPool, vk::Fence) {
         (self.pool, self.descriptors, self.fence)
@@ -140,6 +144,7 @@ impl Commands {
 
 impl Drop for Commands {
     fn drop(&mut self) {
+        // SAFETY: This slot is retired or unsubmitted; it exclusively owns the descriptor pool, command pool and fence being destroyed.
         unsafe {
             self.device.destroy_descriptor_pool(self.descriptors, None);
             self.device.destroy_command_pool(self.pool, None);

@@ -1,3 +1,4 @@
+use std::rc::Rc;
 mod canvas;
 mod selection;
 mod space;
@@ -47,10 +48,10 @@ pub(crate) fn local_offscreen_scene(
     let local_children =
         translate_exec_ops_to_local(children, local, &selection.batch_draws, &draw_map);
     let mut plan = ExecPlan {
-        ops: local_children.clone(),
+        ops: local_children,
         layer_stack_data: plan.layer_stack_data.clone(),
-        draw_order: Default::default(),
-        draw_batch_ids: Default::default(),
+        draw_order: Rc::default(),
+        draw_batch_ids: Rc::default(),
         retained_batch_ids: HashMap::new(),
         layer_stack_locations: HashMap::new(),
         direct_root_batch_ops: None,
@@ -94,7 +95,7 @@ fn translate_exec_ops_to_local(
                 ),
                 batch_id: *batch_id,
                 layer_stack: layer_stack.clone(),
-                owners: owners.clone(),
+                owners: std::rc::Rc::clone(owners),
             },
             ExecOp::OffscreenLayer {
                 retained_id,

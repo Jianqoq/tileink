@@ -127,6 +127,10 @@ pub(super) fn gradient() -> Interface {
     )
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "Built-in ABI recipes provide the required entry, resource, field and constant before specialization"
+)]
 pub(super) fn pattern() -> Interface {
     let mut result = gradient();
     result.resources.insert(
@@ -136,7 +140,7 @@ pub(super) fn pattern() -> Interface {
     result
         .resources
         .insert("image_resource_sampler".into(), super::sampler(13));
-    let mut bindings = result.entries.remove("gradient_words").unwrap();
+    let mut bindings = result.entries.remove("gradient_words").expect("Built-in ABI recipes provide the required entry, resource, field and constant before specialization");
     bindings.extend([
         "image_resource_atlas".into(),
         "image_resource_sampler".into(),
@@ -145,9 +149,13 @@ pub(super) fn pattern() -> Interface {
     result
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "Built-in ABI recipes provide the required entry, resource, field and constant before specialization"
+)]
 pub(super) fn brush() -> Interface {
     let mut result = pattern();
-    let mut bindings = result.entries.remove("pattern_words").unwrap();
+    let mut bindings = result.entries.remove("pattern_words").expect("Built-in ABI recipes provide the required entry, resource, field and constant before specialization");
     result
         .resources
         .insert("image_resource_textures".into(), super::texture_table());

@@ -1,7 +1,22 @@
-#[allow(dead_code)]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "Test setup and assertions abort on failure; production builds are checked separately"
+    )
+)]
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
 #[path = "../build/native/abi.rs"]
 mod abi;
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
 #[path = "../build/native/dxil_reflection.rs"]
 mod dxil;
 #[test]
@@ -124,7 +139,10 @@ fn raw_user_constant_blocks_validate_byte_size_without_builtin_field_names() {
     );
 }
 
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
 #[path = "../build/native/spirv.rs"]
 mod spirv;
 

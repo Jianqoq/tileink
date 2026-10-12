@@ -29,6 +29,10 @@ fn world_edge_bounds_translate_without_wrapping_in_local_surfaces() {
 }
 
 #[test]
+#[allow(
+    clippy::lossy_float_literal,
+    reason = "The expected value is 2^31, which is exactly representable in f32"
+)]
 fn path_points_translate_from_the_minimum_world_origin_in_float_space() {
     let local = LocalSpace::new(Bounds::new(
         i32::MIN,

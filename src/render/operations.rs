@@ -76,7 +76,7 @@ pub(crate) fn execute_ops<A: OperationAdapter>(
                 execute_draw_batch(
                     adapter,
                     canvas,
-                    DrawBatch {
+                    &DrawBatch {
                         draws,
                         id: *batch_id,
                         layers: layer_stack.clone(),

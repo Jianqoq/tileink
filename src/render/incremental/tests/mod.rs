@@ -3,6 +3,7 @@ use crate::{
     NodeRevision, RetainedNodeId,
     canvas::{RetainedFrameDelta, RetainedNodeKind, RetainedNodePatch, RetainedNodeState},
 };
+use std::collections::HashMap;
 
 fn frame(nodes: &[(u64, u64, Bounds)]) -> RetainedFrame {
     let nodes = nodes
@@ -26,7 +27,7 @@ fn frame(nodes: &[(u64, u64, Bounds)]) -> RetainedFrame {
         scale_bits: 1.0f32.to_bits(),
         nodes: nodes.into(),
         node_index: std::rc::Rc::new(node_index),
-        state_pages: std::rc::Rc::new(Default::default()),
+        state_pages: std::rc::Rc::new(HashMap::default()),
         invalidated_bounds: Vec::new(),
         invalidate_all: false,
         version: 0,

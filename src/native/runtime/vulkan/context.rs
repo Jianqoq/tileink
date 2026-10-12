@@ -13,6 +13,7 @@ impl Vulkan {
 
     pub fn with_options(options: &crate::native::NativeContextOptions) -> Result<Self> {
         // All native handles remain owned by this context until GPU completion.
+        // SAFETY: Loaded entry points, extension names and creation arrays remain live; owned instance/device handles retain their required parents.
         unsafe {
             let entry = Entry::load()?;
             let messages = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
@@ -44,8 +45,7 @@ impl Vulkan {
                     if options.physical_adapter.is_some() && id.device_luid_valid == 0 {
                         continue;
                     }
-                    let actual: String =
-                        id.device_luid.iter().map(|b| format!("{b:02x}")).collect();
+                    let actual = crate::hex::encode(&id.device_luid);
                     if options
                         .physical_adapter
                         .as_ref()
@@ -140,6 +140,7 @@ impl Vulkan {
             validation,
             owner,
         } = descriptor;
+        // SAFETY: The caller retains imported handles and required parent objects; queue-family capabilities are validated before context use.
         unsafe {
             let families = instance.get_physical_device_queue_family_properties(physical);
             if families
@@ -186,6 +187,7 @@ impl Vulkan {
             messages,
             host_owner,
         } = parts;
+        // SAFETY: The supplied instance, physical device and logical device are live and related; queried properties and created command resources are retained.
         unsafe {
             let memory = instance.get_physical_device_memory_properties(physical);
             let properties = instance.get_physical_device_properties(physical);
@@ -193,7 +195,7 @@ impl Vulkan {
             let debug = ash::ext::debug_utils::Instance::new(&entry, &instance);
             let mut this = Self {
                 host_owner,
-                _entry: entry,
+                entry,
                 debug,
                 messenger: vk::DebugUtilsMessengerEXT::null(),
                 messages,
@@ -204,7 +206,7 @@ impl Vulkan {
                 memory,
                 queue,
                 pending: Pending::new(),
-                frame_cache: Default::default(),
+                frame_cache: frame_cache::Cache::default(),
                 properties,
                 compute_pipelines: BTreeMap::new(),
                 family,

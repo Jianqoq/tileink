@@ -33,7 +33,7 @@ impl Completion {
             return result;
         }
         let deadline =
-            DispatchTime::try_from(timeout).map_err(|_| "Metal wait duration overflow")?;
+            DispatchTime::try_from(timeout).map_err(|()| "Metal wait duration overflow")?;
         let timed_out = self.0.wait(deadline) != 0;
         // Check again even at the timeout boundary: completed work is safe to
         // retire whether the status transition or semaphore wake won the race.

@@ -21,7 +21,10 @@ fn backend() -> Result<NativeBackend, Box<dyn std::error::Error>> {
     {
         return Ok(NativeBackend::Metal);
     }
-    #[allow(unreachable_code)]
+    #[allow(
+        unreachable_code,
+        reason = "The selected backend cfg returns before the shared unsupported-platform fallback."
+    )]
     Err("enable one native backend feature".into())
 }
 
@@ -40,6 +43,10 @@ fn collect_svg_files(dir: &Path, files: &mut Vec<PathBuf>) -> std::io::Result<()
     Ok(())
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "A successfully opened SVG fixture file has a file stem"
+)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let root = std::env::args()
         .nth(1)
@@ -60,7 +67,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let image = renderer.render_to_image(&scene)?.readback()?;
             let output = input.with_file_name(format!(
                 "{}.native.png",
-                input.file_stem().unwrap().to_string_lossy()
+                input
+                    .file_stem()
+                    .expect("A successfully opened SVG fixture file has a file stem")
+                    .to_string_lossy()
             ));
             image.save(&output)?;
             Ok(())

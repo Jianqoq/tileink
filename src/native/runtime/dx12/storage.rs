@@ -1,5 +1,5 @@
 //! Reusable DEFAULT-heap buffers; only completed frames return resources here.
-//! D3D12 buffers decay to COMMON after ExecuteCommandLists completes, even after
+//! D3D12 buffers decay to COMMON after `ExecuteCommandLists` completes, even after
 //! explicit transitions. Fence-confirmed retirement therefore needs no extra
 //! end-of-frame COMMON barrier. Textures and upload heaps are not pooled here.
 use super::{Result, buffer};

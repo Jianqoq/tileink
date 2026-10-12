@@ -75,6 +75,10 @@ impl PersistentSceneMaterializer {
 
     /// A full compiler sizes membership to the synchronized draw arena, including inactive slots.
     /// Replacing the table also covers same-length edits that renumber subsequent batches.
+    #[allow(
+        clippy::expect_used,
+        reason = "Stable batches are synchronized only after the compiled plan is installed"
+    )]
     pub(crate) fn sync_stable_batches_from_plan(&mut self) {
         let canvas = Rc::make_mut(&mut self.canvas);
         let batches = (*canvas

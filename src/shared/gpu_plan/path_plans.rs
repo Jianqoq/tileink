@@ -149,6 +149,10 @@ impl Default for PersistentPathPlans {
 }
 
 impl PersistentPathPlans {
+    #[allow(
+        clippy::expect_used,
+        reason = "Incremental ranges, live allocations and cumsum metadata are established before path-plan refresh"
+    )]
     pub(crate) fn update(
         &mut self,
         canvas: &Canvas,
@@ -197,7 +201,7 @@ impl PersistentPathPlans {
             }
         } else {
             let mut changed = Vec::new();
-            for range in changed_ranges.unwrap() {
+            for range in changed_ranges.expect("Incremental ranges, live allocations and cumsum metadata are established before path-plan refresh") {
                 let start = range.start.min(path_len);
                 let end = range.end.min(path_len);
                 changed.extend(start..end);
@@ -287,8 +291,12 @@ impl PersistentPathPlans {
         }
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Incremental ranges, live allocations and cumsum metadata are established before path-plan refresh"
+    )]
     fn refresh_cumsum_rows(&mut self, path_id: usize, row_chunk_counts: &[u32]) {
-        let allocation = self.allocations[path_id].unwrap();
+        let allocation = self.allocations[path_id].expect("Incremental ranges, live allocations and cumsum metadata are established before path-plan refresh");
         let mut chunk = self.cumsum_chunks.range(allocation.cumsum_chunks).start as u32;
         let rows = row_chunk_counts
             .iter()
@@ -304,6 +312,10 @@ impl PersistentPathPlans {
         self.cumsum_rows.replace(allocation.cumsum_rows, &rows);
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Incremental ranges, live allocations and cumsum metadata are established before path-plan refresh"
+    )]
     fn refresh_all_cumsum_rows(&mut self) {
         for path_id in 0..self.allocations.len() {
             let Some(allocation) = self.allocations[path_id] else {
@@ -396,7 +408,7 @@ impl PersistentPathPlans {
         &self.scan_ranges
     }
 
-    pub(crate) fn cumsum_plan(&self) -> &GpuCumsumPlan {
+    pub(crate) const fn cumsum_plan(&self) -> &GpuCumsumPlan {
         &self.cumsum_plan
     }
 

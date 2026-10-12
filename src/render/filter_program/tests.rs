@@ -122,7 +122,7 @@ fn chain_stops_when_a_color_kernel_cannot_be_recorded() {
         fail_kernel: Some(2),
         ..Default::default()
     };
-    assert!(!run(&mut recorder, &filter).is_ok());
+    assert!(run(&mut recorder, &filter).is_err());
     assert_eq!(recorder.kernels.len(), 2);
     assert!(recorder.live.is_empty());
 }
@@ -136,7 +136,7 @@ fn invalid_merge_input_releases_the_new_output() {
         },
     )]);
     let mut recorder = Recorder::default();
-    assert!(!run(&mut recorder, &filter).is_ok());
+    assert!(run(&mut recorder, &filter).is_err());
     assert!(
         recorder.live.is_empty(),
         "invalid graph input leaked its output scratch"
@@ -153,7 +153,7 @@ fn a_failed_graph_clear_stops_before_copying_stale_pixels() {
         fail_kernel: Some(1),
         ..Default::default()
     };
-    assert!(!run(&mut recorder, &filter).is_ok());
+    assert!(run(&mut recorder, &filter).is_err());
     assert_eq!(recorder.kernels.len(), 1);
     assert!(recorder.live.is_empty());
 }
@@ -220,7 +220,7 @@ fn graph_releases_every_allocation_on_each_recording_and_allocation_failure() {
             ..Default::default()
         };
         assert!(
-            !run(&mut recorder, &filter).is_ok(),
+            run(&mut recorder, &filter).is_err(),
             "ignored kernel failure {failure}"
         );
         assert!(recorder.live.is_empty(), "leaked on kernel {failure}");
@@ -231,7 +231,7 @@ fn graph_releases_every_allocation_on_each_recording_and_allocation_failure() {
             ..Default::default()
         };
         assert!(
-            !run(&mut recorder, &filter).is_ok(),
+            run(&mut recorder, &filter).is_err(),
             "ignored allocation failure {failure}"
         );
         assert!(recorder.live.is_empty(), "leaked on allocation {failure}");
@@ -311,7 +311,7 @@ fn effects_stop_at_every_failed_kernel_and_release_scratch() {
                 ..Default::default()
             };
             assert!(
-                !run(&mut recorder, &effect).is_ok(),
+                run(&mut recorder, &effect).is_err(),
                 "ignored {effect:?} kernel {failure}"
             );
             assert_eq!(recorder.kernels.len(), failure, "encoded after failure");

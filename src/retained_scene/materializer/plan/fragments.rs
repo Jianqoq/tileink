@@ -4,6 +4,10 @@ mod insert;
 mod remove;
 
 impl PersistentSceneMaterializer {
+    #[allow(
+        clippy::expect_used,
+        reason = "Fragment membership and command locations are built from the same installed execution plan"
+    )]
     pub(crate) fn refresh_root_fragment_membership(
         &mut self,
         scene: &RetainedScene,
@@ -73,6 +77,10 @@ impl PersistentSceneMaterializer {
         }
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Fragment membership and command locations are built from the same installed execution plan"
+    )]
     pub(crate) fn index_root_plan_fragments(&mut self, scene: &RetainedScene) {
         use crate::shared::execution::ExecOp;
 
@@ -125,7 +133,7 @@ impl PersistentSceneMaterializer {
                 }
             };
             if let Some(owner) = owner {
-                let fragment = self.root_plan_fragments.get_mut(owner).unwrap();
+                let fragment = self.root_plan_fragments.get_mut(owner).expect("Fragment membership and command locations are built from the same installed execution plan");
                 if fragment.ops.is_empty() {
                     fragment.ops.start = index;
                 }

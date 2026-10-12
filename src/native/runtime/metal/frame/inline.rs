@@ -105,7 +105,7 @@ mod tests {
             }
             let frame = Frame::record(&metal, &batch)?;
             assert_eq!(
-                matches!(frame._resources[config.index()], Resource::InlineUniform),
+                matches!(frame.resources[config.index()], Resource::InlineUniform),
                 expected
             );
             drop(batch);

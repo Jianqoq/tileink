@@ -21,7 +21,7 @@ pub(super) struct Pipeline {
     pub state: State,
     pub arguments: BTreeMap<u32, Object<dyn MTLArgumentEncoder>>,
 }
-pub(super) fn slot(slot: u32) -> usize {
+pub(super) const fn slot(slot: u32) -> usize {
     if slot == 31 { 30 } else { slot as usize }
 }
 
@@ -61,7 +61,10 @@ pub(super) fn ensure(
     )
 }
 
-#[allow(deprecated)]
+#[allow(
+    deprecated,
+    reason = "Required Metal reflection/AppKit APIs preserve supported macOS versions."
+)]
 fn ensure_inner(
     device: &objc2::runtime::ProtocolObject<dyn MTLDevice>,
     libraries: &mut BTreeMap<String, Object<dyn MTLLibrary>>,

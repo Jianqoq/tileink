@@ -60,7 +60,7 @@ pub(crate) fn record_output(
     )
 }
 
-/// Shared native invocation entry, also exposed by NativeShaderBatch. Public
+/// Shared native invocation entry, also exposed by `NativeShaderBatch`. Public
 /// external descriptors never capture frame handles inside cached pass plans.
 pub(crate) fn record_bindings(
     batch: &mut ComputeBatch,
@@ -99,6 +99,14 @@ pub(crate) fn record_bindings(
 }
 
 mod config;
+#[allow(
+    clippy::expect_used,
+    reason = "Validated scratch resources are allocated before their last-use recycling"
+)]
+#[allow(
+    clippy::large_types_passed_by_value,
+    reason = "This optional 512-byte uniform is an immutable per-invocation ABI snapshot"
+)]
 fn record_invocation(
     batch: &mut ComputeBatch,
     pipeline: &ShaderPipeline,
@@ -216,7 +224,7 @@ fn record_invocation(
                 grid,
             )?,
             ShaderKernelCode::Compiled(artifact) => {
-                batch.dispatch_with_shader(artifact, None, &bindings, grid)?
+                batch.dispatch_with_shader(artifact, None, &bindings, grid)?;
             }
         }
         for (index, r) in pipeline.resources.iter().enumerate() {
@@ -225,7 +233,13 @@ fn record_invocation(
             {
                 let region = region.ok_or("pipeline texture requires a surface")?;
                 let surface = [region.width, region.height];
-                available.push((extent.resolve(surface), *format, allocated[index].unwrap()));
+                available.push((
+                    extent.resolve(surface),
+                    *format,
+                    allocated[index].expect(
+                        "Validated scratch resources are allocated before their last-use recycling",
+                    ),
+                ));
             }
         }
     }

@@ -17,7 +17,7 @@ impl Canvas {
         if list_id == ROOT_COMMAND_LIST_ID
             && let Some(plan) = &self.compiled_plan
         {
-            return plan.clone();
+            return std::rc::Rc::clone(plan);
         }
         SharedRc::new(self.compile_uncached(list_id))
     }
@@ -170,11 +170,7 @@ impl Canvas {
         for command in commands {
             match command {
                 Command::Draw(draw_ix) => pending_batch.push(*draw_ix),
-                Command::MaterializedRetainedScene {
-                    id,
-                    revision: _,
-                    fragment,
-                } => {
+                Command::MaterializedRetainedScene { id, fragment, .. } => {
                     flush_batch(&mut pending_batch, ops, plan, layer_stack, batch_owner);
                     self.compile_into(
                         &self.command_lists[fragment.start].commands,
@@ -344,8 +340,7 @@ impl Canvas {
 
     pub(crate) fn can_fuse(&self, layer: &Layer, children: CommandListId) -> bool {
         match layer {
-            Layer::Clip { .. } => true,
-            Layer::ClipSdf { .. } => true,
+            Layer::Clip { .. } | Layer::ClipSdf { .. } => true,
             // Group opacity and blend must wrap the composited child subtree.
             // If a child opens its own offscreen layer, keeping the group fused
             // would apply it to separate fragments before they are combined.

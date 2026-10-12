@@ -37,6 +37,10 @@ pub(crate) trait MaskAdapter: SurfaceAdapter {
     ) -> Result<(), Self::Error>;
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "Matched mask caches always contain retained mask coverage"
+)]
 pub(crate) fn execute<A: MaskAdapter>(
     adapter: &mut A,
     canvas: &Canvas,

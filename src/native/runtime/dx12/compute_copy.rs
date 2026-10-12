@@ -9,6 +9,7 @@ pub(super) unsafe fn record(
     destination: &ID3D12Resource,
     copy: &TextureCopy,
 ) {
+    // SAFETY: Batch validation bounds subresources and copy extents; both resources and the command list are retained on the same device.
     unsafe {
         for layer in 0..copy.extent[2] {
             let mut src = D3D12_TEXTURE_COPY_LOCATION {
@@ -34,12 +35,12 @@ pub(super) unsafe fn record(
                 back: 1,
             };
             list.CopyTextureRegion(
-                &dst,
+                &raw const dst,
                 copy.destination_origin[0],
                 copy.destination_origin[1],
                 0,
-                &src,
-                Some(&region),
+                &raw const src,
+                Some(&raw const region),
             );
             ManuallyDrop::drop(&mut src.pResource);
             ManuallyDrop::drop(&mut dst.pResource);

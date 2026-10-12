@@ -25,6 +25,8 @@ pub fn parse(source: &str) -> io::Result<(Vec<String>, Option<String>)> {
         return Ok((lines, None));
     };
     let guard = guard.trim().to_owned();
+    // The first visible line proves this list is nonempty.
+    let last = visible[visible.len() - 1];
     let valid = !guard.is_empty()
         && guard
             .bytes()
@@ -36,7 +38,7 @@ pub fn parse(source: &str) -> io::Result<(Vec<String>, Option<String>)> {
     if !valid
         || visible.len() < 3
         || lines[visible[1]].trim() != format!("#define {guard}")
-        || lines[*visible.last().unwrap()].trim() != "#endif"
+        || lines[last].trim() != "#endif"
     {
         return Err(io::Error::other(
             "expected matching whole-file #ifndef/#define/#endif guard",
@@ -44,7 +46,7 @@ pub fn parse(source: &str) -> io::Result<(Vec<String>, Option<String>)> {
     }
     lines[first].clear();
     lines[visible[1]].clear();
-    lines[*visible.last().unwrap()].clear();
+    lines[last].clear();
     Ok((lines, Some(guard)))
 }
 

@@ -1,4 +1,4 @@
-//! SourceGraphic + SourceAlpha + intermediate GPU results with a custom composite.
+//! `SourceGraphic` + `SourceAlpha` + intermediate GPU results with a custom composite.
 #[path = "common/shader_graph.rs"]
 mod graph;
 use peniko::{Color, kurbo::Rect};

@@ -14,7 +14,7 @@ fn artifact(bindings: Vec<Binding>) -> &'static NativeShaderArtifact {
     }))
 }
 
-fn binding(slot: u32, kind: B, size: u32) -> Binding {
+const fn binding(slot: u32, kind: B, size: u32) -> Binding {
     Binding {
         slot,
         kind,

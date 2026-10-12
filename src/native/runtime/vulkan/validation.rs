@@ -25,6 +25,7 @@ pub(super) unsafe extern "system" fn callback(
 ) -> vk::Bool32 {
     // Vulkan supplies valid callback data and the user pointer registered by
     // info(), while its context still owns the Arc. Only message text is optional.
+    // SAFETY: Vulkan supplies valid callback data and the registered user pointer while the context still owns its Arc; message text alone may be null.
     unsafe {
         if !(*data).p_message.is_null() {
             let messages = &*user.cast::<Mutex<Vec<String>>>();
@@ -35,7 +36,7 @@ pub(super) unsafe extern "system" fn callback(
             // valid after unwinding; retain the native diagnostic for assert_valid.
             messages
                 .lock()
-                .unwrap_or_else(|e| e.into_inner())
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .push(text);
         }
     }

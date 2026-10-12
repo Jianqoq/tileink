@@ -20,10 +20,10 @@ pub fn cases() -> Vec<Case> {
                 source_offset: 4,
                 destination_offset: 8,
                 stride: 32,
-                value: [0xff804020, u32::MAX, 0x12345678, 0xdeadbeef],
+                value: [0xff80_4020, u32::MAX, 0x1234_5678, 0xdead_beef],
             };
             let source: Vec<u8> = (0..count + 4)
-                .flat_map(|i| (i.wrapping_mul(0x9e3779b9) ^ 0x55aa55aa).to_le_bytes())
+                .flat_map(|i| (i.wrapping_mul(0x9e37_79b9) ^ 0x55aa_55aa).to_le_bytes())
                 .collect();
             let destination = vec![0xa5; (count as usize + 1) * 32];
             let mut expected = destination.clone();
@@ -31,7 +31,8 @@ pub fn cases() -> Vec<Case> {
                 let offset = 8 + id as usize * if entry == "layout_words" { 32 } else { 4 };
                 match entry {
                     "clear_words" => {
-                        expected[offset..offset + 4].copy_from_slice(&params.value[0].to_le_bytes())
+                        expected[offset..offset + 4]
+                            .copy_from_slice(&params.value[0].to_le_bytes());
                     }
                     "copy_words" => expected[offset..offset + 4]
                         .copy_from_slice(&source[4 + id as usize * 4..8 + id as usize * 4]),
@@ -81,9 +82,9 @@ fn sampling_cases() -> Vec<Case> {
         for (origin, step) in [
             (-1.5f32, 0.5f32),
             (16.75, -0.25),
-            (f32::from_bits(0x3effffff), 0.0),
+            (f32::from_bits(0x3eff_ffff), 0.0),
             (0.5, 0.0),
-            (f32::from_bits(0x3f000001), 0.0),
+            (f32::from_bits(0x3f00_0001), 0.0),
             (64.0, -0.5),
             (-0.0, f32::MIN_POSITIVE),
             (0.1, 0.1),
@@ -97,22 +98,22 @@ fn sampling_cases() -> Vec<Case> {
                     value: [origin.to_bits(), step.to_bits(), width, 0],
                 };
                 let source: Vec<u8> = (0..width + 2)
-                    .flat_map(|i| (i.wrapping_mul(0x9e3779b9) ^ 0x55aa55aa).to_le_bytes())
+                    .flat_map(|i| (i.wrapping_mul(0x9e37_79b9) ^ 0x55aa_55aa).to_le_bytes())
                     .collect();
                 let destination = vec![0xa5; (count as usize + 4) * 4];
                 let mut expected = destination.clone();
                 for id in 0..count as usize {
                     // Independent f64/i64 oracle; no shader bit-decoding or
                     // integer packed-channel operations are reused here.
-                    let x = (origin as f64 * 65536.0).round() as i64
-                        + id as i64 * (step as f64 * 65536.0).round() as i64;
+                    let x = (f64::from(origin) * 65536.0).round() as i64
+                        + id as i64 * (f64::from(step) * 65536.0).round() as i64;
                     let base = x.div_euclid(65536);
                     let fraction = x.rem_euclid(65536) as f64 / 65536.0;
-                    let left = base.clamp(0, (width - 1) as i64) as usize;
-                    let right = (base + 1).clamp(0, (width - 1) as i64) as usize;
+                    let left = base.clamp(0, i64::from(width - 1)) as usize;
+                    let right = (base + 1).clamp(0, i64::from(width - 1)) as usize;
                     for lane in 0..4 {
-                        let a = source[4 + left * 4 + lane] as f64;
-                        let b = source[4 + right * 4 + lane] as f64;
+                        let a = f64::from(source[4 + left * 4 + lane]);
+                        let b = f64::from(source[4 + right * 4 + lane]);
                         expected[8 + id * 4 + lane] =
                             (a * (1.0 - fraction) + b * fraction + 0.5).floor() as u8;
                     }

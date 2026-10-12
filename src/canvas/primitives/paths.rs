@@ -17,6 +17,10 @@ impl Canvas {
         )
     }
 
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "Drawing commands accept owned temporary stroke descriptors, including dash storage"
+    )]
     pub fn push_stroke(
         &mut self,
         shape: impl Shape,

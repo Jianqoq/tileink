@@ -114,6 +114,7 @@ fn completed_host_command_does_not_retire_incomplete_rendering() -> Result {
     let device = MTLCreateSystemDefaultDevice().ok_or("device")?;
     let queue = device.newCommandQueue().ok_or("queue")?;
     let event = device.newSharedEvent().ok_or("event")?;
+    // SAFETY: The test owns both queues and serializes access through the shared event below.
     let context = unsafe {
         NativeContext::from_metal(ContextDescriptor {
             device: device.clone(),

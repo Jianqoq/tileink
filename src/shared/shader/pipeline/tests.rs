@@ -129,7 +129,7 @@ fn chained_output_growth_saturates_before_clipping_instead_of_wrapping() {
         fixed_region: false,
     };
     assert_eq!(
-        crate::shared::layer::filter::filter_outset(&chain) as u64,
+        u64::from(crate::shared::layer::filter::filter_outset(&chain)),
         u64::from(u32::MAX)
     );
     let canvas = crate::Bounds::canvas(16, 16);
@@ -173,7 +173,7 @@ fn shader_read_radius_covers_the_full_unsigned_coordinate_distance() {
     .with_input_radius(f32::MAX)
     .unwrap();
     assert_eq!(
-        pipeline.sample_outset().unwrap() as u64,
+        u64::from(pipeline.sample_outset().unwrap()),
         u64::from(u32::MAX)
     );
 }
@@ -187,7 +187,7 @@ fn extent_rounds_up_odd_dimensions_and_precision_tracks_bytes() {
             F,
             ShaderTextureFormat::Rgba32Float
         ]
-        .map(|f| f.bytes_per_pixel()),
+        .map(super::ShaderTextureFormat::bytes_per_pixel),
         [4, 8, 16]
     );
 }
@@ -318,7 +318,7 @@ fn pipeline_snapshot_fingerprints_are_stable_and_do_not_format_image_payloads() 
     )
     .unwrap();
     let key = format!("{pipeline:?}");
-    assert_eq!(key, format!("{:?}", pipeline.clone()));
+    assert_eq!(key, format!("{pipeline:?}"));
     assert!(key.len() < 256);
     assert_ne!(
         key,

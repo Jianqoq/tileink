@@ -538,10 +538,10 @@ fn compile_keeps_opacity_with_offscreen_child_isolated() {
     assert_eq!(plan.ops.len(), 1, "{:#?}", plan.ops);
     match &plan.ops[0] {
         ExecOp::OffscreenLayer {
-            retained_id: _,
             layer: OffscreenLayer::Opacity { draw, opacity },
             outer_stack,
             children,
+            ..
         } => {
             assert_eq!(*draw, 0);
             assert_eq!(*opacity, 0.5);
@@ -586,10 +586,10 @@ fn compile_keeps_blend_with_offscreen_child_isolated() {
     assert_eq!(plan.ops.len(), 1, "{:#?}", plan.ops);
     match &plan.ops[0] {
         ExecOp::OffscreenLayer {
-            retained_id: _,
             layer: OffscreenLayer::Blend { draw, mode },
             outer_stack,
             children,
+            ..
         } => {
             assert_eq!(*draw, 0);
             assert_eq!(*mode, BlendMode::new(Mix::Multiply, Compose::SrcOver));
@@ -623,10 +623,10 @@ fn compile_keeps_isolate_as_offscreen_layer() {
     assert_eq!(plan.ops.len(), 1, "{:#?}", plan.ops);
     match &plan.ops[0] {
         ExecOp::OffscreenLayer {
-            retained_id: _,
             layer: OffscreenLayer::Isolate { draw },
             outer_stack,
             children,
+            ..
         } => {
             assert_eq!(*draw, 0);
             assert!(outer_stack.is_empty());
@@ -673,11 +673,11 @@ fn compile_keeps_mask_content_and_mask_isolated() {
     assert_eq!(plan.ops.len(), 1, "{:#?}", plan.ops);
     match &plan.ops[0] {
         ExecOp::OffscreenMaskLayer {
-            retained_id: _,
             layer,
             outer_stack,
             content,
             mask,
+            ..
         } => {
             assert!(outer_stack.is_empty());
             assert_eq!(layer.kind, MaskKind::Alpha);

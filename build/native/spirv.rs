@@ -20,7 +20,10 @@ struct Reflection {
 pub fn validate(bytes: &[u8], entry: &str, abi: &Interface) -> io::Result<()> {
     validate_inner(bytes, entry, abi, false)
 }
-#[allow(dead_code)] // Also reused by the runtime application-shader compiler.
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)] // Also reused by the runtime application-shader compiler.
 pub fn validate_user(bytes: &[u8], entry: &str, abi: &Interface) -> io::Result<()> {
     validate_inner(bytes, entry, abi, true)
 }
@@ -38,7 +41,7 @@ fn validate_inner(bytes: &[u8], entry: &str, abi: &Interface, optional: bool) ->
         .map(u32::from_le_bytes)
         .collect();
     require(
-        bytes.len().is_multiple_of(4) && words.len() >= 5 && words[0] == 0x07230203,
+        bytes.len().is_multiple_of(4) && words.len() >= 5 && words[0] == 0x0723_0203,
         "SPIR-V header",
     )?;
     let mut r = Reflection::default();
@@ -186,16 +189,7 @@ fn validate_inner(bytes: &[u8], entry: &str, abi: &Interface, optional: bool) ->
                 image.0 == 25
                     && image.1.len() == 7
                     && image.1[1..]
-                        == if resource.kind != Kind::TextureWrite {
-                            [
-                                1,
-                                2,
-                                u32::from(resource.kind == Kind::TextureArray),
-                                0,
-                                1,
-                                0,
-                            ]
-                        } else {
+                        == if resource.kind == Kind::TextureWrite {
                             [
                                 1,
                                 2,
@@ -208,6 +202,15 @@ fn validate_inner(bytes: &[u8], entry: &str, abi: &Interface, optional: bool) ->
                                     16 => 1,
                                     _ => return Err(invalid("SPIR-V storage image format")),
                                 },
+                            ]
+                        } else {
+                            [
+                                1,
+                                2,
+                                u32::from(resource.kind == Kind::TextureArray),
+                                0,
+                                1,
+                                0,
                             ]
                         },
                 "SPIR-V sampled 2D image",

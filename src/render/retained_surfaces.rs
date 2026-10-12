@@ -158,7 +158,7 @@ impl<T: SurfaceAllocation> RetainedSurfaceCache<T> {
         self.protected_before = partial.then_some(self.clock);
     }
 
-    pub(crate) fn end_frame(&mut self) {
+    pub(crate) const fn end_frame(&mut self) {
         self.protected_before = None;
     }
 

@@ -20,6 +20,10 @@ pub(crate) struct ImageCache {
     accepted: Rc<Cell<bool>>,
 }
 impl<'a> Images<'a> {
+    #[allow(
+        clippy::expect_used,
+        reason = "The matching image cache is installed before native texture imports"
+    )]
     pub(crate) fn record_cached(
         batch: &mut ComputeBatch,
         upload: &'a GpuImageResourceUpload,
@@ -56,7 +60,9 @@ impl<'a> Images<'a> {
                 accepted: batch.acceptance(),
             });
         }
-        let cached = cache.as_ref().unwrap();
+        let cached = cache
+            .as_ref()
+            .expect("The matching image cache is installed before native texture imports");
         let atlas = batch.import_texture(&cached.atlas)?;
         let textures = cached
             .textures

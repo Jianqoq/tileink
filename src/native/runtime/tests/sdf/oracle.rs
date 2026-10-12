@@ -34,13 +34,29 @@ fn coverage(shape: Sdf, request: Request) -> u32 {
                 (length - radius, dx / length, dy / length)
             } else {
                 let (dx, dy) = (
-                    (x - (x0 + x1) * 0.5).abs() - (x1 - x0) * 0.5,
-                    (y - (y0 + y1) * 0.5).abs() - (y1 - y0) * 0.5,
+                    (x - f64::midpoint(x0, x1)).abs() - (x1 - x0) * 0.5,
+                    (y - f64::midpoint(y0, y1)).abs() - (y1 - y0) * 0.5,
                 );
                 if dx > dy {
-                    (dx, if x >= (x0 + x1) * 0.5 { 1.0 } else { -1.0 }, 0.0)
+                    (
+                        dx,
+                        if x >= f64::midpoint(x0, x1) {
+                            1.0
+                        } else {
+                            -1.0
+                        },
+                        0.0,
+                    )
                 } else {
-                    (dy, 0.0, if y >= (y0 + y1) * 0.5 { 1.0 } else { -1.0 })
+                    (
+                        dy,
+                        0.0,
+                        if y >= f64::midpoint(y0, y1) {
+                            1.0
+                        } else {
+                            -1.0
+                        },
+                    )
                 }
             }
         }

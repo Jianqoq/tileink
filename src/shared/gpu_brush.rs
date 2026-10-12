@@ -16,7 +16,7 @@ pub(crate) struct GpuBrushUpload {
 }
 
 impl GpuBrushUpload {
-    pub(crate) fn draw_uses_resource_brush(draw: &DrawRecord, brush_blob: &[u32]) -> bool {
+    pub(crate) const fn draw_uses_resource_brush(draw: &DrawRecord, brush_blob: &[u32]) -> bool {
         let base = draw.brush_offset as usize;
         draw.brush_offset != DrawRecord::NONE && brush_blob[base] == GPU_BRUSH_PATTERN_RESOURCE
     }
@@ -88,6 +88,10 @@ impl GpuBrushUpload {
     }
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "Resource brush scope and payload are created by the canvas encoder"
+)]
 fn resource_brush_header(
     source: &[u32],
     image_resources: Option<&GpuImageResourceUpload>,

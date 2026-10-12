@@ -1,6 +1,10 @@
 use super::*;
 
 impl PersistentSceneMaterializer {
+    #[allow(
+        clippy::expect_used,
+        reason = "Fragment membership and command locations are built from the same installed execution plan"
+    )]
     pub(crate) fn remove_root_plan_fragment(&mut self, id: RetainedNodeId) {
         // Candidate selection owns this exact root subtree and its current range.
         let fragment = self

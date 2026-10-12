@@ -204,7 +204,7 @@ fn tile_dependency_preserves_distances_across_the_signed_coordinate_domain() {
     };
     let dependency = filter_dependency(&filter);
     assert_eq!(
-        dependency.local_radius().unwrap() as u64,
+        u64::from(dependency.local_radius().unwrap()),
         u64::from(u32::MAX - 8)
     );
     assert_eq!(dependency.source_bounds(output, source), source);
@@ -216,7 +216,7 @@ fn whole_region_damage_uses_the_unsigned_extent_without_truncation() {
     let filter = convolve(3, 1, 1, 0, 1.0, ConvolveEdgeMode::Wrap);
     let domain = Bounds::new(i32::MIN, -1, i32::MAX, 1);
     assert_eq!(
-        filter_dependency(&filter).damage_outset(domain) as u64,
+        u64::from(filter_dependency(&filter).damage_outset(domain)),
         u64::from(u32::MAX - 1)
     );
 }
@@ -234,16 +234,16 @@ fn combined_filter_radii_do_not_wrap_or_stop_at_the_signed_limit() {
             offset_y: -offset,
             brush: crate::Brush::Solid(peniko::Color::BLACK),
         };
-        assert_eq!(filter_outset(&shadow) as u64, expected);
+        assert_eq!(u64::from(filter_outset(&shadow)), expected);
     }
     let glass = RectLiquidGlass {
         blur_radius: u32::MAX,
         ..RectLiquidGlass::default()
     };
-    assert_eq!(glass.sample_outset() as u64, u64::from(u32::MAX));
+    assert_eq!(u64::from(glass.sample_outset()), u64::from(u32::MAX));
     let filter = convolve(1, 1, u32::MAX, 0, 1.0, ConvolveEdgeMode::Duplicate);
     assert_eq!(
-        filter_dependency(&filter).local_radius().unwrap() as u64,
+        u64::from(filter_dependency(&filter).local_radius().unwrap()),
         u64::from(u32::MAX)
     );
 }

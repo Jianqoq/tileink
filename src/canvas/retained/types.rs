@@ -18,10 +18,12 @@ pub struct RetainedNodeId {
 impl RetainedNodeId {
     pub const DEFAULT_SLOT: u32 = 0;
 
+    #[must_use]
     pub const fn new(owner: u64, slot: u32) -> Self {
         Self { owner, slot }
     }
 
+    #[must_use]
     pub const fn for_owner(owner: u64) -> Self {
         Self::new(owner, Self::DEFAULT_SLOT)
     }
@@ -116,7 +118,7 @@ pub(crate) struct RetainedFrameDelta {
     pub(crate) from_version: u64,
     pub(crate) to_version: u64,
     pub(crate) patches: Rc<[RetainedNodePatch]>,
-    pub(crate) previous: Option<Rc<RetainedFrameDelta>>,
+    pub(crate) previous: Option<Rc<Self>>,
     pub(crate) depth: u16,
     pub(crate) damage: Rc<[(RetainedNodeId, Bounds)]>,
     /// Backdrops affected by this persistent journal delta. When complete, the renderer can skip

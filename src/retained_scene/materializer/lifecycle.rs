@@ -59,16 +59,16 @@ impl PersistentSceneMaterializer {
         materializer
     }
 
-    pub(crate) fn scene_id(&self) -> u64 {
+    pub(crate) const fn scene_id(&self) -> u64 {
         self.scene_id
     }
 
-    pub(crate) fn version(&self) -> SceneVersion {
+    pub(crate) const fn version(&self) -> SceneVersion {
         self.version
     }
 
     pub(crate) fn canvas(&self) -> Rc<Canvas> {
-        self.canvas.clone()
+        std::rc::Rc::clone(&self.canvas)
     }
 
     /// Consumes the scene journal and returns whether prepared CPU/GPU scene data became stale.
@@ -77,6 +77,10 @@ impl PersistentSceneMaterializer {
     ///
     /// The renderer also needs the change set to decide whether its compiled plan can be reused,
     /// so accepting the snapshot here avoids merging the same journal entries twice per frame.
+    #[allow(
+        clippy::expect_used,
+        reason = "Materialization installs frame, plan, change journal and node metadata before updating their dependent indices"
+    )]
     pub(crate) fn update(
         &mut self,
         scene: &RetainedScene,
@@ -175,7 +179,7 @@ impl PersistentSceneMaterializer {
             }
         }
         let expanded_topology_changes =
-            if changes.hierarchy_changed {
+            changes.hierarchy_changed.then(|| {
                 let mut topology_changes = changes.clone();
                 for &id in &changes.changed_nodes {
                     if scene.nodes.get(&id).is_some_and(|node| {
@@ -186,10 +190,8 @@ impl PersistentSceneMaterializer {
                         topology_changes.changed_nodes.extend(leaves);
                     }
                 }
-                Some(topology_changes)
-            } else {
-                None
-            };
+                topology_changes
+            });
         let topology_changes = expanded_topology_changes.as_ref().unwrap_or(&changes);
 
         let scene_data_changed = surface_changed
@@ -216,7 +218,11 @@ impl PersistentSceneMaterializer {
             topology_changes
                 .changed_nodes
                 .iter()
-                .filter_map(|id| self.painter_bases.get(id).map(|base| (*id, base.clone())))
+                .filter_map(|id| {
+                    self.painter_bases
+                        .get(id)
+                        .map(|base| (*id, std::rc::Rc::clone(base)))
+                })
                 .collect::<HashMap<_, _>>()
         } else {
             HashMap::default()
@@ -892,6 +898,10 @@ impl PersistentSceneMaterializer {
         self.rebuild_all_with_canvas(scene, canvas);
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Materialization installs frame, plan, change journal and node metadata before updating their dependent indices"
+    )]
     fn rebuild_all_with_canvas(&mut self, scene: &RetainedScene, canvas: Rc<Canvas>) {
         self.scene_id = scene.id;
         self.version = scene.version;

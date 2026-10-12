@@ -138,7 +138,7 @@ fn native_scalar_clip_emission_honors_active_ids_and_padded_groups() -> Result<(
         scene.config[17] = scene.work.len() as u32;
         scene.config[18] = 1;
         scene.work.extend(&selected);
-        scene.work.extend([0x73737373; 8]);
+        scene.work.extend([0x7373_7373; 8]);
         scene.expected = scene.work.clone();
         for tile in selected {
             let tile = tile as usize;

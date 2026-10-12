@@ -31,11 +31,11 @@ fn nested_svg_image_preserves_requested_raster_extent_as_vector_scene() {
 #[test]
 fn fractional_pattern_keeps_ceil_extent_without_a_gpu_device() {
     let canvas = lower(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" width="35" height="19">
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="35" height="19">
         <defs><pattern id="p" width="4.5" height="3.25" patternUnits="userSpaceOnUse">
             <rect width="2" height="2" fill="red"/>
         </pattern></defs><rect width="35" height="19" fill="url(#p)"/>
-        </svg>"##,
+        </svg>"#,
     );
     assert_eq!(only_vector(&canvas).physical_size(), (5, 4));
 }
@@ -62,11 +62,11 @@ fn fe_image_is_deferred_in_filter_buffer_coordinates() {
 #[test]
 fn cloned_canvases_share_immutable_subscenes_and_reset_drops_their_resources() {
     let mut canvas = lower(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" width="35" height="19">
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="35" height="19">
         <defs><pattern id="p" width="4" height="3" patternUnits="userSpaceOnUse">
             <rect width="2" height="2" fill="red"/>
         </pattern></defs><rect width="35" height="19" fill="url(#p)"/>
-        </svg>"##,
+        </svg>"#,
     );
     let clone = canvas.clone();
     assert!(Rc::ptr_eq(only_vector(&canvas), only_vector(&clone)));

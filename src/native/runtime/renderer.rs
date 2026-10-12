@@ -52,7 +52,10 @@ struct FrameResources<'a> {
 
 /// Filter damage is chosen after entering its context and before scan. Store
 /// exactly one stage, so a context can never have both (or neither) plan and scene.
-#[allow(clippy::large_enum_variant)] // Keep the scanned scene inline; avoid per-context heap allocations.
+#[allow(
+    clippy::large_enum_variant,
+    reason = "Keep the scanned scene inline to avoid per-context heap allocation."
+)] // Keep the scanned scene inline; avoid per-context heap allocations.
 enum SceneState {
     Pending(Rc<ExecPlan>),
     Scanned(Scene),
@@ -202,7 +205,7 @@ impl DrawBatchAdapter for Execution<'_> {
 #[path = "tests/frame_execution.rs"]
 mod tests;
 
-fn needs_offscreen_resources(plan: &crate::shared::execution::ExecPlan) -> bool {
+const fn needs_offscreen_resources(plan: &crate::shared::execution::ExecPlan) -> bool {
     plan.direct_root_batch_ops.is_none()
 }
 

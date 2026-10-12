@@ -11,7 +11,7 @@ pub enum NativeBackend {
 }
 
 impl NativeBackend {
-    fn unavailable(self) -> BackendUnavailable {
+    const fn unavailable(self) -> BackendUnavailable {
         let (enabled, platform) = match self {
             Self::Metal => (cfg!(feature = "metal"), cfg!(target_os = "macos")),
             Self::Dx12 => (cfg!(feature = "dx12"), cfg!(target_os = "windows")),

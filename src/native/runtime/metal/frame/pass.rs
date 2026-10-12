@@ -55,8 +55,8 @@ impl PassEncoder {
                     encoder.setViewport(MTLViewport {
                         originX: 0.0,
                         originY: 0.0,
-                        width: config.width as f64,
-                        height: config.height as f64,
+                        width: f64::from(config.width),
+                        height: f64::from(config.height),
                         znear: 0.0,
                         zfar: 1.0,
                     });
@@ -76,6 +76,7 @@ impl PassEncoder {
     /// # Safety
     /// Frame recording must supply reflected slots and owned, bounded resources.
     pub unsafe fn buffer(&self, buffer: &ProtocolObject<dyn MTLBuffer>, slot: usize) {
+        // SAFETY: The caller guarantees reflected slots and owned, bounded buffers for the encoder.
         unsafe {
             match self {
                 Self::Compute(e) => e.setBuffer_offset_atIndex(Some(buffer), 0, slot),
@@ -89,14 +90,15 @@ impl PassEncoder {
             }
         }
     }
-    /// Bind a short-lived backend constant without allocating an MTLBuffer for
+    /// Bind a short-lived backend constant without allocating an `MTLBuffer` for
     /// every pass. Metal copies the data before this call returns.
     ///
     /// # Safety
     /// Bytes must match the reflected slot and be at most 4 KiB.
     pub unsafe fn bytes(&self, bytes: &[u8], slot: usize) {
         debug_assert!(!bytes.is_empty() && bytes.len() <= super::inline::MAX_BYTES);
-        let pointer = NonNull::new(bytes.as_ptr().cast_mut().cast()).unwrap();
+        let pointer = NonNull::from(bytes).cast();
+        // SAFETY: Metal copies these live slice bytes immediately; the caller guarantees the reflected slot and the 4 KiB limit.
         unsafe {
             match self {
                 Self::Compute(e) => e.setBytes_length_atIndex(pointer, bytes.len(), slot),
@@ -114,13 +116,14 @@ impl PassEncoder {
     /// # Safety
     /// The texture must match the reflected slot, usage, and dimensionality.
     pub unsafe fn texture(&self, texture: &ProtocolObject<dyn MTLTexture>, slot: usize) {
+        // SAFETY: The caller guarantees texture type, usage, ownership, and the reflected slot.
         unsafe {
             match self {
                 Self::Compute(e) => e.setTexture_atIndex(Some(texture), slot),
                 // Slot one is the color attachment, never a sampled read/write alias.
                 Self::Tile(e) if slot != 1 => e.setTileTexture_atIndex(Some(texture), slot),
                 Self::Sparse(e, _) if slot != 1 => {
-                    e.setFragmentTexture_atIndex(Some(texture), slot)
+                    e.setFragmentTexture_atIndex(Some(texture), slot);
                 }
                 _ => {}
             }
@@ -129,6 +132,7 @@ impl PassEncoder {
     /// # Safety
     /// The sampler must belong to this device and the slot must be reflected.
     pub unsafe fn sampler(&self, sampler: &ProtocolObject<dyn MTLSamplerState>, slot: usize) {
+        // SAFETY: The caller guarantees a same-device sampler and reflected slot.
         unsafe {
             match self {
                 Self::Compute(e) => e.setSamplerState_atIndex(Some(sampler), slot),
@@ -141,7 +145,7 @@ impl PassEncoder {
         match self {
             Self::Compute(e) => e.useResource_usage(resource, MTLResourceUsage::Read),
             Self::Tile(e) => {
-                e.useResource_usage_stages(resource, MTLResourceUsage::Read, MTLRenderStages::Tile)
+                e.useResource_usage_stages(resource, MTLResourceUsage::Read, MTLRenderStages::Tile);
             }
             Self::Sparse(e, _) => e.useResource_usage_stages(
                 resource,
@@ -165,7 +169,7 @@ impl PassEncoder {
                         0,
                         4,
                         *count,
-                    )
+                    );
                 };
             }
         }

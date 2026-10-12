@@ -235,12 +235,16 @@ impl Adapter {
             #[cfg(feature = "vulkan")]
             Device::Vulkan(device) => {
                 let messages = device.validation_messages();
-                let messages = messages.lock().unwrap_or_else(|e| e.into_inner());
-                if messages.is_empty() {
+                let messages = messages
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                let result = if messages.is_empty() {
                     Ok(())
                 } else {
                     Err(format!("Vulkan validation: {messages:?}").into())
-                }
+                };
+                drop(messages);
+                result
             }
         }
     }
@@ -251,6 +255,7 @@ impl Adapter {
     pub(crate) fn import_context_for_test(
         host: &crate::NativeContext,
     ) -> Result<crate::NativeContext> {
+        // SAFETY: The test retains the host adapter and imports clones of its live native device/queue handles.
         unsafe {
             match &*host.adapter.0.borrow() {
                 #[cfg(feature = "dx12")]

@@ -1,6 +1,10 @@
 use super::*;
 
 impl PersistentSceneMaterializer {
+    #[allow(
+        clippy::expect_used,
+        reason = "Content patches describe live nodes and install a new state with defined damage"
+    )]
     pub(crate) fn patch_frame_override(
         &mut self,
         scene: &RetainedScene,
@@ -70,14 +74,15 @@ impl PersistentSceneMaterializer {
         }
         let index = retained_patch_index(&patches, frame.delta.as_ref().map(|delta| &delta.index));
         let (previous, depth) = prune_shadowed_delta(frame.delta.clone(), &index);
-        let (backdrop_damage, dirty_backdrops) =
-            if self.nonlocal_dependencies.is_empty() || self.scoped_backdrop {
-                (Vec::new(), Vec::new())
-            } else {
-                let source_damage = patches
+        let (backdrop_damage, dirty_backdrops) = if self.nonlocal_dependencies.is_empty()
+            || self.scoped_backdrop
+        {
+            (Vec::new(), Vec::new())
+        } else {
+            let source_damage = patches
                     .iter()
                     .map(|patch| {
-                        let node = patch.new.or(patch.old).unwrap();
+                        let node = patch.new.or(patch.old).expect("Content patches describe live nodes and install a new state with defined damage");
                         let bounds = patch
                             .damage_bounds()
                             .expect("retained patch has a node or explicit damage");
@@ -91,11 +96,11 @@ impl PersistentSceneMaterializer {
                             .map(|bounds| (None, bounds)),
                     )
                     .collect::<Vec<_>>();
-                self.incremental_backdrop_damage(scene, &source_damage)
-            };
+            self.incremental_backdrop_damage(scene, &source_damage)
+        };
         for patch in &patches {
             if patch.old.map(|node| node.bounds) != patch.new.map(|node| node.bounds) {
-                let id = patch.new.unwrap().id;
+                let id = patch.new.expect("Content patches describe live nodes and install a new state with defined damage").id;
                 // The patch already carries this node's fixed translation domain.
                 self.set_node_bounds_spatial(id, patch.new.map(|node| node.bounds), patch.damage);
             }
@@ -128,7 +133,9 @@ impl PersistentSceneMaterializer {
             delta.depth = 1;
         }
         frame.delta = Some(Rc::new(delta));
-        frame.invalidated_bounds = Rc::make_mut(&mut self.canvas).invalidated_bounds.clone();
+        frame
+            .invalidated_bounds
+            .clone_from(&Rc::make_mut(&mut self.canvas).invalidated_bounds);
         frame.invalidate_all = Rc::make_mut(&mut self.canvas).invalidate_all;
         frame.requires_damage_propagation = !self.nonlocal_dependencies.is_empty();
         Rc::make_mut(&mut self.canvas).persistent_frame = Some(frame);
@@ -165,15 +172,14 @@ impl PersistentSceneMaterializer {
                 .or_default()
                 .push((index % PAGE_SIZE, node));
         }
-        let base = frame.nodes.clone();
+        let base = std::rc::Rc::clone(&frame.nodes);
         let pages = Rc::make_mut(&mut frame.state_pages);
         for (page_index, updates) in updates {
             let start = page_index * PAGE_SIZE;
             let end = (start + PAGE_SIZE).min(base.len());
             let mut page = pages
                 .get(&page_index)
-                .map(|page| page.to_vec())
-                .unwrap_or_else(|| base[start..end].to_vec());
+                .map_or_else(|| base[start..end].to_vec(), |page| page.to_vec());
             for (offset, node) in updates {
                 page[offset] = node;
             }

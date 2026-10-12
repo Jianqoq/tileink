@@ -32,6 +32,10 @@ pub struct DashLine {
 }
 
 impl Line {
+    #[must_use]
+    ///
+    /// # Panics
+    /// Panics if stroke width is nonpositive or NaN.
     pub fn new(start: Point, end: Point, width: f32, cap: LineCap) -> Self {
         assert!(width > 0.0, "SDF line width must be positive");
         Self {
@@ -88,7 +92,7 @@ impl Line {
         self
     }
 
-    pub(crate) fn cap_value(self) -> f32 {
+    pub(crate) const fn cap_value(self) -> f32 {
         self.cap as u32 as f32
     }
 
@@ -105,6 +109,10 @@ impl Line {
 }
 
 impl DashLine {
+    #[must_use]
+    ///
+    /// # Panics
+    /// Panics if dash length or stroke width is nonpositive/NaN, or gap length is negative/NaN.
     pub fn new(
         start: Point,
         end: Point,
@@ -116,6 +124,10 @@ impl DashLine {
         Self::with_offset(start, end, width, cap, dash_length, gap_length, 0.0)
     }
 
+    #[must_use]
+    ///
+    /// # Panics
+    /// Panics if dash length is nonpositive/NaN or gap length is negative/NaN. Stroke width must also be positive.
     pub fn with_offset(
         start: Point,
         end: Point,

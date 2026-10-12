@@ -8,10 +8,9 @@ fn partial_edge_tiles_preserve_membership_across_sparse_and_rank_updates() {
         for draw in 0..272 {
             let rect = match (draw, frame) {
                 (0, _) => Rect::new(0.0, 0.0, 528.0, 272.0),
-                (1, 1) => Rect::new(512.0, 256.0, 528.0, 272.0),
+                (1, 1) | (271, _) => Rect::new(512.0, 256.0, 528.0, 272.0),
                 (1, 2) => Rect::new(-32.0, -32.0, -16.0, -16.0),
                 (2, 1 | 2) => Rect::new(0.0, 0.0, 16.0, 16.0),
-                (271, _) => Rect::new(512.0, 256.0, 528.0, 272.0),
                 _ => Rect::new(240.0, 240.0, 288.0, 272.0),
             };
             canvas.push_rect(rect, crate::Radius::ZERO, Color::BLACK);

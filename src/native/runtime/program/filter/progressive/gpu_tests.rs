@@ -78,7 +78,7 @@ fn progressive_gpu_matches_clear_and_uniform_plateaus_and_gaussian_reference() -
     // Independent high-precision Gaussian oracle. Vertical stripes reduce the
     // exact 2D gather to 1D away from the transparent source boundary.
     for y in 40..153 {
-        let t = (y as f64 + 0.5 - 32.0) / 128.0;
+        let t = (f64::from(y) + 0.5 - 32.0) / 128.0;
         let sigma = 8.0 * t * t * (3.0 - 2.0 * t);
         let radius = (4.0 * sigma).ceil() as i32;
         for x in 48..209 {
@@ -98,7 +98,7 @@ fn progressive_gpu_matches_clear_and_uniform_plateaus_and_gaussian_reference() -
     assert!(rms < 12.0, "Gaussian reference RMS {rms} / 255");
     // Distinguish scale selection from simply fading in a fully blurred image.
     let center = ((96 * 257 + 128) * 4) as usize;
-    let crossfade = (f32::from(input[center]) + f32::from(uniform[center])) * 0.5;
+    let crossfade = f32::midpoint(f32::from(input[center]), f32::from(uniform[center]));
     assert!((f32::from(output[center]) - crossfade).abs() > 20.0);
     Ok(())
 }

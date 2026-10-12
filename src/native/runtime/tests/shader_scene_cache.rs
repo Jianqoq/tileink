@@ -33,7 +33,7 @@ fn native_shader_brush_switches_without_changing_execution_topology() -> Result<
             let actual = renderer.render_to_image(&canvas)?.readback()?.pixels;
             let mut fresh = NativeRenderer::with_context(&context, 32, 32)?;
             let expected = fresh.render_to_image(&canvas)?.readback()?.pixels;
-            assert!(actual == expected, "frame={frame}, clipped={clipped}");
+            assert_eq!(actual, expected, "frame={frame}, clipped={clipped}");
         }
     }
     context.check_validation()?;
@@ -70,7 +70,7 @@ fn native_shader_brush_retry_after_compilation_failure_keeps_current_paint() -> 
         let canvas = canvas(brush);
         let actual = renderer.render_to_image(&canvas)?.readback()?.pixels;
         let mut fresh = NativeRenderer::with_context(&context, 16, 16)?;
-        assert!(actual == fresh.render_to_image(&canvas)?.readback()?.pixels);
+        assert_eq!(actual, fresh.render_to_image(&canvas)?.readback()?.pixels);
     }
     context.check_validation()?;
     Ok(())

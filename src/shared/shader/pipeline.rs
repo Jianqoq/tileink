@@ -17,6 +17,7 @@ pub enum ShaderTextureFormat {
     Rgba32Float,
 }
 impl ShaderTextureFormat {
+    #[must_use]
     pub const fn bytes_per_pixel(self) -> usize {
         match self {
             Self::Rgba8Unorm => 4,
@@ -35,6 +36,7 @@ pub enum ShaderExtent {
 }
 impl ShaderExtent {
     pub const FULL: Self = Self::Surface { divisor: [1, 1] };
+    #[must_use]
     pub const fn downsample(factor: u32) -> Self {
         Self::Surface {
             divisor: [factor; 2],
@@ -65,7 +67,7 @@ pub enum ShaderResource {
     Input(usize),
     /// Final premultiplied-sRGB RGBA8 image, separate from Input.
     Output,
-    /// A 112-byte ShaderConfig for this extent. Pipeline dispatches use ordinary
+    /// A 112-byte `ShaderConfig` for this extent. Pipeline dispatches use ordinary
     /// 2D thread coordinates except for explicit Pixels dispatch. `inverse_*` maps from
     /// full-resolution surface coordinates to logical canvas coordinates.
     Config(ShaderConfigDescriptor),
@@ -111,7 +113,7 @@ pub use kernel::{ShaderBinding, ShaderBindingKind, ShaderKernel};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ShaderDispatch {
     /// Linear 256-lane pixel work over the current output region, optionally
-    /// compacted into 16x16 tiles. Uses ShaderConfig and ActiveTiles resources;
+    /// compacted into 16x16 tiles. Uses `ShaderConfig` and `ActiveTiles` resources;
     /// kernels must guard the logical region and subtract the output origin.
     Pixels,
     /// Cover an extent with ceil(extent/workgroup) groups. Kernels must guard
@@ -134,8 +136,9 @@ pub struct ShaderPass {
     pub dispatch: ShaderDispatch,
 }
 
-/// Ordered native GPU passes with automatic resource leases and barriers. Input
-/// dependencies cover the whole filter domain so reductions and multiresolution
+/// Ordered native GPU passes with automatic resource leases and barriers.
+///
+/// Input dependencies cover the whole filter domain so reductions and multiresolution
 /// sampling remain correct under retained updates. No CPU readback between passes.
 #[derive(Clone)]
 pub struct ShaderPipeline {
@@ -146,6 +149,10 @@ pub struct ShaderPipeline {
     pub(crate) output_outset: f32,
     identity: u64,
 }
+#[allow(
+    clippy::expect_used,
+    reason = "Exhausting pipeline identities must fail rather than alias a live shader snapshot"
+)]
 fn next_identity() -> u64 {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     NEXT.try_update(
@@ -172,13 +179,18 @@ impl std::fmt::Debug for ShaderPipeline {
 }
 impl ShaderPipeline {
     /// Immutable declarations, available for inspecting and rebuilding a plan.
+    #[must_use]
     pub fn resources(&self) -> &[ShaderResource] {
         &self.resources
     }
+    #[must_use]
     pub fn passes(&self) -> &[ShaderPass] {
         &self.passes
     }
 
+    ///
+    /// # Errors
+    /// Returns an error for invalid resources, bindings, initialization order, workgroups, or dispatch extents.
     pub fn new(
         resources: Vec<ShaderResource>,
         passes: Vec<ShaderPass>,
@@ -193,6 +205,9 @@ impl ShaderPipeline {
             identity: next_identity(),
         })
     }
+    ///
+    /// # Errors
+    /// Returns an error if the index is out of bounds or the replacement violates the pipeline resource/binding contract.
     pub fn with_resource(
         &self,
         index: usize,
@@ -210,6 +225,7 @@ impl ShaderPipeline {
         })
     }
     /// Native invocations bind external resources by index, independently of slots.
+    #[must_use]
     pub fn external_count(&self) -> usize {
         self.resources
             .iter()
@@ -225,6 +241,9 @@ impl ShaderPipeline {
     }
     /// Declare point or bounded sampled input dependencies. This never rewrites
     /// source; whole-domain dependencies remain the default for generic pipelines.
+    ///
+    /// # Errors
+    /// Returns an error if a sampled radius is negative or nonfinite.
     pub fn with_input_dependency(&self, input: ShaderInput) -> Result<Self, ShaderError> {
         if let ShaderInput::Sampled { radius } = input
             && (!radius.is_finite() || radius < 0.0)
@@ -240,6 +259,7 @@ impl ShaderPipeline {
         self.input_count() != 0
     }
     /// Number of immutable GPU inputs required by each invocation.
+    #[must_use]
     pub fn input_count(&self) -> usize {
         self.resources
             .iter()
@@ -249,6 +269,9 @@ impl ShaderPipeline {
     /// Declare an aggregate maximum input displacement for the entire pipeline,
     /// in logical canvas units. All passes, interpolation and buffer-derived
     /// accesses must respect it. Without this declaration, dependencies are global.
+    ///
+    /// # Errors
+    /// Returns an error if the radius is negative or nonfinite.
     pub fn with_input_radius(&self, radius: f32) -> Result<Self, ShaderError> {
         if !radius.is_finite() || radius < 0.0 {
             return Err(ShaderError::InvalidSampleRadius);
@@ -267,6 +290,9 @@ impl ShaderPipeline {
     /// Maximum output growth on each side of the source geometry, in logical
     /// canvas units. Independent from read radius: shadows/offsets need both.
     /// Graph primitive regions remain explicit clips, as for built-in filters.
+    ///
+    /// # Errors
+    /// Returns an error if the outset is negative or nonfinite.
     pub fn with_output_outset(&self, outset: f32) -> Result<Self, ShaderError> {
         if !outset.is_finite() || outset < 0.0 {
             return Err(ShaderError::InvalidOutputOutset);
@@ -287,16 +313,19 @@ impl ShaderPipeline {
         else {
             return false;
         };
-        let first_output = self
-            .passes
+        self.passes
             .iter()
-            .position(|p| p.bindings.iter().any(|&(_, r)| r == output))
-            .unwrap();
-        self.passes[first_output..].iter().any(|p| {
-            p.bindings
-                .iter()
-                .any(|&(_, r)| matches!(self.resources[r], ShaderResource::Input(_)))
-        })
+            .skip_while(|pass| {
+                !pass
+                    .bindings
+                    .iter()
+                    .any(|&(_, resource)| resource == output)
+            })
+            .any(|p| {
+                p.bindings
+                    .iter()
+                    .any(|&(_, r)| matches!(self.resources[r], ShaderResource::Input(_)))
+            })
     }
 }
 impl From<ShaderPipeline> for crate::Filter {

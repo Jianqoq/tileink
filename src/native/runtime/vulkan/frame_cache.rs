@@ -43,16 +43,19 @@ impl Cache {
         } else {
             self.storage.pop()
         };
-        if let Some(arena) = &cached
-            && arena.capacities.len() >= sizes.len()
-            && arena
-                .capacities
-                .iter()
-                .zip(sizes)
-                .all(|(capacity, size)| capacity >= size)
-        {
-            return Ok(cached.unwrap());
-        }
+        let cached = match cached {
+            Some(arena)
+                if arena.capacities.len() >= sizes.len()
+                    && arena
+                        .capacities
+                        .iter()
+                        .zip(sizes)
+                        .all(|(capacity, size)| capacity >= size) =>
+            {
+                return Ok(arena);
+            }
+            cached => cached,
+        };
         let capacities = sizes
             .iter()
             .enumerate()

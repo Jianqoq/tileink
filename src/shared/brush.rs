@@ -104,6 +104,7 @@ pub(crate) const ENCODED_BRUSH_HEADER_WORDS: usize = GPU_BRUSH_U32_STRIDE + GPU_
 
 impl Brush {
     /// Creates an image brush from a renderer-owned image resource key with explicit sampling.
+    #[must_use]
     pub fn from_image_key(
         key: ImageKey,
         rect: kurbo::Rect,
@@ -164,6 +165,7 @@ impl Brush {
     ///
     /// # Panics
     /// Panics if a sweep gradient has a nonfinite start or end angle.
+    #[must_use]
     pub fn from_gradient(gradient: &Gradient) -> Self {
         Self::from_gradient_with_ramp_size(gradient, estimate_gradient_ramp_size(gradient))
     }
@@ -172,6 +174,7 @@ impl Brush {
     ///
     /// # Panics
     /// Panics if a sweep gradient has a nonfinite start or end angle.
+    #[must_use]
     pub fn from_gradient_with_ramp_size(gradient: &Gradient, ramp_size: usize) -> Self {
         let ramp = build_ramp(gradient, ramp_size);
         match gradient.kind {
@@ -221,6 +224,7 @@ impl Brush {
         }
     }
 
+    #[must_use]
     pub fn four_corner(bounds: kurbo::Rect, colors: [peniko::Color; 4]) -> Self {
         Self::FourCorner(FourCornerGradient {
             bounds: [
@@ -234,7 +238,7 @@ impl Brush {
     }
 
     #[inline]
-    pub(crate) fn solid_color(&self) -> Option<peniko::Color> {
+    pub(crate) const fn solid_color(&self) -> Option<peniko::Color> {
         match self {
             Self::Solid(color) => Some(*color),
             _ => None,
@@ -321,10 +325,8 @@ pub(crate) fn push_encoded_brush(blob: &mut Vec<u32>, brush: &Brush) -> (u32, u3
         Brush::Pattern(pattern) => {
             data[1] = encode_gpu_extend(pattern.extend);
             copy_f32_bits(&mut params[0..6], &pattern.transform);
-            let (width, height) = pattern.image_size();
-            data[5] = width;
-            data[6] = height;
-            data[7] = pattern.opacity as u32;
+            // Resource dimensions are patched from renderer-owned image placement on upload.
+            data[7] = u32::from(pattern.opacity);
             data[8] = encode_gpu_pattern_sampling(pattern.sampling);
             let PatternImage::Resource(id) = pattern.image;
             let (scope, low, high) = id.encode();
@@ -535,7 +537,7 @@ impl PatternBrush {
     /// Creates a resource descriptor with a caller-provided sampling transform.
     /// Image dimensions are validated when registering/uploading the resource;
     /// constructing a descriptor from its identity is infallible.
-    pub(crate) fn new_resource(
+    pub(crate) const fn new_resource(
         id: ImageResourceId,
         transform: [f32; 6],
         extend: Extend,
@@ -582,6 +584,7 @@ impl PatternBrush {
 
     /// Creates a renderer-resource pattern brush that maps image pixels 1:1 to canvas
     /// coordinates.
+    #[must_use]
     pub fn for_origin_resource(
         key: ImageKey,
         origin: [f32; 2],
@@ -606,7 +609,7 @@ impl PatternBrush {
     }
 
     #[cfg(test)]
-    pub(crate) fn image_key(&self) -> Option<ImageKey> {
+    pub(crate) const fn image_key(&self) -> Option<ImageKey> {
         match self.image {
             PatternImage::Resource(ImageResourceId::Renderer(key)) => Some(key),
             PatternImage::Resource(ImageResourceId::Scene(_)) => None,
@@ -614,14 +617,10 @@ impl PatternBrush {
     }
 
     #[cfg(test)]
-    pub(crate) fn image_resource_id(&self) -> ImageResourceId {
+    pub(crate) const fn image_resource_id(&self) -> ImageResourceId {
         match self.image {
             PatternImage::Resource(id) => id,
         }
-    }
-
-    pub(crate) fn image_size(&self) -> (u32, u32) {
-        (0, 0)
     }
 }
 
@@ -702,7 +701,7 @@ fn push_encoded_header(
     blob.extend_from_slice(&params);
 }
 
-fn set_local_payload(data: &mut [u32; GPU_BRUSH_U32_STRIDE], len: usize) {
+const fn set_local_payload(data: &mut [u32; GPU_BRUSH_U32_STRIDE], len: usize) {
     data[2] = ENCODED_BRUSH_HEADER_WORDS as u32;
     data[3] = len as u32;
 }
@@ -723,7 +722,7 @@ fn color_from_premul_rgba8(color: u32) -> peniko::Color {
     peniko::Color::from_rgba8(unpremul(r), unpremul(g), unpremul(b), a)
 }
 
-pub(crate) fn encode_gpu_extend(extend: Extend) -> u32 {
+pub(crate) const fn encode_gpu_extend(extend: Extend) -> u32 {
     match extend {
         Extend::Pad => GPU_EXTEND_PAD,
         Extend::Repeat => GPU_EXTEND_REPEAT,
@@ -731,7 +730,7 @@ pub(crate) fn encode_gpu_extend(extend: Extend) -> u32 {
     }
 }
 
-fn decode_gpu_extend(extend: u32) -> Option<Extend> {
+const fn decode_gpu_extend(extend: u32) -> Option<Extend> {
     match extend {
         GPU_EXTEND_PAD => Some(Extend::Pad),
         GPU_EXTEND_REPEAT => Some(Extend::Repeat),
@@ -740,14 +739,14 @@ fn decode_gpu_extend(extend: u32) -> Option<Extend> {
     }
 }
 
-pub(crate) fn encode_gpu_pattern_sampling(sampling: PatternSampling) -> u32 {
+pub(crate) const fn encode_gpu_pattern_sampling(sampling: PatternSampling) -> u32 {
     match sampling {
         PatternSampling::Nearest => GPU_PATTERN_NEAREST,
         PatternSampling::Bilinear => GPU_PATTERN_BILINEAR,
     }
 }
 
-fn decode_gpu_pattern_sampling(sampling: u32) -> Option<PatternSampling> {
+const fn decode_gpu_pattern_sampling(sampling: u32) -> Option<PatternSampling> {
     match sampling {
         GPU_PATTERN_NEAREST => Some(PatternSampling::Nearest),
         GPU_PATTERN_BILINEAR => Some(PatternSampling::Bilinear),

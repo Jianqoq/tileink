@@ -106,7 +106,7 @@ fn repeated_nested_subtree_edits_reclaim_command_lists() {
     let mut scene = scene();
     let mut state = PersistentSceneMaterializer::new(&scene);
     let initial = state.canvas.command_lists.len();
-    let old = state.canvas.clone();
+    let old = std::rc::Rc::clone(&state.canvas);
     let old_plan = uncached_plan(&old);
     let crate::shared::execution::ExecOp::DrawBatch { draws: outside, .. } =
         &old.compiled_plan.as_ref().unwrap().ops[0]
@@ -339,7 +339,7 @@ fn scene_fragments_release_all_internal_clip_filter_and_mask_lists() {
                 RetainedParent::content(id(3)),
                 None,
                 id(4),
-                source.clone(),
+                std::rc::Rc::clone(&source),
                 Affine::IDENTITY,
             )
             .commit()

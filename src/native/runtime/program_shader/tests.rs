@@ -19,7 +19,7 @@ fn pipeline_cache_population_does_not_change_execution_plan_fingerprint() {
     .unwrap();
     let before = format!("{kernel:?}");
     let a = pipeline::source(&kernel);
-    let b = pipeline::source(&kernel.clone());
+    let b = pipeline::source(&kernel);
     assert!(std::rc::Rc::ptr_eq(&a, &b));
     assert_eq!(before, format!("{kernel:?}"));
 }

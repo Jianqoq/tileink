@@ -11,7 +11,7 @@ pub(super) struct LocalSpace {
 }
 
 impl LocalSpace {
-    pub(super) fn new(surface: Bounds) -> Self {
+    pub(super) const fn new(surface: Bounds) -> Self {
         Self { surface }
     }
 
@@ -19,16 +19,15 @@ impl LocalSpace {
         let dx = -(self.surface.x0 as f32);
         let dy = -(self.surface.y0 as f32);
         Line {
-            path_id: line.path_id,
-            _pad: line._pad,
             p0: [line.p0[0] + dx, line.p0[1] + dy],
             p1: [line.p1[0] + dx, line.p1[1] + dy],
+            ..line
         }
     }
 
     // Saturate to the signed coordinate domain before clipping: wrapping a world
     // edge around a negative surface origin turns a full clip into an empty one.
-    pub(super) fn pixel_bounds(self, bounds: PixelBounds) -> PixelBounds {
+    pub(super) const fn pixel_bounds(self, bounds: PixelBounds) -> PixelBounds {
         PixelBounds {
             x0: bounds.x0.saturating_sub(self.surface.x0),
             y0: bounds.y0.saturating_sub(self.surface.y0),
@@ -37,7 +36,7 @@ impl LocalSpace {
         }
     }
 
-    pub(super) fn bounds(self, bounds: Bounds) -> Bounds {
+    pub(super) const fn bounds(self, bounds: Bounds) -> Bounds {
         Bounds::new(
             bounds.x0.saturating_sub(self.surface.x0),
             bounds.y0.saturating_sub(self.surface.y0),

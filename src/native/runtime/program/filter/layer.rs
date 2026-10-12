@@ -21,7 +21,7 @@ impl Geometry {
     /// # Safety
     /// All handles must belong to one batch. Scan must precede every consumer;
     /// draw/path/paint records and scan capacities must cover the logical scene.
-    pub(in crate::native::runtime::program) unsafe fn from_scan(
+    pub(in crate::native::runtime::program) const unsafe fn from_scan(
         draws: ResourceId,
         scan: &crate::native::runtime::program::scene_scan::ScanOutput,
         paint: ResourceId,
@@ -42,10 +42,10 @@ impl Geometry {
         }
     }
 
-    pub(super) fn bindings(&self) -> &[(u32, ResourceId)] {
+    pub(super) const fn bindings(&self) -> &[(u32, ResourceId)] {
         &self.bindings
     }
-    pub(super) fn shadow_base(&self) -> u32 {
+    pub(super) const fn shadow_base(&self) -> u32 {
         self.shadow_base
     }
     pub fn mask(

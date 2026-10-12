@@ -15,6 +15,7 @@ pub struct Radius {
 impl Radius {
     pub const ZERO: Self = Self::all(0.0);
 
+    #[must_use]
     pub const fn all(radius: f32) -> Self {
         Self {
             top_left: radius,
@@ -63,7 +64,8 @@ pub struct StrokeWidths {
 }
 
 impl StrokeWidths {
-    pub fn all(width: f32) -> Self {
+    #[must_use]
+    pub const fn all(width: f32) -> Self {
         Self {
             top: width,
             right: width,
@@ -72,7 +74,7 @@ impl StrokeWidths {
         }
     }
 
-    pub(crate) fn clamped(self) -> Self {
+    pub(crate) const fn clamped(self) -> Self {
         Self {
             top: self.top.max(0.0),
             right: self.right.max(0.0),
@@ -113,7 +115,7 @@ pub struct RectShadow {
 }
 
 impl Rect {
-    pub(crate) fn bounds(&self) -> Bounds {
+    pub(crate) const fn bounds(&self) -> Bounds {
         let (x0, y0, x1, y1) = self.axis_bounds();
         Bounds::new(
             x0.floor() as i32,
@@ -131,7 +133,7 @@ impl Rect {
         self
     }
 
-    pub(crate) fn axis_bounds(&self) -> (f64, f64, f64, f64) {
+    pub(crate) const fn axis_bounds(&self) -> (f64, f64, f64, f64) {
         (
             self.start.x.min(self.end.x),
             self.start.y.min(self.end.y),

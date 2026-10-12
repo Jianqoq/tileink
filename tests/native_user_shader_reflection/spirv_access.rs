@@ -42,7 +42,7 @@ fn name(words: &mut Vec<u32>, opcode: u32, prefix: &[u32], text: &str) {
     instruction(words, opcode, &operands);
 }
 fn module(nonwritable: &[(u32, &[u32])]) -> Vec<u8> {
-    let mut words = vec![0x07230203, 0x00010000, 0, 32, 0];
+    let mut words = vec![0x0723_0203, 0x0001_0000, 0, 32, 0];
     instruction(&mut words, 17, &[1]); // Shader capability.
     instruction(&mut words, 14, &[0, 1]); // Logical GLSL450 memory model.
     name(&mut words, 15, &[5, 20], "main");

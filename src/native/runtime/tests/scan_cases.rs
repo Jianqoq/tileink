@@ -13,7 +13,7 @@ pub(crate) fn prefix_case(lengths: &[u32], seed: u32) -> Result<(ComputeBatch, V
             .collect::<Vec<_>>()
     };
     let mut chunks = Vec::new();
-    let mut counts = vec![0x98765432; 7];
+    let mut counts = vec![0x9876_5432; 7];
     let mut cursor = 7usize;
     let mut rng = seed;
     for &len in lengths {
@@ -24,14 +24,14 @@ pub(crate) fn prefix_case(lengths: &[u32], seed: u32) -> Result<(ComputeBatch, V
             len,
         });
         for _ in 0..len {
-            rng = rng.wrapping_mul(1664525).wrapping_add(1013904223);
+            rng = rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
             counts.push(rng);
         }
-        counts.extend([0x98765432; 3]);
+        counts.extend([0x9876_5432; 3]);
         cursor = counts.len();
     }
-    let mut ranges = vec![0x55555555; counts.len() * 2];
-    let mut cursors = vec![0x55555555; counts.len()];
+    let mut ranges = vec![0x5555_5555; counts.len() * 2];
+    let mut cursors = vec![0x5555_5555; counts.len()];
     let mut totals = Vec::new();
     let mut offsets = Vec::new();
     let mut next = 19u32;
@@ -90,11 +90,11 @@ pub(crate) fn prefix_case(lengths: &[u32], seed: u32) -> Result<(ComputeBatch, V
     let chunk_ranges_id = batch.buffer(bytemuck::cast_slice(&chunk_ranges).to_vec())?;
     let active = batch.buffer(words(&[0]))?;
     let counts_id = batch.buffer(words(&counts))?;
-    let ranges_id = batch.buffer(words(&vec![0x55555555; ranges.len()]))?;
-    let cursors_id = batch.buffer(words(&vec![0x55555555; cursors.len()]))?;
+    let ranges_id = batch.buffer(words(&vec![0x5555_5555; ranges.len()]))?;
+    let cursors_id = batch.buffer(words(&vec![0x5555_5555; cursors.len()]))?;
     let totals_id = batch.buffer(words(&vec![0; lengths.len()]))?;
     let offsets_id = batch.buffer(words(&vec![0; lengths.len()]))?;
-    let bumps_id = batch.buffer(words(&[0x55555555; 2]))?;
+    let bumps_id = batch.buffer(words(&[0x5555_5555; 2]))?;
     let x = 3u32.min(lengths.len() as u32);
     let grid = [x, (lengths.len() as u32).div_ceil(x), 1];
     // SAFETY: dense metadata contains disjoint chunks of at most 256 words,
@@ -186,9 +186,9 @@ pub(crate) fn count_case(p0: [f32; 2], p1: [f32; 2]) -> Result<ComputeBatch> {
         })
         .to_vec(),
     )?;
-    let mut initial = vec![0x12345678; 7];
+    let mut initial = vec![0x1234_5678; 7];
     initial.extend([0; 64]);
-    initial.extend([0x12345678; 7]);
+    initial.extend([0x1234_5678; 7]);
     let backdrops = batch.buffer(words(&initial))?;
     let counts = batch.buffer(words(&initial))?;
     let active = batch.buffer(words(&[0]))?;

@@ -10,6 +10,7 @@ pub(super) struct Buffer {
 impl From<ID3D12Resource> for Buffer {
     fn from(resource: ID3D12Resource) -> Self {
         Self {
+            // SAFETY: The retained COM resource is live; querying its immutable descriptor does not access mapped memory.
             capacity: unsafe { resource.GetDesc().Width },
             resource,
         }
@@ -33,6 +34,10 @@ impl Pool {
         resources.into()
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "An over-budget pool is nonempty, so its smallest idle buffer exists"
+    )]
     pub fn release_unused(&mut self, available: Available) {
         // Completed buffers skipped by a smaller frame remain available for a
         // later size instead of being destroyed and reallocated on every resize.

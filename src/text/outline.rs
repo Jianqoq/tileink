@@ -7,7 +7,7 @@ use swash::{
 
 use super::scaler::{fake_italic_transform, with_glyph_scaler};
 
-pub(super) fn outline_cache_key(cache_key: CacheKey) -> CacheKey {
+pub(super) const fn outline_cache_key(cache_key: CacheKey) -> CacheKey {
     CacheKey {
         x_bin: SubpixelBin::Zero,
         y_bin: SubpixelBin::Zero,
@@ -57,7 +57,7 @@ pub(super) fn append_outline_path(path: &mut BezPath, outline: &BezPath, origin:
 }
 
 fn push_swash_command(path: &mut BezPath, command: SwashPathCommand) {
-    let p = |p: Vector| (p.x as f64, -p.y as f64);
+    let p = |p: Vector| (f64::from(p.x), f64::from(-p.y));
     match command {
         SwashPathCommand::MoveTo(to) => path.move_to(p(to)),
         SwashPathCommand::LineTo(to) => path.line_to(p(to)),

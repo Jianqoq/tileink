@@ -11,13 +11,13 @@ use peniko::{
 use std::rc::Rc;
 type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-fn id(value: u64) -> Id {
+const fn id(value: u64) -> Id {
     Id::for_owner(235_000 + value)
 }
-fn rect() -> Rect {
+const fn rect() -> Rect {
     Rect::new(0.0, 0.0, 32.0, 32.0)
 }
-fn filter() -> D {
+const fn filter() -> D {
     D::Filter {
         filter: Filter::Opacity(0.5),
         sample_region: Region::rect(rect(), Radius::ZERO),
@@ -122,7 +122,7 @@ fn compare(
         let pixel = actual.pixels[16 * 32 + x];
         for shift in [0, 8, 16, 24] {
             assert!(
-                ((pixel >> shift & 255) as i32 - (analytic >> shift & 255) as i32).abs() <= 1,
+                (((pixel >> shift) & 255) as i32 - ((analytic >> shift) & 255) as i32).abs() <= 1,
                 "x={x}: pixel={pixel:08x}, analytic={analytic:08x}"
             );
         }

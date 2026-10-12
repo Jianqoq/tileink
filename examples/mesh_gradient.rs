@@ -8,6 +8,10 @@ use tileink::{
     NativeRenderer, Radius,
 };
 
+#[allow(
+    clippy::expect_used,
+    reason = "The example uses fixed valid rectangular mesh dimensions, positions and colors"
+)]
 fn scene() -> Canvas {
     let mut canvas = Canvas::new(960, 640, 1.0);
     canvas.push_rect(
@@ -40,7 +44,9 @@ fn scene() -> Canvas {
     canvas.push_rect(
         Rect::new(32.0, 32.0, 928.0, 608.0),
         Radius::all(32.0),
-        MeshGradient::new(3, 3, positions, colors).unwrap(),
+        MeshGradient::new(3, 3, positions, colors).expect(
+            "The example uses fixed valid rectangular mesh dimensions, positions and colors",
+        ),
     );
     let mut path = BezPath::new();
     path.move_to((110.0, 440.0));
@@ -64,7 +70,7 @@ fn scene() -> Canvas {
             Color::from_rgba8(255, 255, 255, 60),
         ],
     )
-    .unwrap();
+    .expect("The example uses fixed valid rectangular mesh dimensions, positions and colors");
     canvas.push_path(path, foreground, Affine::IDENTITY, FillRule::NonZero, 0.1);
     canvas
 }

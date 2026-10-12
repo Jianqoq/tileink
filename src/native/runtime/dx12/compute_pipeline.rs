@@ -17,6 +17,7 @@ pub struct Pipeline {
     pub grid: Option<u32>,
 }
 pub fn identity(adapter: &IDXGIAdapter1, luid: &str) -> Result<Vec<u8>> {
+    // SAFETY: The retained adapter is live and all descriptor/driver output storage remains valid during these queries.
     unsafe {
         let d = adapter.GetDesc1()?;
         let driver = adapter.CheckInterfaceSupport(&IDXGIDevice::IID)?;
@@ -61,6 +62,10 @@ pub fn ensure(
     );
     Ok(())
 }
+#[allow(
+    clippy::expect_used,
+    reason = "Successful cache lookup or compilation installs the pipeline before returning"
+)]
 fn create(
     device: &ID3D12Device,
     identity: &[u8],
@@ -69,6 +74,7 @@ fn create(
     shader_bytes: &[u8],
     shader_key: &str,
 ) -> Result<Pipeline> {
+    // SAFETY: Validated reflection bounds descriptor ranges and root slots; shader and descriptor arrays remain live until synchronous pipeline creation returns.
     unsafe {
         let table = |sampler: bool| -> Result<Vec<D3D12_DESCRIPTOR_RANGE>> {
             let mut ranges = Vec::new();
@@ -123,7 +129,7 @@ fn create(
         };
         let resources = add_table(&resource_ranges);
         let samplers = add_table(&sampler_ranges);
-        let grid = if shader.bindings.iter().any(|b| b.internal) {
+        let grid = shader.bindings.iter().any(|b| b.internal).then(|| {
             let index = parameters.len() as u32;
             parameters.push(D3D12_ROOT_PARAMETER {
                 ParameterType: D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS,
@@ -136,10 +142,8 @@ fn create(
                 },
                 ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
             });
-            Some(index)
-        } else {
-            None
-        };
+            index
+        });
         let desc = D3D12_ROOT_SIGNATURE_DESC {
             NumParameters: parameters.len() as u32,
             pParameters: parameters.as_ptr(),
@@ -148,12 +152,12 @@ fn create(
         let mut serialized = None;
         let mut errors = None;
         D3D12SerializeRootSignature(
-            &desc,
+            &raw const desc,
             D3D_ROOT_SIGNATURE_VERSION_1,
-            &mut serialized,
-            Some(&mut errors),
+            &raw mut serialized,
+            Some(&raw mut errors),
         )?;
-        let blob = serialized.unwrap();
+        let blob = serialized.ok_or("DX12 root-signature serialization returned no blob")?;
         let bytes =
             std::slice::from_raw_parts(blob.GetBufferPointer().cast(), blob.GetBufferSize());
         let signature: ID3D12RootSignature = device.CreateRootSignature(0, bytes)?;
@@ -175,7 +179,7 @@ fn create(
                 },
                 ..Default::default()
             };
-            let result = device.CreateComputePipelineState::<ID3D12PipelineState>(&desc);
+            let result = device.CreateComputePipelineState::<ID3D12PipelineState>(&raw const desc);
             ManuallyDrop::drop(&mut desc.pRootSignature);
             let state = result?;
             let blob = state.GetCachedBlob()?;
@@ -222,7 +226,9 @@ fn create(
         );
         Ok(Pipeline {
             signature,
-            state: pipeline.into_inner().unwrap(),
+            state: pipeline
+                .into_inner()
+                .expect("Successful cache lookup or compilation installs the pipeline"),
             resources,
             samplers,
             grid,

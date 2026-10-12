@@ -20,6 +20,10 @@ impl ComputeBatch {
     pub fn import_texture(&mut self, texture: &NativeTexture) -> Result<ResourceId> {
         self.import_texture_inner(texture, true)
     }
+    #[allow(
+        clippy::expect_used,
+        reason = "Initialization passes own persistent textures; accepted writes must not reuse an exhausted content version"
+    )]
     pub(super) fn import_texture_inner(
         &mut self,
         texture: &NativeTexture,
@@ -80,16 +84,24 @@ impl ComputeBatch {
         Ok(id)
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Initialization passes own persistent textures; accepted writes must not reuse an exhausted content version"
+    )]
     pub fn skip_initialization(&self, pass: &super::Pass) -> bool {
         pass.initialization
             .is_some_and(|id| match &self.resources[id.index] {
                 Resource::Texture(texture) => {
-                    texture.persistent.as_ref().unwrap().state.initialized.get()
+                    texture.persistent.as_ref().expect("Initialization passes own persistent textures; accepted writes must not reuse an exhausted content version").state.initialized.get()
                 }
                 _ => unreachable!("initialization targets an image"),
             })
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Initialization passes own persistent textures; accepted writes must not reuse an exhausted content version"
+    )]
     pub fn confirm_submission(&self) {
         self.accepted.set(true);
         for resource in &self.resources {
@@ -126,11 +138,11 @@ impl ComputeBatch {
                     crate::native::runtime::texture::Allocation::Metal(_) => {}
                     #[cfg(feature = "dx12")]
                     crate::native::runtime::texture::Allocation::Dx12(allocation) => {
-                        allocation.state.set(allocation.final_state)
+                        allocation.state.set(allocation.final_state);
                     }
                     #[cfg(feature = "vulkan")]
                     crate::native::runtime::texture::Allocation::Vulkan(image) => {
-                        image.current_layout.set(image.final_layout)
+                        image.current_layout.set(image.final_layout);
                     }
                 }
                 if let Some((id, sync)) = &self.synchronization

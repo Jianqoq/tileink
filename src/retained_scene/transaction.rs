@@ -238,6 +238,9 @@ impl RetainedSceneTransaction<'_> {
         self
     }
 
+    ///
+    /// # Errors
+    /// Returns an error for invalid geometry, resources, node/parent references, ordering, or topology. Failed transactions roll back all scene mutations.
     pub fn commit(&mut self) -> Result<SceneVersion, RetainedSceneError> {
         self.scene
             .commit_mutations(std::mem::take(&mut self.mutations))

@@ -34,6 +34,7 @@ impl Host {
             },
         )?;
         let baseline = Adapter::vulkan_descriptor_for_test(&base);
+        // SAFETY: The baseline retains instance/physical device; queried families bound the test device queues and owned synchronization resources.
         unsafe {
             let families = baseline
                 .instance
@@ -108,6 +109,7 @@ impl Host {
         }
     }
     fn context(self: &Rc<Self>, timeline: bool) -> Result<NativeContext> {
+        // SAFETY: The fixture retains all imported parent handles, device and queues throughout context use.
         Ok(unsafe {
             NativeContext::from_vulkan(ContextDescriptor {
                 entry: self.baseline.entry.clone(),
@@ -119,7 +121,7 @@ impl Host {
                 texture_tables: true,
                 timeline_semaphores: timeline,
                 validation: true,
-                owner: self.clone(),
+                owner: std::rc::Rc::<Self>::clone(self),
             })?
         })
     }
@@ -132,6 +134,7 @@ impl Host {
         families: [u32; 2],
         access: [vk::AccessFlags; 2],
     ) {
+        // SAFETY: The fixture owns this recording command and image; supplied layouts and queue families describe its explicit ownership transfer.
         unsafe {
             self.device.cmd_pipeline_barrier(
                 command,
@@ -158,6 +161,7 @@ impl Host {
         }
     }
     fn commands(&self, image: vk::Image, first: bool) -> Result<vk::CommandBuffer> {
+        // SAFETY: The live fixture owns its command pool; allocated buffers are recorded and retained through the fixture fence.
         unsafe {
             let command = self.device.allocate_command_buffers(
                 &vk::CommandBufferAllocateInfo::default()
@@ -250,6 +254,7 @@ impl Host {
         if timeline {
             submit = submit.push_next(&mut values);
         }
+        // SAFETY: The fixture serializes its external queue and retains commands, semaphores and the completion fence until retirement.
         unsafe {
             self.device.queue_submit(
                 self.external,
@@ -262,6 +267,7 @@ impl Host {
 }
 impl Drop for Host {
     fn drop(&mut self) {
+        // SAFETY: The fixture waits for its device before releasing its exclusively owned fence, semaphores, command pool and device.
         unsafe {
             let _ = self.device.device_wait_idle();
             self.device.destroy_fence(self.fence, None);
@@ -331,11 +337,12 @@ fn vulkan_target_use_transfers_ownership_and_consumes_binary_or_timeline_waits()
                     stages: vk::PipelineStageFlags::ALL_COMMANDS,
                 }],
                 signals: vec![point(host.done, value)],
-                owner: host.clone(),
+                owner: std::rc::Rc::<Host>::clone(&host),
             };
             if value == 1 {
                 let mut invalid = synchronization.clone();
                 invalid.outgoing.access = vk::AccessFlags::SHADER_WRITE;
+                // SAFETY: The test retains all resources; the deliberately invalid synchronization descriptor is rejected before GPU recording.
                 let rejected = unsafe {
                     context.vulkan_target_use(NativeRenderTarget::from(&texture), invalid)?
                 };
@@ -349,6 +356,7 @@ fn vulkan_target_use_transfers_ownership_and_consumes_binary_or_timeline_waits()
                     "rejection must not publish contents or consume the ready semaphore"
                 );
             }
+            // SAFETY: The fixture retains target and synchronization handles; explicit barriers establish the declared incoming ownership/layout.
             let usage = unsafe {
                 context.vulkan_target_use(NativeRenderTarget::from(&texture), synchronization)?
             };
@@ -377,6 +385,7 @@ fn vulkan_target_use_transfers_ownership_and_consumes_binary_or_timeline_waits()
             receipts.push(frame.submission);
         }
         host.submit(None, 2, 0, timeline, true)?;
+        // SAFETY: The fixture owns the completion fence and retains every transferred resource throughout the bounded wait.
         unsafe {
             host.device
                 .wait_for_fences(&[host.fence], true, 30_000_000_000)?;

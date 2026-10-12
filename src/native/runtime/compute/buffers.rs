@@ -53,7 +53,7 @@ impl ComputeBatch {
                 buffer: buffer.clone(),
                 bytes,
                 copies,
-                accepted: self.accepted.clone(),
+                accepted: std::rc::Rc::clone(&self.accepted),
             }));
         #[cfg(any(feature = "dx12", feature = "metal"))]
         if let Some(packet) = scatter {

@@ -1,5 +1,5 @@
 //! Brush-only scene serialization preserves complete source bytes and uniform bits.
-//! Filters use ShaderPipeline resources; their retired input-mode payload is gone.
+//! Filters use `ShaderPipeline` resources; their retired input-mode payload is gone.
 //! None of this payload is interpreted on the GPU.
 use super::*;
 use crate::shared::{brush::ENCODED_BRUSH_HEADER_WORDS, gpu_layout::brush::*};

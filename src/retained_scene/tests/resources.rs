@@ -3,11 +3,11 @@ use crate::shared::image_resource::ImageSource;
 
 fn vector_leaf(tile_width: u32) -> (Rc<Canvas>, ImageKey) {
     let svg = format!(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
         <defs><pattern id="p" width="{tile_width}" height="4" patternUnits="userSpaceOnUse">
             <rect width="2" height="2" fill="red"/>
         </pattern></defs><rect width="16" height="16" fill="url(#p)"/>
-        </svg>"##
+        </svg>"#
     );
     let tree = usvg::Tree::from_str(&svg, &usvg::Options::default()).unwrap();
     let mut canvas = Canvas::new(16, 16, 1.0);
@@ -30,14 +30,14 @@ fn vector_resources_follow_live_retained_nodes_and_shared_references() {
             RetainedParent::content(root),
             None,
             first,
-            source.clone(),
+            std::rc::Rc::clone(&source),
             Affine::IDENTITY,
         )
         .insert_scene(
             RetainedParent::content(root),
             None,
             second,
-            source.clone(),
+            std::rc::Rc::clone(&source),
             Affine::IDENTITY,
         )
         .commit()
@@ -83,7 +83,7 @@ fn replacing_retained_vector_content_removes_only_its_previous_resource() {
             RetainedParent::content(root),
             None,
             child,
-            old_source.clone(),
+            std::rc::Rc::clone(&old_source),
             Affine::IDENTITY,
         )
         .commit()

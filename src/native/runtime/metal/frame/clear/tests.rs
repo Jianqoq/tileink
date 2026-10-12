@@ -10,7 +10,7 @@ fn application_kernel_named_like_builtin_keeps_its_own_semantics() -> Result<()>
     let kernel = ShaderKernel::new(
         ShaderSources {
             metal: Some(
-                r"#include <metal_stdlib>
+                "#include <metal_stdlib>
 using namespace metal;
 kernel void filter_clear_region(texture2d<float, access::write> target [[texture(3)]],
     uint2 p [[thread_position_in_grid]]) {

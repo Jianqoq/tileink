@@ -5,13 +5,15 @@ pub fn validate(
     target: &ID3D12Resource,
     sync: &TargetSynchronization,
 ) -> Result<()> {
+    // SAFETY: The target COM resource is retained while its immutable descriptor is queried.
     let descriptor = unsafe { target.GetDesc() };
     validate_state(&descriptor, sync.incoming)?;
     validate_state(&descriptor, sync.outgoing)?;
     for point in sync.waits.iter().chain(&sync.signals) {
+        // SAFETY: The caller retains fence handles; querying their owners verifies same-device identity before recording queue operations.
         unsafe {
             let mut owner = None;
-            point.fence.GetDevice(&mut owner)?;
+            point.fence.GetDevice(&raw mut owner)?;
             let owner: ID3D12Device = owner.ok_or("external fence has no device")?;
             if owner.cast::<windows::core::IUnknown>()?.as_raw()
                 != device.cast::<windows::core::IUnknown>()?.as_raw()

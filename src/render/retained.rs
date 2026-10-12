@@ -39,7 +39,7 @@ pub(crate) struct RetainedRenderState<T> {
 
 impl<T: SurfaceAllocation> Default for RetainedRenderState<T> {
     fn default() -> Self {
-        Self::new(Default::default())
+        Self::new(IncrementalRenderConfig::default())
     }
 }
 
@@ -60,7 +60,7 @@ impl<T: SurfaceAllocation> RetainedRenderState<T> {
         }
     }
 
-    pub(crate) fn config(&self) -> IncrementalRenderConfig {
+    pub(crate) const fn config(&self) -> IncrementalRenderConfig {
         self.config
     }
 
@@ -70,22 +70,22 @@ impl<T: SurfaceAllocation> RetainedRenderState<T> {
             .set_budget(self.config.retained_texture_budget_bytes);
     }
 
-    pub(crate) fn stats(&self) -> &IncrementalRenderStats {
+    pub(crate) const fn stats(&self) -> &IncrementalRenderStats {
         &self.stats
     }
 
-    pub(crate) fn stats_mut(&mut self) -> &mut IncrementalRenderStats {
+    pub(crate) const fn stats_mut(&mut self) -> &mut IncrementalRenderStats {
         &mut self.stats
     }
 
-    pub(crate) fn active_tiles(&self) -> Option<&DamageTiles> {
+    pub(crate) const fn active_tiles(&self) -> Option<&DamageTiles> {
         self.active_tiles.as_ref()
     }
 
     /// Explicit force-full rendering never consumes retained backdrop history. Dirty-threshold
     /// redraws must still seed it: the next frame can return to incremental output and cannot
     /// reconstruct clean pre-backdrop pixels from a root texture containing the final frame.
-    pub(crate) fn bypasses_backdrop_cache(&self) -> bool {
+    pub(crate) const fn bypasses_backdrop_cache(&self) -> bool {
         matches!(
             self.stats.full_redraw_reason,
             Some(crate::render::incremental::FullRedrawReason::Forced)
@@ -97,16 +97,16 @@ impl<T: SurfaceAllocation> RetainedRenderState<T> {
     }
 
     #[cfg(test)]
-    pub(crate) fn take_active_tiles(&mut self) -> Option<DamageTiles> {
+    pub(crate) const fn take_active_tiles(&mut self) -> Option<DamageTiles> {
         self.active_tiles.take()
     }
 
-    pub(crate) fn invalidate(&mut self) {
+    pub(crate) const fn invalidate(&mut self) {
         self.incremental.invalidate_renderer_state();
         self.history_valid = false;
     }
 
-    pub(crate) fn invalidate_history(&mut self) {
+    pub(crate) const fn invalidate_history(&mut self) {
         self.history_valid = false;
     }
 
@@ -118,6 +118,10 @@ impl<T: SurfaceAllocation> RetainedRenderState<T> {
         self.history_valid = false;
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Persistent materialization installs a retained frame before scene selection"
+    )]
     pub(crate) fn select_materialized(
         &mut self,
         scene: Rc<Canvas>,
@@ -180,11 +184,15 @@ impl<T: SurfaceAllocation> RetainedRenderState<T> {
         }
         self.stats = plan.stats.clone();
         self.active_tiles = (!plan.stats.full_redraw).then(|| plan.tiles.clone());
-        self.rendering_frame = plan.frame.clone();
+        self.rendering_frame.clone_from(&plan.frame);
         self.surfaces.begin_frame(!plan.stats.full_redraw);
         plan
     }
 
+    #[allow(
+        clippy::suspicious_operation_groupings,
+        reason = "Delta continuity compares the prior version to from_version and the new frame to to_version"
+    )]
     pub(crate) fn finish_frame(&mut self, plan: DamagePlan, rendered: bool, history_updated: bool) {
         self.surfaces.end_frame();
         let backdrop_history_valid = !self.surfaces.take_backdrop_evicted();
@@ -205,8 +213,8 @@ impl<T: SurfaceAllocation> RetainedRenderState<T> {
                     let removed = delta
                         .patches
                         .iter()
-                        .filter(|patch| patch.old.is_some() && patch.new.is_none())
-                        .map(|patch| patch.old.unwrap().id)
+                        .filter(|patch| patch.new.is_none())
+                        .filter_map(|patch| patch.old.map(|node| node.id))
                         .collect();
                     self.surfaces.remove_nodes(&removed);
                 } else if !same_nodes {
@@ -341,7 +349,7 @@ impl SelectedScene<'_> {
         }
     }
 
-    pub(crate) fn materialized_reused(&self) -> bool {
+    pub(crate) const fn materialized_reused(&self) -> bool {
         matches!(
             self,
             Self::Retained {

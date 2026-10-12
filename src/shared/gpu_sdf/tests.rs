@@ -49,7 +49,7 @@ fn sdf_enum_fields_reject_unknown_fractional_and_nonfinite_values() {
 #[test]
 fn encoded_sdf_requires_a_complete_record_and_preserves_float_bits() {
     let fields = [
-        f32::from_bits(0x7fc01234),
+        f32::from_bits(0x7fc0_1234),
         -0.0,
         f32::INFINITY,
         f32::NEG_INFINITY,

@@ -1,8 +1,8 @@
 //! The same retained/history and persistent-resource contracts run on Metal.
 //! Imported Metal objects and event synchronization have additional tests in
-//! metal/lifecycle_tests.rs; these cases exercise the shared renderer scheduler.
+//! `metal/lifecycle_tests.rs`; these cases exercise the shared renderer scheduler.
 use super::Result;
-fn backend() -> crate::NativeBackend {
+const fn backend() -> crate::NativeBackend {
     crate::NativeBackend::Metal
 }
 #[path = "tests/clip_slots_gpu.rs"]

@@ -8,6 +8,10 @@ pub(super) enum Direction {
     Next,
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "Validated retained topology gives every non-root node a parent, branch and order key"
+)]
 pub(super) fn command_container(scene: &RetainedScene, mut id: RetainedNodeId) -> RetainedParent {
     loop {
         let parent = scene.nodes[&id].parent.expect("non-root node has parent");
@@ -39,6 +43,10 @@ fn edge_command_node(
     }
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "Validated retained topology gives every non-root node a parent, branch and order key"
+)]
 pub(super) fn command_neighbor(
     scene: &RetainedScene,
     mut id: RetainedNodeId,

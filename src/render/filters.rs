@@ -41,7 +41,7 @@ pub(crate) trait FilterAdapter: FilterPassAdapter {
     type LocalState;
     fn filter_candidates(&self, bounds: Bounds, canvas: &Canvas, plan: &ExecPlan) -> Vec<u32>;
     /// On failure the previous context must remain active. A returned state is
-    /// consumed exactly once by end_filter_scene, including recording failure.
+    /// consumed exactly once by `end_filter_scene`, including recording failure.
     fn begin_filter_scene(
         &mut self,
         canvas: &Canvas,
@@ -64,6 +64,10 @@ pub(crate) trait FilterAdapter: FilterPassAdapter {
     ) -> Result<(), Self::Error>;
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "Partial filter reuse requires retained source history and a local dependency radius"
+)]
 pub(crate) fn execute<A: FilterAdapter>(
     adapter: &mut A,
     canvas: &Canvas,

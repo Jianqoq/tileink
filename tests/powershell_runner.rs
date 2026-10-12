@@ -1,6 +1,15 @@
 //! Execute the shipped scripts with real PowerShell and a native Cargo recorder.
 //! Source-string assertions cannot verify argument boundaries, child environment,
 //! working directories or failure propagation.
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "Test setup and assertions abort on failure; production builds are checked separately"
+    )
+)]
 use std::{
     env, fs,
     path::PathBuf,
@@ -88,11 +97,11 @@ impl Runner {
                 "-NoProfile",
                 "-NonInteractive",
                 "-Command",
-                r#"
+                "
 $ErrorActionPreference = 'Stop'
 $runnerRequest = Get-Content -LiteralPath $env:TILEINK_RUNNER_ARGS -Raw -Encoding UTF8 | ConvertFrom-Json
 & $env:TILEINK_RUNNER_SCRIPT -CargoArgs $runnerRequest.arguments
-"#,
+",
             ])
             .current_dir(self.temp.path())
             .env("PATH", path)

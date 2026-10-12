@@ -9,8 +9,19 @@ use crate::shared::{filter_parameters::*, gpu_constants::*, layer::filter as mod
 
 impl FilterEncoding<'_, '_> {
     pub(super) fn record(&mut self, kernel: FilterKernel<'_>) -> Result<()> {
-        use FilterKernel::*;
-        let e = &mut self.execution;
+        use FilterKernel::{
+            ApplyColorFilterToTarget, ApplyColorMatrixToTarget, ApplyComponentTransferToTarget,
+            BlendFilterInputs, BlurRegionPartialToTarget, BlurRegionToTarget,
+            BuildDropShadowMaskToTarget, ClearRenderRegion, ClearRenderTarget,
+            CompositeDropShadowToTarget, CompositeFilterInputs, ConvolveMatrixToTarget,
+            CopyRegionToTarget, DiffuseLightingToTarget, DisplacementMapFilterInputs,
+            DownsampleRegion, FloodRegionToTarget, LiquidGlassToTarget, MorphologyAxisToTarget,
+            OffsetRegionToTarget, ProgressiveBlur, RectLiquidGlassCompositeRegion,
+            ShaderPipelineToTarget, SourceAlphaToTarget, SourceOverFilterInput,
+            SpecularLightingToTarget, TileFilterInput, TurbulenceToTarget,
+            UpsampleRectCompositeRegion, UpsampleRegion,
+        };
+        let e = &mut *self.execution;
         let bounds = match &kernel {
             ClearRenderTarget { .. } => Bounds::canvas(e.targets.size().0, e.targets.size().1),
             BlurRegionPartialToTarget { output_bounds, .. } => *output_bounds,
@@ -531,7 +542,7 @@ pub(super) fn configure_region(
     c.radius_bottom_right = radius.bottom_right;
     Ok(())
 }
-fn set_rect(c: &mut FilterConfig, b: Bounds) {
+const fn set_rect(c: &mut FilterConfig, b: Bounds) {
     c.rect_x0 = b.x0 as f32;
     c.rect_y0 = b.y0 as f32;
     c.rect_x1 = b.x1 as f32;

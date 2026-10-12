@@ -4,7 +4,10 @@ use std::io;
 pub fn validate(text: &str, entry: &str, abi: &Interface) -> io::Result<()> {
     validate_inner(text, entry, abi, false)
 }
-#[allow(dead_code)] // Also reused by the runtime application-shader compiler.
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)] // Also reused by the runtime application-shader compiler.
 pub fn validate_user(text: &str, entry: &str, abi: &Interface) -> io::Result<()> {
     validate_inner(text, entry, abi, true)
 }

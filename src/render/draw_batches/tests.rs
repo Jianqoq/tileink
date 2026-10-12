@@ -157,7 +157,7 @@ fn scratch_draws_keep_root_statistics_separate() {
     execute_draw_batch(
         &mut adapter,
         &canvas,
-        DrawBatch {
+        &DrawBatch {
             draws: &[0],
             id: 0,
             layers: 0..0,

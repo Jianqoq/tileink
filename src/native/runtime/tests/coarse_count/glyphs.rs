@@ -78,7 +78,7 @@ fn glyph_fixture_oracles_include_bilinear_border_candidates() {
         let base = 6 + scene.config[7] as usize * 6;
         match mode {
             14 => assert_eq!(&scene.expected[base + 1..base + 4], &[0, 1, 2]),
-            15 => assert_eq!(&scene.expected[base + 1..base + 4], &[0x45454545; 3]),
+            15 => assert_eq!(&scene.expected[base + 1..base + 4], &[0x4545_4545; 3]),
             16 => assert_eq!(scene.expected[base + 1], 0),
             _ => unreachable!(),
         }

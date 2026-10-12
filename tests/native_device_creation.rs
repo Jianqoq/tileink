@@ -1,4 +1,13 @@
 //! Exercise the actual creation gate without loading D3D12 or creating a GPU.
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "Test setup and assertions abort on failure; production builds are checked separately"
+    )
+)]
 #[path = "../src/native/runtime/dx12/creation.rs"]
 mod creation;
 use creation::Creation;
@@ -18,9 +27,14 @@ fn healthy_creation_gate_preserves_state_and_exclusive_ownership() {
     }
     let guard = creation::lock(&state).unwrap();
     assert!(guard.device_created && guard.debug_enabled);
+    drop(guard);
 }
 
 #[test]
+#[allow(
+    clippy::significant_drop_tightening,
+    reason = "The mutex guard must remain held during the deliberate panic to test poisoning"
+)]
 fn poisoned_native_creation_gate_rejects_reentry() {
     let state = Mutex::new(Creation {
         device_created: false,

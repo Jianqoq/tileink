@@ -11,6 +11,7 @@ type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn imported_contexts_preserve_host_images_and_restore_declared_states() -> Result {
     #[cfg(feature = "dx12")]
+    // SAFETY: The serial test enables validation before constructing its first context.
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }
@@ -33,6 +34,7 @@ fn imported_contexts_preserve_host_images_and_restore_declared_states() -> Resul
                 .all(|&pixel| pixel == 0)
         );
         let imported = Adapter::import_context_for_test(&host)?;
+        // SAFETY: The host retains every imported handle; invalid descriptors are rejected before recording, and accepted imports preserve declared states.
         let image = unsafe {
             match &texture.state.allocation {
                 #[cfg(feature = "dx12")]
@@ -87,7 +89,7 @@ fn imported_contexts_preserve_host_images_and_restore_declared_states() -> Resul
             }
         };
         let mut receipts = Vec::new();
-        for color in [0xff231347u32, 0xff1d710b] {
+        for color in [0xff23_1347_u32, 0xff1d_710b] {
             let mut batch = ComputeBatch::new();
             let source = batch.texture_rgba8([7, 3], color.to_le_bytes().repeat(21))?;
             let destination = batch.import_texture(&image)?;
@@ -130,6 +132,7 @@ fn imported_contexts_preserve_host_images_and_restore_declared_states() -> Resul
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn dx12_target_use_orders_external_queues_even_without_damage() -> Result {
     #[cfg(feature = "dx12")]
+    // SAFETY: The serial test enables validation before constructing its first context.
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }
@@ -146,18 +149,23 @@ fn dx12_target_use_orders_external_queues_even_without_damage() -> Result {
         },
     )?;
     let device = context.adapter.dx12_device_for_test();
+    // SAFETY: The live device creates a direct queue retained throughout the test.
     let queue: ID3D12CommandQueue = unsafe {
         device.CreateCommandQueue(&D3D12_COMMAND_QUEUE_DESC {
             Type: D3D12_COMMAND_LIST_TYPE_DIRECT,
             ..Default::default()
         })?
     };
+    // SAFETY: The live device creates a fence retained throughout the test.
     let before: ID3D12Fence = unsafe { device.CreateFence(0, D3D12_FENCE_FLAG_NONE)? };
+    // SAFETY: The live device creates a fence retained throughout the test.
     let after: ID3D12Fence = unsafe { device.CreateFence(0, D3D12_FENCE_FLAG_NONE)? };
+    // SAFETY: The live device creates a fence retained throughout the test.
     let consumed: ID3D12Fence = unsafe { device.CreateFence(0, D3D12_FENCE_FLAG_NONE)? };
     let texture = context.create_texture(7, 3)?;
     let scene = RetainedScene::new(7, 3, 1.0, RetainedNodeId::for_owner(870_001))?;
     let mut renderer = NativeRenderer::with_context(&context, 7, 3)?;
+    // SAFETY: The test retains target and fence handles; this invalid usage is rejected before any GPU recording.
     let rejected = unsafe {
         context.dx12_target_use(
             NativeRenderTarget::from(&texture),
@@ -178,6 +186,7 @@ fn dx12_target_use_orders_external_queues_even_without_damage() -> Result {
             .is_err()
     );
     assert!(!texture.state.initialized.get());
+    // SAFETY: The retained fence is live and has not yet been signaled.
     assert_eq!(unsafe { after.GetCompletedValue() }, 0);
     let mut incoming = D3D12_RESOURCE_STATE_COMMON;
     for value in 1..=2 {
@@ -186,9 +195,11 @@ fn dx12_target_use_orders_external_queues_even_without_damage() -> Result {
         } else {
             D3D12_RESOURCE_STATE_COMMON
         };
+        // SAFETY: The test owns the queue and fence and signals the value consumed by rendering.
         unsafe {
             queue.Signal(&before, value)?;
         }
+        // SAFETY: The target states match preceding work and the test retains all synchronization handles through completion.
         let usage = unsafe {
             context.dx12_target_use(
                 NativeRenderTarget::from(&texture),
@@ -208,6 +219,7 @@ fn dx12_target_use_orders_external_queues_even_without_damage() -> Result {
         };
         let frame = renderer.render_retained_to_target_use(&scene, usage)?;
         assert_eq!(frame.outgoing, NativeTargetState { state: outgoing });
+        // SAFETY: The test owns the external queue and fences; the wait orders consumption before host retirement.
         unsafe {
             queue.Wait(&after, value)?;
             queue.Signal(&consumed, value)?;
@@ -234,6 +246,7 @@ fn dx12_target_use_signal_failure_does_not_publish_state_or_history() -> Result 
         return Ok(());
     }
     #[cfg(feature = "dx12")]
+    // SAFETY: The serial test enables validation before constructing its first context.
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }
@@ -246,6 +259,7 @@ fn dx12_target_use_signal_failure_does_not_publish_state_or_history() -> Result 
             validation: true,
         },
     )?;
+    // SAFETY: The live context device creates the test-owned completion fence.
     let done: ID3D12Fence = unsafe {
         context
             .adapter
@@ -255,6 +269,7 @@ fn dx12_target_use_signal_failure_does_not_publish_state_or_history() -> Result 
     let target = context.create_texture(7, 3)?;
     let canvas = crate::Canvas::new(7, 3, 1.0);
     let mut renderer = crate::NativeRenderer::with_context(&context, 7, 3)?;
+    // SAFETY: The target and fence remain owned; incoming state matches the resource and failure injection occurs before publishing outgoing state.
     let usage = unsafe {
         context.dx12_target_use(
             (&target).into(),
@@ -276,6 +291,7 @@ fn dx12_target_use_signal_failure_does_not_publish_state_or_history() -> Result 
     ));
     assert!(!target.state.initialized.get());
     assert_eq!(target.state.content_version.get(), 0);
+    // SAFETY: The test retains the completion fence while verifying that the failed operation did not signal it.
     assert_eq!(unsafe { done.GetCompletedValue() }, 0);
     assert!(
         renderer.render(&canvas).is_err(),

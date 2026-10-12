@@ -51,6 +51,7 @@ impl SvgError {
         }
     }
 
+    #[must_use]
     pub fn feature(&self) -> &str {
         &self.feature
     }
@@ -69,16 +70,22 @@ impl Canvas {
     ///
     /// The conversion is transactional: unsupported SVG features return an error before this
     /// canvas is modified. This prevents partial SVG output from looking like a successful render.
+    ///
+    /// # Errors
+    /// Returns an error for unsupported SVG features or invalid transforms/filter parameters. The canvas remains unchanged on error.
     pub fn push_svg(&mut self, tree: &usvg::Tree) -> Result<(), SvgError> {
         self.push_svg_with_options(tree, SvgOptions::default())
     }
 
+    ///
+    /// # Errors
+    /// Returns an error for unsupported SVG features or invalid transforms/filter parameters. The canvas remains unchanged on error.
     pub fn push_svg_with_options(
         &mut self,
         tree: &usvg::Tree,
         options: SvgOptions,
     ) -> Result<(), SvgError> {
-        let mut svg_scene = Canvas::new(self.logical_width, self.logical_height, self.scale_factor);
+        let mut svg_scene = Self::new(self.logical_width, self.logical_height, self.scale_factor);
         SvgBuilder::new(options).push_tree(&mut svg_scene, tree)?;
         self.append(&svg_scene, (0.0, 0.0));
         Ok(())
@@ -93,7 +100,7 @@ struct SvgBuilder {
 }
 
 impl SvgBuilder {
-    fn new(options: SvgOptions) -> Self {
+    const fn new(options: SvgOptions) -> Self {
         Self {
             base_transform: options.transform,
             options,
@@ -102,7 +109,7 @@ impl SvgBuilder {
         }
     }
 
-    fn with_base_transform(&self, base_transform: Affine) -> Self {
+    const fn with_base_transform(&self, base_transform: Affine) -> Self {
         Self {
             base_transform,
             options: self.options,

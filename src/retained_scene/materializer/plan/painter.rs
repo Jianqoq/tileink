@@ -14,6 +14,10 @@ impl PersistentSceneMaterializer {
         chunk.local_draw_order.physical(draw_base)
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Painter metadata is built from live chunks, allocated glyph storage and an installed compiled plan"
+    )]
     pub(crate) fn rebuild_painter_metadata(&mut self, scene: &RetainedScene) {
         let old = std::mem::take(&mut Rc::make_mut(&mut self.canvas).painter);
         self.painter_bases.clear();
@@ -24,17 +28,17 @@ impl PersistentSceneMaterializer {
         for &id in &leaves {
             let parent = scene.nodes[&id].parent.expect("leaf has retained parent");
             let base = painter_path(scene, id);
-            self.painter_bases.insert(id, base.clone());
+            self.painter_bases.insert(id, std::rc::Rc::clone(&base));
             self.painter_parents.insert(id, parent);
             for (local_order, physical) in self.node_physical_draws(id).enumerate() {
                 keys[physical] = PainterKey {
-                    path: base.clone(),
+                    path: std::rc::Rc::clone(&base),
                     local: local_order as u32,
                 };
             }
         }
         self.refresh_compiled_plan(scene);
-        let batches = (*self.canvas.compiled_plan.as_ref().unwrap().draw_batch_ids).clone();
+        let batches = (*self.canvas.compiled_plan.as_ref().expect("Painter metadata is built from live chunks, allocated glyph storage and an installed compiled plan").draw_batch_ids).clone();
         let canvas = Rc::make_mut(&mut self.canvas);
         if let Some(changes) = &mut canvas.buffer_changes {
             let mut dirty = changed_value_ranges(&old.keys, &keys);
@@ -90,7 +94,7 @@ impl PersistentSceneMaterializer {
             let mut metadata_changed = false;
             for (local_order, physical) in self.node_physical_draws(id).enumerate() {
                 let key = PainterKey {
-                    path: base.clone(),
+                    path: std::rc::Rc::clone(&base),
                     local: local_order as u32,
                 };
                 metadata_changed |= metadata.keys[physical] != key;

@@ -22,7 +22,7 @@ pub fn svg_options() -> usvg::Options<'static> {
     let mut options = usvg::Options::default();
     load_svg_fonts(&mut options);
     // SVGs without a usable font-family still need a face from the bundled font database.
-    options.font_family = "Noto Serif".to_owned();
+    "Noto Serif".clone_into(&mut options.font_family);
     options
 }
 
@@ -37,8 +37,8 @@ pub fn svg_tree_to_scene(
         .ok_or("SVG size must be positive")?;
     let width = size.width();
     let height = size.height();
-    let scale_x = width as f64 / tree.size().width() as f64;
-    let scale_y = height as f64 / tree.size().height() as f64;
+    let scale_x = f64::from(width) / f64::from(tree.size().width());
+    let scale_y = f64::from(height) / f64::from(tree.size().height());
     let mut scene = Canvas::new(width, height, 1.0);
     scene.push_svg_with_options(
         tree,

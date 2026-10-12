@@ -1,6 +1,7 @@
 use super::*;
 use crate::render::incremental::IncrementalRenderStats;
 use crate::shared::layer::{mask::MaskKind, region::Region};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 #[derive(Debug, PartialEq)]
@@ -147,8 +148,8 @@ fn plan(ops: Vec<ExecOp>) -> ExecPlan {
         layer_stack_data: Vec::new(),
         draw_order: Rc::default(),
         draw_batch_ids: Rc::default(),
-        retained_batch_ids: Default::default(),
-        layer_stack_locations: Default::default(),
+        retained_batch_ids: HashMap::default(),
+        layer_stack_locations: HashMap::default(),
         direct_root_batch_ops: None,
     }
 }

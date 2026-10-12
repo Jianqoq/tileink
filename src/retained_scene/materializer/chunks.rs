@@ -56,7 +56,7 @@ impl PersistentSceneMaterializer {
             NodeKind::Scene {
                 canvas, transform, ..
             } => Some(ScenePlacement {
-                source: canvas.clone(),
+                source: std::rc::Rc::clone(canvas),
                 transform_bits: transform.as_coeffs().map(f64::to_bits),
             }),
             _ => None,
@@ -162,7 +162,7 @@ impl PersistentSceneMaterializer {
                 }
                 chunk.instance = node.instance;
                 chunk.generation = node.generation;
-                chunk.placement = placement.clone();
+                chunk.placement.clone_from(&placement);
                 if old_plan != new_plan {
                     let metadata = chunk_plan_metadata(&chunk.canvas);
                     chunk.plain_fragment = metadata.plain_fragment;
@@ -254,10 +254,10 @@ impl PersistentSceneMaterializer {
 
     pub(crate) fn refresh_chunk_dependencies(&mut self, id: RetainedNodeId) {
         let chunk = &self.chunks[&id];
-        if !chunk.backdrop_dependencies.is_empty() {
-            self.nonlocal_dependencies.insert(id);
-        } else {
+        if chunk.backdrop_dependencies.is_empty() {
             self.nonlocal_dependencies.remove(&id);
+        } else {
+            self.nonlocal_dependencies.insert(id);
         }
         if chunk_has_surface_dependent_plan(&chunk.canvas) {
             self.surface_dependent_plans.insert(id);
@@ -266,6 +266,10 @@ impl PersistentSceneMaterializer {
         }
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "A live glyph allocation is created together with its owning glyph arena"
+    )]
     pub(crate) fn remap_chunk_data(
         arenas: &mut MaterializedArenas,
         chunk: &SceneChunk,
@@ -297,7 +301,12 @@ impl PersistentSceneMaterializer {
             arenas.shadows.range(chunk.shadows).start as u32
         };
         let glyph_base = chunk.glyphs.map_or(0, |id| {
-            arenas.glyphs.as_ref().unwrap().range(id).start as u32
+            arenas
+                .glyphs
+                .as_ref()
+                .expect("A live glyph allocation is created together with its owning glyph arena")
+                .range(id)
+                .start as u32
         });
         let run_base = if chunk.canvas.text_runs.is_empty() {
             0

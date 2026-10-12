@@ -147,7 +147,7 @@ fn malformed_atlas_pages_are_rejected_before_recording() {
 fn fresh_vector_targets_are_filled_even_with_clean_cached_placements() -> Result<()> {
     let mut store = ImageResourceStore::default();
     let canvas = Rc::new(Canvas::new(4, 4, 1.0));
-    store.insert(ImageKey(1), canvas.clone());
+    store.insert(ImageKey(1), std::rc::Rc::clone(&canvas));
     let original = store.upload_merged(&ImageResourceStore::default(), 8, 4, 0, None);
     let cached = store.upload_merged(&ImageResourceStore::default(), 8, 4, 0, Some(&original));
     assert!(!cached.vectors()[0].dirty);

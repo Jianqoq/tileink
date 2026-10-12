@@ -92,12 +92,13 @@ impl<'a> CumsumPlan<'a> {
         let mut previous_end = 0u64;
         let mut ordered_spans = true;
         for (&offset, &len) in offsets.iter().zip(lengths.iter()) {
-            if len > CUMSUM_CHUNK_SIZE || offset as u64 + len as u64 > backdrop_words as u64 {
+            if len > CUMSUM_CHUNK_SIZE || u64::from(offset) + u64::from(len) > backdrop_words as u64
+            {
                 return Err("cumsum chunk out of bounds".into());
             }
             if len != 0 {
-                ordered_spans &= offset as u64 >= previous_end;
-                previous_end = offset as u64 + len as u64;
+                ordered_spans &= u64::from(offset) >= previous_end;
+                previous_end = u64::from(offset) + u64::from(len);
             }
         }
         // Arena order is usually already backdrop order. Sort only for a valid but
@@ -107,7 +108,7 @@ impl<'a> CumsumPlan<'a> {
                 .iter()
                 .zip(lengths.iter())
                 .filter(|(_, len)| **len != 0)
-                .map(|(&offset, &len)| (offset as u64, offset as u64 + len as u64))
+                .map(|(&offset, &len)| (u64::from(offset), u64::from(offset) + u64::from(len)))
                 .collect::<Vec<_>>();
             spans.sort_unstable();
             if spans.windows(2).any(|w| w[0].1 > w[1].0) {

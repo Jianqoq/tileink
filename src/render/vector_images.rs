@@ -82,6 +82,10 @@ impl<T> VectorImageCache<T> {
 
     /// Reconcile against the current graph, including empty/reset scenes. Keeping
     /// a Canvas alive outside the renderer never keeps detached GPU cache entries.
+    #[allow(
+        clippy::expect_used,
+        reason = "Exhausting the retention epoch must fail rather than reuse a live cache identity"
+    )]
     pub(crate) fn retain_sources<'a>(&mut self, sources: impl IntoIterator<Item = &'a Rc<Canvas>>) {
         if self.entries.is_empty() {
             return;

@@ -1,6 +1,10 @@
 use super::*;
 
 impl PersistentSceneMaterializer {
+    #[allow(
+        clippy::expect_used,
+        reason = "Offscreen candidates and fragments refer to live non-root nodes and an installed compiled plan"
+    )]
     pub(crate) fn nested_offscreen_add_candidate(
         &self,
         scene: &RetainedScene,
@@ -47,6 +51,10 @@ impl PersistentSceneMaterializer {
         candidate
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Offscreen candidates and fragments refer to live non-root nodes and an installed compiled plan"
+    )]
     pub(crate) fn nested_offscreen_remove_candidate(
         &self,
         scene: &RetainedScene,
@@ -95,6 +103,10 @@ impl PersistentSceneMaterializer {
         .then_some(candidate)
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Offscreen candidates and fragments refer to live non-root nodes and an installed compiled plan"
+    )]
     pub(crate) fn nested_offscreen_hierarchy_candidates(
         &self,
         scene: &RetainedScene,
@@ -146,8 +158,12 @@ impl PersistentSceneMaterializer {
     }
 
     /// Recompiles only one retained offscreen ancestor and installs its new command/plan
-    /// fragment. Unchanged branch owners keep their BatchIds; new nested branches receive fresh
+    /// fragment. Unchanged branch owners keep their `BatchIds`; new nested branches receive fresh
     /// IDs without rewriting unrelated root operations.
+    #[allow(
+        clippy::expect_used,
+        reason = "Offscreen candidates and fragments refer to live non-root nodes and an installed compiled plan"
+    )]
     pub(crate) fn rebuild_offscreen_plan_fragment(
         &mut self,
         scene: &RetainedScene,

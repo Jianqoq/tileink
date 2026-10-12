@@ -1,3 +1,12 @@
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "Test setup and assertions abort on failure; production builds are checked separately"
+    )
+)]
 #![cfg(target_os = "macos")]
 use std::{
     fs,
@@ -18,7 +27,7 @@ fn mac_scripts_only_reference_existing_cargo_test_targets() {
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
         .unwrap();
-    assert!(metadata.status.success(), "{:?}", metadata);
+    assert!(metadata.status.success(), "{metadata:?}");
     let metadata: serde_json::Value = serde_json::from_slice(&metadata.stdout).unwrap();
     let package = metadata["packages"]
         .as_array()
@@ -94,7 +103,7 @@ fn run(arguments: &[&str], exit_code: u8) -> (Output, Vec<String>, String) {
 #[test]
 fn stock_macos_bash_runs_release_tests_serially() {
     let (output, arguments, _) = run(&[], 0);
-    assert!(output.status.success(), "{:?}", output);
+    assert!(output.status.success(), "{output:?}");
     assert_eq!(
         arguments,
         [
@@ -124,7 +133,7 @@ fn release_runner_forwards_cargo_and_harness_arguments_with_one_separator() {
         input.push("--");
         input.extend(&harness);
         let (output, actual, _) = run(&input, 0);
-        assert!(output.status.success(), "{:?}", output);
+        assert!(output.status.success(), "{output:?}");
         let mut expected = vec![
             "test",
             "--release",
@@ -152,6 +161,6 @@ fn release_runner_preserves_command_failure_and_its_diagnostic() {
 #[test]
 fn release_runner_keeps_rayon_serial_when_the_parent_environment_is_parallel() {
     let (output, _, rayon) = run(&[], 0);
-    assert!(output.status.success(), "{:?}", output);
+    assert!(output.status.success(), "{output:?}");
     assert_eq!(rayon, "1");
 }

@@ -1,6 +1,10 @@
 use super::*;
 
 impl TileDrawBins {
+    #[allow(
+        clippy::expect_used,
+        reason = "The shrinking loop pops only while the page count exceeds its nonnegative target"
+    )]
     pub(super) fn rewrite_tile(&mut self, tile: usize) {
         let required = self.tile_refs[tile]
             .len()
@@ -11,7 +15,9 @@ impl TileDrawBins {
             self.active_pages += 1;
         }
         while self.tile_pages[tile].len() > required {
-            let page = self.tile_pages[tile].pop().unwrap();
+            let page = self.tile_pages[tile].pop().expect(
+                "The shrinking loop pops only while the page count exceeds its nonnegative target",
+            );
             self.free_pages.push(page);
             self.active_pages -= 1;
         }
@@ -117,7 +123,7 @@ impl TileDrawBins {
         }
     }
 
-    pub(crate) fn active_page_count(&self) -> usize {
+    pub(crate) const fn active_page_count(&self) -> usize {
         self.active_pages
     }
 

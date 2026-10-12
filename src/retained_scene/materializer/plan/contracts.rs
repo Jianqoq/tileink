@@ -192,13 +192,7 @@ fn a_large_inserted_run_keeps_the_existing_plan_and_batch() {
         .unwrap();
     let mut state = PersistentSceneMaterializer::new(&scene);
     let plan = state.canvas.compiled_plan.clone().unwrap();
-    let nodes = state
-        .canvas
-        .persistent_frame
-        .as_ref()
-        .unwrap()
-        .nodes
-        .clone();
+    let nodes = std::rc::Rc::clone(&state.canvas.persistent_frame.as_ref().unwrap().nodes);
     let batch = state.node_batches[&anchor];
     let mut tx = scene.transaction();
     for index in 0..1024 {

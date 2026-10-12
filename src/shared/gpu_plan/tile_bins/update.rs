@@ -88,7 +88,7 @@ impl TileDrawBins {
         self.membership_changed.begin(working_len);
         let tile_count = tiles_size.0 as usize * tiles_size.1 as usize;
         self.affected_tiles.begin(tile_count);
-        for draw in changed.iter().flat_map(|range| range.clone()) {
+        for draw in changed.iter().flat_map(std::clone::Clone::clone) {
             if draw >= working_len {
                 continue;
             }

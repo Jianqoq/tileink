@@ -21,12 +21,17 @@ struct Platform {
 }
 impl Drop for Platform {
     fn drop(&mut self) {
+        // SAFETY: Device/window owners retain this platform until their children are gone; surface is destroyed before the owned instance.
         unsafe {
             self.surface_api.destroy_surface(self.surface, None);
             self.instance.destroy_instance(None);
         }
     }
 }
+#[allow(
+    clippy::struct_field_names,
+    reason = "The wrapper owns a native API handle named after its Vulkan or DX12 object kind"
+)]
 struct Device {
     platform: Rc<Platform>,
     device: ash::Device,
@@ -36,6 +41,7 @@ struct Device {
 }
 impl Drop for Device {
     fn drop(&mut self) {
+        // SAFETY: Host retirement precedes device destruction; this owner retains the logical device until its queues stop using child resources.
         unsafe {
             let _ = self.device.device_wait_idle();
             self.device.destroy_device(None);
@@ -50,6 +56,7 @@ struct Swapchain {
 }
 impl Drop for Swapchain {
     fn drop(&mut self) {
+        // SAFETY: The host retires swapchain work before dropping its owned semaphores, views and swapchain.
         unsafe {
             for semaphore in self.finished.iter().chain(&self.acquired) {
                 self.device.device.destroy_semaphore(*semaphore, None);
@@ -73,6 +80,7 @@ pub struct Host {
 }
 impl Host {
     pub fn new(window: &Window) -> Result<Self> {
+        // SAFETY: The window and creation descriptors remain live; instance/device/surface owners preserve parent lifetimes and selected queue capabilities.
         unsafe {
             let entry = Entry::load()?;
             let extensions = [
@@ -168,7 +176,7 @@ impl Host {
                 texture_tables: true,
                 timeline_semaphores: false,
                 validation: true,
-                owner: owner.clone(),
+                owner: std::rc::Rc::<Device>::clone(&owner),
             })?;
             let this = Self {
                 images: Vec::new(),
@@ -186,6 +194,7 @@ impl Host {
     }
     fn resize(&mut self, size: [u32; 2]) -> Result {
         self.retire()?;
+        // SAFETY: The host retires pending frames before resize; queried capabilities bound the replacement swapchain and image views.
         unsafe {
             self.images.clear();
             self.swapchain = None;
@@ -239,7 +248,7 @@ impl Host {
                 None,
             )?;
             let mut swapchain = Swapchain {
-                device: owner.clone(),
+                device: std::rc::Rc::clone(owner),
                 handle,
                 finished: Vec::new(),
                 acquired: Vec::new(),
@@ -269,7 +278,7 @@ impl Host {
                         initial_layout: vk::ImageLayout::UNDEFINED,
                         final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
                         initialized: false,
-                        owner: swapchain.clone(),
+                        owner: std::rc::Rc::<Swapchain>::clone(&swapchain),
                     })?);
             }
             self.swapchain = Some(swapchain);
@@ -280,6 +289,7 @@ impl Host {
     fn retire(&mut self) -> Result {
         // Both resize and normal shutdown must complete rendering and WSI
         // presentation, and report their failures to the application.
+        // SAFETY: The host retains the device and all pending frame resources throughout the idle wait.
         unsafe {
             self.device.device.device_wait_idle()?;
         }
@@ -298,6 +308,10 @@ impl super::app::Host for Host {
     fn context(&self) -> &NativeContext {
         &self.context
     }
+    #[allow(
+        clippy::expect_used,
+        reason = "Successful resize installs the swapchain before image acquisition and out-of-date retries"
+    )]
     fn acquire(&mut self, size: [u32; 2]) -> Result<NativeTexture> {
         if self.size != size {
             self.resize(size)?;
@@ -305,20 +319,33 @@ impl super::app::Host for Host {
         if let Some(submission) = self.pending[self.slot].take() {
             submission.wait()?;
         }
+        // SAFETY: The retained swapchain and slot semaphore are live; the slot is retired before reuse and acquire returns an owned image index.
         unsafe {
             let (image, _) = match self.device.swapchain_api.acquire_next_image(
-                self.swapchain.as_ref().unwrap().handle,
+                self.swapchain
+                    .as_ref()
+                    .expect("Successful acquire/resize installs the swapchain before use")
+                    .handle,
                 u64::MAX,
-                self.swapchain.as_ref().unwrap().acquired[self.slot],
+                self.swapchain
+                    .as_ref()
+                    .expect("Successful acquire/resize installs the swapchain before use")
+                    .acquired[self.slot],
                 vk::Fence::null(),
             ) {
                 Ok(image) => image,
                 Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
                     self.resize(size)?;
                     self.device.swapchain_api.acquire_next_image(
-                        self.swapchain.as_ref().unwrap().handle,
+                        self.swapchain
+                            .as_ref()
+                            .expect("Successful acquire/resize installs the swapchain before use")
+                            .handle,
                         u64::MAX,
-                        self.swapchain.as_ref().unwrap().acquired[self.slot],
+                        self.swapchain
+                            .as_ref()
+                            .expect("Successful acquire/resize installs the swapchain before use")
+                            .acquired[self.slot],
                         vk::Fence::null(),
                     )?
                 }
@@ -328,8 +355,15 @@ impl super::app::Host for Host {
         }
         Ok(self.images[self.image].clone())
     }
+    #[allow(
+        clippy::expect_used,
+        reason = "Target synchronization follows successful acquisition from the installed swapchain"
+    )]
     fn target_use<'a>(&self, target: NativeRenderTarget<'a>) -> Result<NativeTargetUse<'a>> {
-        let swapchain = self.swapchain.as_ref().unwrap();
+        let swapchain = self
+            .swapchain
+            .as_ref()
+            .expect("Successful acquire/resize installs the swapchain before use");
         let incoming = ImageState {
             layout: if self.initialized[self.image] {
                 vk::ImageLayout::PRESENT_SRC_KHR
@@ -346,6 +380,7 @@ impl super::app::Host for Host {
             access: vk::AccessFlags::empty(),
             queue_family: vk::QUEUE_FAMILY_IGNORED,
         };
+        // SAFETY: The host tracks actual image layout/queue ownership and retains the binary semaphore waits and signals through presentation.
         Ok(unsafe {
             self.context.vulkan_target_use(
                 target,
@@ -357,18 +392,26 @@ impl super::app::Host for Host {
                         stages: vk::PipelineStageFlags::ALL_COMMANDS,
                     }],
                     signals: vec![SemaphorePoint::Binary(swapchain.finished[self.image])],
-                    owner: swapchain.clone(),
+                    owner: std::rc::Rc::<Swapchain>::clone(swapchain),
                 },
             )?
         })
     }
+    #[allow(
+        clippy::expect_used,
+        reason = "Presentation follows successful acquire and retains that swapchain through completion"
+    )]
     fn present(&mut self, submission: NativeTargetSubmission) -> Result {
         if submission.outgoing.state.layout != vk::ImageLayout::PRESENT_SRC_KHR {
             return Err("unexpected Vulkan output layout".into());
         }
         self.pending[self.slot] = Some(submission.submission);
         self.initialized[self.image] = true;
-        let swapchain = self.swapchain.as_ref().unwrap();
+        let swapchain = self
+            .swapchain
+            .as_ref()
+            .expect("Successful acquire/resize installs the swapchain before use");
+        // SAFETY: The host retains the swapchain and finished semaphore; rendering signals that semaphore before queue presentation consumes it.
         unsafe {
             let finished = [swapchain.finished[self.image]];
             match self.device.swapchain_api.queue_present(
@@ -392,11 +435,12 @@ impl super::app::Host for Host {
 }
 impl Drop for Host {
     fn drop(&mut self) {
+        // SAFETY: The host retains all WSI resources during the idle wait; a failed wait quarantines their owners instead of releasing in-flight handles.
         unsafe {
             if self.device.device.device_wait_idle().is_err() {
                 // Do not destroy WSI semaphores or imported images with unknown completion.
                 std::mem::forget((
-                    self.device.clone(),
+                    std::rc::Rc::clone(&self.device),
                     self.swapchain.clone(),
                     self.images.clone(),
                     self.context.clone(),

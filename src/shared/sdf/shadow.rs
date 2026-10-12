@@ -12,7 +12,8 @@ pub struct ShadowOptions {
 }
 
 impl ShadowOptions {
-    pub fn new(offset_x: f32, offset_y: f32, expand: f32, intensity: f32) -> Self {
+    #[must_use]
+    pub const fn new(offset_x: f32, offset_y: f32, expand: f32, intensity: f32) -> Self {
         Self {
             offset_x,
             offset_y,

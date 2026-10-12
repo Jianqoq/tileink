@@ -17,7 +17,7 @@ fn probe_pipelines_use_only_requested_compute_entries() -> Result<()> {
             source_offset: 0,
             destination_offset: 0,
             stride: 4,
-            value: [0x12345678, 0, 0, 0],
+            value: [0x1234_5678, 0, 0, 0],
         },
         source: vec![0; 4],
         destination: vec![0; 4],
@@ -25,7 +25,7 @@ fn probe_pipelines_use_only_requested_compute_entries() -> Result<()> {
     let ticket = device.submit(&command)?;
     assert_eq!(device.compute_pipelines.len(), 1);
     assert!(device.compute_pipelines.contains_key("clear_words"));
-    assert_eq!(device.readback(&ticket)?, 0x12345678u32.to_le_bytes());
+    assert_eq!(device.readback(&ticket)?, 0x1234_5678_u32.to_le_bytes());
     assert!(device.validation_messages().lock().unwrap().is_empty());
     Ok(())
 }
@@ -67,7 +67,7 @@ fn submit_errors_preserve_prefix_and_classify_rejected_vs_unconfirmed() -> Resul
             source_offset: 0,
             destination_offset: 0,
             stride: 4,
-            value: [0x12345678, 0, 0, 0],
+            value: [0x1234_5678, 0, 0, 0],
         },
         source: vec![0; 4],
         destination: vec![0; 4],
@@ -93,8 +93,8 @@ fn submit_errors_preserve_prefix_and_classify_rejected_vs_unconfirmed() -> Resul
         assert_eq!(device.pending_count(), if rejected { 1 } else { 2 });
         if rejected {
             let retry = device.submit(&command)?;
-            assert_eq!(device.readback(&retry)?, 0x12345678u32.to_le_bytes());
-            assert_eq!(device.readback(&prefix)?, 0x12345678u32.to_le_bytes());
+            assert_eq!(device.readback(&retry)?, 0x1234_5678_u32.to_le_bytes());
+            assert_eq!(device.readback(&prefix)?, 0x1234_5678_u32.to_le_bytes());
         } else {
             assert!(device.submit(&command).is_err());
             assert!(device.readback(&prefix).is_err());

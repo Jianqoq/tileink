@@ -20,7 +20,7 @@ pub enum ShaderBindingKind {
     Sampler,
 }
 impl ShaderBindingKind {
-    pub(crate) fn writable(self) -> bool {
+    pub(crate) const fn writable(self) -> bool {
         matches!(
             self,
             Self::ReadWriteBuffer | Self::WriteTexture(_) | Self::ReadWriteTexture(_)
@@ -29,6 +29,7 @@ impl ShaderBindingKind {
 }
 
 /// HLSL uses `name` and the matching b/t/u/s register in space0 (Vulkan set0).
+///
 /// Metal uses the matching buffer/texture/sampler index. Slots are unique across
 /// namespaces for portability; 0..=29 is the common Metal resource slot range.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -60,6 +61,10 @@ pub(crate) enum ShaderKernelCode {
 impl std::fmt::Debug for ShaderKernelCode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            #[allow(
+                clippy::unnecessary_rest_pattern,
+                reason = "Native builds also contain a cached source field"
+            )]
             Self::Source { sources, .. } => sources.fmt(f),
             #[cfg(tileink_native_runtime)]
             Self::Compiled(artifact) => f
@@ -82,16 +87,22 @@ impl std::fmt::Debug for ShaderKernel {
     }
 }
 impl ShaderKernel {
+    #[must_use]
     pub fn entry(&self) -> &str {
         &self.entry
     }
-    pub fn workgroup(&self) -> [u32; 3] {
+    #[must_use]
+    pub const fn workgroup(&self) -> [u32; 3] {
         self.workgroup
     }
+    #[must_use]
     pub fn bindings(&self) -> &[ShaderBinding] {
         &self.bindings
     }
 
+    ///
+    /// # Errors
+    /// Returns an error for missing source, an invalid entry/workgroup, or an invalid or conflicting binding declaration.
     pub fn new(
         sources: impl Into<Rc<ShaderSources>>,
         entry: &str,

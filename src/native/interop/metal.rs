@@ -35,7 +35,7 @@ impl TargetSynchronization {
             if point
                 .event
                 .device()
-                .is_some_and(|owner| !std::ptr::eq(&*owner, device))
+                .is_some_and(|owner| !std::ptr::eq(&raw const *owner, device))
             {
                 return Err("Metal event belongs to another device".into());
             }
@@ -43,12 +43,13 @@ impl TargetSynchronization {
         for (index, signal) in self.signals.iter().enumerate() {
             if self.signals[..index]
                 .iter()
-                .any(|old| std::ptr::eq(&*old.event, &*signal.event))
+                .any(|old| std::ptr::eq(&raw const *old.event, &raw const *signal.event))
             {
                 return Err("duplicate Metal event signal".into());
             }
             if self.waits.iter().any(|wait| {
-                std::ptr::eq(&*wait.event, &*signal.event) && wait.value >= signal.value
+                std::ptr::eq(&raw const *wait.event, &raw const *signal.event)
+                    && wait.value >= signal.value
             }) {
                 return Err("Metal event signal must advance the waited value".into());
             }
@@ -61,6 +62,9 @@ impl NativeContext {
     /// The host must serialize access to this queue and imported resources or
     /// supply event synchronization. No outstanding host encoder may race with
     /// Tileink. Retaining an object does not authorize concurrent pixel access.
+    ///
+    /// # Errors
+    /// Returns an error if the device/queue contract or required device capabilities are invalid.
     pub unsafe fn from_metal(descriptor: ContextDescriptor) -> Result<Self, NativeError> {
         let adapter = super::super::runtime::adapter::Adapter::from_metal(descriptor)
             .map_err(NativeError::Initialization)?;
@@ -70,6 +74,9 @@ impl NativeContext {
     /// The host guarantees exclusive access until the returned submission is
     /// complete, or uses a per-use event contract. `initialized` asserts every
     /// texel is defined. External writes invalidate any retained target history.
+    ///
+    /// # Errors
+    /// Returns an error if the texture belongs to another device or has an unsupported size, format, or usage.
     pub unsafe fn import_metal_texture(
         &self,
         descriptor: TextureDescriptor,
@@ -83,7 +90,8 @@ impl<'a> NativeRenderTarget<'a> {
     /// # Safety
     /// Wait values must be signaled by the host; no host access may overlap the
     /// interval between those waits and the outgoing signals/completion token.
-    pub unsafe fn with_metal_synchronization(
+    #[must_use]
+    pub const unsafe fn with_metal_synchronization(
         self,
         synchronization: TargetSynchronization,
     ) -> NativeTargetUse<'a> {

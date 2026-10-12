@@ -133,7 +133,10 @@ pub fn validate(abi: &Interface) -> io::Result<()> {
 }
 /// User-owned constant blocks declare byte size; their field layout belongs to
 /// the supplied native source, while generated built-in ABIs retain strict fields.
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
 pub fn validate_user(abi: &Interface) -> io::Result<()> {
     validate_inner(abi, true)
 }

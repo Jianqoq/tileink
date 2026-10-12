@@ -7,7 +7,7 @@ pub(crate) fn opacity_f32_to_u8(opacity: f32) -> u8 {
 
 #[inline]
 pub(crate) fn mul_div255(a: u8, b: u8) -> u8 {
-    ((a as u16 * b as u16 + 127) / 255) as u8
+    ((u16::from(a) * u16::from(b) + 127) / 255) as u8
 }
 
 #[inline]

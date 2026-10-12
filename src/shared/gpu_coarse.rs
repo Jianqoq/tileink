@@ -71,15 +71,18 @@ pub(crate) const TILE_EMIT_CHUNK_RECORD_WORDS: usize =
 pub(crate) const EMIT_CHUNK_RECORD_WORDS: usize = std::mem::size_of::<EmitChunkRecord>() / 4;
 pub(crate) const FINE_TILE_KIND_WORDS: usize = 1;
 
-pub(crate) fn coarse_work_ptcl_word_offset(tile_count: usize) -> usize {
+pub(crate) const fn coarse_work_ptcl_word_offset(tile_count: usize) -> usize {
     tile_count * TILE_COARSE_RECORD_WORDS
 }
 
-pub(crate) fn coarse_work_glyph_word_offset(tile_count: usize, ptcl_capacity: usize) -> usize {
+pub(crate) const fn coarse_work_glyph_word_offset(
+    tile_count: usize,
+    ptcl_capacity: usize,
+) -> usize {
     coarse_work_ptcl_word_offset(tile_count) + ptcl_capacity * PTCL_RECORD_WORDS
 }
 
-pub(crate) fn coarse_work_tile_draw_record_word_offset(
+pub(crate) const fn coarse_work_tile_draw_record_word_offset(
     tile_count: usize,
     ptcl_capacity: usize,
     glyph_capacity: usize,
@@ -87,7 +90,7 @@ pub(crate) fn coarse_work_tile_draw_record_word_offset(
     coarse_work_glyph_word_offset(tile_count, ptcl_capacity) + glyph_capacity
 }
 
-pub(crate) fn coarse_work_tile_draw_index_word_offset(
+pub(crate) const fn coarse_work_tile_draw_index_word_offset(
     tile_count: usize,
     ptcl_capacity: usize,
     glyph_capacity: usize,
@@ -96,7 +99,7 @@ pub(crate) fn coarse_work_tile_draw_index_word_offset(
         + tile_count * TILE_DRAW_RECORD_WORDS
 }
 
-pub(crate) fn coarse_work_tile_emit_chunk_record_word_offset(
+pub(crate) const fn coarse_work_tile_emit_chunk_record_word_offset(
     tile_count: usize,
     ptcl_capacity: usize,
     glyph_capacity: usize,
@@ -106,7 +109,7 @@ pub(crate) fn coarse_work_tile_emit_chunk_record_word_offset(
         + tile_draw_index_count
 }
 
-pub(crate) fn coarse_work_emit_chunk_record_word_offset(
+pub(crate) const fn coarse_work_emit_chunk_record_word_offset(
     tile_count: usize,
     ptcl_capacity: usize,
     glyph_capacity: usize,
@@ -121,7 +124,7 @@ pub(crate) fn coarse_work_emit_chunk_record_word_offset(
 }
 
 #[cfg(test)]
-pub(crate) fn coarse_work_word_len(
+pub(crate) const fn coarse_work_word_len(
     tile_count: usize,
     ptcl_capacity: usize,
     glyph_capacity: usize,
@@ -137,7 +140,7 @@ pub(crate) fn coarse_work_word_len(
     ) + tile_count
 }
 
-pub(crate) fn coarse_work_fine_tile_kind_word_offset(
+pub(crate) const fn coarse_work_fine_tile_kind_word_offset(
     tile_count: usize,
     ptcl_capacity: usize,
     glyph_capacity: usize,
@@ -152,7 +155,7 @@ pub(crate) fn coarse_work_fine_tile_kind_word_offset(
     ) + tile_draw_chunk_count * EMIT_CHUNK_RECORD_WORDS
 }
 
-pub(crate) fn coarse_work_active_tile_list_word_offset(
+pub(crate) const fn coarse_work_active_tile_list_word_offset(
     tile_count: usize,
     ptcl_capacity: usize,
     glyph_capacity: usize,

@@ -7,7 +7,7 @@ pub struct Ticket {
     serial: u64,
 }
 impl Ticket {
-    pub fn serial(&self) -> u64 {
+    pub const fn serial(&self) -> u64 {
         self.serial
     }
 }
@@ -57,7 +57,7 @@ impl<T> Pending<T> {
         self.last = serial;
         self.frames.insert(serial, frame);
         Ok(Ticket {
-            owner: self.owner.clone(),
+            owner: std::sync::Arc::clone(&self.owner),
             serial,
         })
     }
@@ -77,7 +77,9 @@ impl<T> Pending<T> {
             return Err(SubmissionError::Unconfirmed);
         }
         self.confirmed = self.last;
-        Ok(self.frames.remove(&ticket.serial).unwrap())
+        self.frames
+            .remove(&ticket.serial)
+            .ok_or(SubmissionError::UnknownTicket)
     }
     pub fn get(&self, ticket: &Ticket) -> Result<&T, SubmissionError> {
         if !Arc::ptr_eq(&self.owner, &ticket.owner) {
@@ -91,7 +93,9 @@ impl<T> Pending<T> {
         if !self.is_completed(ticket, observed)? {
             return Err(SubmissionError::NotCompleted);
         }
-        Ok(self.frames.remove(&ticket.serial).unwrap())
+        self.frames
+            .remove(&ticket.serial)
+            .ok_or(SubmissionError::UnknownTicket)
     }
     /// Inspect completion without retiring resources or consuming readback ownership.
     pub fn is_completed(&self, ticket: &Ticket, observed: u64) -> Result<bool, SubmissionError> {
@@ -212,6 +216,6 @@ mod tests {
             "failed cleanup must not wait again"
         )));
         assert!(!can_release_after_wait(false, || Err(())));
-        assert!(can_release_after_wait(false, || Ok::<(), ()>(())))
+        assert!(can_release_after_wait(false, || Ok::<(), ()>(())));
     }
 }

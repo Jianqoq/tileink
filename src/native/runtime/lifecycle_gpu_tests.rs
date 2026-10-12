@@ -20,7 +20,7 @@ mod persistent_texture;
 #[path = "tests/vulkan_target_use_gpu.rs"]
 mod vulkan_target_use;
 
-fn backend() -> crate::NativeBackend {
+const fn backend() -> crate::NativeBackend {
     #[cfg(feature = "dx12")]
     {
         crate::NativeBackend::Dx12

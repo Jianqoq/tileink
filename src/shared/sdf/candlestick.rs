@@ -13,6 +13,10 @@ pub struct CandleStick {
 }
 
 impl CandleStick {
+    #[must_use]
+    ///
+    /// # Panics
+    /// Panics if body width is nonpositive or NaN.
     pub fn new(
         center_x: f32,
         high_y: f32,
@@ -41,10 +45,12 @@ impl CandleStick {
         }
     }
 
+    #[must_use]
     pub const fn valid_body_width(body_width: u32) -> bool {
         body_width > 0
     }
 
+    #[must_use]
     pub const fn valid_wick_width(wick_width: u32) -> bool {
         wick_width > 0
     }

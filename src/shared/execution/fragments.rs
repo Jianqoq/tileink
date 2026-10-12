@@ -8,7 +8,7 @@ impl ExecPlan {
     pub(crate) fn insert_fragment(
         &mut self,
         index: usize,
-        mut fragment: ExecPlan,
+        mut fragment: Self,
     ) -> (Range<usize>, Vec<(usize, u32)>) {
         assert!(index <= self.ops.len());
         let stack_base = self.layer_stack_data.len();
@@ -40,14 +40,14 @@ impl ExecPlan {
     pub(crate) fn replace_retained_offscreen_fragment(
         &mut self,
         id: RetainedNodeId,
-        mut fragment: ExecPlan,
+        mut fragment: Self,
     ) -> Option<Vec<(usize, u32)>> {
         if fragment.ops.len() != 1 || find_retained_offscreen(&fragment.ops, id).is_none() {
             return None;
         }
         let stack_base = self.layer_stack_data.len();
         offset_layer_stack_ranges(&mut fragment.ops, stack_base);
-        let mut replacement = fragment.ops.pop().unwrap();
+        let mut replacement = fragment.ops.pop()?;
         let mut next_batch = max_batch_id(&self.ops).map_or(0, |batch| batch.saturating_add(1));
         let mut used = std::collections::HashSet::new();
         let mut draw_batches = Vec::new();
@@ -113,7 +113,13 @@ fn remap_fragment_batches_reusing(
                 draw_batches.extend(draws.iter().map(|&draw| (draw, *batch_id)));
             }
             ExecOp::OffscreenLayer { children, .. } => {
-                remap_fragment_batches_reusing(children, retained_batches, used, next, draw_batches)
+                remap_fragment_batches_reusing(
+                    children,
+                    retained_batches,
+                    used,
+                    next,
+                    draw_batches,
+                );
             }
             ExecOp::OffscreenMaskLayer { content, mask, .. } => {
                 remap_fragment_batches_reusing(content, retained_batches, used, next, draw_batches);

@@ -92,8 +92,8 @@ impl Canvas {
             pixel_bounds: bounds,
             local_pixel_bounds: bounds,
             solid_rect: 0,
-            transform: Default::default(),
-            inverse_transform: Default::default(),
+            transform: GpuAffine::default(),
+            inverse_transform: GpuAffine::default(),
         });
         self.current_command_list_mut()
             .commands
@@ -109,7 +109,10 @@ impl Canvas {
     /// by bitmap strikes do not have a vector outline, so keep
     /// [`push_text_layout`](Self::push_text_layout) for small hinted text and
     /// bitmap/color emoji.
-    #[allow(clippy::too_many_arguments)]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Explicit geometry/resource parameters preserve the renderer and native ABI contract."
+    )]
     pub fn push_text_layout_as_path(
         &mut self,
         text_context: &mut TextContext,
@@ -150,9 +153,9 @@ fn logical_rect_pixel_bounds(rect: Rect, scale_factor: f32) -> Option<PixelBound
         return None;
     }
     Some(PixelBounds {
-        x0: (rect.x0 * scale_factor as f64).floor() as i32,
-        y0: (rect.y0 * scale_factor as f64).floor() as i32,
-        x1: (rect.x1 * scale_factor as f64).ceil() as i32,
-        y1: (rect.y1 * scale_factor as f64).ceil() as i32,
+        x0: (rect.x0 * f64::from(scale_factor)).floor() as i32,
+        y0: (rect.y0 * f64::from(scale_factor)).floor() as i32,
+        x1: (rect.x1 * f64::from(scale_factor)).ceil() as i32,
+        y1: (rect.y1 * f64::from(scale_factor)).ceil() as i32,
     })
 }

@@ -38,7 +38,7 @@ fn removal_delta_is_resolved_before_the_same_id_is_reinserted() {
         damage: std::rc::Rc::new([]),
         dirty_backdrops: std::rc::Rc::new([]),
         backdrop_damage_complete: false,
-        index: std::rc::Rc::new([(old.id, 0)].into_iter().collect()),
+        index: std::rc::Rc::new(std::iter::once((old.id, 0)).collect()),
     }));
     let reinserted = frame(&[(2, 0, Bounds::new(16, 0, 32, 16))]);
     let mut damage = DamageTiles::new(reinserted.physical_size);
@@ -77,7 +77,7 @@ fn overlay_only_insertion_participates_in_fallback_damage() {
         damage: std::rc::Rc::new([]),
         dirty_backdrops: std::rc::Rc::new([]),
         backdrop_damage_complete: false,
-        index: std::rc::Rc::new([(inserted.id, 0)].into_iter().collect()),
+        index: std::rc::Rc::new(std::iter::once((inserted.id, 0)).collect()),
     }));
     let mut damage = DamageTiles::new(current.physical_size);
 
@@ -99,9 +99,7 @@ fn compacted_state_equal_to_the_rebuilt_base_adds_no_damage() {
         ..previous.nodes[0]
     };
     previous.state_pages = std::rc::Rc::new(
-        [(0, std::rc::Rc::<[RetainedNodeState]>::from(vec![logical]))]
-            .into_iter()
-            .collect(),
+        std::iter::once((0, std::rc::Rc::<[RetainedNodeState]>::from(vec![logical]))).collect(),
     );
     let current = frame(&[(2, 1, Bounds::new(16, 0, 32, 16))]);
     let mut damage = DamageTiles::new(current.physical_size);

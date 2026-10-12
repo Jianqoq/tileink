@@ -46,11 +46,11 @@ impl<'a> PreparedFilterScene<'a> {
         })
     }
 
-    pub(crate) fn filter(&self) -> &Filter {
+    pub(crate) const fn filter(&self) -> &Filter {
         &self.filter
     }
 
-    pub(crate) fn is_root_scene(&self) -> bool {
+    pub(crate) const fn is_root_scene(&self) -> bool {
         self.local.is_none()
     }
 

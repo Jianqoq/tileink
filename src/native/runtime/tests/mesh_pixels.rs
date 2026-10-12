@@ -14,7 +14,7 @@ fn mesh(colors: [Color; 4]) -> MeshGradient {
     )
     .unwrap()
 }
-fn colors() -> [Color; 4] {
+const fn colors() -> [Color; 4] {
     [
         Color::from_rgba8(255, 0, 0, 255),
         Color::from_rgba8(0, 255, 0, 128),

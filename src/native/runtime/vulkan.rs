@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 
 pub struct Vulkan {
     host_owner: Option<std::rc::Rc<dyn std::any::Any>>,
-    _entry: Entry,
+    entry: Entry,
     debug: ash::ext::debug_utils::Instance,
     messenger: vk::DebugUtilsMessengerEXT,
     messages: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
@@ -91,7 +91,7 @@ impl Vulkan {
         )))
     }
     pub fn validation_messages(&self) -> std::sync::Arc<std::sync::Mutex<Vec<String>>> {
-        self.messages.clone()
+        std::sync::Arc::clone(&self.messages)
     }
 
     pub fn submit_batch(&mut self, commands: &[Dispatch]) -> Result<Ticket> {
@@ -204,6 +204,7 @@ impl Vulkan {
         }
         let fence = work.commands.fence;
         let ticket = self.pending.track(work)?;
+        // SAFETY: The context serializes this queue; frame ownership retains commands, resources and synchronization handles until fence completion.
         unsafe {
             let submit = || self.device.queue_submit(self.queue, &[info], fence);
             #[cfg(test)]
@@ -211,6 +212,10 @@ impl Vulkan {
                 Some(error) => Err(error),
                 None => submit(),
             };
+            #[allow(
+                clippy::cfg_not_test,
+                reason = "Tests inject queue failures; their normal path calls the same submit closure"
+            )]
             #[cfg(not(test))]
             let result = submit();
             if let Err(error) = result {
@@ -230,7 +235,7 @@ impl Vulkan {
         self.pending.confirm(&ticket)?;
         Ok(ticket)
     }
-    pub fn unconfirmed(&self) -> bool {
+    pub const fn unconfirmed(&self) -> bool {
         self.failed
     }
     #[cfg(test)]
@@ -243,6 +248,7 @@ impl Vulkan {
         if self.failed {
             return Err("Vulkan context failed".into());
         }
+        // SAFETY: The pending frame owns the fence and resources throughout the bounded completion wait.
         unsafe {
             if let Err(error) = self.device.wait_for_fences(&[fence], true, 30_000_000_000) {
                 self.failed = true;
@@ -284,6 +290,7 @@ impl Vulkan {
         if self.failed {
             return Err("Vulkan context failed".into());
         }
+        // SAFETY: The pending frame retains this same-device fence throughout the status query.
         match unsafe { self.device.get_fence_status(fence) } {
             Ok(complete) => Ok(complete),
             Err(error) => {
@@ -296,6 +303,7 @@ impl Vulkan {
 
 impl Drop for Vulkan {
     fn drop(&mut self) {
+        // SAFETY: Pending owners are released only after completion; failed waits quarantine the device and resources instead of destroying in-flight handles.
         unsafe {
             if !super::submissions::can_release_after_wait(self.failed, || {
                 let fences: Vec<_> = self
@@ -314,7 +322,7 @@ impl Drop for Vulkan {
                 // at exit; no production device-loss recovery is claimed here.
                 self.messages
                     .lock()
-                    .unwrap_or_else(|error| error.into_inner())
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .push(
                         "native Vulkan cleanup could not confirm completion; resources quarantined"
                             .into(),
@@ -322,14 +330,14 @@ impl Drop for Vulkan {
                 self.pending.quarantine();
                 std::mem::forget(std::mem::take(&mut self.compute_pipelines));
                 std::mem::forget((
-                    self._entry.clone(),
-                    self.messages.clone(),
+                    self.entry.clone(),
+                    std::sync::Arc::clone(&self.messages),
                     self.host_owner.take(),
                 ));
                 return;
             }
             self.pending.clear_after_completion();
-            self.frame_cache = Default::default();
+            self.frame_cache = frame_cache::Cache::default();
             self.compute_pipelines.clear();
             if self.host_owner.is_none() {
                 self.device.destroy_device(None);
@@ -360,7 +368,7 @@ impl Vulkan {
         owner: std::rc::Rc<dyn std::any::Any>,
     ) -> crate::native::interop::vulkan::ContextDescriptor {
         crate::native::interop::vulkan::ContextDescriptor {
-            entry: self._entry.clone(),
+            entry: self.entry.clone(),
             instance: self.instance.clone(),
             device: self.device.clone(),
             physical_device: self.physical,

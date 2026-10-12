@@ -11,7 +11,7 @@ use peniko::{
 use std::rc::Rc;
 type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-fn filter() -> D {
+const fn filter() -> D {
     D::Filter {
         filter: Filter::Opacity(1.0),
         sample_region: Region::rect(Rect::new(0.0, 0.0, 64.0, 32.0), Radius::ZERO),

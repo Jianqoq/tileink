@@ -2,6 +2,7 @@
 //! recording still invalidates the owning batch; these tests never submit it.
 use super::super::{FrameResources, SceneState, filter_scenes};
 use super::*;
+use crate::native::runtime::renderer::RetainedRenderState;
 use crate::render::{draw_batches::DrawBatchAdapter, filters::FilterAdapter};
 use crate::shared::layer::filter::{ConvolveEdgeMode, ConvolveMatrix, Filter};
 use std::rc::Rc;
@@ -16,7 +17,7 @@ fn with_execution(
     let upload = empty.upload_merged(&empty, 4096, 4, 16, None);
     let images = Images::record(&mut batch, &upload)?;
     let mut cache = SceneCache::default();
-    let mut retained = Default::default();
+    let mut retained = RetainedRenderState::default();
     let mut filter_scenes = filter_scenes::FilterSceneCache::default();
     let mut execution = Execution::prepare(
         cache.prepare(canvas),

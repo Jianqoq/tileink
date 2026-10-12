@@ -21,7 +21,11 @@ use resources::Resource;
 pub(super) struct Frame {
     pub command: Object<dyn MTLCommandBuffer>,
     completion: super::completion::Completion,
-    _resources: Vec<Resource>,
+    #[allow(
+        dead_code,
+        reason = "Submission ownership keeps GPU resource leases alive until completion"
+    )]
+    resources: Vec<Resource>,
     _staging: Vec<Object<dyn MTLBuffer>>,
     outputs: Vec<readback::Output>,
 }
@@ -115,16 +119,16 @@ impl Frame {
                                 {
                                     // Metal owns the copy before returning; no host bytes or
                                     // separate MTLBuffer need survive this encoder binding.
-                                    encoder.bytes(batch.resources()[id.index()].bytes(), slot)
+                                    encoder.bytes(batch.resources()[id.index()].bytes(), slot);
                                 }
                                 BindingKind::Uniform | BindingKind::Read | BindingKind::Write => {
-                                    encoder.buffer(resource.buffer(), slot)
+                                    encoder.buffer(resource.buffer(), slot);
                                 }
                                 BindingKind::Texture
                                 | BindingKind::TextureWrite
                                 | BindingKind::TextureReadWrite
                                 | BindingKind::TextureArray => {
-                                    encoder.texture(resource.texture(), slot)
+                                    encoder.texture(resource.texture(), slot);
                                 }
                                 BindingKind::Sampler => {
                                     let Resource::Sampler(sampler) = resource else {
@@ -174,7 +178,7 @@ impl Frame {
         Ok(Self {
             command,
             completion,
-            _resources: resources,
+            resources,
             _staging: staging,
             outputs,
         })

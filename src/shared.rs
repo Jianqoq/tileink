@@ -31,6 +31,7 @@ pub(crate) mod tile_seg_range;
 pub(crate) mod fine_config;
 // SAFETY: repr(C) and twenty contiguous u32 fields contain no padding.
 unsafe impl bytemuck::Zeroable for fine_config::FineConfig {}
+// SAFETY: repr(C), contiguous u32 fields, no padding, and all bit patterns are valid.
 unsafe impl bytemuck::Pod for fine_config::FineConfig {}
 
 pub(crate) mod filter_config;
@@ -38,6 +39,7 @@ pub(crate) mod filter_parameters;
 pub(crate) mod progressive_blur_config;
 // SAFETY: repr(C), contiguous four-byte scalars and five four-float vectors, with no padding.
 unsafe impl bytemuck::Zeroable for filter_config::FilterConfig {}
+// SAFETY: repr(C), four-byte scalars/vectors, no padding, and all bit patterns are valid.
 unsafe impl bytemuck::Pod for filter_config::FilterConfig {}
 
 impl Default for filter_config::FilterConfig {

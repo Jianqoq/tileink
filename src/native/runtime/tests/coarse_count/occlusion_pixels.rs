@@ -159,7 +159,7 @@ fn native_opaque_occlusion_preserves_text_and_image_destinations_after_the_cover
         c.push_text_layout(&layout, Point::new(2., 2.), Color::WHITE);
         c.push_image(
             Rect::new(0., 32., 80., 96.),
-            image.clone(),
+            std::rc::Rc::clone(&image),
             Extend::Pad,
             PatternSampling::Bilinear,
         );
@@ -176,7 +176,7 @@ fn native_opaque_occlusion_preserves_text_and_image_destinations_after_the_cover
         c.push_text_layout(&layout, Point::new(8., 32.), Color::WHITE);
         c.push_image(
             Rect::new(48., 72., 113., 104.),
-            image.clone(),
+            std::rc::Rc::clone(&image),
             Extend::Pad,
             PatternSampling::Bilinear,
         );

@@ -9,15 +9,18 @@ pub struct Bounds {
 }
 
 impl Bounds {
-    pub fn new(x0: i32, y0: i32, x1: i32, y1: i32) -> Self {
+    #[must_use]
+    pub const fn new(x0: i32, y0: i32, x1: i32, y1: i32) -> Self {
         Self { x0, y0, x1, y1 }
     }
 
-    pub fn canvas(width: u32, height: u32) -> Self {
+    #[must_use]
+    pub const fn canvas(width: u32, height: u32) -> Self {
         Self::new(0, 0, width as i32, height as i32)
     }
-    pub fn intersect(&self, b: Bounds) -> Bounds {
-        Bounds {
+    #[must_use]
+    pub fn intersect(&self, b: Self) -> Self {
+        Self {
             x0: self.x0.max(b.x0),
             y0: self.y0.max(b.y0),
             x1: self.x1.min(b.x1),
@@ -27,8 +30,9 @@ impl Bounds {
 
     /// Expand by a nonnegative pixel distance, clamping endpoints to the
     /// coordinate domain. A distance can span the entire signed i32 range.
-    pub fn outset(self, amount: u32) -> Bounds {
-        Bounds {
+    #[must_use]
+    pub const fn outset(self, amount: u32) -> Self {
+        Self {
             x0: self.x0.saturating_sub_unsigned(amount),
             y0: self.y0.saturating_sub_unsigned(amount),
             x1: self.x1.saturating_add_unsigned(amount),
@@ -36,14 +40,15 @@ impl Bounds {
         }
     }
 
-    pub fn union(self, other: Bounds) -> Bounds {
+    #[must_use]
+    pub fn union(self, other: Self) -> Self {
         if self.is_empty() {
             return other;
         }
         if other.is_empty() {
             return self;
         }
-        Bounds {
+        Self {
             x0: self.x0.min(other.x0),
             y0: self.y0.min(other.y0),
             x1: self.x1.max(other.x1),
@@ -51,14 +56,17 @@ impl Bounds {
         }
     }
 
-    pub fn is_empty(self) -> bool {
+    #[must_use]
+    pub const fn is_empty(self) -> bool {
         self.x0 >= self.x1 || self.y0 >= self.y1
     }
 
+    #[must_use]
     pub fn width(self) -> u32 {
         (i64::from(self.x1) - i64::from(self.x0)).max(0) as u32
     }
 
+    #[must_use]
     pub fn height(self) -> u32 {
         (i64::from(self.y1) - i64::from(self.y0)).max(0) as u32
     }
@@ -75,26 +83,26 @@ pub struct PixelBounds {
 }
 
 impl PixelBounds {
-    pub fn intersect(self, other: PixelBounds) -> PixelBounds {
-        let intersection = PixelBounds {
+    pub fn intersect(self, other: Self) -> Self {
+        let intersection = Self {
             x0: self.x0.max(other.x0),
             y0: self.y0.max(other.y0),
             x1: self.x1.min(other.x1),
             y1: self.y1.min(other.y1),
         };
         if intersection.is_empty() {
-            PixelBounds::default()
+            Self::default()
         } else {
             intersection
         }
     }
 
-    pub fn is_empty(self) -> bool {
+    pub const fn is_empty(self) -> bool {
         self.x0 >= self.x1 || self.y0 >= self.y1
     }
 
-    pub fn union(self, other: PixelBounds) -> PixelBounds {
-        PixelBounds {
+    pub fn union(self, other: Self) -> Self {
+        Self {
             x0: self.x0.min(other.x0),
             y0: self.y0.min(other.y0),
             x1: self.x1.max(other.x1),
@@ -220,15 +228,15 @@ pub struct TileBbox {
 }
 
 impl TileBbox {
-    pub fn tile_stride(&self) -> u32 {
+    pub const fn tile_stride(&self) -> u32 {
         self.x1.saturating_sub(self.x0)
     }
 
-    pub fn tile_height(&self) -> u32 {
+    pub const fn tile_height(&self) -> u32 {
         self.y1.saturating_sub(self.y0)
     }
 
-    pub fn tile_count(&self) -> u32 {
+    pub const fn tile_count(&self) -> u32 {
         self.tile_stride() * self.tile_height()
     }
 }

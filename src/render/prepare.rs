@@ -49,6 +49,10 @@ fn has_program_brushes(canvas: &Canvas) -> bool {
 }
 
 impl ScenePreparation {
+    #[allow(
+        clippy::expect_used,
+        reason = "Exact reuse requires a matching nonempty cached execution plan"
+    )]
     pub(crate) fn prepare_plan(
         &mut self,
         canvas: &Canvas,

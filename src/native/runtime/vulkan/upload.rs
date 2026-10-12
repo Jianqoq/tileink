@@ -6,7 +6,7 @@ pub(super) struct Upload<'a> {
 }
 
 impl<'a> Upload<'a> {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             spans: Vec::new(),
             len: 0,
@@ -27,7 +27,7 @@ impl<'a> Upload<'a> {
         Ok(offset)
     }
 
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.len
     }
 
@@ -36,6 +36,7 @@ impl<'a> Upload<'a> {
     pub unsafe fn copy_to(&self, destination: *mut u8) {
         let mut end = 0;
         for &(offset, bytes) in &self.spans {
+            // SAFETY: The caller supplies self.len writable bytes; planned aligned spans are disjoint and all padding is initialized before copying.
             unsafe {
                 destination.add(end).write_bytes(0, offset - end);
                 std::ptr::copy_nonoverlapping(bytes.as_ptr(), destination.add(offset), bytes.len());
@@ -60,6 +61,7 @@ mod tests {
             reference.extend_from_slice(bytes);
         }
         let mut output = vec![255; upload.len()];
+        // SAFETY: The output Vec owns upload.len initialized writable bytes and is distinct from the source spans.
         unsafe {
             upload.copy_to(output.as_mut_ptr());
         }

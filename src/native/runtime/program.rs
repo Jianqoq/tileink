@@ -73,7 +73,7 @@ impl From<Scatter> for Dispatch {
     }
 }
 impl Dispatch {
-    pub fn entry(&self) -> &'static str {
+    pub const fn entry(&self) -> &'static str {
         match self {
             Self::Probe(p) => p.entry,
             Self::Scatter(_) => "range_scatter",
@@ -97,7 +97,7 @@ impl Dispatch {
             Self::Scatter(s) => s.workgroups(),
         }
     }
-    pub fn params(&self) -> Option<&Params> {
+    pub const fn params(&self) -> Option<&Params> {
         match self {
             Self::Probe(p) => Some(&p.params),
             Self::Scatter(_) => None,

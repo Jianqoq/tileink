@@ -4,7 +4,10 @@ use super::GpuBufferLengths;
 use crate::{Canvas, TextContext, TextFontSystem, TextLayoutOptions, text::PreparedTextData};
 
 fn fonts() -> TextFontSystem {
-    let mut fonts = TextFontSystem::new_with_locale_and_db("en-US".into(), Default::default());
+    let mut fonts = TextFontSystem::new_with_locale_and_db(
+        "en-US".into(),
+        cosmic_text::fontdb::Database::default(),
+    );
     fonts
         .db_mut()
         .load_font_data(include_bytes!("../../svg/fonts/NotoSans-Regular.ttf").to_vec());

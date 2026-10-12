@@ -8,6 +8,7 @@ pub struct Commands {
 }
 impl Commands {
     pub fn new(device: &ID3D12Device) -> Result<Self> {
+        // SAFETY: The live device owns the created allocator/list; the new list is closed before its first reset.
         unsafe {
             let allocator = device.CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT)?;
             let list: ID3D12GraphicsCommandList =
@@ -22,6 +23,7 @@ impl Commands {
         source: &ID3D12Resource,
         destination: &ID3D12Resource,
     ) -> Result {
+        // SAFETY: The host waits for this frame slot before reset; resources belong to the queue device and stay owned through the signaled completion.
         unsafe {
             self.allocator.Reset()?;
             self.list.Reset(&self.allocator, None)?;
@@ -50,6 +52,7 @@ fn transition(
     before: D3D12_RESOURCE_STATES,
     after: D3D12_RESOURCE_STATES,
 ) {
+    // SAFETY: The caller supplies the actual resource states and live same-device resource/list; the temporary COM barrier reference is released once.
     unsafe {
         let mut barrier = D3D12_RESOURCE_BARRIER {
             Type: D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,

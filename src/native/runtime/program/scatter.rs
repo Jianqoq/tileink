@@ -19,14 +19,14 @@ impl Scatter {
         {
             return Err("invalid scatter buffer size/alignment");
         }
-        let word = |index: usize| {
-            u32::from_le_bytes(source[index * 4..index * 4 + 4].try_into().unwrap()) as u64
-        };
+        let words = source.as_chunks::<4>().0;
+        let word = |index: usize| u64::from(u32::from_le_bytes(words[index]));
         let payload = word(0);
         let count = word(1);
         if count > 65_535
             || payload
-                != RANGE_SCATTER_HEADER_WORDS as u64 + count * RANGE_SCATTER_DESCRIPTOR_WORDS as u64
+                != u64::from(RANGE_SCATTER_HEADER_WORDS)
+                    + count * u64::from(RANGE_SCATTER_DESCRIPTOR_WORDS)
             || payload > source.len() as u64 / 4
         {
             return Err("invalid scatter header/descriptor count");
@@ -56,7 +56,7 @@ impl Scatter {
             workgroups: count as u32,
         })
     }
-    pub fn workgroups(&self) -> u32 {
+    pub const fn workgroups(&self) -> u32 {
         self.workgroups
     }
     pub fn source(&self) -> &[u8] {
@@ -73,7 +73,7 @@ mod tests {
 
     #[test]
     fn scatter_rejects_truncated_payloads_and_overlapping_destinations() {
-        let source = [8u32, 1, 0, 0, 0, 0, 1, 0, 0x01020304];
+        let source = [8u32, 1, 0, 0, 0, 0, 1, 0, 0x0102_0304];
         let pack = |words: &[u32]| bytemuck::cast_slice(words).to_vec();
         let valid = Scatter::new(pack(&source), vec![0; 4]).unwrap();
         assert_eq!(valid.workgroups, 1);

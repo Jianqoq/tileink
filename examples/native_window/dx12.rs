@@ -42,12 +42,13 @@ pub struct Host {
 }
 impl Host {
     pub fn new(window: &Window) -> Result<Self> {
+        // SAFETY: The main thread enables validation before creation; the window and all factory/device output storage remain live.
         unsafe {
             NativeContext::enable_dx12_validation()?;
             let factory: IDXGIFactory4 = CreateDXGIFactory2(DXGI_CREATE_FACTORY_FLAGS(0))?;
             let adapter = factory.EnumAdapters1(0)?;
             let mut device = None;
-            D3D12CreateDevice(&adapter, D3D_FEATURE_LEVEL_12_0, &mut device)?;
+            D3D12CreateDevice(&adapter, D3D_FEATURE_LEVEL_12_0, &raw mut device)?;
             let device: ID3D12Device = device.ok_or("missing DX12 device")?;
             let queue: ID3D12CommandQueue =
                 device.CreateCommandQueue(&D3D12_COMMAND_QUEUE_DESC {
@@ -61,7 +62,7 @@ impl Host {
             let swapchain: IDXGISwapChain3 = factory
                 .CreateSwapChainForHwnd(
                     &queue,
-                    HWND(handle.hwnd.get() as *mut _),
+                    HWND(handle.hwnd.get() as *mut std::ffi::c_void),
                     &DXGI_SWAP_CHAIN_DESC1 {
                         Width: size.width,
                         Height: size.height,
@@ -116,6 +117,7 @@ impl Host {
         self.incoming = D3D12_RESOURCE_STATE_COMMON;
         // DXGI flip buffers cannot be UAV targets on this host. Render directly
         // into a persistent host RGBA8 allocation, then perform one GPU-only copy.
+        // SAFETY: The live device creates a checked-size target retained by the host.
         unsafe {
             let mut resource = None;
             self.device.CreateCommittedResource(
@@ -126,7 +128,7 @@ impl Host {
                 D3D12_HEAP_FLAG_NONE,
                 &D3D12_RESOURCE_DESC {
                     Dimension: D3D12_RESOURCE_DIMENSION_TEXTURE2D,
-                    Width: self.size[0] as u64,
+                    Width: u64::from(self.size[0]),
                     Height: self.size[1],
                     DepthOrArraySize: 1,
                     MipLevels: 1,
@@ -140,7 +142,7 @@ impl Host {
                 },
                 D3D12_RESOURCE_STATE_COMMON,
                 None,
-                &mut resource,
+                &raw mut resource,
             )?;
             let resource: ID3D12Resource = resource.ok_or("missing host render target")?;
             self.image = Some(self.context.import_dx12_texture(TextureDescriptor {
@@ -155,6 +157,7 @@ impl Host {
     }
     fn wait(&mut self, index: usize) -> Result {
         let frame = &mut self.frames[index];
+        // SAFETY: The frame owns this fence and pending resources until the requested completion value is observed.
         unsafe {
             if self.fence.GetCompletedValue() == u64::MAX {
                 return Err("DX12 device removed".into());
@@ -184,6 +187,10 @@ impl super::app::Host for Host {
     fn context(&self) -> &NativeContext {
         &self.context
     }
+    #[allow(
+        clippy::expect_used,
+        reason = "Successful target creation installs the imported image before acquire returns"
+    )]
     fn acquire(&mut self, size: [u32; 2]) -> Result<NativeTexture> {
         if self.size != size {
             self.retire()?;
@@ -193,6 +200,7 @@ impl super::app::Host for Host {
             for frame in &mut self.frames {
                 frame.copy = copy::Commands::new(&self.device)?;
             }
+            // SAFETY: All frame slots are retired before resizing; the host retains the swapchain and clears old backbuffer references.
             unsafe {
                 self.swapchain.ResizeBuffers(
                     2,
@@ -205,11 +213,17 @@ impl super::app::Host for Host {
             self.size = size;
             self.create_target()?;
         }
+        // SAFETY: The live swapchain owns the queried current backbuffer index.
         self.index = unsafe { self.swapchain.GetCurrentBackBufferIndex() } as usize;
         self.wait(self.index)?;
-        Ok(self.image.as_ref().unwrap().clone())
+        Ok(self
+            .image
+            .as_ref()
+            .expect("Successful target creation installs the imported image")
+            .clone())
     }
     fn target_use<'a>(&self, target: NativeRenderTarget<'a>) -> Result<NativeTargetUse<'a>> {
+        // SAFETY: The host retains the target and fences, and tracks the actual incoming and outgoing resource states across frames.
         Ok(unsafe {
             self.context.dx12_target_use(
                 target,
@@ -222,6 +236,10 @@ impl super::app::Host for Host {
             )?
         })
     }
+    #[allow(
+        clippy::expect_used,
+        reason = "Presentation follows successful acquire, which installs and retains the source texture"
+    )]
     fn present(&mut self, submission: NativeTargetSubmission) -> Result {
         let frame = &mut self.frames[self.index];
         if submission.outgoing.state != D3D12_RESOURCE_STATE_COPY_SOURCE {
@@ -229,12 +247,17 @@ impl super::app::Host for Host {
         }
         self.incoming = D3D12_RESOURCE_STATE_COPY_SOURCE;
         frame.rendering = Some(submission.submission);
+        // SAFETY: The acquired frame slot is retired before reuse; backbuffer and source stay owned until copy and rendering fences complete.
         unsafe {
             let destination: ID3D12Resource = self.swapchain.GetBuffer(self.index as u32)?;
             self.unconfirmed = true;
-            frame
-                .copy
-                .submit(&self.queue, self.source.as_ref().unwrap(), &destination)?;
+            frame.copy.submit(
+                &self.queue,
+                self.source
+                    .as_ref()
+                    .expect("Acquire creates the source texture before presenting"),
+                &destination,
+            )?;
             self.serial += 1;
             // Completion covers host copy commands, beyond Tileink's own fence.
             self.swapchain.Present(1, DXGI_PRESENT(0)).ok()?;

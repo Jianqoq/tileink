@@ -1,14 +1,17 @@
 use super::*;
 
 impl Canvas {
-    pub fn draw_count(&self) -> usize {
+    #[must_use]
+    pub const fn draw_count(&self) -> usize {
         self.draw_records.len()
     }
 
+    #[must_use]
     pub fn draw_id_at(&self, index: usize) -> Option<DrawId> {
         (index < self.draw_records.len()).then(|| self.draw_id_from_index(index))
     }
 
+    #[must_use]
     pub fn draw_brush(&self, draw: DrawId) -> Option<Brush> {
         self.draw_index(draw)
             .and_then(|index| self.draw_brush_for_record(&self.draw_records[index]))
@@ -32,6 +35,7 @@ impl Canvas {
         self.set_draw_brush(draw, Brush::Solid(color))
     }
 
+    #[must_use]
     pub fn draw_solid_color(&self, draw: DrawId) -> Option<Color> {
         self.draw_brush(draw).and_then(|brush| brush.solid_color())
     }

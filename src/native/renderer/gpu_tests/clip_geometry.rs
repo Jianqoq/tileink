@@ -33,7 +33,7 @@ fn scene(rect: Rect, domain: usize) -> Canvas {
     canvas
 }
 
-fn rectangles() -> [Rect; 5] {
+const fn rectangles() -> [Rect; 5] {
     [
         Rect::new(2.0, 3.0, 16.0, 21.0),
         Rect::new(8.0, 9.0, 24.0, 30.0),

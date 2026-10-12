@@ -10,6 +10,7 @@ pub(super) struct Commands {
 
 impl Commands {
     pub(super) fn acquire(device: &ID3D12Device, free: &mut Vec<Self>) -> Result<Self> {
+        // SAFETY: Only retired command slots enter the free list; their retained allocator and list belong to this live device.
         unsafe {
             if let Some(commands) = free.pop() {
                 commands.allocator.Reset()?;

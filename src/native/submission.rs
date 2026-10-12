@@ -1,5 +1,7 @@
 use super::{NativeBackend, NativeError};
 use crate::Image;
+#[cfg(tileink_native_runtime)]
+use std::rc::Rc;
 
 /// Owns the context generation through GPU completion. Dropping it never cancels work.
 #[must_use = "wait explicitly to observe completion and retire this submission"]
@@ -12,13 +14,24 @@ pub struct NativeSubmission {
     completed: std::rc::Rc<std::cell::Cell<bool>>,
 }
 
+#[cfg_attr(
+    not(tileink_native_runtime),
+    allow(
+        clippy::missing_const_for_fn,
+        reason = "Unavailable-backend stubs retain the runtime API; native implementations are checked on Windows/macOS"
+    )
+)]
 impl NativeSubmission {
-    pub fn backend(&self) -> NativeBackend {
+    #[must_use]
+    pub const fn backend(&self) -> NativeBackend {
         self.backend
     }
 
     /// Inspect the submission fence without waiting, mapping pixels or releasing
     /// resources. Call `wait` (or image `readback`) to retire the completed work.
+    ///
+    /// # Errors
+    /// Returns an error if the backend is unavailable or querying GPU completion fails.
     pub fn is_complete(&self) -> Result<bool, NativeError> {
         #[cfg(tileink_native_runtime)]
         {
@@ -36,13 +49,13 @@ impl NativeSubmission {
         Self {
             backend,
             receipt: Some(receipt),
-            completed: Default::default(),
+            completed: Rc::default(),
         }
     }
 
     #[cfg(tileink_native_runtime)]
     pub(super) fn completion(&self) -> std::rc::Rc<std::cell::Cell<bool>> {
-        self.completed.clone()
+        std::rc::Rc::clone(&self.completed)
     }
 
     #[cfg(tileink_native_runtime)]
@@ -59,6 +72,9 @@ impl NativeSubmission {
     }
 
     /// Wait explicitly, with the backend's bounded completion wait, and retire resources.
+    ///
+    /// # Errors
+    /// Returns an error if completion/readback fails, including the backend completion timeout.
     pub fn wait(self) -> Result<(), NativeError> {
         self.readback().map(|_| ())
     }
@@ -88,25 +104,28 @@ pub struct NativeImageSubmission {
 
 impl NativeImageSubmission {
     /// Inspect GPU progress without consuming this image or mapping its readback.
+    ///
+    /// # Errors
+    /// Returns an error if the backend is unavailable or querying GPU completion fails.
     pub fn is_complete(&self) -> Result<bool, NativeError> {
         self.submission.is_complete()
     }
-    pub(super) fn new(submission: NativeSubmission, size: (u32, u32)) -> Self {
+    pub(super) const fn new(submission: NativeSubmission, size: (u32, u32)) -> Self {
         Self { submission, size }
     }
 
+    ///
+    /// # Errors
+    /// Returns an error if completion or readback fails, or the returned image byte count is invalid.
     pub fn readback(self) -> Result<Image, NativeError> {
         decode_image(self.size, self.submission.readback()?)
     }
 }
 
-fn decode_image(size: (u32, u32), mut outputs: Vec<Vec<u8>>) -> Result<Image, NativeError> {
-    if outputs.len() != 1 {
-        return Err(NativeError::Readback(
-            "native image submission has an invalid output count".into(),
-        ));
-    }
-    let bytes = outputs.pop().unwrap();
+fn decode_image(size: (u32, u32), outputs: Vec<Vec<u8>>) -> Result<Image, NativeError> {
+    let [bytes]: [Vec<u8>; 1] = outputs.try_into().map_err(|_| {
+        NativeError::Readback("native image submission has an invalid output count".into())
+    })?;
     let expected = (u64::from(size.0) * u64::from(size.1)).checked_mul(4);
     if expected.is_none() || u64::try_from(bytes.len()).ok() != expected {
         return Err(NativeError::Readback(

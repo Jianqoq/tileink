@@ -1,5 +1,16 @@
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "Test setup and assertions abort on failure; production builds are checked separately"
+    )
+)]
 #[path = "../build/native/cache.rs"]
 mod cache;
+#[path = "../build/hex.rs"]
+mod hex;
 
 use cache::{CacheKey, ShaderCache};
 use std::{cell::Cell, fs, io, path::PathBuf};
@@ -117,27 +128,27 @@ fn concurrent_builds_compile_one_artifact_and_observe_complete_bytes() {
     let root = directory("concurrent");
     let calls = Arc::new(AtomicUsize::new(0));
     let barrier = Arc::new(Barrier::new(4));
-    let jobs: Vec<_> = (0..4)
-        .map(|_| {
-            let root = root.clone();
-            let calls = calls.clone();
-            let barrier = barrier.clone();
-            std::thread::spawn(move || {
-                barrier.wait();
-                ShaderCache::new(root)
-                    .get_or_compile(
-                        &CacheKey::new(&[b"shared"]),
-                        |_| Ok(true),
-                        || {
-                            calls.fetch_add(1, Ordering::SeqCst);
-                            Ok(vec![42; 4096])
-                        },
-                    )
-                    .unwrap()
-                    .bytes
-            })
+    let jobs: Vec<_> = std::iter::repeat_with(|| {
+        let root = root.clone();
+        let calls = std::sync::Arc::clone(&calls);
+        let barrier = std::sync::Arc::clone(&barrier);
+        std::thread::spawn(move || {
+            barrier.wait();
+            ShaderCache::new(root)
+                .get_or_compile(
+                    &CacheKey::new(&[b"shared"]),
+                    |_| Ok(true),
+                    || {
+                        calls.fetch_add(1, Ordering::SeqCst);
+                        Ok(vec![42; 4096])
+                    },
+                )
+                .unwrap()
+                .bytes
         })
-        .collect();
+    })
+    .take(4)
+    .collect();
     for job in jobs {
         assert_eq!(job.join().unwrap(), vec![42; 4096]);
     }

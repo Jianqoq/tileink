@@ -3,6 +3,7 @@
 //! to a TBDR render pass; preparation and filters remain compute workloads.
 use super::Result;
 use crate::native::shaders::{Binding, BindingKind, NativeShaderArtifact};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 static NEXT_BATCH: AtomicU64 = AtomicU64::new(1);
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
@@ -11,7 +12,7 @@ pub struct ResourceId {
     index: usize,
 }
 impl ResourceId {
-    pub fn index(self) -> usize {
+    pub const fn index(self) -> usize {
         self.index
     }
 }
@@ -82,9 +83,13 @@ pub struct ComputeBatch {
 }
 impl ComputeBatch {
     pub(crate) fn acceptance(&self) -> std::rc::Rc<std::cell::Cell<bool>> {
-        self.accepted.clone()
+        std::rc::Rc::clone(&self.accepted)
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Exhausting batch identities must fail rather than alias live resource ownership"
+    )]
     pub fn new() -> Self {
         let owner = NEXT_BATCH
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
@@ -98,7 +103,7 @@ impl ComputeBatch {
             passes: Vec::new(),
             commands: Vec::new(),
             outputs: Vec::new(),
-            filter_tile_cache: Default::default(),
+            filter_tile_cache: HashMap::default(),
         }
     }
     pub fn buffer(&mut self, bytes: Vec<u8>) -> Result<ResourceId> {
@@ -207,7 +212,7 @@ impl ComputeBatch {
         grid: [u32; 3],
     ) -> Result<()> {
         if grid.iter().any(|n| *n > 65535)
-            || grid.iter().map(|v| *v as u64).product::<u64>() > u32::MAX as u64
+            || grid.iter().map(|v| u64::from(*v)).product::<u64>() > u64::from(u32::MAX)
         {
             return Err("native compute dispatch exceeds dimensions/addressing".into());
         }

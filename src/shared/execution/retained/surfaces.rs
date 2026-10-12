@@ -4,13 +4,13 @@ use super::*;
 impl ExecPlan {
     /// Updates only translated offscreen descriptors belonging to one retained scene leaf.
     ///
-    /// Position changes preserve command topology, physical draw slots, and BatchIds. Replacing
+    /// Position changes preserve command topology, physical draw slots, and `BatchIds`. Replacing
     /// these descriptors avoids recompiling unrelated scene fragments while still moving filter,
     /// backdrop, group, and mask surface geometry to the new coordinates.
     pub(crate) fn patch_retained_scene_position(
         &mut self,
         id: RetainedNodeId,
-        fragment: &ExecPlan,
+        fragment: &Self,
     ) -> bool {
         let mut replacements = HashMap::new();
         collect_surface_patches(&fragment.ops, id, &mut replacements);
@@ -70,7 +70,7 @@ fn collect_surface_patches(
                 collect_surface_patches(content, owner, patches);
                 collect_surface_patches(mask, owner, patches);
             }
-            _ => {}
+            ExecOp::DrawBatch { .. } => {}
         }
     }
 }
@@ -113,7 +113,7 @@ fn patch_surface_ops(
                 patch_surface_ops(content, patches, patched);
                 patch_surface_ops(mask, patches, patched);
             }
-            _ => {}
+            ExecOp::DrawBatch { .. } => {}
         }
     }
 }

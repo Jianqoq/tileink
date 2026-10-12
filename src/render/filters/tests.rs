@@ -115,10 +115,10 @@ fn render(
     ));
     let region = Region::Rect {
         rect: Rect::new(
-            bounds.x0 as f64,
-            bounds.y0 as f64,
-            bounds.x1 as f64,
-            bounds.y1 as f64,
+            f64::from(bounds.x0),
+            f64::from(bounds.y0),
+            f64::from(bounds.x1),
+            f64::from(bounds.y1),
         ),
         radius: Radius::ZERO,
     };

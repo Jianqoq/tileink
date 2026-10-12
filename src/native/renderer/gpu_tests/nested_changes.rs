@@ -11,11 +11,11 @@ use peniko::{
 use std::rc::Rc;
 type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-fn id(value: u64) -> Id {
+const fn id(value: u64) -> Id {
     Id::for_owner(160_000 + value)
 }
 
-fn filter(opacity: f32) -> D {
+const fn filter(opacity: f32) -> D {
     D::Filter {
         filter: Filter::Opacity(opacity),
         sample_region: Region::rect(Rect::new(0.0, 0.0, 32.0, 32.0), Radius::ZERO),
@@ -162,7 +162,7 @@ fn removal(case: u8) -> Result {
         };
         for shift in [0, 8, 16, 24] {
             assert!(
-                ((pixel >> shift & 255) as i32 - (analytic >> shift & 255) as i32).abs() <= 1,
+                (((pixel >> shift) & 255) as i32 - ((analytic >> shift) & 255) as i32).abs() <= 1,
                 "case={case}, pixel={pixel:08x}, analytic={analytic:08x}"
             );
         }

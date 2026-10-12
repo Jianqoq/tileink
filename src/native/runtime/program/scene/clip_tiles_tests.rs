@@ -481,13 +481,18 @@ fn retained_bitmap_clip_selection_matches_list_reference_for_edges_holes_and_ord
         for clip in [
             Rect::new(-3.0, -3.0, 19.0, 19.0),
             Rect::new(17.0, 1.0, 48.0, 33.0),
-            Rect::new(0.0, 0.0, width as f64, height as f64),
-            Rect::new(width as f64 + 1.0, 0.0, width as f64 + 3.0, height as f64),
+            Rect::new(0.0, 0.0, f64::from(width), f64::from(height)),
+            Rect::new(
+                f64::from(width) + 1.0,
+                0.0,
+                f64::from(width) + 3.0,
+                f64::from(height),
+            ),
         ] {
             let mut canvas = Canvas::new(width, height, 1.0);
             canvas.push_clip_sdf_rect_layer(clip, crate::Radius::ZERO);
             canvas.push_rect(
-                Rect::new(0.0, 0.0, width as f64, height as f64),
+                Rect::new(0.0, 0.0, f64::from(width), f64::from(height)),
                 crate::Radius::ZERO,
                 peniko::Color::BLACK,
             );

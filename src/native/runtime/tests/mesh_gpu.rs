@@ -34,9 +34,7 @@ fn assert_close(actual: u32, expected: u32, label: &str) {
             .iter()
             .zip(expected.to_le_bytes())
             .all(|(a, b)| a.abs_diff(b) <= 1),
-        "{label}: actual={:x} expected={:x}",
-        actual,
-        expected
+        "{label}: actual={actual:x} expected={expected:x}"
     );
 }
 
@@ -89,7 +87,7 @@ fn native_mesh_parameter_samples_cover_skew_winding_alpha_modes_and_bin_edges() 
                     let c = indices.map(|i| colors[i]);
                     for j in 0..=12 {
                         for i in 0..=12 {
-                            let (u, v) = (i as f64 / 12.0, j as f64 / 12.0);
+                            let (u, v) = (f64::from(i) / 12.0, f64::from(j) / 12.0);
                             let weights =
                                 [(1.0 - u) * (1.0 - v), u * (1.0 - v), (1.0 - u) * v, u * v];
                             points.push(std::array::from_fn(|axis| {
@@ -140,7 +138,7 @@ fn native_mesh_inverse_handles_nonparallelograms_and_transparent_exterior() -> R
         [[0.0, 0.0], [100.0, 0.0], [45.0, 100.0], [55.0, 100.0]],
         [[0.0, 0.0], [100.0, 45.0], [0.0, 100.0], [100.0, 55.0]],
         [[0.0, 0.0], [100.0, 0.0], [0.0, 100.0], [1.0, 100.0]],
-        [[0.0, 0.0], [100.0, 0.0], [0.0, 100.0], [0.010002, 100.0]],
+        [[0.0, 0.0], [100.0, 0.0], [0.0, 100.0], [0.010_002, 100.0]],
     ] {
         let mut words = vec![0; 7];
         push_encoded_brush(
@@ -151,7 +149,7 @@ fn native_mesh_inverse_handles_nonparallelograms_and_transparent_exterior() -> R
         let mut expected = Vec::new();
         for j in 0..=20 {
             for i in 0..=20 {
-                let (u, v) = (i as f64 / 20.0, j as f64 / 20.0);
+                let (u, v) = (f64::from(i) / 20.0, f64::from(j) / 20.0);
                 let weights = [(1.0 - u) * (1.0 - v), u * (1.0 - v), (1.0 - u) * v, u * v];
                 points.push(std::array::from_fn(|axis| {
                     p.iter()

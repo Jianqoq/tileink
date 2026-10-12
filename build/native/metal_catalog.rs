@@ -7,8 +7,13 @@ use super::{
     source::SourceGraph,
     write_changed,
 };
+use std::fmt::Write as _;
 use std::{env, io, path::Path};
 
+#[allow(
+    clippy::unnecessary_debug_formatting,
+    reason = "Generated Rust requires quoted and escaped path literals for include_bytes"
+)]
 pub fn generate(
     root: &Path,
     out: &Path,
@@ -25,11 +30,10 @@ pub fn generate(
     for file in ["build/native/metal.rs", "build/native/metal_catalog.rs"] {
         println!("cargo:rerun-if-changed={}", root.join(file).display());
     }
-    let compiler = MetalCompiler::discover("/usr/bin/xcrun".into())?;
+    let compiler = MetalCompiler::discover(Path::new("/usr/bin/xcrun"))?;
     let cache = ShaderCache::new(
         env::var_os("TILEINK_NATIVE_SHADER_CACHE_DIR")
-            .map(Into::into)
-            .unwrap_or_else(|| root.join("target/tileink-metal-shaders")),
+            .map_or_else(|| root.join("target/tileink-metal-shaders"), Into::into),
     );
     for (family, source) in [
         ("probe", "probes.metal"),
@@ -122,7 +126,7 @@ pub fn generate(
                 bindings.push("metal_buffer_sizes".into());
             }
         }
-        let recipe = serde_json::json!({"schema":1,"language":"msl","target":"macos-metallib","target_triple":env::var("TARGET").unwrap(),"family":family,"flags":metal::FLAGS,"toolchain":compiler.identity,"sources":graph.files,"abi_sha256":metal::digest(&interface.cache_bytes()),"metal_grid_buffer":30});
+        let recipe = serde_json::json!({"schema":1,"language":"msl","target":"macos-metallib","target_triple":env::var("TARGET").map_err(io::Error::other)?,"family":family,"flags":metal::FLAGS,"toolchain":compiler.identity,"sources":graph.files,"abi_sha256":metal::digest(&interface.cache_bytes()),"metal_grid_buffer":30});
         let key = CacheKey::new(&[&serde_json::to_vec(&recipe)?, graph.expanded.as_bytes()]);
         let artifact = cache.get_or_compile(
             &key,
@@ -159,7 +163,12 @@ pub fn generate(
                 })
                 .collect::<Vec<_>>()
                 .join(",");
-            declarations.push_str(&format!("NativeShaderArtifact {{ format: \"metallib\", entry: {entry:?}, cache_key: {:?}, workgroup: {:?}, bindings: {bindings}, uniforms: &[{uniforms}], bytes: include_bytes!({output:?}) }},\n", key.hex(), interface.workgroup));
+            let _ = writeln!(
+                declarations,
+                "NativeShaderArtifact {{ format: \"metallib\", entry: {entry:?}, cache_key: {:?}, workgroup: {:?}, bindings: {bindings}, uniforms: &[{uniforms}], bytes: include_bytes!({output:?}) }},",
+                key.hex(),
+                interface.workgroup
+            );
         }
         manifest.push(serde_json::json!({"key":key.hex(),"artifact_sha256":metal::digest(&artifact.bytes),"recipe":recipe}));
     }

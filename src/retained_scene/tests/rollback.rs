@@ -119,7 +119,7 @@ fn undo_log_restores_values_order_removals_and_surface_after_late_failure() {
             RetainedParent::content(root),
             None,
             a,
-            original.clone(),
+            std::rc::Rc::clone(&original),
             Affine::translate((0.0, 0.0)),
         )
         .insert_scene(

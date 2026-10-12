@@ -51,6 +51,10 @@ impl PersistentSceneMaterializer {
         batch
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Empty-branch indexing traverses branches validated by retained scene transactions"
+    )]
     pub(crate) fn refresh_empty_branches(&mut self, scene: &RetainedScene, id: RetainedNodeId) {
         let plan = self
             .canvas
@@ -73,6 +77,10 @@ impl PersistentSceneMaterializer {
     }
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "Empty-branch indexing traverses branches validated by retained scene transactions"
+)]
 fn collect_empty_branches(
     scene: &RetainedScene,
     id: RetainedNodeId,

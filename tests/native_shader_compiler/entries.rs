@@ -1,15 +1,24 @@
 //! Compile the actual entry catalog even on Metal-only test hosts.
 use super::{dxc, pinned_compiler, source};
 
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
 #[path = "../../build/native/abi.rs"]
 mod abi;
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
 #[path = "../../build/native/dxil_reflection.rs"]
 mod dxil_reflection;
 #[path = "../../build/native/interfaces.rs"]
 mod interfaces;
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
 #[path = "../../build/native/program.rs"]
 mod program;
 

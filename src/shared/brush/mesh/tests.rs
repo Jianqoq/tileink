@@ -47,7 +47,12 @@ fn mesh_rejects_folded_degenerate_and_inconsistently_wound_cells() {
         [[0.0, 0.0]; 4],
         [[0.0, 0.0], [100.0, 100.0], [0.0, 100.0], [100.0, 0.0]],
         [[0.0, 0.0], [100.0, 0.0], [0.0, 100.0], [1.0, 1.0]],
-        [[0.0, 0.0], [100.0, 0.0], [0.0, 100.0], [0.00000001, 100.0]],
+        [
+            [0.0, 0.0],
+            [100.0, 0.0],
+            [0.0, 100.0],
+            [0.000_000_01, 100.0],
+        ],
     ] {
         assert_eq!(
             MeshGradient::new(2, 2, positions, colors()).unwrap_err(),
@@ -78,11 +83,11 @@ fn mesh_accepts_skewed_and_reflected_quads_and_preserves_encoding() {
                     .unwrap()
                     .with_interpolation(interpolation),
             );
-            let mut blob = vec![0xdeadbeef; 13];
+            let mut blob = vec![0xdead_beef; 13];
             let (offset, length) = push_encoded_brush(&mut blob, &brush);
             assert_eq!(length as usize, encoded_brush_word_len(&brush));
             let decoded = decode_encoded_brush(&blob, offset, length).unwrap();
-            let mut copy = vec![0xdeadbeef; 13];
+            let mut copy = vec![0xdead_beef; 13];
             assert_eq!(push_encoded_brush(&mut copy, &decoded), (offset, length));
             assert_eq!(copy, blob);
             assert!(decode_encoded_brush(&blob, offset, length - 1).is_none());

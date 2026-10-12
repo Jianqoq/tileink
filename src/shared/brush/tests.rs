@@ -77,7 +77,7 @@ fn fixed_brush_parameters_round_trip_and_truncated_payloads_are_rejected() {
             end: [4.0, 5.0],
             transform,
             extend: Extend::Reflect,
-            ramp: Rc::from([0xff112233, 0xff445566]),
+            ramp: Rc::from([0xff11_2233, 0xff44_5566]),
         }),
         Brush::Radial(RadialGradient {
             start_center: [-2.0, 3.0],
@@ -86,7 +86,7 @@ fn fixed_brush_parameters_round_trip_and_truncated_payloads_are_rejected() {
             end_radius: 7.0,
             transform,
             extend: Extend::Repeat,
-            ramp: Rc::from([0xff112233, 0xff445566]),
+            ramp: Rc::from([0xff11_2233, 0xff44_5566]),
         }),
         Brush::four_corner(
             kurbo::Rect::new(-2.0, 3.0, 4.0, 5.0),

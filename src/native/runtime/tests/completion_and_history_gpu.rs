@@ -1,4 +1,5 @@
 use super::super::Result;
+use crate::BlurSampling;
 use crate::{
     Canvas, NativeContext, NativeContextOptions, NativeRenderer, Radius, RetainedNodeId,
     RetainedParent, RetainedScene,
@@ -15,6 +16,7 @@ fn native_public_completion_poll_preserves_queued_images_until_readback() -> Res
     // Continuous hosts must inspect progress without waiting or consuming an image.
     // Completing a later submission also proves completion of its earlier prefix.
     #[cfg(feature = "dx12")]
+    // SAFETY: The serial GPU fixture enables validation before creating its context; the creation gate prevents late debug-layer changes.
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }
@@ -54,6 +56,7 @@ fn native_public_completion_poll_preserves_queued_images_until_readback() -> Res
 fn native_retained_output_rectangles_preserve_sentinels_and_history_contracts() -> Result<()> {
     use crate::{ExternalTextureHistoryId, NativeRenderTarget};
     #[cfg(feature = "dx12")]
+    // SAFETY: The serial GPU fixture enables validation before creating its context; the creation gate prevents late debug-layer changes.
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }
@@ -145,6 +148,7 @@ fn native_retained_output_rectangles_preserve_sentinels_and_history_contracts() 
 fn native_capacity_target_renders_directly_and_preserves_unused_pixels() -> Result<()> {
     use crate::{ExternalTextureHistoryId, NativeRenderTarget};
     #[cfg(feature = "dx12")]
+    // SAFETY: The serial GPU fixture enables validation before creating its context; the creation gate prevents late debug-layer changes.
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }
@@ -195,16 +199,16 @@ fn native_capacity_target_renders_directly_and_preserves_unused_pixels() -> Resu
     for (width, height) in [(17, 13), (29, 19), (9, 7), (17, 13)] {
         let mut canvas = Canvas::new(width, height, 1.0);
         canvas.push_rect(
-            Rect::new(0.0, 0.0, width as f64, height as f64),
+            Rect::new(0.0, 0.0, f64::from(width), f64::from(height)),
             Radius::ZERO,
             Color::from_rgb8(17, 31, 53),
         );
-        let region = Rect::new(1.25, 1.5, width as f64 - 0.75, height as f64 - 0.5);
+        let region = Rect::new(1.25, 1.5, f64::from(width) - 0.75, f64::from(height) - 0.5);
         canvas.push_filter_layer(
             crate::Filter::Blur {
                 std_dev_x: 1.25,
                 std_dev_y: 0.75,
-                sampling: Default::default(),
+                sampling: BlurSampling::default(),
             },
             crate::Region::rect(region, Radius::ZERO),
         );

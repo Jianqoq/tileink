@@ -43,6 +43,10 @@ impl<'a> Upload<'a> {
         })
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "A peeked upload range remains present until this iterator consumes it"
+    )]
     pub(super) fn copies(&self) -> impl Iterator<Item = [u64; 3]> + '_ {
         let mut updates = self.updates.iter().peekable();
         let mut source = 0;
@@ -172,7 +176,7 @@ mod tests {
             ((limit - 4) as usize, data.as_slice()),
         ];
         let packed = Upload::new(limit, &updates).unwrap().into_packed();
-        assert_eq!(packed.copies, [[0, (limit - 8) as u64, 8]]);
+        assert_eq!(packed.copies, [[0, u64::from(limit - 8), 8]]);
         assert_eq!(packed.bytes, data.repeat(2));
         for offset in [limit as usize, usize::MAX - 3] {
             assert!(Upload::new(limit, &[(offset, &data)]).is_err());

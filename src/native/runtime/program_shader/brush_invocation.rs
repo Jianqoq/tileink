@@ -2,6 +2,7 @@
 use super::Result;
 use crate::native::runtime::compute::{ComputeBatch, ResourceId};
 use crate::shared::{filter_config::FilterConfig, shader::BrushInstance};
+#[derive(Clone, Copy)]
 pub(crate) struct Output {
     pub(crate) image: ResourceId,
     pub(crate) origin: [u32; 2],

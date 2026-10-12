@@ -19,7 +19,7 @@ pub(crate) struct FilterCursors {
 }
 
 impl FilterCursors {
-    pub(crate) fn next_transfer_index(&mut self) -> u32 {
+    pub(crate) const fn next_transfer_index(&mut self) -> u32 {
         let index = self.transfer as u32;
         self.transfer += 1;
         index
@@ -31,19 +31,19 @@ impl FilterCursors {
         offset
     }
 
-    pub(crate) fn next_convolve_offset(&mut self, matrix: &ConvolveMatrix) -> u32 {
+    pub(crate) const fn next_convolve_offset(&mut self, matrix: &ConvolveMatrix) -> u32 {
         let offset = self.convolve as u32;
         self.convolve += matrix.data.len();
         offset
     }
 
-    pub(crate) fn next_turbulence_index(&mut self) -> u32 {
+    pub(crate) const fn next_turbulence_index(&mut self) -> u32 {
         let index = self.turbulence as u32;
         self.turbulence += 1;
         index
     }
 
-    pub(crate) fn next_path_index(&mut self, region: &Region) -> Option<u32> {
+    pub(crate) const fn next_path_index(&mut self, region: &Region) -> Option<u32> {
         if !matches!(region, Region::Path { .. }) {
             return None;
         }
@@ -95,7 +95,7 @@ impl FilterCursors {
                     self.advance_ops(content);
                     self.advance_ops(mask);
                 }
-                _ => {}
+                ExecOp::DrawBatch { .. } => {}
             }
         }
     }

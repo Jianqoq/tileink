@@ -8,6 +8,7 @@ pub struct SceneVersion(pub(crate) u64);
 impl SceneVersion {
     pub const INITIAL: Self = Self(0);
 
+    #[must_use]
     pub const fn get(self) -> u64 {
         self.0
     }
@@ -27,6 +28,7 @@ pub struct RetainedParent {
 }
 
 impl RetainedParent {
+    #[must_use]
     pub const fn content(node: RetainedNodeId) -> Self {
         Self {
             node,
@@ -34,6 +36,7 @@ impl RetainedParent {
         }
     }
 
+    #[must_use]
     pub const fn mask(node: RetainedNodeId) -> Self {
         Self {
             node,
@@ -247,7 +250,7 @@ impl SceneNode {
         }
     }
 
-    pub(crate) fn children(
+    pub(crate) const fn children(
         &self,
         parent: RetainedParent,
     ) -> Result<&ChildList, RetainedSceneError> {
@@ -277,6 +280,10 @@ impl SceneNode {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "Flags describe independent changes or statistics that may be true together"
+)]
 pub(crate) struct SceneChangeSet {
     pub(crate) changed_nodes: HashSet<RetainedNodeId>,
     pub(crate) changed_layers: HashSet<RetainedNodeId>,

@@ -1,12 +1,30 @@
-#[allow(dead_code)]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "Test setup and assertions abort on failure; production builds are checked separately"
+    )
+)]
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
 #[path = "../build/native/abi.rs"]
 mod abi;
 #[path = "../build/native/dxil_reflection.rs"]
 mod dxil_reflection;
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
 #[path = "../build/gpu_constants.rs"]
 mod gpu_constants;
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
 #[path = "../build/native/interfaces.rs"]
 mod interfaces;
 
@@ -69,7 +87,7 @@ fn dxil_resource_kind_and_parameter_layout_must_match_byte_buffer_abi() {
         );
         assert!(dxil_reflection::validate(&extra, "copy_words", &abi).is_err());
     }
-    let mut wrong = abi.clone();
+    let mut wrong = abi;
     wrong.descriptor_set = 1;
     assert!(dxil_reflection::validate(reflection, "copy_words", &wrong).is_err());
 }
@@ -112,7 +130,7 @@ fn compute_layout_rejects_duplicate_slots_and_invalid_uniform_fields() {
     let mut wrong = valid.clone();
     wrong.resources.get_mut("config").unwrap().fields[1].offset = 8;
     assert!(abi::validate(&wrong).is_err());
-    let mut wrong = valid.clone();
+    let mut wrong = valid;
     wrong.resources.get_mut("dispatch_grid").unwrap().internal = false;
     assert!(abi::validate(&wrong).is_err());
 }

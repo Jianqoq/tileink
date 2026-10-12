@@ -18,6 +18,9 @@ pub struct NativeTexture {
 impl NativeTexture {
     /// Submit an explicit GPU readback copy. The returned receipt waits/maps only
     /// when its `readback` method is called; normal rendering does not read pixels.
+    ///
+    /// # Errors
+    /// Returns an error for an unavailable backend, an array texture, or failure to record/submit the readback copy.
     pub fn readback(&self) -> Result<super::NativeImageSubmission, super::NativeError> {
         if self.array {
             return Err(super::NativeError::Recording(
@@ -46,10 +49,12 @@ impl NativeTexture {
             ))
         }
     }
-    pub fn size(&self) -> (u32, u32) {
+    #[must_use]
+    pub const fn size(&self) -> (u32, u32) {
         (self.size[0], self.size[1])
     }
-    pub fn backend(&self) -> NativeBackend {
+    #[must_use]
+    pub const fn backend(&self) -> NativeBackend {
         self.context.backend()
     }
 }

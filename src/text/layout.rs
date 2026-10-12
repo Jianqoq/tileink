@@ -12,11 +12,13 @@ pub struct TextLayout {
 }
 
 impl TextLayout {
-    pub fn is_empty(&self) -> bool {
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
         self.glyphs.is_empty() || self.bounds.is_empty()
     }
 
-    pub fn bounds(&self) -> Bounds {
+    #[must_use]
+    pub const fn bounds(&self) -> Bounds {
         self.bounds
     }
 
@@ -108,18 +110,18 @@ pub(crate) struct TextRun {
 }
 
 #[cfg(test)]
-pub(crate) fn scene_glyphs_at_origin<'a>(
-    layout: &'a TextLayout,
+pub(crate) fn scene_glyphs_at_origin(
+    layout: &TextLayout,
     origin: Point,
-) -> impl Iterator<Item = CanvasGlyph> + 'a {
+) -> impl Iterator<Item = CanvasGlyph> + '_ {
     scene_glyphs_at_scaled_origin(layout, origin, 1.0)
 }
 
-pub(crate) fn scene_glyphs_at_scaled_origin<'a>(
-    layout: &'a TextLayout,
+pub(crate) fn scene_glyphs_at_scaled_origin(
+    layout: &TextLayout,
     origin: Point,
     scale: f32,
-) -> impl Iterator<Item = CanvasGlyph> + 'a {
+) -> impl Iterator<Item = CanvasGlyph> + '_ {
     layout
         .glyphs()
         .iter()

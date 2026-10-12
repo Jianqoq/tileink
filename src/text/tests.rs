@@ -23,7 +23,10 @@ use super::{
 };
 
 pub(super) fn font_system() -> FontSystem {
-    let mut fonts = FontSystem::new_with_locale_and_db("en-US".into(), Default::default());
+    let mut fonts = FontSystem::new_with_locale_and_db(
+        "en-US".into(),
+        cosmic_text::fontdb::Database::default(),
+    );
     for data in [
         include_bytes!("../svg/fonts/NotoSans-Regular.ttf").as_slice(),
         include_bytes!("../svg/fonts/NotoSans-Bold.ttf").as_slice(),

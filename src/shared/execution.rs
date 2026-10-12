@@ -111,14 +111,14 @@ pub(crate) enum ExecOp {
         /// Ancestor clips only: opacity/blend ancestors with offscreen children
         /// own separate surfaces, so their groups never enter this range.
         outer_stack: Range<usize>,
-        children: Vec<ExecOp>,
+        children: Vec<Self>,
     },
     OffscreenMaskLayer {
         retained_id: Option<RetainedSurfaceId>,
         layer: Mask,
-        /// Ancestor clip range, with the same contract as OffscreenLayer.
+        /// Ancestor clip range, with the same contract as `OffscreenLayer`.
         outer_stack: Range<usize>,
-        content: Vec<ExecOp>,
-        mask: Vec<ExecOp>,
+        content: Vec<Self>,
+        mask: Vec<Self>,
     },
 }

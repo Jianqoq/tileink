@@ -209,7 +209,7 @@ fn native_shader_retained_uniform_and_program_replacements_match_fresh_frames() 
         }
         tx.set_transform(
             node,
-            Affine::translate((phase as f64 * 3.0, phase as f64 * 2.0)),
+            Affine::translate((f64::from(phase) * 3.0, f64::from(phase) * 2.0)),
         )
         .commit()?;
         let actual = renderer

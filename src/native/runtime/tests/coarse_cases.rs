@@ -11,17 +11,17 @@ pub(super) fn prefix_case(count: u32, sparse: bool) -> Result<(ComputeBatch, Vec
     let tiles = if sparse { count * 2 + 3 } else { count };
     let chunk_count = count.div_ceil(COARSE_WORKGROUP_SIZE);
     let list_base = tiles * 6 + 5;
-    let mut work = vec![0x5a5a5a5a; (list_base + count + 7) as usize];
+    let mut work = vec![0x5a5a_5a5a; (list_base + count + 7) as usize];
     let indices: Vec<_> = (0..count)
         .map(|i| if sparse { (count - i) * 2 } else { i })
         .collect();
     for (i, &tile) in indices.iter().enumerate() {
-        work[tile as usize * 6] = [0, 1, u32::MAX, 0x80000001, 19][i % 5];
+        work[tile as usize * 6] = [0, 1, u32::MAX, 0x8000_0001, 19][i % 5];
         work[tile as usize * 6 + 3] = [5, u32::MAX, 0, 257, 1][i % 5];
     }
     work[list_base as usize..(list_base + count) as usize].copy_from_slice(&indices);
     let mut expected_work = work.clone();
-    let mut expected_chunks = vec![0x5a5a5a5a; (chunk_count as usize + 2) * 4];
+    let mut expected_chunks = vec![0x5a5a_5a5a; (chunk_count as usize + 2) * 4];
     let mut carry = [0u32; 2];
     for (chunk, tiles) in indices.chunks(COARSE_WORKGROUP_SIZE as usize).enumerate() {
         let start = carry;
@@ -49,7 +49,7 @@ pub(super) fn prefix_case(count: u32, sparse: bool) -> Result<(ComputeBatch, Vec
     config[18] = u32::from(sparse);
     let config = batch.buffer(bytes(&config))?;
     let work = batch.buffer(bytes(&work))?;
-    let chunks = batch.buffer(bytes(&vec![0x5a5a5a5a; (chunk_count as usize + 2) * 4]))?;
+    let chunks = batch.buffer(bytes(&vec![0x5a5a_5a5a; (chunk_count as usize + 2) * 4]))?;
     // SAFETY: unique bounded tile mappings and disjoint metadata/list storage.
     // The three passes fully initialize each logical chunk and retain guard words.
     unsafe {

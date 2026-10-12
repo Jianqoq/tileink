@@ -64,7 +64,11 @@ impl FinePlan {
             }
             [x, y, 1]
         };
-        let (group_base, _spill_words) = spill_layout(
+        #[allow(
+            unused_variables,
+            reason = "Backend-free library builds do not allocate fine spill storage"
+        )]
+        let (group_base, spill_words) = spill_layout(
             tile_count,
             params.clip_spill_depth,
             params.group_spill_depth,
@@ -110,17 +114,17 @@ impl FinePlan {
             },
             grid,
             #[cfg(any(test, feature = "dx12", feature = "vulkan", feature = "metal"))]
-            spill_words: _spill_words,
+            spill_words,
         })
     }
-    pub(crate) fn config(&self) -> &FineConfig {
+    pub(crate) const fn config(&self) -> &FineConfig {
         &self.config
     }
-    pub(crate) fn grid(&self) -> [u32; 3] {
+    pub(crate) const fn grid(&self) -> [u32; 3] {
         self.grid
     }
     #[cfg(any(test, feature = "dx12", feature = "vulkan", feature = "metal"))]
-    pub(crate) fn spill_words(&self) -> usize {
+    pub(crate) const fn spill_words(&self) -> usize {
         self.spill_words
     }
 }
@@ -138,7 +142,7 @@ pub(crate) fn spill_layout(
         .ok_or("fine clip spill overflow")?;
     let group_words = lanes
         .checked_mul(u64::from(group_depth))
-        .and_then(|n| n.checked_mul(FINE_GROUP_SPILL_FIELDS as u64))
+        .and_then(|n| n.checked_mul(u64::from(FINE_GROUP_SPILL_FIELDS)))
         .ok_or("fine group spill overflow")?;
     let words = group_base
         .checked_add(group_words)
@@ -154,7 +158,7 @@ mod tests;
 #[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
 impl FinePlan {
     /// The native scene owns and bounds this appended, immutable tile list.
-    pub(crate) fn set_active_tile_list_base(&mut self, base: u32) {
+    pub(crate) const fn set_active_tile_list_base(&mut self, base: u32) {
         self.config.active_tile_list_base = base;
     }
 }

@@ -28,8 +28,7 @@ pub(super) fn levels(size: [u32; 2], sigma: f32, quality: ProgressiveBlurQuality
     }
     let mut raw_variance = 0.0;
     let mut target_sigma = 1.0_f32;
-    while levels.last().unwrap().variance < sigma * sigma {
-        let previous = levels.last().unwrap();
+    while let Some(previous) = levels.last().filter(|level| level.variance < sigma * sigma) {
         let step = if target_sigma >= min_sigma * previous.scale * 2.0 {
             2
         } else {
@@ -63,7 +62,7 @@ pub(super) fn levels(size: [u32; 2], sigma: f32, quality: ProgressiveBlurQuality
 fn gaussian_kernel(sigma: f32, step: u32, support: f32) -> (Vec<[f32; 2]>, f32) {
     let radius = (sigma * support).ceil() as i32;
     let center = (step - 1) as f32 * 0.5;
-    let mut taps: Vec<[f32; 2]> = (-radius..=radius + step as i32 - 1)
+    let mut taps: Vec<[f32; 2]> = ((-radius)..(radius + step as i32))
         .map(|x| {
             [
                 x as f32,

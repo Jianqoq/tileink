@@ -136,7 +136,7 @@ impl TextUpload {
             let content = match image.content {
                 GlyphContent::Mask => {
                     self.image_data
-                        .extend(image.data.iter().map(|&alpha| alpha as u32));
+                        .extend(image.data.iter().map(|&alpha| u32::from(alpha)));
                     match image.composite_mode {
                         TextCompositeMode::Srgb => GPU_GLYPH_MASK,
                         TextCompositeMode::Linear => GPU_GLYPH_LINEAR_MASK,

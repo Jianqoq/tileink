@@ -11,7 +11,7 @@ pub(crate) enum FilterDependency {
 }
 
 impl FilterDependency {
-    pub(crate) fn local_radius(self) -> Option<u32> {
+    pub(crate) const fn local_radius(self) -> Option<u32> {
         match self {
             Self::Local(radius) => Some(radius),
             Self::WholeRegion | Self::WholeCanvas => None,
@@ -39,7 +39,7 @@ impl FilterDependency {
         }
     }
 
-    /// BoundsInfluence stores a finite conservative spatial summary. Resolve a
+    /// `BoundsInfluence` stores a finite conservative spatial summary. Resolve a
     /// whole-domain read here, while execution keeps the explicit domain kind.
     pub(crate) fn damage_outset(self, domain: Bounds) -> u32 {
         match self {
@@ -50,7 +50,7 @@ impl FilterDependency {
         }
     }
 
-    fn followed_by(self, next: Self) -> Self {
+    const fn followed_by(self, next: Self) -> Self {
         match (self, next) {
             (Self::Local(a), Self::Local(b)) => Self::Local(a.saturating_add(b)),
             (Self::WholeCanvas, _) | (_, Self::WholeCanvas) => Self::WholeCanvas,

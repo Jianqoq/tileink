@@ -33,7 +33,7 @@ fn patch_snapshots_reinitialize_new_grown_and_abandoned_storage() -> Result<()> 
         (32, 20, 6, true, true),
         (32, 20, 6, true, false),
     ] {
-        let mut batch = ComputeBatch::with_surfaces(surfaces.clone());
+        let mut batch = ComputeBatch::with_surfaces(std::rc::Rc::clone(&surfaces));
         let bytes = value.to_le_bytes();
         let full = [(offset, bytes.as_slice())];
         let id = cache.patches_delta(&mut batch, size, &full, if dirty { &full } else { &[] })?;

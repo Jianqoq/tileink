@@ -50,10 +50,10 @@ fn every_layer_kind_restores_its_parent_after_clone() {
                 canvas.push_clip_layer(path, Affine::IDENTITY, FillRule::NonZero, 0.1);
             }
             LayerKind::ClipSdf => {
-                canvas.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 32.0, 32.0), Radius::ZERO)
+                canvas.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 32.0, 32.0), Radius::ZERO);
             }
             LayerKind::Isolate => {
-                canvas.push_isolate_layer(rect_path(0.0, 0.0, 32.0, 32.0), Affine::IDENTITY, 0.1)
+                canvas.push_isolate_layer(rect_path(0.0, 0.0, 32.0, 32.0), Affine::IDENTITY, 0.1);
             }
             LayerKind::Opacity => canvas.push_opacity_layer(
                 rect_path(0.0, 0.0, 32.0, 32.0),

@@ -39,7 +39,7 @@ pub(crate) struct FilterExecutor<'a, A: FilterAdapter> {
     adapter: &'a mut A,
 }
 impl<'a, A: FilterAdapter> FilterExecutor<'a, A> {
-    pub(crate) fn new(adapter: &'a mut A) -> Self {
+    pub(crate) const fn new(adapter: &'a mut A) -> Self {
         Self { adapter }
     }
 
@@ -56,6 +56,10 @@ impl<'a, A: FilterAdapter> FilterExecutor<'a, A> {
     }
 
     /// Publish graph-owned scratch only after successful initialization.
+    #[allow(
+        clippy::or_fun_call,
+        reason = "Scratch release must execute even when the preceding operation failed"
+    )]
     fn build_output(
         &mut self,
         action: impl FnOnce(&mut Self, RenderTargetId) -> Result<(), A::Error>,
@@ -97,7 +101,7 @@ fn downsampled_bounds(bounds: Bounds, downsample: u32) -> Option<Bounds> {
     );
     (!bounds.is_empty()).then_some(bounds)
 }
-fn div_ceil_i32(value: i32, divisor: i32) -> i32 {
+const fn div_ceil_i32(value: i32, divisor: i32) -> i32 {
     -((-value).div_euclid(divisor))
 }
 #[cfg(test)]

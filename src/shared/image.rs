@@ -19,6 +19,10 @@ pub struct Image {
 }
 
 impl Image {
+    #[must_use]
+    ///
+    /// # Panics
+    /// Panics if the pixel count exceeds `u32::MAX`.
     pub fn new(width: u32, height: u32, clear: Color) -> Self {
         Self {
             width,
@@ -33,6 +37,9 @@ impl Image {
     /// constructor converts those pixels into the renderer's premultiplied
     /// storage format so the image can be used directly by pattern brushes and
     /// `Canvas::push_image`.
+    ///
+    /// # Panics
+    /// Panics if dimensions overflow the pixel count or the byte length differs from `width * height * 4`.
     pub fn from_rgba8(width: u32, height: u32, rgba: impl AsRef<[u8]>) -> Self {
         let rgba = rgba.as_ref();
         assert_eq!(
@@ -54,6 +61,10 @@ impl Image {
     }
 
     /// Builds an image from already-premultiplied packed RGBA8 pixels.
+    #[must_use]
+    ///
+    /// # Panics
+    /// Panics if dimensions overflow the pixel count or the pixel length differs from `width * height`.
     pub fn from_premultiplied_rgba8(width: u32, height: u32, pixels: Vec<u32>) -> Self {
         assert_eq!(
             pixels.len(),
@@ -67,10 +78,15 @@ impl Image {
         }
     }
 
+    #[must_use]
+    ///
+    /// # Panics
+    /// Panics if the computed pixel index is outside this image. Callers must supply coordinates within its dimensions.
     pub fn rgba8_at(&self, x: u32, y: u32) -> [u8; 4] {
         unpack_rgba8(self.pixels[(y * self.width + x) as usize])
     }
 
+    #[must_use]
     pub fn rgba8_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(self.pixels.len() * 4);
         for pixel in &self.pixels {
@@ -87,6 +103,9 @@ impl Image {
         bytes
     }
 
+    ///
+    /// # Errors
+    /// Returns an error if directory creation, file creation, or PNG encoding/writing fails.
     pub fn save(&self, path: impl AsRef<Path>) -> Result<(), ImageSaveError> {
         let path = path.as_ref();
         if let Some(parent) = path
@@ -144,8 +163,8 @@ impl From<png::EncodingError> for ImageSaveError {
     }
 }
 
-pub(crate) fn rgba8_pack(rgba: [u8; 4]) -> u32 {
-    rgba[0] as u32 | (rgba[1] as u32) << 8 | (rgba[2] as u32) << 16 | (rgba[3] as u32) << 24
+pub(crate) const fn rgba8_pack(rgba: [u8; 4]) -> u32 {
+    u32::from_le_bytes(rgba)
 }
 
 pub(crate) fn premul_color_to_rgba8_pack(color: Color) -> u32 {
@@ -167,7 +186,7 @@ pub(crate) fn premul_rgba8_pack(r: u8, g: u8, b: u8, a: u8) -> u32 {
     ])
 }
 
-pub(crate) fn unpack_rgba8(px: u32) -> [u8; 4] {
+pub(crate) const fn unpack_rgba8(px: u32) -> [u8; 4] {
     [
         (px & 0xff) as u8,
         ((px >> 8) & 0xff) as u8,
@@ -194,7 +213,11 @@ fn unpremultiply_u8(channel: u8, alpha: u8) -> u8 {
     ((u32::from(channel) * 255 + u32::from(alpha) / 2) / u32::from(alpha)).min(255) as u8
 }
 
-fn pixel_len(width: u32, height: u32) -> usize {
+#[allow(
+    clippy::expect_used,
+    reason = "Image constructors explicitly reject pixel-count overflow before allocation"
+)]
+const fn pixel_len(width: u32, height: u32) -> usize {
     width
         .checked_mul(height)
         .expect("image dimensions overflow u32 pixel count") as usize

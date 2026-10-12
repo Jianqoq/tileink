@@ -22,7 +22,7 @@ fn sample_record(
     compact: bool,
 ) -> Result<Vec<u32>> {
     let mut batch = crate::native::runtime::gpu_support::batch(context);
-    let mut pixels = vec![0xffeeddccu32; 16 * 16];
+    let mut pixels = vec![0xffee_ddcc_u32; 16 * 16];
     for y in 0..5 {
         for x in 0..7 {
             pixels[y * 16 + x] = u32::from_le_bytes([x as u8 * 29, y as u8 * 41, 80, 255]);
@@ -72,7 +72,7 @@ fn native_shader_sampling_is_bilinear_bounded_transparent_and_padding_safe() -> 
             for y in 0..16 {
                 for x in 0..16 {
                     if x >= 7 || y >= 5 {
-                        assert_eq!(actual[y * 16 + x], 0xa5a5a5a5);
+                        assert_eq!(actual[y * 16 + x], 0xa5a5_a5a5);
                         continue;
                     }
                     let sx = x as f64 + f64::from(offset[0].clamp(-1.0, 1.0));
@@ -85,8 +85,8 @@ fn native_shader_sampling_is_bilinear_bounded_transparent_and_padding_safe() -> 
                             let (px, py) = (ix + dx, iy + dy);
                             if (0..7).contains(&px) && (0..5).contains(&py) {
                                 for (v, s) in expected.iter_mut().zip([
-                                    px as f64 * 29.0,
-                                    py as f64 * 41.0,
+                                    f64::from(px) * 29.0,
+                                    f64::from(py) * 41.0,
                                     80.0,
                                     255.0,
                                 ]) {

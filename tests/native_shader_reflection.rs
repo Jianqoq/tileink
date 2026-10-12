@@ -1,10 +1,28 @@
-#[allow(dead_code)]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "Test setup and assertions abort on failure; production builds are checked separately"
+    )
+)]
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
 #[path = "../build/native/abi.rs"]
 mod abi;
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
 #[path = "../build/gpu_constants.rs"]
 mod gpu_constants;
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
 #[path = "../build/native/interfaces.rs"]
 mod interfaces;
 #[cfg(all(feature = "vulkan", any(target_os = "windows", target_os = "linux")))]
@@ -116,7 +134,7 @@ fn actual_spirv_texture_dimension_array_sample_type_and_binding_are_checked() {
         let bytes: Vec<_> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
         assert!(spirv::validate(&bytes, "sample_words", &abi).is_err());
     }
-    let mut wrong = abi.clone();
+    let mut wrong = abi;
     wrong.resources.get_mut("texels").unwrap().binding = 4;
     assert!(spirv::validate(artifact.bytes, "sample_words", &wrong).is_err());
 }
@@ -134,7 +152,7 @@ fn actual_range_scatter_spirv_uses_the_production_dispatch_shape() {
     let mut wrong = abi.clone();
     wrong.workgroup = [64, 1, 1];
     assert!(spirv::validate(artifact.bytes, "range_scatter", &wrong).is_err());
-    let mut wrong = abi.clone();
+    let mut wrong = abi;
     wrong.resources.get_mut("source").unwrap().binding = 0;
     assert!(spirv::validate(artifact.bytes, "range_scatter", &wrong).is_err());
 }

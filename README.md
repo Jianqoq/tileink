@@ -34,13 +34,14 @@ Choose `NativeBackend::Vulkan` or `NativeBackend::Metal` with the corresponding 
 ## Development
 
 - `cargo fmt --all`
-- `cargo clippy --release --all-targets`
+- `cargo clippy --release --all-targets -- -D warnings` (Windows DX12; see [platform-specific commands](docs/development/clippy.md) for other profiles)
 - `cargo test --release -- --test-threads=1`
 - `scripts/ps1/run_svg_tests.ps1` on Windows, or `scripts/mac/run_svg_tests.sh` on macOS, renders the complete SVG fixture corpus through the native backend.
 - `cargo build --release --examples` checks example targets.
 
 Development documentation:
 
+- [Clippy quality policy, exceptions, and complete audit reports](docs/development/clippy.md)
 - [Scene model and rendering pipeline](website/docs/intro.md)
 - [DXC toolchain discovery](docs/native/toolchain-discovery.md)
 - [Shared native filter validation](docs/native/filter-tile-validation.md)

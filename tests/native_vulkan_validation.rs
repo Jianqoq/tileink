@@ -1,4 +1,13 @@
 //! Exercise the production diagnostic callback without a Vulkan loader or GPU.
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "Test setup and assertions abort on failure; production builds are checked separately"
+    )
+)]
 #[path = "../src/native/runtime/vulkan/validation.rs"]
 mod validation;
 use ash::vk;
@@ -16,11 +25,12 @@ fn notify(
         p_message: message.map_or(std::ptr::null(), CStr::as_ptr),
         ..Default::default()
     };
+    // SAFETY: The callback data, optional C string, and message storage remain live throughout this synchronous call.
     let result = unsafe {
         validation::callback(
             vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
             kind,
-            &data,
+            &raw const data,
             std::ptr::from_ref(messages).cast_mut().cast(),
         )
     };
@@ -52,6 +62,10 @@ fn absent_device_address_message_preserves_collected_diagnostics() {
 }
 
 #[test]
+#[allow(
+    clippy::significant_drop_tightening,
+    reason = "The mutex guard must remain held during the deliberate panic to test poisoning"
+)]
 fn poisoned_collection_does_not_unwind_through_the_native_callback() {
     let messages = Mutex::new(vec![]);
     assert!(
@@ -109,11 +123,12 @@ fn registration_preserves_callback_owner_filters_and_native_return_contract() {
     );
     let data = vk::DebugUtilsMessengerCallbackDataEXT::default().message(c"registered");
     assert_eq!(
+        // SAFETY: The registered Arc and callback data remain live throughout this synchronous invocation.
         unsafe {
             info.pfn_user_callback.unwrap()(
                 vk::DebugUtilsMessageSeverityFlagsEXT::WARNING,
                 vk::DebugUtilsMessageTypeFlagsEXT::GENERAL,
-                &data,
+                &raw const data,
                 info.p_user_data,
             )
         },

@@ -25,7 +25,12 @@ impl PersistentSceneMaterializer {
             })
             .collect::<HashMap<_, _>>();
         let mut subtree_leaf_bounds = HashMap::default();
-        self.collect_subtree_leaf_bounds(scene, scene.root, &leaf_bounds, &mut subtree_leaf_bounds);
+        Self::collect_subtree_leaf_bounds(
+            scene,
+            scene.root,
+            &leaf_bounds,
+            &mut subtree_leaf_bounds,
+        );
         let mut nodes = Vec::with_capacity(self.chunks.len());
         self.collect_frame_nodes(
             scene,
@@ -62,6 +67,10 @@ impl PersistentSceneMaterializer {
         });
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Frame traversal consumes branches validated by retained scene transactions"
+    )]
     pub(crate) fn collect_frame_nodes(
         &self,
         scene: &RetainedScene,
@@ -193,7 +202,6 @@ impl PersistentSceneMaterializer {
     }
 
     pub(crate) fn collect_subtree_leaf_bounds(
-        &self,
         scene: &RetainedScene,
         id: RetainedNodeId,
         leaf_bounds: &HashMap<RetainedNodeId, Bounds>,
@@ -207,7 +215,7 @@ impl PersistentSceneMaterializer {
                 .values()
                 .chain(node.mask.values())
                 .copied()
-                .map(|child| self.collect_subtree_leaf_bounds(scene, child, leaf_bounds, subtree))
+                .map(|child| Self::collect_subtree_leaf_bounds(scene, child, leaf_bounds, subtree))
                 .fold(Bounds::new(0, 0, 0, 0), Bounds::union),
         };
         subtree.insert(id, bounds);

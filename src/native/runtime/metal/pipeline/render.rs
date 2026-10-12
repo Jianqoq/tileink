@@ -3,7 +3,10 @@ use super::*;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 
-#[allow(deprecated)]
+#[allow(
+    deprecated,
+    reason = "Required Metal reflection/AppKit APIs preserve supported macOS versions."
+)]
 pub(super) fn create(
     device: &ProtocolObject<dyn MTLDevice>,
     library: &ProtocolObject<dyn MTLLibrary>,
@@ -74,13 +77,19 @@ pub(super) fn create(
     Ok((State::Tile { full, sparse }, arguments))
 }
 
-#[allow(deprecated)]
+#[allow(
+    deprecated,
+    reason = "Required Metal reflection/AppKit APIs preserve supported macOS versions."
+)]
 type ReflectedTile = (
     Object<dyn MTLRenderPipelineState>,
     Vec<Retained<MTLArgument>>,
 );
 
-#[allow(deprecated)]
+#[allow(
+    deprecated,
+    reason = "Required Metal reflection/AppKit APIs preserve supported macOS versions."
+)]
 fn tile_pipeline(
     device: &ProtocolObject<dyn MTLDevice>,
     function: &ProtocolObject<dyn MTLFunction>,

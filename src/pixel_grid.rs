@@ -12,17 +12,20 @@ pub struct PixelGrid {
 }
 
 impl PixelGrid {
+    #[must_use]
     pub fn new(scale: f64) -> Option<Self> {
         (scale.is_finite() && scale > 0.0).then_some(Self { scale })
     }
 
     /// Fits filled horizontal/vertical edges to pixel boundaries.
+    #[must_use]
     pub fn fill_path(self, path: &BezPath, transform: Affine) -> BezPath {
         self.fit(path, transform, 0.0)
     }
 
     /// Fits stroke width to whole pixels and axis-aligned centerlines to the corresponding
     /// whole/half-pixel phase. Nonuniform, rotated and skewed path transforms remain untouched.
+    #[must_use]
     pub fn stroke_path(
         self,
         path: &BezPath,
@@ -108,6 +111,7 @@ impl PixelGrid {
 }
 
 /// A stroke can have one device width only when both axes have the same absolute scale.
+#[must_use]
 pub fn uniform_axis_scale(transform: Affine) -> Option<f64> {
     let [a, b, c, d, e, f] = transform.as_coeffs();
     let scale = a.abs();
@@ -119,7 +123,7 @@ pub fn uniform_axis_scale(transform: Affine) -> Option<f64> {
         .then_some(scale)
 }
 
-fn endpoint(element: PathEl) -> Option<Point> {
+const fn endpoint(element: PathEl) -> Option<Point> {
     match element {
         PathEl::MoveTo(p) | PathEl::LineTo(p) | PathEl::QuadTo(_, p) | PathEl::CurveTo(_, _, p) => {
             Some(p)

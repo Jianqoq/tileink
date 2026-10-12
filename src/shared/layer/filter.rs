@@ -31,7 +31,7 @@ pub enum Filter {
     /// Smooth spatial blur using a multiscale GPU approximation.
     ProgressiveBlur(ProgressiveBlur),
     Chain {
-        filters: Vec<Filter>,
+        filters: Vec<Self>,
         fixed_region: bool,
     },
     /// A lowered SVG filter graph. Primitive regions are absolute pixel bounds;
@@ -126,7 +126,7 @@ pub enum FilterInput {
 pub enum FilterPrimitiveKind {
     Identity,
     Filter(Box<Filter>),
-    /// Binds SourceGraphic, SourceAlpha and preceding primitive results directly
+    /// Binds `SourceGraphic`, `SourceAlpha` and preceding primitive results directly
     /// to pipeline Input(0..N). Inputs stay immutable and resident on the GPU.
     /// The primitive's explicit region clips output; `input`/`input2` are unused.
     ShaderPipeline {
@@ -213,7 +213,8 @@ impl BlurSampling {
         upsample_filter: BlurUpsampleFilter::Bilinear,
     };
 
-    pub fn downsampled(factor: u32) -> Self {
+    #[must_use]
+    pub const fn downsampled(factor: u32) -> Self {
         Self {
             factor,
             ..Self::FULL_RES
@@ -301,7 +302,7 @@ pub(crate) struct RectLiquidGlassRegion {
 }
 
 impl RectLiquidGlassRegion {
-    fn from_bounds(bounds: Bounds) -> Self {
+    const fn from_bounds(bounds: Bounds) -> Self {
         Self {
             x0: bounds.x0 as f32,
             y0: bounds.y0 as f32,
@@ -315,6 +316,10 @@ impl RectLiquidGlassRegion {
     }
 }
 
+#[allow(
+    clippy::panic,
+    reason = "The public backdrop API explicitly rejects incompatible region geometry"
+)]
 pub(crate) fn rect_liquid_glass_region(
     region: Option<&crate::shared::layer::region::Region>,
     fallback_bounds: Bounds,
@@ -409,6 +414,10 @@ pub(crate) struct TurbulenceLattice {
     pub(crate) gradients: Vec<f32>,
 }
 
+#[allow(
+    clippy::imprecise_flops,
+    reason = "Bounded gradients cannot overflow; preserve SVG reference normalization rounding"
+)]
 pub(crate) fn turbulence_lattice(seed: i32) -> TurbulenceLattice {
     const RAND_M: i64 = 2_147_483_647;
     const RAND_A: i64 = 16_807;
@@ -423,7 +432,7 @@ pub(crate) fn turbulence_lattice(seed: i32) -> TurbulenceLattice {
         seed.min(RAND_M - 1)
     }
 
-    fn next_random(seed: &mut i64) -> i64 {
+    const fn next_random(seed: &mut i64) -> i64 {
         let result = RAND_A * (*seed % RAND_Q) - RAND_R * (*seed / RAND_Q);
         *seed = if result <= 0 { result + RAND_M } else { result };
         *seed
@@ -474,7 +483,7 @@ pub(crate) fn turbulence_lattice(seed: i32) -> TurbulenceLattice {
 }
 
 #[inline]
-pub(crate) fn turbulence_gradient_index(channel: usize, selector: usize) -> usize {
+pub(crate) const fn turbulence_gradient_index(channel: usize, selector: usize) -> usize {
     (channel * TURBULENCE_TABLE_LEN + selector) * TURBULENCE_GRADIENT_COMPONENTS
 }
 
@@ -538,14 +547,13 @@ pub(crate) fn filter_outset(filter: &Filter) -> u32 {
                     .fold(0, u32::saturating_add)
             }
         }
-        Filter::Graph { .. } => 0,
         Filter::ShaderPipeline(pipeline) => pipeline.output_outset(),
         Filter::RectLiquidGlass(glass) => glass.sample_outset(),
         Filter::ProgressiveBlur(blur) => blur.sample_outset(),
         Filter::Blur {
             std_dev_x,
             std_dev_y,
-            sampling: _,
+            ..
         } => blur_outset(std_dev_x.max(*std_dev_y)),
         Filter::Offset { dx, dy } => dx.abs().ceil().max(dy.abs().ceil()) as u32,
         Filter::Morphology {
@@ -571,9 +579,7 @@ pub(crate) fn region_bounds(region: &Region) -> Bounds {
     match region {
         Region::Rect { rect, .. } => rect_bounds(*rect),
         Region::Path {
-            path,
-            transform,
-            tolerance: _,
+            path, transform, ..
         } => {
             let path = *transform * path;
             rect_bounds(path.bounding_box())
@@ -581,7 +587,7 @@ pub(crate) fn region_bounds(region: &Region) -> Bounds {
     }
 }
 
-fn rect_bounds(rect: peniko::kurbo::Rect) -> Bounds {
+const fn rect_bounds(rect: peniko::kurbo::Rect) -> Bounds {
     Bounds::new(
         rect.x0.floor() as i32,
         rect.y0.floor() as i32,

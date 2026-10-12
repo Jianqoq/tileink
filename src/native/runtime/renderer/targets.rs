@@ -5,7 +5,7 @@ use super::super::{
 use crate::render::scratch_slots::ScratchSlots;
 use crate::render::{output::RenderTargetId, retained_surfaces::SurfaceAllocation};
 
-/// A logical lease of persistent native storage. The lease, ComputeBatch and
+/// A logical lease of persistent native storage. The lease, `ComputeBatch` and
 /// submitted API frame retain its allocation independently, so retained surfaces
 /// can cross batches without relying on a previous batch's resource ID.
 pub(crate) struct Surface {
@@ -28,6 +28,10 @@ impl Surface {
         Self::allocate_inner(batch, size, 0, true)
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Reusable surfaces are persistent textures owned by the compute batch"
+    )]
     fn allocate_inner(
         batch: &mut ComputeBatch,
         size: [u32; 2],
@@ -53,7 +57,7 @@ impl Surface {
         })
     }
 
-    pub(crate) fn image(&self) -> ResourceId {
+    pub(crate) const fn image(&self) -> ResourceId {
         self.image
     }
 
@@ -123,7 +127,7 @@ impl Targets {
         })
     }
 
-    pub(crate) fn size(&self) -> (u32, u32) {
+    pub(crate) const fn size(&self) -> (u32, u32) {
         (self.main.size[0], self.main.size[1])
     }
 

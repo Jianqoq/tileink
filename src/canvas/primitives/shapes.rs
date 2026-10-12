@@ -61,6 +61,9 @@ impl Canvas {
         Some(self.draw_id_from_index(draw))
     }
 
+    ///
+    /// # Panics
+    /// Panics if the candlestick body width is nonpositive or NaN.
     pub fn push_candlestick(&mut self, candle: SdfCandleStick, brush: impl Into<Brush>) -> DrawId {
         assert!(
             SdfCandleStick::valid_body_width(candle.body_width),

@@ -521,6 +521,10 @@ pub(super) fn layer() -> Interface {
     )
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "Built-in ABI recipes provide the required entry, resource, field and constant before specialization"
+)]
 pub(super) fn stack() -> Interface {
     let mut result = layer();
     for (name, slot, kind) in [
@@ -530,7 +534,7 @@ pub(super) fn stack() -> Interface {
     ] {
         result.resources.insert(name.into(), buffer(slot, kind));
     }
-    let mut common = result.entries.remove("filter_layer_mask_region").unwrap();
+    let mut common = result.entries.remove("filter_layer_mask_region").expect("Built-in ABI recipes provide the required entry, resource, field and constant before specialization");
     common.extend(["source_texture".into(), "layers".into()]);
     result.entries.insert(
         "filter_composite_surface_stack_region".into(),
@@ -546,12 +550,16 @@ pub(super) fn stack() -> Interface {
     result
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "Built-in ABI recipes provide the required entry, resource, field and constant before specialization"
+)]
 pub(super) fn glass() -> Interface {
     let mut result = displacement();
     let bindings = result
         .entries
         .remove("filter_displacement_map_region")
-        .unwrap();
+        .expect("Built-in ABI recipes provide the required entry, resource, field and constant before specialization");
     result
         .entries
         .insert("filter_liquid_glass_region".into(), bindings.clone());

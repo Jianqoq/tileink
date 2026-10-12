@@ -25,6 +25,7 @@ pub(crate) struct Limits {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::native::runtime::renderer::FrameOptions;
 
     #[test]
     #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
@@ -61,7 +62,7 @@ mod tests {
                         &resources,
                         None,
                         limits,
-                        Default::default()
+                        FrameOptions::default()
                     )
                     .is_err()
             );
@@ -78,7 +79,7 @@ mod tests {
                 &resources,
                 None,
                 valid,
-                Default::default(),
+                FrameOptions::default(),
             )
             .unwrap();
         assert!(batch.outputs().is_empty());
@@ -93,7 +94,7 @@ pub(crate) struct Recording {
     pub(crate) clear_color: u32,
     pub(crate) retained: crate::render::retained::RetainedRenderState<super::Surface>,
     scene: SceneCache,
-    vectors: crate::render::vector_images::VectorImageCache<Recording>,
+    vectors: crate::render::vector_images::VectorImageCache<Self>,
     // A snapshot and its identity enter the cache together; before first use neither exists.
     upload: Option<(ImageResourceUploadSignature, GpuImageResourceUpload)>,
     gpu_images: Option<super::images::ImageCache>,
@@ -121,6 +122,10 @@ impl Recording {
         }
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Scene preparation installs the upload cache before recording its resources"
+    )]
     pub(crate) fn record(
         &mut self,
         batch: &mut ComputeBatch,
@@ -165,7 +170,11 @@ impl Recording {
             );
             self.upload = Some((signature, upload));
         }
-        let upload = &self.upload.as_ref().unwrap().1;
+        let upload = &self
+            .upload
+            .as_ref()
+            .expect("Scene preparation installs the upload cache before recording its resources")
+            .1;
         self.vectors
             .retain_sources(upload.vectors().iter().map(|vector| &vector.canvas));
         // Children own their scene namespace. Passing

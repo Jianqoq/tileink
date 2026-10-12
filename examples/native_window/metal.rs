@@ -99,6 +99,10 @@ impl Host {
             frames: VecDeque::new(),
         })
     }
+    #[allow(
+        clippy::expect_used,
+        reason = "Presentation acquires its target before use and retires only a nonempty front frame"
+    )]
     fn retire(&mut self) -> Result {
         while let Some(frame) = self.frames.front() {
             // Event signals can precede command-buffer completion notification.
@@ -107,7 +111,7 @@ impl Host {
             if !frame.complete()? {
                 break;
             }
-            self.frames.pop_front().unwrap().rendering.wait()?;
+            self.frames.pop_front().expect("Presentation acquires its target before use and retires only a nonempty front frame").rendering.wait()?;
         }
         Ok(())
     }
@@ -132,6 +136,10 @@ impl super::app::Host for Host {
     fn context(&self) -> &NativeContext {
         &self.context
     }
+    #[allow(
+        clippy::expect_used,
+        reason = "Presentation acquires its target before use and retires only a nonempty front frame"
+    )]
     fn acquire(&mut self, size: [u32; 2]) -> Result<NativeTexture> {
         self.retire()?;
         if size.contains(&0) || size.iter().any(|&v| v > 16384) {
@@ -146,7 +154,7 @@ impl super::app::Host for Host {
             .is_none_or(|(target, _)| target.size() != (size[0], size[1]))
         {
             self.layer
-                .setDrawableSize(CGSize::new(size[0] as f64, size[1] as f64));
+                .setDrawableSize(CGSize::new(f64::from(size[0]), f64::from(size[1])));
             let desc = MTLTextureDescriptor::new();
             desc.setTextureType(MTLTextureType::Type2D);
             desc.setPixelFormat(MTLPixelFormat::RGBA8Unorm);
@@ -181,7 +189,7 @@ impl super::app::Host for Host {
                 .nextDrawable()
                 .ok_or("Metal drawable unavailable")?,
         );
-        Ok(self.target.as_ref().unwrap().0.clone())
+        Ok(self.target.as_ref().expect("Presentation acquires its target before use and retires only a nonempty front frame").0.clone())
     }
     fn target_use<'a>(&self, target: NativeRenderTarget<'a>) -> Result<NativeTargetUse<'a>> {
         let ready = self.serial.checked_add(1).ok_or("event serial overflow")?;
@@ -200,6 +208,10 @@ impl super::app::Host for Host {
             })
         })
     }
+    #[allow(
+        clippy::expect_used,
+        reason = "Presentation acquires its target before use and retires only a nonempty front frame"
+    )]
     fn present(&mut self, submission: NativeTargetSubmission) -> Result {
         let next = self.serial.checked_add(2).ok_or("event serial overflow")?;
         let drawable = self.drawable.take().ok_or("no acquired drawable")?;
@@ -211,7 +223,7 @@ impl super::app::Host for Host {
         present::encode(
             &command,
             &self.pipeline,
-            &self.target.as_ref().unwrap().1,
+            &self.target.as_ref().expect("Presentation acquires its target before use and retires only a nonempty front frame").1,
             &drawable.texture(),
         )?;
         command.encodeSignalEvent_value(ProtocolObject::from_ref(&*self.event), next);

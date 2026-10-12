@@ -24,7 +24,7 @@ impl GpuImageResourceUpload {
         max_atlas_dimension: u32,
         max_atlas_pages: u32,
         texture_table_len: u32,
-        previous: Option<&GpuImageResourceUpload>,
+        previous: Option<&Self>,
     ) -> Self {
         let mut entries = Vec::with_capacity(renderer.images.len() + scene.images.len());
         entries.extend(renderer.iter().map(|(key, image)| ImageResourceEntry {
@@ -59,16 +59,16 @@ impl GpuImageResourceUpload {
     /// Changes whenever resource placement data is rebuilt. Scene brush uploads use this to
     /// distinguish a placement-table change, which requires repatching every image brush, from
     /// an ordinary retained mutation, which only requires patching dirty brush allocations.
-    pub(crate) fn generation(&self) -> u64 {
+    pub(crate) const fn generation(&self) -> u64 {
         self.generation
     }
 
-    pub(crate) fn atlas_page_size(&self) -> u32 {
+    pub(crate) const fn atlas_page_size(&self) -> u32 {
         self.atlas_page_size
     }
 
     #[cfg(test)]
-    pub(crate) fn atlas_page_count(&self) -> u32 {
+    pub(crate) const fn atlas_page_count(&self) -> u32 {
         self.atlas_pages.len() as u32
     }
 
@@ -175,7 +175,7 @@ impl ImageEntrySignature {
         Self {
             hash: fnv_mix(
                 image_entry_hash(ImageKey::new(key), image),
-                namespace as u64,
+                u64::from(namespace),
             ),
         }
     }
@@ -219,6 +219,10 @@ impl<'a> ImageResourceUploadBuilder<'a> {
         }
     }
 
+    #[allow(
+        clippy::suspicious_operation_groupings,
+        reason = "Cached atlas extent and page content signature are independent invalidation conditions"
+    )]
     fn build(self, previous: Option<&GpuImageResourceUpload>) -> GpuImageResourceUpload {
         let atlas_pages = pack_images_into_pages(
             self.entries,
@@ -245,7 +249,7 @@ impl<'a> ImageResourceUploadBuilder<'a> {
                     prev.size != self.page_size || prev.signature != page.signature
                 });
                 let pixels = if let Some(previous) = previous_page.filter(|_| !dirty) {
-                    previous.pixels.clone()
+                    std::rc::Rc::clone(&previous.pixels)
                 } else {
                     let mut pixels = vec![0; (self.page_size * self.page_size) as usize];
                     for item in &page.items {
@@ -294,7 +298,7 @@ impl<'a> ImageResourceUploadBuilder<'a> {
                     || prev.signature != entry.signature
             });
             let pixels = if let Some(previous) = previous_texture.filter(|_| !dirty) {
-                previous.pixels.clone()
+                std::rc::Rc::clone(&previous.pixels)
             } else {
                 image_pixels(
                     entry

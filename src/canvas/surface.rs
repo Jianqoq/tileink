@@ -4,6 +4,7 @@ use super::*;
 mod tests;
 
 impl Canvas {
+    #[must_use]
     pub fn new(logical_width: u32, logical_height: u32, scale_factor: f32) -> Self {
         let scale = valid_scale_factor(scale_factor);
         Self {
@@ -49,15 +50,18 @@ impl Canvas {
         canvas.persistent_root = Some(root_id);
         canvas
     }
-    pub fn scale_factor(&self) -> f32 {
+    #[must_use]
+    pub const fn scale_factor(&self) -> f32 {
         self.scale_factor
     }
 
+    #[must_use]
     pub fn physical_size(&self) -> (u32, u32) {
         (self.physical_width(), self.physical_height())
     }
 
-    pub fn logical_size(&self) -> (u32, u32) {
+    #[must_use]
+    pub const fn logical_size(&self) -> (u32, u32) {
         (self.logical_width, self.logical_height)
     }
 
@@ -78,7 +82,7 @@ impl Canvas {
         );
     }
 
-    pub(crate) fn set_surface_extent(&mut self, logical_width: u32, logical_height: u32) {
+    pub(crate) const fn set_surface_extent(&mut self, logical_width: u32, logical_height: u32) {
         self.logical_width = logical_width;
         self.logical_height = logical_height;
     }
@@ -88,6 +92,10 @@ impl Canvas {
     /// Scan transforms path lines on the GPU; fine rendering maps device samples back into local
     /// brush, SDF, image, and glyph coordinates. CPU work is limited to record bounds and scan
     /// allocation metadata needed by damage and tile binning.
+    #[allow(
+        clippy::expect_used,
+        reason = "Retained scene validation guarantees installed transforms are invertible"
+    )]
     pub(crate) fn set_retained_transform(&mut self, logical_transform: Affine) {
         let transform = GpuAffine::from_logical(logical_transform, self.scale_factor);
         let inverse = transform
@@ -105,8 +113,8 @@ impl Canvas {
             && previous.d == transform.d
         {
             let offset = SceneOffset {
-                dx: (transform.e - previous.e) as f64,
-                dy: (transform.f - previous.f) as f64,
+                dx: f64::from(transform.e - previous.e),
+                dy: f64::from(transform.f - previous.f),
             };
             if !offset.is_zero() {
                 for list in &mut self.command_lists {
@@ -150,14 +158,17 @@ impl Canvas {
 
     /// Returns whether every layer and command list opened while recording has been closed.
     /// Only a closed canvas can be appended or installed as a retained scene leaf.
-    pub fn is_closed_for_append(&self) -> bool {
+    #[must_use]
+    pub const fn is_closed_for_append(&self) -> bool {
         self.layer_stack.is_empty()
     }
 
+    #[must_use]
     pub fn physical_width(&self) -> u32 {
         scaled_canvas_extent(self.logical_width, self.scale_factor)
     }
 
+    #[must_use]
     pub fn physical_height(&self) -> u32 {
         scaled_canvas_extent(self.logical_height, self.scale_factor)
     }
@@ -166,7 +177,7 @@ impl Canvas {
         f64::from(self.scale_factor)
     }
 
-    pub(super) fn scale_f32(&self) -> f32 {
+    pub(super) const fn scale_f32(&self) -> f32 {
         self.scale_factor
     }
 

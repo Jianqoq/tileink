@@ -1,6 +1,10 @@
 use super::super::{Result, compute::Texture};
 use ash::vk;
 
+#[allow(
+    clippy::struct_field_names,
+    reason = "The wrapper owns a native API handle named after its Vulkan or DX12 object kind"
+)]
 pub(crate) struct Image {
     device: std::rc::Rc<ash::Device>,
     pub image: vk::Image,
@@ -38,7 +42,7 @@ impl Image {
             return Err("invalid imported Vulkan image or layout".into());
         }
         let mut this = Self {
-            device: device.clone(),
+            device: std::rc::Rc::clone(device),
             image: descriptor.image,
             memory: vk::DeviceMemory::null(),
             host_owner: Some(descriptor.owner),
@@ -53,6 +57,7 @@ impl Image {
             final_layout: descriptor.final_layout,
             current_family: std::cell::Cell::new(vk::QUEUE_FAMILY_IGNORED),
         };
+        // SAFETY: The caller retains the imported live image; the validated format and subresource range match this same-device view.
         this.view = unsafe {
             device.create_image_view(
                 &vk::ImageViewCreateInfo::default()
@@ -71,7 +76,7 @@ impl Image {
         texture: &Texture,
     ) -> Result<Self> {
         let mut this = Self {
-            device: device.clone(),
+            device: std::rc::Rc::clone(device),
             layers: texture.layers,
             image: vk::Image::null(),
             memory: vk::DeviceMemory::null(),
@@ -86,6 +91,7 @@ impl Image {
                 depth: 1,
             },
         };
+        // SAFETY: Checked extent, layers and usage determine the image, compatible memory and view; this owner retains all handles.
         unsafe {
             this.image = device.create_image(
                 &vk::ImageCreateInfo::default()
@@ -193,6 +199,7 @@ impl Image {
         };
         let (src_stage, src_access) = access(before);
         let (dst_stage, dst_access) = access(after);
+        // SAFETY: The recording command belongs to this device; tracked layout/access state and the full owned subresource range define the barrier.
         unsafe {
             self.device.cmd_pipeline_barrier(
                 command,
@@ -219,6 +226,7 @@ impl Image {
             self.current_layout.get(),
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
         );
+        // SAFETY: Validated upload footprints bound source buffer and image subresources; transition establishes TRANSFER_DST_OPTIMAL before the copy.
         unsafe {
             self.device.cmd_copy_buffer_to_image(
                 command,
@@ -241,6 +249,7 @@ impl Image {
             vk::ImageLayout::GENERAL,
             vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
         );
+        // SAFETY: The validated readback buffer fits the owned image range; transition establishes TRANSFER_SRC_OPTIMAL before the copy.
         unsafe {
             self.device.cmd_copy_image_to_buffer(
                 command,
@@ -254,6 +263,7 @@ impl Image {
 }
 impl Drop for Image {
     fn drop(&mut self) {
+        // SAFETY: Pending frames retain this owner until completion; imported images retain their host owner and only locally allocated memory is freed here.
         unsafe {
             self.device.destroy_image_view(self.view, None);
             if self.host_owner.is_none() {
@@ -268,7 +278,7 @@ impl Image {
     pub(super) fn copy_to(
         &self,
         command: vk::CommandBuffer,
-        destination: &Image,
+        destination: &Self,
         copy: &crate::native::runtime::compute::TextureCopy,
     ) {
         self.transition(
@@ -287,6 +297,7 @@ impl Image {
                 .base_array_layer(base_array_layer)
                 .layer_count(copy.extent[2])
         };
+        // SAFETY: Batch validation bounds both image ranges and extents; both owned images have been transitioned to their declared transfer layouts.
         unsafe {
             self.device.cmd_copy_image(
                 command,
@@ -374,6 +385,7 @@ impl Image {
         before: crate::native::interop::vulkan::ImageState,
         after: crate::native::interop::vulkan::ImageState,
     ) {
+        // SAFETY: The caller supplies the actual host and compute queue/layout states; the retained image range matches the ownership barrier.
         unsafe {
             self.device.cmd_pipeline_barrier(
                 command,

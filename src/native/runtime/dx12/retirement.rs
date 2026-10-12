@@ -8,7 +8,7 @@ pub enum Retirement {
 }
 
 impl Retirement {
-    pub fn wait_value(self) -> Result<Option<u64>, &'static str> {
+    pub const fn wait_value(self) -> Result<Option<u64>, &'static str> {
         match self {
             Self::Idle => Ok(None),
             Self::Signaled(value) => Ok(Some(value)),

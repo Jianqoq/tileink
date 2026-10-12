@@ -92,7 +92,7 @@ impl Noise {
         let alpha = value[3];
         for channel in &mut value[..3] {
             if linear {
-                *channel = if *channel > 0.0031308 {
+                *channel = if *channel > 0.003_130_8 {
                     1.055 * channel.powf(1.0 / 2.4) - 0.055
                 } else {
                     *channel * 12.92

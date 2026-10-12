@@ -14,24 +14,28 @@ use crate::{
 
 pub(super) fn draw_ptcl_capacity(draw: &DrawRecord, bbox: TileBbox) -> usize {
     let tiles = bbox.tile_count() as usize;
-    let draw_particle =
-        ((draw.has_path() || draw.has_analytic_geometry() || draw.glyph_run_id().is_some())
+    let draw_particle = usize::from(
+        (draw.has_path() || draw.has_analytic_geometry() || draw.glyph_run_id().is_some())
             && matches!(
                 draw.tag(),
                 DrawTag::Brush | DrawTag::PathGlyph | DrawTag::Clip
-            )) as usize;
-    let group_begin = (draw.has_path()
-        && matches!(
-            draw.tag(),
-            DrawTag::Opacity | DrawTag::Blend | DrawTag::Isolate
-        )) as usize;
-    let layer_end = ((matches!(draw.tag(), DrawTag::Clip)
-        && (draw.has_path() || draw.sdf_range().is_some()))
-        || (draw.has_path()
+            ),
+    );
+    let group_begin = usize::from(
+        draw.has_path()
             && matches!(
                 draw.tag(),
                 DrawTag::Opacity | DrawTag::Blend | DrawTag::Isolate
-            ))) as usize;
+            ),
+    );
+    let layer_end = usize::from(
+        (matches!(draw.tag(), DrawTag::Clip) && (draw.has_path() || draw.sdf_range().is_some()))
+            || (draw.has_path()
+                && matches!(
+                    draw.tag(),
+                    DrawTag::Opacity | DrawTag::Blend | DrawTag::Isolate
+                )),
+    );
     tiles * (draw_particle + group_begin + layer_end)
 }
 
@@ -262,7 +266,6 @@ fn max_scratch_for_ops(ops: &[ExecOp], held: usize) -> usize {
                 layer,
                 outer_stack,
                 children,
-                ..
             } => match layer {
                 OffscreenLayer::Isolate { .. }
                 | OffscreenLayer::Opacity { .. }
@@ -296,7 +299,7 @@ fn max_scratch_for_ops(ops: &[ExecOp], held: usize) -> usize {
                 max_count = max_count.max(mask_source_held + 1);
                 max_count = max_count.max(max_scratch_for_ops(mask, mask_source_held));
             }
-            _ => {}
+            ExecOp::DrawBatch { .. } => {}
         }
     }
     max_count
@@ -304,7 +307,6 @@ fn max_scratch_for_ops(ops: &[ExecOp], held: usize) -> usize {
 
 pub(crate) fn filter_scratch_extra(filter: &Filter) -> usize {
     match filter {
-        Filter::ShaderPipeline(_) => 1, // Upper bound: partial outputs need a cropped copy.
         Filter::Chain { filters, .. } => {
             filters.iter().map(filter_scratch_extra).max().unwrap_or(0)
         }
@@ -318,10 +320,12 @@ pub(crate) fn filter_scratch_extra(filter: &Filter) -> usize {
             usize::from(std_dev_x.max(*std_dev_y) > 0.0)
                 + usize::from(sampling.factor() > 1 && std_dev_x.max(*std_dev_y) > 0.0)
         }
-        Filter::ConvolveMatrix(_) => 1,
-        Filter::DiffuseLighting(_) => 1,
-        Filter::SpecularLighting(_) => 1,
-        Filter::Offset { .. } => 1,
+        // Shader pipeline partial outputs may need a cropped copy.
+        Filter::ShaderPipeline(_)
+        | Filter::ConvolveMatrix(_)
+        | Filter::DiffuseLighting(_)
+        | Filter::SpecularLighting(_)
+        | Filter::Offset { .. } => 1,
         Filter::Morphology { .. } => 2,
         Filter::DropShadow { std_dev, .. } => 1 + usize::from(std_dev.max(0.0) > 0.0),
         _ => 0,

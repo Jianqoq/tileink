@@ -11,10 +11,10 @@ impl Canvas {
                 rect.x1,
                 rect.y1,
                 (
-                    radius.top_left as f64,
-                    radius.top_right as f64,
-                    radius.bottom_right as f64,
-                    radius.bottom_left as f64,
+                    f64::from(radius.top_left),
+                    f64::from(radius.top_right),
+                    f64::from(radius.bottom_right),
+                    f64::from(radius.bottom_left),
                 ),
             )
             .to_path(tolerance)
@@ -103,7 +103,7 @@ impl Canvas {
             segment_start: 0,
             segment_capacity: 0,
             segment_count: 0,
-            transform: Default::default(),
+            transform: GpuAffine::default(),
         };
         let tile_bbox = pixel_bounds.tile_bbox(self.width_in_tiles(), self.height_in_tiles());
         let tile_stride = tile_bbox.tile_stride();
@@ -144,8 +144,8 @@ impl Canvas {
             pixel_bounds,
             local_pixel_bounds: pixel_bounds,
             solid_rect: 0,
-            transform: Default::default(),
-            inverse_transform: Default::default(),
+            transform: GpuAffine::default(),
+            inverse_transform: GpuAffine::default(),
         });
         if options.emit_draw_command {
             self.current_command_list_mut()
@@ -198,7 +198,7 @@ impl Canvas {
     ) -> usize {
         self.push_physical_sdf_record(
             self.physical_sdf(sdf),
-            self.physical_brush(brush),
+            &self.physical_brush(brush),
             tag,
             emit_draw_command,
         )
@@ -207,7 +207,7 @@ impl Canvas {
     pub(super) fn push_physical_sdf_record(
         &mut self,
         sdf: Sdf,
-        brush: Brush,
+        brush: &Brush,
         tag: DrawTag,
         emit_draw_command: bool,
     ) -> usize {
@@ -238,8 +238,8 @@ impl Canvas {
                 y1: bounds.y1,
             },
             solid_rect: 0,
-            transform: Default::default(),
-            inverse_transform: Default::default(),
+            transform: GpuAffine::default(),
+            inverse_transform: GpuAffine::default(),
         });
         if emit_draw_command {
             self.current_command_list_mut()
@@ -258,7 +258,7 @@ impl Canvas {
     ) -> usize {
         self.push_physical_sdf_shadow_record(
             self.physical_sdf_shadow(sdf_shadow),
-            self.physical_brush(brush),
+            &self.physical_brush(brush),
             tag,
             emit_draw_command,
         )
@@ -267,7 +267,7 @@ impl Canvas {
     pub(super) fn push_physical_sdf_shadow_record(
         &mut self,
         sdf_shadow: SdfShadow,
-        brush: Brush,
+        brush: &Brush,
         tag: DrawTag,
         emit_draw_command: bool,
     ) -> usize {
@@ -298,8 +298,8 @@ impl Canvas {
                 y1: bounds.y1,
             },
             solid_rect: 0,
-            transform: Default::default(),
-            inverse_transform: Default::default(),
+            transform: GpuAffine::default(),
+            inverse_transform: GpuAffine::default(),
         });
         if emit_draw_command {
             self.current_command_list_mut()

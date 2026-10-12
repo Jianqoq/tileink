@@ -23,8 +23,8 @@ fn full_surface_borrows_scene_plan_and_children_without_querying_draws() {
         || panic!("full surface must not query or clone draw arenas"),
     );
     let (local_canvas, local_plan, local_children) = prepared.scene();
-    assert!(std::ptr::eq(local_canvas, &canvas));
-    assert!(std::ptr::eq(local_plan, &plan));
+    assert!(std::ptr::eq(local_canvas, &raw const canvas));
+    assert!(std::ptr::eq(local_plan, &raw const plan));
     assert_eq!(local_children.as_ptr(), plan.ops.as_ptr());
     assert!(prepared.is_root_scene());
     assert!(matches!(prepared.filter(), Filter::Opacity(value) if *value == 0.5));
@@ -63,8 +63,8 @@ fn cropped_surface_queries_once_and_compacts_geometry_in_local_coordinates() {
     let (local_canvas, local_plan, local_children) = prepared.scene();
     assert_eq!(calls.get(), 1);
     assert!(!prepared.is_root_scene());
-    assert!(!std::ptr::eq(local_canvas, &canvas));
-    assert!(!std::ptr::eq(local_plan, &plan));
+    assert!(!std::ptr::eq(local_canvas, &raw const canvas));
+    assert!(!std::ptr::eq(local_plan, &raw const plan));
     assert_eq!(
         (
             local_canvas.physical_width(),
@@ -140,7 +140,7 @@ fn borrowing_the_root_plan_does_not_expand_the_requested_child_list() {
         Bounds::canvas(32, 32),
         Vec::new,
     );
-    assert!(std::ptr::eq(prepared.scene().1, &plan));
+    assert!(std::ptr::eq(prepared.scene().1, &raw const plan));
     assert!(prepared.scene().2.is_empty());
 }
 

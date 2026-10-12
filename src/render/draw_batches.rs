@@ -50,7 +50,7 @@ pub(crate) trait DrawBatchAdapter {
 pub(crate) fn execute_draw_batch<A: DrawBatchAdapter>(
     adapter: &mut A,
     canvas: &Canvas,
-    batch: DrawBatch<'_>,
+    batch: &DrawBatch<'_>,
     target: RenderTargetId,
 ) -> Result<(), A::Error> {
     if !draw_batch_is_live(canvas, batch.draws, batch.id) {
@@ -79,7 +79,7 @@ pub(crate) fn execute_in_place_root_batches<A: DrawBatchAdapter>(
         execute_draw_batch(
             adapter,
             canvas,
-            DrawBatch::from_op(&ops[index]),
+            &DrawBatch::from_op(&ops[index]),
             RenderTargetId::Main,
         )?;
     }

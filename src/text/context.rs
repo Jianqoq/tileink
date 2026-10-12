@@ -22,6 +22,7 @@ pub struct TextContext {
 }
 
 impl TextContext {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             scale_context: ScaleContext::new(),
@@ -32,15 +33,16 @@ impl TextContext {
         }
     }
 
-    pub fn raster_options(&self) -> TextRasterOptions {
+    #[must_use]
+    pub const fn raster_options(&self) -> TextRasterOptions {
         self.raster_options
     }
 
-    pub fn set_raster_options(&mut self, options: TextRasterOptions) {
+    pub const fn set_raster_options(&mut self, options: TextRasterOptions) {
         self.raster_options = options;
     }
 
-    pub(crate) fn cache_generation(&self) -> u64 {
+    pub(crate) const fn cache_generation(&self) -> u64 {
         self.cache_generation
     }
 
@@ -49,6 +51,10 @@ impl TextContext {
     /// `TextContext` does not own `FontSystem`; pass the same font system to
     /// later glyph preparation/rendering calls because cosmic glyph cache keys
     /// contain font-system-local font ids.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "Shaping consumes temporary layout options and releases their owned font-feature storage"
+    )]
     pub fn layout(
         &mut self,
         font_system: &mut FontSystem,
@@ -78,6 +84,10 @@ impl TextContext {
     /// recording. Pending buffer changes are shaped before glyph extraction, while an unchanged
     /// already-shaped buffer stays on Cosmic Text's inexpensive reuse path. `buffer` must have
     /// been created with `font_system` because Cosmic Text's font ids are local to that system.
+    #[allow(
+        clippy::suspicious_operation_groupings,
+        reason = "Glyph placement combines the run baseline with the glyph offset in the same axis"
+    )]
     pub fn layout_buffer(
         &mut self,
         font_system: &mut FontSystem,
@@ -88,8 +98,8 @@ impl TextContext {
         for run in buffer.layout_runs() {
             for glyph in run.glyphs {
                 let outline_origin = Point::new(
-                    (glyph.x + glyph.font_size * glyph.x_offset) as f64,
-                    (run.line_y + glyph.y - glyph.font_size * glyph.y_offset) as f64,
+                    f64::from(glyph.x + glyph.font_size * glyph.x_offset),
+                    f64::from(run.line_y + glyph.y - glyph.font_size * glyph.y_offset),
                 );
                 // Preserve Cosmic Text's Y hinting and key metadata, but use
                 // the same bounded position conversion as recording/append.

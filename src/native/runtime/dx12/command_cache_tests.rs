@@ -41,9 +41,9 @@ fn completed_descriptor_heaps_are_reused_without_in_flight_aliasing() -> Result<
         let frame = device.gpu.pending.get(ticket).unwrap();
         frame.descriptor_heaps()
     };
-    let first = device.submit_compute(&batch(4, 0xff112233)?)?;
+    let first = device.submit_compute(&batch(4, 0xff11_2233)?)?;
     let empty = device.submit_compute(&super::super::compute::ComputeBatch::new())?;
-    let second = device.submit_compute(&batch(4, 0xff445566)?)?;
+    let second = device.submit_compute(&batch(4, 0xff44_5566)?)?;
     let a = heaps(&device, &first);
     let b = heaps(&device, &second);
     let frame = device.gpu.pending.get(&first).unwrap();
@@ -57,10 +57,10 @@ fn completed_descriptor_heaps_are_reused_without_in_flight_aliasing() -> Result<
     );
     assert_eq!(
         device.readback_batch(&first)?[0],
-        0xff112233u32.to_le_bytes().repeat(64)
+        0xff11_2233_u32.to_le_bytes().repeat(64)
     );
     assert!(device.readback_batch(&empty)?.is_empty());
-    let third = device.submit_compute(&batch(2, 0xff778899)?)?;
+    let third = device.submit_compute(&batch(2, 0xff77_8899)?)?;
     let frame = device.gpu.pending.get(&third).unwrap();
     assert!(
         [first_list.as_raw(), empty_list.as_raw()].contains(&frame.list.as_raw()),
@@ -73,21 +73,21 @@ fn completed_descriptor_heaps_are_reused_without_in_flight_aliasing() -> Result<
     );
     assert_eq!(
         device.readback_batch(&third)?[0],
-        0xff778899u32.to_le_bytes().repeat(64)
+        0xff77_8899_u32.to_le_bytes().repeat(64)
     );
     assert_eq!(
         device.readback_batch(&second)?[0],
-        0xff445566u32.to_le_bytes().repeat(64)
+        0xff44_5566_u32.to_le_bytes().repeat(64)
     );
-    let large = device.submit_compute(&batch(40, 0xffaabbcc)?)?;
+    let large = device.submit_compute(&batch(40, 0xffaa_bbcc)?)?;
     assert_eq!(
         device.readback_batch(&large)?[0],
-        0xffaabbccu32.to_le_bytes().repeat(64)
+        0xffaa_bbcc_u32.to_le_bytes().repeat(64)
     );
     let free = device.gpu.tables.len();
     let free_commands = device.gpu.commands.len();
     device.inject_signal_failure = true;
-    assert!(device.submit_compute(&batch(2, 0xff123456)?).is_err());
+    assert!(device.submit_compute(&batch(2, 0xff12_3456)?).is_err());
     assert!(device.unconfirmed());
     assert_eq!(device.gpu.commands.len(), free_commands - 1);
     assert_eq!(
@@ -95,7 +95,7 @@ fn completed_descriptor_heaps_are_reused_without_in_flight_aliasing() -> Result<
         free - 1,
         "unknown completion cannot recycle heaps"
     );
-    assert!(device.submit_compute(&batch(2, 0xff123456)?).is_err());
+    assert!(device.submit_compute(&batch(2, 0xff12_3456)?).is_err());
     assert_eq!(device.gpu.tables.len(), free - 1);
     Ok(())
 }

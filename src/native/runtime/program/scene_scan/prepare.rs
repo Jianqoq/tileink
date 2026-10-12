@@ -31,10 +31,10 @@ impl<'a> PreparedScan<'a> {
         };
         let dirty = plans.take_dirty();
         Self {
-            dirty,
             canvas,
             plans,
             lengths,
+            dirty,
         }
     }
 }

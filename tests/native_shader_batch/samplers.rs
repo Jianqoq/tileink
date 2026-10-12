@@ -1,13 +1,13 @@
 use super::*;
 
-const SOURCE: &str = r#"
+const SOURCE: &str = "
 #include <metal_stdlib>
 using namespace metal;
 kernel void sample_color(texture2d<float> source [[texture(0)]], sampler filter [[sampler(2)]], texture2d<float, access::write> destination [[texture(1)]], uint2 pixel [[thread_position_in_grid]]) {
     if (any(pixel != uint2(0))) return;
     destination.write(source.sample(filter, float2(0.5f)), pixel);
 }
-"#;
+";
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]

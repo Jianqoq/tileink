@@ -34,6 +34,7 @@ pub enum ProgressiveBlurQuality {
 }
 
 impl ProgressiveBlur {
+    #[must_use]
     pub const fn new(start: Point, end: Point, max_std_dev: f32) -> Self {
         Self {
             start,
@@ -43,6 +44,7 @@ impl ProgressiveBlur {
         }
     }
 
+    #[must_use]
     pub const fn with_quality(mut self, quality: ProgressiveBlurQuality) -> Self {
         self.quality = quality;
         self

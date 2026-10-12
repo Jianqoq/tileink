@@ -10,7 +10,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for y in (0..640).step_by(24) {
         for x in (0..960).step_by(24) {
             canvas.push_rect(
-                Rect::new(x as f64, y as f64, (x + 24) as f64, (y + 24) as f64),
+                Rect::new(
+                    f64::from(x),
+                    f64::from(y),
+                    f64::from(x + 24),
+                    f64::from(y + 24),
+                ),
                 Radius::ZERO,
                 Color::from_rgb8(
                     (x / 4 % 256) as u8,

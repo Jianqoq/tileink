@@ -6,6 +6,10 @@ use crate::{
     shared::{filter_config::FilterConfig, gpu_constants::FILTER_WORKGROUP_SIZE},
 };
 
+#[allow(
+    clippy::expect_used,
+    reason = "ComputeBatch validates all reflected built-in clear bindings before encoding"
+)]
 pub(super) fn encode(
     command: &objc2::runtime::ProtocolObject<dyn MTLCommandBuffer>,
     batch: &ComputeBatch,
@@ -22,7 +26,7 @@ pub(super) fn encode(
         pass.bindings
             .iter()
             .find(|(b, _)| b.slot == slot)
-            .unwrap()
+            .expect("ComputeBatch validates all reflected built-in clear bindings before encoding")
             .1
             .index()
     };

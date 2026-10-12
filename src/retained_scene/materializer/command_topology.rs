@@ -6,6 +6,10 @@ use crate::shared::execution::{ExecOp, ROOT_COMMAND_LIST_ID};
 impl PersistentSceneMaterializer {
     /// A lack of backdrop dependencies does not imply a flat plan: Scenes can own
     /// clips and filters. Root-wide reuse needs the actual single unscoped batch.
+    #[allow(
+        clippy::expect_used,
+        reason = "Materialized commands and the installed plan keep live location indices synchronized"
+    )]
     pub(crate) fn flat_root_batch(&self) -> Option<u32> {
         if !self.dependency_free {
             return None;
@@ -225,6 +229,10 @@ impl PersistentSceneMaterializer {
         self.release_command(removed);
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Materialized commands and the installed plan keep live location indices synchronized"
+    )]
     pub(super) fn refresh_command_indices(&mut self, parent_list: usize, start: usize) {
         let Self {
             canvas,

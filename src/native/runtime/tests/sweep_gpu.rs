@@ -66,8 +66,7 @@ fn check_samples(context: &crate::NativeContext, cases: &[(f32, f32)]) -> Result
                         .iter()
                         .zip(expected)
                         .all(|(a, b)| a.abs_diff(b) <= 1),
-                    "start={start} end={end} extend={extend:?} point={point:?}: actual={:x} expected={expected:?}",
-                    actual
+                    "start={start} end={end} extend={extend:?} point={point:?}: actual={actual:x} expected={expected:?}"
                 );
             }
         }

@@ -5,6 +5,7 @@ use crate::{NativeContext, NativeContextOptions};
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn native_persistent_buffers_patch_ranges_and_keep_inflight_allocations_alive() -> Result<()> {
     #[cfg(feature = "dx12")]
+    // SAFETY: The serial GPU fixture enables validation before creating its context; the creation gate prevents late debug-layer changes.
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }
@@ -91,6 +92,7 @@ fn native_cached_buffer_rebuilds_after_discarded_dirty_upload() -> Result<()> {
     };
     use std::{cell::RefCell, rc::Rc};
     #[cfg(feature = "dx12")]
+    // SAFETY: The serial GPU fixture enables validation before creating its context; the creation gate prevents late debug-layer changes.
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }
@@ -104,20 +106,20 @@ fn native_cached_buffer_rebuilds_after_discarded_dirty_upload() -> Result<()> {
     )?;
     let pool = Rc::new(RefCell::new(SurfacePool::new(&context)));
     let mut cache = CachedBuffer::default();
-    let mut batch = ComputeBatch::with_surfaces(pool.clone());
+    let mut batch = ComputeBatch::with_surfaces(std::rc::Rc::clone(&pool));
     // Stay above the dense-upload cost threshold so this regression actually
     // abandons a sparse patch. A four-word buffer intentionally uploads in full.
     let mut data: Vec<u32> = (0..256).collect();
     cache.upload(&mut batch, &data, None)?;
     context.submit_compute(&batch)?.wait()?;
     drop(batch);
-    let mut rejected = ComputeBatch::with_surfaces(pool.clone());
+    let mut rejected = ComputeBatch::with_surfaces(std::rc::Rc::clone(&pool));
     let dirty = std::iter::once(1..2).collect::<Vec<_>>();
     data[1] = 777;
     let id = cache.upload(&mut rejected, &data, Some(&dirty))?;
     assert_eq!(rejected.resources()[id.index()].bytes().len(), 4);
     drop(rejected);
-    let mut retry = ComputeBatch::with_surfaces(pool.clone());
+    let mut retry = ComputeBatch::with_surfaces(std::rc::Rc::clone(&pool));
     let dirty = std::iter::once(2..3).collect::<Vec<_>>();
     data[2] = 999;
     let id = cache.upload(&mut retry, &data, Some(&dirty))?;

@@ -9,12 +9,13 @@ impl Output {
     /// Copy already-completed shared memory; allocation and GPU errors are
     /// handled during recording and completion, before these bytes are read.
     pub fn read(&self) -> Vec<u8> {
-        // SAFETY: Frame is retired only after this command buffer completes;
+        // Frame is retired only after this command buffer completes;
         // the shared readback allocation has exactly pitch*rows copied bytes.
         let mut result = Vec::with_capacity(self.row * self.rows);
         for index in 0..self.rows {
             // Padding is not written by texture copies. Never construct or read
             // a byte slice spanning those undefined bytes, even temporarily.
+            // SAFETY: Completion has retired this command; each row lies within the shared pitch*rows allocation and excludes unwritten padding.
             let row = unsafe {
                 std::slice::from_raw_parts(
                     self.buffer

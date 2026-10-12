@@ -1,4 +1,5 @@
 /// Stable native shader ABI, bound at Metal buffer(0) / HLSL b0 (Vulkan binding 0).
+///
 /// Scalars appear in this exact order, four bytes each. Input texture is slot 1,
 /// RGBA8 output texture slot 3, compact tile IDs slot 8, raw uniform words slot 10.
 /// Each 256-lane workgroup uses `group.x + group.y * dispatch_width` as its

@@ -14,6 +14,9 @@ impl NativeContext {
     /// The host must serialize use of this queue with Tileink calls and preserve
     /// resource state and synchronization contracts for every imported image.
     /// Enable DX12 validation before creating the device when requested.
+    ///
+    /// # Errors
+    /// Returns an error if the imported device/queue is incompatible, requested validation is unavailable, or native initialization fails.
     pub unsafe fn from_dx12(descriptor: ContextDescriptor) -> Result<Self, NativeError> {
         let adapter = crate::native::runtime::adapter::Adapter::from_dx12(descriptor)
             .map_err(NativeError::Initialization)?;
@@ -22,7 +25,7 @@ impl NativeContext {
 }
 
 /// A single-mip RGBA8 image with UAV and shader-read usage. Host writes between Tileink calls must
-/// restore `final_state` for ordinary calls, or provide an explicit TargetUse.
+/// restore `final_state` for ordinary calls, or provide an explicit `TargetUse`.
 pub struct TextureDescriptor {
     pub resource: windows::Win32::Graphics::Direct3D12::ID3D12Resource,
     /// False initializes undefined contents before the first use.
@@ -37,9 +40,12 @@ impl NativeContext {
     /// The resource must be in `initial_state` when
     /// the queue reaches Tileink. Host accesses must be GPU-synchronized with this
     /// queue. Ordinary calls start in the previous tracked state and restore
-    /// `final_state`; an explicit TargetUse overrides both per-use states.
+    /// `final_state`; an explicit `TargetUse` overrides both per-use states.
     /// Set `initialized` only when every pixel has defined contents; reimport after
     /// host writes to establish a new retained-content identity.
+    ///
+    /// # Errors
+    /// Returns an error for a foreign device, unsupported texture descriptor/state, or a failed native resource query.
     pub unsafe fn import_dx12_texture(
         &self,
         descriptor: TextureDescriptor,
@@ -70,7 +76,7 @@ pub struct FencePoint {
     pub fence: windows::Win32::Graphics::Direct3D12::ID3D12Fence,
     pub value: u64,
 }
-/// One use of an allocation. The renderer consumes the enclosing TargetUse.
+/// One use of an allocation. The renderer consumes the enclosing `TargetUse`.
 #[derive(Clone)]
 pub struct TargetSynchronization {
     pub incoming: windows::Win32::Graphics::Direct3D12::D3D12_RESOURCE_STATES,
@@ -85,6 +91,9 @@ impl NativeContext {
     /// # Safety
     /// Incoming state must describe the resource when waits complete, and the host
     /// must preserve the returned outgoing state until the next synchronized use.
+    ///
+    /// # Errors
+    /// Returns an error if the target is not registered with this DX12 context.
     pub unsafe fn dx12_target_use<'a>(
         &self,
         target: crate::NativeRenderTarget<'a>,

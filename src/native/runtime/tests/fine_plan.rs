@@ -39,6 +39,7 @@ fn native_fine_rejects_target_and_spill_capacity_before_recording() -> Result<()
     // SAFETY: both cases fail the output-capacity preflight before any dispatch;
     // the remaining placeholders are never interpreted by the CPU or GPU.
     assert!(
+        // SAFETY: The output-capacity preflight rejects these placeholders before any resource interpretation or GPU dispatch.
         unsafe { encode(&mut batch, &plan, &inputs) }
             .unwrap_err()
             .to_string()
@@ -50,6 +51,7 @@ fn native_fine_rejects_target_and_spill_capacity_before_recording() -> Result<()
         vec![0; (TILE_SIZE * TILE_SIZE * 4) as usize],
     )?;
     assert!(
+        // SAFETY: The spill-capacity preflight rejects these placeholders before any resource interpretation or GPU dispatch.
         unsafe { encode(&mut batch, &plan, &inputs) }
             .unwrap_err()
             .to_string()
@@ -57,6 +59,7 @@ fn native_fine_rejects_target_and_spill_capacity_before_recording() -> Result<()
     );
     assert!(batch.passes().is_empty());
     let mut other = ComputeBatch::new();
+    // SAFETY: The foreign-batch/resource preflight rejects these placeholders before any GPU dispatch.
     assert!(unsafe { encode(&mut other, &plan, &inputs) }.is_err());
     Ok(())
 }

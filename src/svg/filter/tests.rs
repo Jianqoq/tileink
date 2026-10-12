@@ -8,7 +8,7 @@ fn with_filter<T>(
     transform: Affine,
     f: impl FnOnce(SvgFilterGraphBuilder<'_>, &usvg::filter::Filter) -> T,
 ) -> T {
-    let tree = usvg::Tree::from_str(&format!(r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="80"><defs><filter id="f" filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse" x="0" y="0" width="100" height="80">{body}</filter></defs><rect width="100" height="80" filter="url(#f)"/></svg>"##), &usvg::Options::default()).unwrap();
+    let tree = usvg::Tree::from_str(&format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="80"><defs><filter id="f" filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse" x="0" y="0" width="100" height="80">{body}</filter></defs><rect width="100" height="80" filter="url(#f)"/></svg>"#), &usvg::Options::default()).unwrap();
     let Node::Group(group) = &tree.root().children()[0] else {
         panic!("filtered group");
     };

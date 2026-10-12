@@ -26,6 +26,7 @@ include = [
     "/build/**/*.rs",
     "/Cargo.toml",
     "/Cargo.lock",
+    "/clippy.toml",
     "/README.md",
     "/CHANGELOG.md",
     "/LICENSE-MIT",
@@ -72,7 +73,90 @@ vulkan = ["dep:serde_json", "dep:sha2", "dep:ash"]
 metal = ["dep:serde_json", "dep:sha2", "dep:objc2", "dep:objc2-metal", "dep:objc2-foundation", "dep:dispatch2", "dep:block2"]
 
 [lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
 unnecessary_wraps = "warn"
+
+# GPU/image formats deliberately quantize coordinates and colors. Allocation,
+# addressing and public input validation still use checked conversions.
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+# Exact comparisons identify unchanged state and tile-edge ownership. Fusing
+# arithmetic changes SVG/reference rounding, even when it is mathematically equal.
+float_cmp = "allow"
+suboptimal_flops = "allow"
+# Algebraic names, module-local preludes and explicit crate visibility keep the
+# renderer's internal API readable; these naming preferences are audited only.
+many_single_char_names = "allow"
+similar_names = "allow"
+wildcard_imports = "allow"
+module_name_repetitions = "allow"
+redundant_pub_crate = "allow"
+# A complete encoding recipe or conformance table can exceed the generic line
+# limit. File/module boundaries and algorithm structure are reviewed directly.
+too_many_lines = "allow"
+# Empty-collection assertions should not require element PartialEq/Debug impls.
+assert_is_empty = "allow"
+# Keep local helpers beside the algorithm step they explain. Explicit branches
+# are clearer than closures when updating multiple renderer caches.
+items_after_statements = "allow"
+option_if_let_else = "allow"
+# Explicit two-component coordinates work in const functions and keep GPU ABI
+# component order visible without additional conversion type annotations.
+tuple_array_conversions = "allow"
+
+# restriction contains mutually exclusive language/style bans. Enable useful
+# checks individually; CI also records an unfiltered scan of the entire group.
+allow_attributes_without_reason = "warn"
+as_pointer_underscore = "warn"
+as_underscore = "warn"
+cfg_not_test = "warn"
+clone_on_ref_ptr = "warn"
+dbg_macro = "deny"
+default_union_representation = "deny"
+disallowed_script_idents = "warn"
+empty_drop = "warn"
+empty_enum_variants_with_brackets = "warn"
+empty_structs_with_brackets = "warn"
+filetype_is_file = "warn"
+fn_to_numeric_cast_any = "warn"
+get_unwrap = "warn"
+if_then_some_else_none = "warn"
+large_include_file = "warn"
+lossy_float_literal = "warn"
+map_with_unused_argument_over_ranges = "warn"
+mixed_read_write_in_expression = "warn"
+mutex_atomic = "warn"
+mutex_integer = "warn"
+needless_raw_strings = "warn"
+non_zero_suggestions = "warn"
+pathbuf_init_then_push = "warn"
+precedence_bits = "warn"
+redundant_type_annotations = "warn"
+ref_patterns = "warn"
+rest_pat_in_fully_bound_structs = "warn"
+str_to_string = "warn"
+string_add = "warn"
+string_lit_chars_any = "warn"
+suspicious_xor_used_as_pow = "warn"
+todo = "deny"
+try_err = "warn"
+undocumented_unsafe_blocks = "warn"
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+unimplemented = "deny"
+unnecessary_rest_pattern = "warn"
+unnecessary_safety_comment = "warn"
+unnecessary_safety_doc = "warn"
+unnecessary_self_imports = "warn"
+unneeded_field_pattern = "warn"
+unused_result_ok = "warn"
+verbose_file_reads = "warn"
 
 [dev-dependencies]
 tempfile = "3.23"

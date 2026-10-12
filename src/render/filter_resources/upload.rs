@@ -53,7 +53,7 @@ impl<'a> FilterResourceUpload<'a> {
                     self.collect_ops(content, images);
                     self.collect_ops(mask, images);
                 }
-                _ => {}
+                ExecOp::DrawBatch { .. } => {}
             }
         }
     }

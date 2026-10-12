@@ -133,7 +133,7 @@ fn root_reorder_preserves_fragment_ranges_and_unrelated_draw_storage_on_removal(
                     children,
                     ..
                 } if key.node == node => match &children[0] {
-                    ExecOp::DrawBatch { draws, .. } => Some(draws.clone()),
+                    ExecOp::DrawBatch { draws, .. } => Some(std::rc::Rc::clone(draws)),
                     _ => None,
                 },
                 _ => None,

@@ -38,7 +38,7 @@ pub(crate) enum Layer {
 
 impl Layer {
     /// Effects have no geometry arena slot or fused-stack dependency.
-    pub(crate) fn hidden_draw(&self) -> Option<usize> {
+    pub(crate) const fn hidden_draw(&self) -> Option<usize> {
         match self {
             Self::Clip { draw }
             | Self::ClipSdf { draw }
@@ -49,6 +49,10 @@ impl Layer {
         }
     }
 
+    #[expect(
+        clippy::missing_const_for_fn,
+        reason = "Layer owns filters whose destructors are not const"
+    )]
     pub(crate) fn remap_draw(mut self, offset: usize) -> Self {
         match &mut self {
             Self::Clip { draw }

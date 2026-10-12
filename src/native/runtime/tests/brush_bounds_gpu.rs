@@ -80,7 +80,14 @@ fn native_brush_reads_preserve_valid_words_and_reject_out_of_range_addresses() -
             .map_err(|error| format!("{error:?}"))?;
         let first = if base == prefix as u32 { color } else { 0 };
         let expected = [
-            first, 0, 0, 0, 0xa5a5a5a5, 0xa5a5a5a5, 0xa5a5a5a5, 0xa5a5a5a5,
+            first,
+            0,
+            0,
+            0,
+            0xa5a5_a5a5,
+            0xa5a5_a5a5,
+            0xa5a5_a5a5,
+            0xa5a5_a5a5,
         ];
         assert_eq!(
             receipt.readback()?,

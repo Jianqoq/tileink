@@ -15,6 +15,7 @@ pub struct TextLayoutOptions<'a> {
 }
 
 impl<'a> TextLayoutOptions<'a> {
+    #[must_use]
     pub fn new(text: &'a str, font_size: f32) -> Self {
         Self {
             text,
@@ -30,28 +31,33 @@ impl<'a> TextLayoutOptions<'a> {
         }
     }
 
-    pub fn with_size(mut self, width: Option<f32>, height: Option<f32>) -> Self {
+    #[must_use]
+    pub const fn with_size(mut self, width: Option<f32>, height: Option<f32>) -> Self {
         self.width = width;
         self.height = height;
         self
     }
 
-    pub fn with_line_height(mut self, line_height: f32) -> Self {
+    #[must_use]
+    pub const fn with_line_height(mut self, line_height: f32) -> Self {
         self.line_height = line_height;
         self
     }
 
+    #[must_use]
     pub fn with_attrs(mut self, attrs: Attrs<'a>) -> Self {
         self.attrs = attrs;
         self
     }
 
-    pub fn with_alignment(mut self, alignment: Option<Align>) -> Self {
+    #[must_use]
+    pub const fn with_alignment(mut self, alignment: Option<Align>) -> Self {
         self.alignment = alignment;
         self
     }
 
-    pub fn with_wrap(mut self, wrap: Wrap) -> Self {
+    #[must_use]
+    pub const fn with_wrap(mut self, wrap: Wrap) -> Self {
         self.wrap = wrap;
         self
     }
@@ -81,6 +87,7 @@ pub struct TextRasterOptions {
 }
 
 impl TextRasterOptions {
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             subpixel_mode: TextSubpixelMode::Rgb,
@@ -90,21 +97,25 @@ impl TextRasterOptions {
         }
     }
 
+    #[must_use]
     pub const fn with_subpixel_mode(mut self, mode: TextSubpixelMode) -> Self {
         self.subpixel_mode = mode;
         self
     }
 
+    #[must_use]
     pub const fn with_composite_mode(mut self, mode: TextCompositeMode) -> Self {
         self.composite_mode = mode;
         self
     }
 
+    #[must_use]
     pub const fn with_alpha_mask_embolden(mut self, pixels: f32) -> Self {
         self.alpha_mask_embolden = pixels;
         self
     }
 
+    #[must_use]
     pub const fn with_subpixel_mask_embolden(mut self, pixels: f32) -> Self {
         self.subpixel_mask_embolden = pixels;
         self

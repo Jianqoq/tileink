@@ -57,7 +57,7 @@ fn native_shader_pipeline_hdr_multiresources_and_barriers_reuse_correctly() -> R
                         bytes,
                     },
                 )?;
-                let mut batch = ComputeBatch::with_surfaces(pool.clone());
+                let mut batch = ComputeBatch::with_surfaces(std::rc::Rc::clone(&pool));
                 let pixels = source_pixels(size);
                 let input = batch.texture_rgba8(size, bytemuck::cast_slice(&pixels).to_vec())?;
                 let output = batch.texture_rgba8(size, vec![0; pixels.len() * 4])?;
@@ -157,7 +157,7 @@ fn native_shader_pipeline_region_dispatch_preserves_phase_and_outside_pixels() -
     for y in 0..9 {
         for x in 0..17 {
             if !(4..15).contains(&x) || !(2..8).contains(&y) {
-                assert_eq!(actual[y * 17 + x], 0xa5a5a5a5);
+                assert_eq!(actual[y * 17 + x], 0xa5a5_a5a5);
             }
         }
     }

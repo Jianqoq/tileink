@@ -1,7 +1,19 @@
 use super::*;
 use crate::{IncrementalRenderConfig, IncrementalRenderStats, RetainedScene};
 
+#[cfg_attr(
+    not(tileink_native_runtime),
+    allow(
+        clippy::missing_const_for_fn,
+        clippy::unused_self,
+        clippy::needless_pass_by_ref_mut,
+        reason = "Unavailable-backend stubs retain the runtime API; native implementations are checked on Windows/macOS"
+    )
+)]
 impl NativeRenderer {
+    ///
+    /// # Errors
+    /// Returns an error for invalid scene/target resources, shader compilation/encoding failures, or rejected/unconfirmed native queue submission.
     pub fn render_retained(
         &mut self,
         scene: &RetainedScene,
@@ -9,6 +21,9 @@ impl NativeRenderer {
         self.submit_retained(scene, None, false, None)
     }
 
+    ///
+    /// # Errors
+    /// Returns an error for invalid scene/target resources, shader compilation/encoding failures, or rejected/unconfirmed native queue submission.
     pub fn render_retained_with_text(
         &mut self,
         scene: &RetainedScene,
@@ -18,6 +33,9 @@ impl NativeRenderer {
         self.submit_retained(scene, Some((fonts, text)), false, None)
     }
 
+    ///
+    /// # Errors
+    /// Returns an error for invalid scene/target resources, shader compilation/encoding failures, or rejected/unconfirmed native queue submission.
     pub fn render_retained_to_image(
         &mut self,
         scene: &RetainedScene,
@@ -26,6 +44,9 @@ impl NativeRenderer {
         Ok(NativeImageSubmission::new(submission, self.size))
     }
 
+    ///
+    /// # Errors
+    /// Returns an error for invalid scene/target resources, shader compilation/encoding failures, or rejected/unconfirmed native queue submission.
     pub fn render_retained_to_image_with_text(
         &mut self,
         scene: &RetainedScene,
@@ -36,6 +57,9 @@ impl NativeRenderer {
         Ok(NativeImageSubmission::new(submission, self.size))
     }
 
+    ///
+    /// # Errors
+    /// Returns an error for invalid scene/target resources, shader compilation/encoding failures, or rejected/unconfirmed native queue submission.
     pub fn render_retained_to_texture(
         &mut self,
         scene: &RetainedScene,
@@ -44,6 +68,9 @@ impl NativeRenderer {
         self.submit_retained(scene, None, false, Some(target.into()))
     }
 
+    ///
+    /// # Errors
+    /// Returns an error for invalid scene/target resources, shader compilation/encoding failures, or rejected/unconfirmed native queue submission.
     pub fn render_retained_with_text_to_texture(
         &mut self,
         scene: &RetainedScene,
@@ -55,6 +82,9 @@ impl NativeRenderer {
     }
 
     /// Render a retained frame into a target with explicit history and origin.
+    ///
+    /// # Errors
+    /// Returns an error for invalid scene/target resources, shader compilation/encoding failures, or rejected/unconfirmed native queue submission.
     pub fn render_retained_to_target(
         &mut self,
         scene: &RetainedScene,
@@ -62,6 +92,9 @@ impl NativeRenderer {
     ) -> Result<NativeSubmission, NativeError> {
         self.submit_retained(scene, None, false, Some(target))
     }
+    ///
+    /// # Errors
+    /// Returns an error for invalid scene/target resources, shader compilation/encoding failures, or rejected/unconfirmed native queue submission.
     pub fn render_retained_with_text_to_target(
         &mut self,
         scene: &RetainedScene,
@@ -72,11 +105,16 @@ impl NativeRenderer {
         self.submit_retained(scene, Some((fonts, text)), false, Some(target))
     }
 
-    pub fn invalidate_retained_history(&mut self) {
+    pub const fn invalidate_retained_history(&mut self) {
         #[cfg(tileink_native_runtime)]
         self.recording.retained.invalidate();
     }
 
+    #[must_use]
+    #[allow(
+        clippy::missing_const_for_fn,
+        reason = "The backend-free fallback constructs Default at runtime"
+    )]
     pub fn incremental_render_config(&self) -> IncrementalRenderConfig {
         #[cfg(tileink_native_runtime)]
         {
@@ -84,7 +122,7 @@ impl NativeRenderer {
         }
         #[cfg(not(tileink_native_runtime))]
         {
-            Default::default()
+            IncrementalRenderConfig::default()
         }
     }
 
@@ -95,6 +133,7 @@ impl NativeRenderer {
         let _ = config;
     }
 
+    #[must_use]
     pub fn incremental_render_stats(&self) -> IncrementalRenderStats {
         #[cfg(tileink_native_runtime)]
         {
@@ -102,7 +141,7 @@ impl NativeRenderer {
         }
         #[cfg(not(tileink_native_runtime))]
         {
-            Default::default()
+            IncrementalRenderStats::default()
         }
     }
 
@@ -115,6 +154,10 @@ impl NativeRenderer {
     ) -> Result<NativeSubmission, NativeError> {
         self.submit_retained_synchronized(scene, text, readback, output, None)
     }
+    #[allow(
+        clippy::expect_used,
+        reason = "The matching materializer is installed before retained submission preparation"
+    )]
     pub(crate) fn submit_retained_synchronized(
         &mut self,
         scene: &RetainedScene,
@@ -135,7 +178,9 @@ impl NativeRenderer {
                     crate::retained_scene::PersistentSceneMaterializer::new(scene),
                 );
             }
-            let materializer = self.persistent_scene.as_mut().unwrap();
+            let materializer = self.persistent_scene.as_mut().expect(
+                "The matching materializer is installed before retained submission preparation",
+            );
             let unchanged = materializer.version() == scene.version();
             let changes = scene.changes_since(materializer.version());
             let plan_may_change = !unchanged

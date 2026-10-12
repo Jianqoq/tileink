@@ -169,6 +169,10 @@ fn diff_unaffected_base_nodes(
     }
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "A retained node patch always contains an old or new node state"
+)]
 fn collect_logical_overrides(
     frame: &RetainedFrame,
     overrides: &mut rustc_hash::FxHashMap<
@@ -180,7 +184,11 @@ fn collect_logical_overrides(
     let mut delta = frame.delta.as_deref();
     while let Some(current) = delta {
         for patch in current.patches.iter() {
-            let id = patch.new.or(patch.old).unwrap().id;
+            let id = patch
+                .new
+                .or(patch.old)
+                .expect("A retained node patch always contains an old or new node state")
+                .id;
             overrides.entry(id).or_insert(patch.new);
         }
         delta = current.previous.as_deref();
@@ -239,6 +247,10 @@ fn damage_overridden_nodes(
     }
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "A retained node patch always contains an old or new node state"
+)]
 fn add_state_change_damage(
     damage: &mut DamageTiles,
     retained: &mut RetainedDamage,
@@ -258,7 +270,12 @@ fn add_state_change_damage(
         (None, None) => return,
     };
     damage.add_bounds(bounds);
-    retained.add_node(new.or(old).unwrap().id, bounds);
+    retained.add_node(
+        new.or(old)
+            .expect("A retained node patch always contains an old or new node state")
+            .id,
+        bounds,
+    );
 }
 
 #[cfg(test)]

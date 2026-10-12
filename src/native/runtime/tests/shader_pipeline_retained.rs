@@ -66,9 +66,9 @@ fn native_shader_pipeline_renderer_backdrop_and_retained_updates_match_fresh_fra
             fresh.render_retained_to_image(&scene)?.readback()?.pixels
         );
         let pixel = if phase == 0 {
-            0xff1f50b4u32
+            0xff1f_50b4_u32
         } else {
-            0xff1fa05au32
+            0xff1f_a05a_u32
         };
         check(
             &actual.pixels,
@@ -87,7 +87,7 @@ fn native_shader_pipeline_renderer_backdrop_and_retained_updates_match_fresh_fra
     backdrop.pop_layer();
     check(
         &renderer.render_to_image(&backdrop)?.readback()?.pixels,
-        &vec![0xff1f50b4; 33 * 19],
+        &vec![0xff1f_50b4; 33 * 19],
         [33, 19],
         128,
     );
@@ -181,7 +181,7 @@ fn native_shader_pipeline_retained_backdrop_tracks_reads_outside_output_region()
         );
         assert_eq!(
             actual.pixels[40 * 64 + 40],
-            if phase == 0 { 0xff1f50b4 } else { 0xff1fa05a }
+            if phase == 0 { 0xff1f_50b4 } else { 0xff1f_a05a }
         );
     }
     context.check_validation()?;

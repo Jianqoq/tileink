@@ -7,6 +7,7 @@ impl Dx12 {
     pub fn new(identity: &str) -> Result<Self> {
         // Isolated verification creates native debug devices before rendering.
         // Subsequent calls are no-ops, including when foreign devices now exist.
+        // SAFETY: The test creation gate serializes debug-layer configuration before creating this device.
         unsafe {
             debug::enable_validation()?;
         }
@@ -17,6 +18,7 @@ impl Dx12 {
     }
 
     pub fn with_options(options: &crate::native::NativeContextOptions) -> Result<Self> {
+        // SAFETY: Factory, adapter and device outputs are owned COM objects; descriptors and identity storage remain live during enumeration and creation.
         unsafe {
             let factory: IDXGIFactory4 = CreateDXGIFactory2(DXGI_CREATE_FACTORY_FLAGS(0))?;
             let mut selected = None;
@@ -32,7 +34,7 @@ impl Dx12 {
                     desc.AdapterLuid.HighPart.to_le_bytes(),
                 ]
                 .concat();
-                let actual: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+                let actual = crate::hex::encode(&bytes);
                 if options
                     .physical_adapter
                     .as_ref()
@@ -52,13 +54,14 @@ impl Dx12 {
                     Type: D3D12_COMMAND_LIST_TYPE_DIRECT,
                     ..Default::default()
                 })?;
-            Self::from_parts(adapter, identity, device, queue, options.validation)
+            Self::from_parts(&adapter, &identity, device, queue, options.validation)
         }
     }
 
     pub fn from_imported(
         descriptor: crate::native::interop::dx12::ContextDescriptor,
     ) -> Result<Self> {
+        // SAFETY: The caller retains the imported device and queue; their identity and queue type are checked before use.
         unsafe {
             let crate::native::interop::dx12::ContextDescriptor {
                 device,
@@ -69,7 +72,7 @@ impl Dx12 {
                 return Err("Tileink requires a DIRECT DX12 queue".into());
             }
             let mut queue_device = None;
-            queue.GetDevice(&mut queue_device)?;
+            queue.GetDevice(&raw mut queue_device)?;
             let queue_device: ID3D12Device = queue_device.ok_or("DX12 queue has no device")?;
             if queue_device.cast::<windows::core::IUnknown>()?.as_raw()
                 != device.cast::<windows::core::IUnknown>()?.as_raw()
@@ -79,22 +82,21 @@ impl Dx12 {
             let luid = device.GetAdapterLuid();
             let factory: IDXGIFactory4 = CreateDXGIFactory2(DXGI_CREATE_FACTORY_FLAGS(0))?;
             let adapter: IDXGIAdapter1 = factory.EnumAdapterByLuid(luid)?;
-            let identity = [luid.LowPart.to_le_bytes(), luid.HighPart.to_le_bytes()]
-                .concat()
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect();
-            Self::from_parts(adapter, identity, device, queue, validation)
+            let identity = crate::hex::encode(
+                &[luid.LowPart.to_le_bytes(), luid.HighPart.to_le_bytes()].concat(),
+            );
+            Self::from_parts(&adapter, &identity, device, queue, validation)
         }
     }
 
     fn from_parts(
-        adapter: IDXGIAdapter1,
-        identity: String,
+        adapter: &IDXGIAdapter1,
+        identity: &str,
         device: ID3D12Device,
         queue: ID3D12CommandQueue,
         validation: bool,
     ) -> Result<Self> {
+        // SAFETY: The supplied device, queue and adapter are live same-device COM objects; all output storage is initialized and retained by the context.
         unsafe {
             let messages = Validation::new(if validation {
                 Some(device.cast().map_err(|error| format!(
@@ -103,7 +105,7 @@ impl Dx12 {
             } else {
                 None
             });
-            let cache_identity = compute_pipeline::identity(&adapter, &identity)?;
+            let cache_identity = compute_pipeline::identity(adapter, identity)?;
             let fence: ID3D12Fence = device.CreateFence(0, D3D12_FENCE_FLAG_NONE)?;
             let event = CreateEventW(None, false, false, None)?;
             Ok(Self {
@@ -128,7 +130,11 @@ impl Dx12 {
         }
     }
 
-    pub fn limits(&self) -> Limits {
+    #[allow(
+        clippy::unused_self,
+        reason = "The adapter API queries device limits uniformly; DX12 specifies fixed limits"
+    )]
+    pub const fn limits(&self) -> Limits {
         Limits {
             image_dimension: D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION,
             atlas_pages: D3D12_REQ_TEXTURE2D_ARRAY_AXIS_DIMENSION,

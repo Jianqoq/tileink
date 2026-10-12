@@ -9,7 +9,7 @@ fn vector(width: u32, height: u32) -> ImageSource {
 #[test]
 fn vector_extent_uses_canvas_physical_pixels_without_raster_storage() {
     let scene = Rc::new(Canvas::new(17, 9, 2.0));
-    let source = ImageSource::Vector(scene.clone());
+    let source = ImageSource::Vector(std::rc::Rc::clone(&scene));
     assert_eq!(source.size(), (34, 18));
     assert!(source.raster().is_none());
     let mut store = ImageResourceStore::default();
@@ -32,7 +32,7 @@ fn mixed_atlas_keeps_raster_texels_and_reserves_a_vector_border() {
         Image {
             width: 1,
             height: 1,
-            pixels: vec![0x80402010],
+            pixels: vec![0x8040_2010],
         },
     );
     store.insert(ImageKey::new(2), vector(2, 3));
@@ -49,7 +49,7 @@ fn mixed_atlas_keeps_raster_texels_and_reserves_a_vector_border() {
     let page = &upload.atlas_pages()[raster.page as usize];
     for y in raster.y - 1..=raster.y + raster.height {
         for x in raster.x - 1..=raster.x + raster.width {
-            assert_eq!(page.pixels[(y * page.size + x) as usize], 0x80402010);
+            assert_eq!(page.pixels[(y * page.size + x) as usize], 0x8040_2010);
         }
     }
     for y in vector.y - 1..=vector.y + vector.height {
@@ -109,7 +109,7 @@ fn empty_resource_graph_drops_old_vector_dependencies() {
 #[test]
 fn vector_identity_guard_forces_copy_on_write_without_retaining_scene() {
     let mut scene = Rc::new(Canvas::new(17, 9, 1.0));
-    let source = ImageSource::Vector(scene.clone());
+    let source = ImageSource::Vector(std::rc::Rc::clone(&scene));
     let old_identity = source.identity();
     let guard = source.guard();
     drop(source);

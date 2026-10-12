@@ -13,7 +13,9 @@ use crate::{
 };
 use peniko::kurbo::Affine;
 
-pub(super) fn composite_operator(operator: usvg::filter::CompositeOperator) -> CompositeOperator {
+pub(super) const fn composite_operator(
+    operator: usvg::filter::CompositeOperator,
+) -> CompositeOperator {
     match operator {
         usvg::filter::CompositeOperator::Over => CompositeOperator::Over,
         usvg::filter::CompositeOperator::In => CompositeOperator::In,
@@ -41,7 +43,7 @@ pub(super) fn convolve_matrix_to_filter(convolve: &usvg::filter::ConvolveMatrix)
     })
 }
 
-fn convolve_edge_mode(edge_mode: usvg::filter::EdgeMode) -> ConvolveEdgeMode {
+const fn convolve_edge_mode(edge_mode: usvg::filter::EdgeMode) -> ConvolveEdgeMode {
     match edge_mode {
         usvg::filter::EdgeMode::None => ConvolveEdgeMode::None,
         usvg::filter::EdgeMode::Duplicate => ConvolveEdgeMode::Duplicate,
@@ -116,7 +118,7 @@ pub(super) fn displacement_map_to_filter(
     }
 }
 
-fn color_channel(channel: usvg::filter::ColorChannel) -> ColorChannel {
+const fn color_channel(channel: usvg::filter::ColorChannel) -> ColorChannel {
     match channel {
         usvg::filter::ColorChannel::R => ColorChannel::R,
         usvg::filter::ColorChannel::G => ColorChannel::G,
@@ -125,7 +127,7 @@ fn color_channel(channel: usvg::filter::ColorChannel) -> ColorChannel {
     }
 }
 
-fn turbulence_kind(kind: usvg::filter::TurbulenceKind) -> TurbulenceKind {
+const fn turbulence_kind(kind: usvg::filter::TurbulenceKind) -> TurbulenceKind {
     match kind {
         usvg::filter::TurbulenceKind::Turbulence => TurbulenceKind::Turbulence,
         usvg::filter::TurbulenceKind::FractalNoise => TurbulenceKind::FractalNoise,
@@ -135,7 +137,7 @@ fn turbulence_kind(kind: usvg::filter::TurbulenceKind) -> TurbulenceKind {
 fn light_source(source: usvg::filter::LightSource, transform: Affine) -> LightSource {
     // SVG light positions use primitive coordinates, while the lighting kernel uses canvas pixels.
     let point = |x: f32, y: f32| {
-        let point = transform * peniko::kurbo::Point::new(x as f64, y as f64);
+        let point = transform * peniko::kurbo::Point::new(f64::from(x), f64::from(y));
         (point.x as f32, point.y as f32)
     };
     let [a, b, c, d, _, _] = transform.as_coeffs();
@@ -171,7 +173,7 @@ fn light_source(source: usvg::filter::LightSource, transform: Affine) -> LightSo
     }
 }
 
-pub(super) fn morphology_operator(
+pub(super) const fn morphology_operator(
     operator: usvg::filter::MorphologyOperator,
 ) -> MorphologyOperator {
     match operator {

@@ -14,6 +14,7 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const TABLE_SIZE: usize = 64;
 // SAFETY: repr(C), scalar arrays, no implicit padding, all bit patterns valid.
 unsafe impl bytemuck::Zeroable for ProgressiveBlurConfig {}
+// SAFETY: repr(C), scalar arrays, no implicit padding, and all bit patterns are valid.
 unsafe impl bytemuck::Pod for ProgressiveBlurConfig {}
 
 fn dispatch(
@@ -35,6 +36,10 @@ fn dispatch(
     crate::native::runtime::program::filter::pipeline::record(batch, entry, &bindings, grid)
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "Nonempty blur levels and their scratch allocation are established before reduction and texture-table padding"
+)]
 pub(crate) fn encode(
     batch: &mut ComputeBatch,
     target: ResourceId,
@@ -89,11 +94,11 @@ pub(crate) fn encode(
             (
                 0,
                 images[i - 1],
-                scratch.unwrap(),
+                scratch.expect("Nonempty blur levels and their scratch allocation are established before reduction and texture-table padding"),
                 previous.size,
                 intermediate,
             ),
-            (1, scratch.unwrap(), image, intermediate, level.size),
+            (1, scratch.expect("Nonempty blur levels and their scratch allocation are established before reduction and texture-table padding"), image, intermediate, level.size),
         ] {
             dispatch(
                 batch,
@@ -116,7 +121,7 @@ pub(crate) fn encode(
         .map(|l| [l.size[0] as f32, l.size[1] as f32, l.scale, l.variance])
         .collect();
     let metadata = batch.buffer(bytemuck::cast_slice(&metadata).to_vec())?;
-    images.resize(TABLE_SIZE, *images.last().unwrap());
+    images.resize(TABLE_SIZE, *images.last().expect("Nonempty blur levels and their scratch allocation are established before reduction and texture-table padding"));
     let table = batch.texture_table(&images)?;
     dispatch(
         batch,

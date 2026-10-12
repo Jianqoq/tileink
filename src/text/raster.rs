@@ -42,6 +42,10 @@ impl GlyphRasterImage {
 
     /// Enforce the byte layout once at image creation; later stages copy the
     /// canonical data without legacy repacking or malformed-image fallbacks.
+    #[allow(
+        clippy::expect_used,
+        reason = "Glyph raster storage must reject byte-count overflow before allocating or indexing"
+    )]
     pub(super) fn new(content: GlyphContent, placement: Placement, data: Vec<u8>) -> Self {
         let channels = match content {
             GlyphContent::Mask => 1,
@@ -138,7 +142,7 @@ fn raster_glyph_image_with_sources(
     .map(GlyphRasterImage::from_swash)
 }
 
-fn raster_glyph_offset(cache_key: CacheKey) -> Vector {
+const fn raster_glyph_offset(cache_key: CacheKey) -> Vector {
     if cache_key.flags.contains(CacheKeyFlags::PIXEL_FONT) {
         Vector::new(
             cache_key.x_bin.as_float().round(),
@@ -191,6 +195,10 @@ pub(super) fn harmony_lcd_outline_shifts(mode: TextSubpixelMode) -> [f32; 3] {
     }
 }
 
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Merging consumes channel buffers and releases them after constructing the combined image"
+)]
 pub(super) fn merge_harmony_lcd_masks(channels: [GlyphRasterImage; 3]) -> GlyphRasterImage {
     // The input always contains three channels, including empty glyph masks.
     // Their union has no missing-channel/default-bounds case.

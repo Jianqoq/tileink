@@ -32,7 +32,9 @@ impl<'a> Upload<'a> {
                     .ok_or("Metal upload encoder failed")?,
             );
         }
-        Ok(self.encoder.as_deref().unwrap())
+        self.encoder
+            .as_deref()
+            .ok_or_else(|| "Metal blit encoder allocation failed".into())
     }
 }
 impl Drop for Upload<'_> {

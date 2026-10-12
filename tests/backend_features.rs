@@ -1,5 +1,14 @@
 //! Compile the production guard under every feature combination. This must stay
 //! independent of GPU/driver availability, including for deliberately invalid builds.
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "Test setup and assertions abort on failure; production builds are checked separately"
+    )
+)]
 use std::{path::PathBuf, process::Command};
 
 #[test]

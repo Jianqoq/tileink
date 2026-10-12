@@ -18,7 +18,7 @@ fn leaf(rect: Rect, color: Color) -> Rc<Canvas> {
     Rc::new(canvas)
 }
 
-fn mask() -> D {
+const fn mask() -> D {
     D::Mask(Mask {
         region: Region::rect(Rect::new(0.0, 0.0, 32.0, 32.0), Radius::ZERO),
         kind: MaskKind::Luminance,

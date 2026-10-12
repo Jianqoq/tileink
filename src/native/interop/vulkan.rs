@@ -12,9 +12,9 @@ pub struct ContextDescriptor {
     pub queue_family: u32,
     /// True only if shaderSampledImageArrayNonUniformIndexing was enabled at creation.
     pub texture_tables: bool,
-    /// True only when timelineSemaphore and Vulkan 1.2 or KHR_timeline_semaphore were enabled.
+    /// True only when timelineSemaphore and Vulkan 1.2 or `KHR_timeline_semaphore` were enabled.
     pub timeline_semaphores: bool,
-    /// Requires the validation layer and VK_EXT_debug_utils enabled on the instance.
+    /// Requires the validation layer and `VK_EXT_debug_utils` enabled on the instance.
     pub validation: bool,
     pub owner: Rc<dyn Any>,
 }
@@ -26,6 +26,9 @@ impl NativeContext {
     /// `owner`. The queue must belong to `queue_family`; enabled feature/extension
     /// declarations must be accurate. The host must serialize queue access with
     /// Tileink and synchronize every imported resource before and after rendering.
+    ///
+    /// # Errors
+    /// Returns an error for incompatible queue capabilities, invalid feature declarations, unavailable validation, or failed native initialization.
     pub unsafe fn from_vulkan(descriptor: ContextDescriptor) -> Result<Self, NativeError> {
         let adapter = crate::native::runtime::adapter::Adapter::from_vulkan(descriptor)
             .map_err(NativeError::Initialization)?;
@@ -52,9 +55,12 @@ impl NativeContext {
     /// dimensions, usages and one sample, and remain live through `owner`. The
     /// host must synchronize access and transfer queue-family ownership to this
     /// context before ordinary rendering. Ordinary calls restore `final_layout`;
-    /// an explicit TargetUse overrides incoming/outgoing scopes and queue ownership.
+    /// an explicit `TargetUse` overrides incoming/outgoing scopes and queue ownership.
     /// Set `initialized` only when every pixel has defined contents. Reimport
     /// after host writes to establish a new retained-content identity.
+    ///
+    /// # Errors
+    /// Returns an error for an incompatible context, invalid extent/layout, or failed native image-view creation.
     pub unsafe fn import_vulkan_texture(
         &self,
         descriptor: TextureDescriptor,
@@ -86,7 +92,7 @@ pub struct ImageState {
     pub layout: ash::vk::ImageLayout,
     pub stages: ash::vk::PipelineStageFlags,
     pub access: ash::vk::AccessFlags,
-    /// QUEUE_FAMILY_IGNORED denotes this context's own queue family.
+    /// `QUEUE_FAMILY_IGNORED` denotes this context's own queue family.
     pub queue_family: u32,
 }
 #[derive(Clone, Copy, Debug)]
@@ -98,13 +104,13 @@ pub enum SemaphorePoint {
     },
 }
 impl SemaphorePoint {
-    pub(crate) fn handle(self) -> ash::vk::Semaphore {
+    pub(crate) const fn handle(self) -> ash::vk::Semaphore {
         match self {
             Self::Binary(handle) => handle,
             Self::Timeline { semaphore, .. } => semaphore,
         }
     }
-    pub(crate) fn value(self) -> u64 {
+    pub(crate) const fn value(self) -> u64 {
         match self {
             Self::Binary(_) => 0,
             Self::Timeline { value, .. } => value,
@@ -114,7 +120,7 @@ impl SemaphorePoint {
 #[derive(Clone)]
 pub struct SemaphoreWait {
     pub semaphore: SemaphorePoint,
-    /// Tileink widens valid wait scopes to ALL_COMMANDS to cover transfer and compute.
+    /// Tileink widens valid wait scopes to `ALL_COMMANDS` to cover transfer and compute.
     pub stages: ash::vk::PipelineStageFlags,
 }
 #[derive(Clone)]
@@ -136,6 +142,9 @@ impl NativeContext {
     /// the host must first release incoming.layout -> GENERAL to this context's family;
     /// Tileink records the matching acquire. The destination must acquire the matching
     /// GENERAL -> outgoing.layout release before using an exported image.
+    ///
+    /// # Errors
+    /// Returns an error for a foreign context or an undefined incoming layout on an already initialized image.
     pub unsafe fn vulkan_target_use<'a>(
         &self,
         target: crate::NativeRenderTarget<'a>,

@@ -11,19 +11,19 @@ use peniko::{
 use std::rc::Rc;
 type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-fn id(value: u64) -> Id {
+const fn id(value: u64) -> Id {
     Id::for_owner(225_000 + value)
 }
-fn rect() -> Rect {
+const fn rect() -> Rect {
     Rect::new(0.0, 0.0, 32.0, 32.0)
 }
-fn mask() -> Mask {
+const fn mask() -> Mask {
     Mask {
         region: Region::rect(rect(), Radius::ZERO),
         kind: MaskKind::Alpha,
     }
 }
-fn filter() -> D {
+const fn filter() -> D {
     D::Filter {
         filter: Filter::Opacity(0.5),
         sample_region: Region::rect(rect(), Radius::ZERO),

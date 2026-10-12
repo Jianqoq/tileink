@@ -31,16 +31,18 @@ impl Probe {
         }
         let (stride, width) = match self.entry {
             "clear_words" | "copy_words" | "sample_words" => (4u64, 4u64),
-            "layout_words" if p.stride >= 16 && p.stride.is_multiple_of(4) => (p.stride as u64, 16),
+            "layout_words" if p.stride >= 16 && p.stride.is_multiple_of(4) => {
+                (u64::from(p.stride), 16)
+            }
             _ => return Err("unknown program or invalid layout stride".into()),
         };
-        let end = p.destination_offset as u64
+        let end = u64::from(p.destination_offset)
             + if p.count == 0 {
                 0
             } else {
-                (p.count as u64 - 1) * stride + width
+                (u64::from(p.count) - 1) * stride + width
             };
-        if end > self.destination.len() as u64 || end > u32::MAX as u64 {
+        if end > self.destination.len() as u64 || end > u64::from(u32::MAX) {
             return Err("native destination out of bounds".into());
         }
         let source_words = match self.entry {
@@ -61,13 +63,13 @@ impl Probe {
                 {
                     return Err("invalid sampling coordinate/width".into());
                 }
-                let fixed_origin = (origin as f64 * 65536.0).round();
-                let fixed_step = (step as f64 * 65536.0).round();
-                let product = fixed_step * p.count.saturating_sub(1) as f64;
+                let fixed_origin = (f64::from(origin) * 65536.0).round();
+                let fixed_step = (f64::from(step) * 65536.0).round();
+                let product = fixed_step * f64::from(p.count.saturating_sub(1));
                 let fixed_last = fixed_origin + product;
                 if [fixed_origin, fixed_step, product, fixed_last]
                     .iter()
-                    .any(|v| *v < -(i32::MAX as f64) || *v > i32::MAX as f64)
+                    .any(|v| *v < -f64::from(i32::MAX) || *v > f64::from(i32::MAX))
                 {
                     return Err("sampling fixed-point coordinate overflow".into());
                 }
@@ -75,8 +77,8 @@ impl Probe {
             }
             _ => 0,
         };
-        let end = p.source_offset as u64 + source_words as u64 * 4;
-        if end > self.source.len() as u64 || end > u32::MAX as u64 {
+        let end = u64::from(p.source_offset) + u64::from(source_words) * 4;
+        if end > self.source.len() as u64 || end > u64::from(u32::MAX) {
             return Err("native source out of bounds".into());
         }
         Ok(())

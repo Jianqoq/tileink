@@ -60,8 +60,8 @@ fn retained_resource_brush_survives_transform_then_sdf_arena_growth()
     let geometry = |sdf| {
         let mut canvas = Canvas::new(64, 64, 1.0);
         for index in 0..16 {
-            let x = 32.0 + (index % 4) as f64 * 8.0;
-            let y = (index / 4) as f64 * 8.0;
+            let x = 32.0 + f64::from(index % 4) * 8.0;
+            let y = f64::from(index / 4) * 8.0;
             let rect = Rect::new(x, y, x + 6.0, y + 6.0);
             if sdf {
                 canvas.push_rect(rect, Radius::ZERO, Color::WHITE);
@@ -115,7 +115,7 @@ fn retained_resource_brush_survives_transform_then_sdf_arena_growth()
             // Keep brush storage unchanged while growing another node's SDF storage.
             scene
                 .transaction()
-                .replace_scene(geometry_node, sdfs.clone())
+                .replace_scene(geometry_node, std::rc::Rc::clone(&sdfs))
                 .invalidate_all()
                 .commit()?;
         }
@@ -346,7 +346,7 @@ fn many_opacity_layers_do_not_exhaust_descriptor_heaps() -> Result<(), Box<dyn s
                 RetainedParent::content(layer),
                 None,
                 RetainedNodeId::for_owner(3 + index * 2),
-                canvas.clone(),
+                std::rc::Rc::clone(&canvas),
                 Affine::IDENTITY,
             );
     }

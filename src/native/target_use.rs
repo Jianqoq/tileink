@@ -35,6 +35,9 @@ pub struct NativeTargetSubmission {
     pub outgoing: NativeTargetState,
 }
 impl NativeRenderer {
+    ///
+    /// # Errors
+    /// Returns an error for invalid scene/target resources, shader compilation/encoding failures, or rejected/unconfirmed native queue submission. Invalid synchronization contracts also return an error.
     pub fn render_to_target_use(
         &mut self,
         canvas: &Canvas,
@@ -53,6 +56,9 @@ impl NativeRenderer {
             outgoing,
         })
     }
+    ///
+    /// # Errors
+    /// Returns an error for invalid scene/target resources, shader compilation/encoding failures, or rejected/unconfirmed native queue submission. Invalid synchronization contracts also return an error.
     pub fn render_retained_to_target_use(
         &mut self,
         scene: &crate::RetainedScene,
@@ -74,6 +80,9 @@ impl NativeRenderer {
 }
 
 impl NativeRenderer {
+    ///
+    /// # Errors
+    /// Returns an error for invalid scene/target resources, shader compilation/encoding failures, or rejected/unconfirmed native queue submission. Invalid synchronization contracts also return an error.
     pub fn render_with_text_to_target_use(
         &mut self,
         canvas: &Canvas,
@@ -94,6 +103,9 @@ impl NativeRenderer {
             outgoing,
         })
     }
+    ///
+    /// # Errors
+    /// Returns an error for invalid scene/target resources, shader compilation/encoding failures, or rejected/unconfirmed native queue submission. Invalid synchronization contracts also return an error.
     pub fn render_retained_with_text_to_target_use(
         &mut self,
         scene: &crate::RetainedScene,

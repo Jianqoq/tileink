@@ -5,6 +5,10 @@ use super::transaction::{Mutation, UndoMutation};
 use super::validation::*;
 
 impl RetainedScene {
+    #[allow(
+        clippy::expect_used,
+        reason = "Mutation validation establishes node presence and parentage before applying changes"
+    )]
     pub(super) fn apply_with_undo(
         &mut self,
         mutation: Mutation,
@@ -102,7 +106,7 @@ impl RetainedScene {
                     let old_kind = node.kind.clone();
                     let old_generation = node.generation;
                     node.kind = NodeKind::Scene {
-                        canvas: current_canvas.clone(),
+                        canvas: std::rc::Rc::clone(current_canvas),
                         transform,
                         translation_damage,
                     };
@@ -157,7 +161,7 @@ impl RetainedScene {
                 let old_key = self.remove_child(old_parent, id)?;
                 let new_insertion = self.insert_child(parent, before, id)?;
                 record_rebalanced_siblings(&new_insertion, changes);
-                self.nodes.get_mut(&id).unwrap().parent = Some(parent);
+                self.nodes.get_mut(&id).expect("Mutation validation establishes node presence and parentage before applying changes").parent = Some(parent);
                 changes.changed_nodes.insert(id);
                 changes.topology_changed = true;
                 changes.hierarchy_changed = true;
@@ -216,7 +220,7 @@ impl RetainedScene {
                 self.collect_subtree(id, &mut removed);
                 let mut removed_nodes = Vec::with_capacity(removed.len());
                 for removed_id in removed {
-                    let node = self.nodes.remove(&removed_id).unwrap();
+                    let node = self.nodes.remove(&removed_id).expect("Mutation validation establishes node presence and parentage before applying changes");
                     removed_nodes.push((removed_id, node));
                     changes.removed_nodes.insert(removed_id);
                 }
@@ -243,8 +247,10 @@ impl RetainedScene {
                     return Err(RetainedSceneError::ScaleMismatch);
                 }
                 if (self.width, self.height, self.scale.to_bits())
-                    != (width, height, scale.to_bits())
+                    == (width, height, scale.to_bits())
                 {
+                    Ok(UndoMutation::None)
+                } else {
                     let old = (self.width, self.height, self.scale);
                     self.width = width;
                     self.height = height;
@@ -252,8 +258,6 @@ impl RetainedScene {
                     changes.surface_changed = true;
                     changes.invalidate_all = true;
                     Ok(UndoMutation::Resize(old))
-                } else {
-                    Ok(UndoMutation::None)
                 }
             }
             Mutation::InvalidateRect(rect) => {

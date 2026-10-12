@@ -24,15 +24,15 @@ pub(super) struct ImageResourcePageSignature {
 impl ImageResourcePageSignature {
     fn new(items: &[PackItem], entries: &[ImageResourceEntry<'_>], page_size: u32) -> Self {
         let mut hash = FNV_OFFSET;
-        hash = fnv_mix(hash, page_size as u64);
+        hash = fnv_mix(hash, u64::from(page_size));
         hash = fnv_mix(hash, items.len() as u64);
         for item in items {
             let entry = &entries[item.entry_index];
             hash = fnv_mix(hash, entry.signature.hash);
-            hash = fnv_mix(hash, item.x as u64);
-            hash = fnv_mix(hash, item.y as u64);
-            hash = fnv_mix(hash, item.width as u64);
-            hash = fnv_mix(hash, item.height as u64);
+            hash = fnv_mix(hash, u64::from(item.x));
+            hash = fnv_mix(hash, u64::from(item.y));
+            hash = fnv_mix(hash, u64::from(item.width));
+            hash = fnv_mix(hash, u64::from(item.height));
         }
         Self { hash }
     }
@@ -48,7 +48,7 @@ pub(super) fn should_use_texture_table(image: &ImageSource, max_atlas_dimension:
     let padded_height = image.height().saturating_add(2);
     padded_width > DEFAULT_IMAGE_RESOURCE_ATLAS_PAGE_SIZE
         || padded_height > DEFAULT_IMAGE_RESOURCE_ATLAS_PAGE_SIZE
-        || (image.width() as u64 * image.height() as u64) > LARGE_IMAGE_AREA_THRESHOLD
+        || (u64::from(image.width()) * u64::from(image.height())) > LARGE_IMAGE_AREA_THRESHOLD
 }
 
 pub(super) fn can_use_atlas(image: &ImageSource, max_atlas_dimension: u32) -> bool {

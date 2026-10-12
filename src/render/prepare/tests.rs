@@ -61,7 +61,7 @@ fn unchanged_plan_reuses_cached_plan_and_metadata() {
     let canvas = canvas();
     let mut state = ScenePreparation::default();
     let first = state.prepare_plan(&canvas, &mut None);
-    let reference = first.plan.clone();
+    let reference = std::rc::Rc::clone(&first.plan);
     state.metadata.as_mut().unwrap().stack_depths = (7, 9);
     let prepared = state.prepare_plan(&canvas, &mut Some(first.plan));
     assert!(Rc::ptr_eq(&prepared.plan, &reference));
@@ -75,7 +75,7 @@ fn structural_reuse_refreshes_values_when_the_fingerprint_changes() {
     let mut state = ScenePreparation::default();
     let first = state.prepare_plan(&canvas, &mut None);
     let reference = canvas.compile_shared(ROOT_COMMAND_LIST_ID);
-    canvas.compiled_plan = Some(reference.clone());
+    canvas.compiled_plan = Some(std::rc::Rc::clone(&reference));
     // The retained materializer can certify unchanged structure independently of its key.
     let metadata = state.metadata.as_mut().unwrap();
     metadata.fingerprint = metadata.fingerprint.wrapping_add(1);
@@ -104,7 +104,7 @@ fn patched_values_consume_the_new_plan_but_keep_its_size_metadata() {
         ..Default::default()
     });
     let expected = changed.compile_shared(ROOT_COMMAND_LIST_ID);
-    changed.compiled_plan = Some(expected.clone());
+    changed.compiled_plan = Some(std::rc::Rc::clone(&expected));
     let metadata = state.metadata.as_mut().unwrap();
     metadata.fingerprint = metadata.fingerprint.wrapping_add(1);
     state.metadata.as_mut().unwrap().stack_depths = (7, 9);

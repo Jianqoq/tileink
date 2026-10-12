@@ -187,11 +187,11 @@ fn region_bounds(region: &Region) -> Bounds {
     filter::region_bounds(region)
 }
 
-fn pixel_bounds(bounds: crate::shared::bounds::PixelBounds) -> Bounds {
+const fn pixel_bounds(bounds: crate::shared::bounds::PixelBounds) -> Bounds {
     Bounds::new(bounds.x0, bounds.y0, bounds.x1, bounds.y1)
 }
 
-fn empty_bounds() -> Bounds {
+const fn empty_bounds() -> Bounds {
     Bounds::new(0, 0, 0, 0)
 }
 
@@ -224,7 +224,6 @@ fn propagate_list_damage(
                 retained,
                 layer,
                 children,
-                ..
             } => {
                 let retained_owner = retained.map(|key| key.id).or(retained_owner);
                 // Fused clip coverage changes the pixels drawn before a descendant

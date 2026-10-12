@@ -1,15 +1,27 @@
 //! The same validated DXC toolchain and content cache used at build time.
 //! Application source is compiled verbatim; compiler errors are returned.
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
 #[path = "../../../../build/native/abi.rs"]
 mod abi;
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
 #[path = "../../../../build/native/dxc.rs"]
 mod compiler;
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
 #[path = "../../../../build/native/dxil_reflection.rs"]
 mod dxil_reflection;
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
 #[path = "../../../../build/native/spirv.rs"]
 mod spirv;
 #[path = "../../../../build/native/toolchain.rs"]
@@ -38,7 +50,7 @@ pub(crate) fn compile(source: &NativeSource, target: &str) -> Result<Compiled> {
         user_cache.clone(),
     );
     let explicit = env::var_os("TILEINK_NATIVE_DXC_PATH").map(PathBuf::from);
-    let compiler = compiler::Dxc::discover(toolchain::resolve(explicit, &roots)?)?;
+    let compiler = compiler::Dxc::discover(&toolchain::resolve(explicit, &roots)?)?;
     let mut flags = compiler::Dxc::flags(target, entry)?;
     if target == "dxil" {
         flags.push("-Gis".into());
@@ -50,13 +62,14 @@ pub(crate) fn compile(source: &NativeSource, target: &str) -> Result<Compiled> {
     let key = cache::CacheKey::new(&[&recipe, text.as_bytes(), &interface.cache_bytes()]);
     let key_text = key.hex();
     let work = Work::new(&key_text);
-    let root = env::var_os("TILEINK_NATIVE_SHADER_CACHE_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
+    let root = env::var_os("TILEINK_NATIVE_SHADER_CACHE_DIR").map_or_else(
+        || {
             user_cache
                 .unwrap_or_else(env::temp_dir)
                 .join("tileink/runtime-shaders")
-        });
+        },
+        PathBuf::from,
+    );
     let validate = |bytes: &[u8]| -> std::io::Result<()> {
         compiler::validate_container(target, bytes)?;
         if target == "spirv" {

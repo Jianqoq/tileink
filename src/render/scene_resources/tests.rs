@@ -71,12 +71,12 @@ fn clearing_the_pool_drops_both_available_and_pending_ownership() {
     let mut pool = SceneResourcePool::default();
     pool.recycle(SceneResources {
         target_size: (17, 19),
-        allocation: Allocation(1, dropped.clone()),
+        allocation: Allocation(1, std::rc::Rc::clone(&dropped)),
     });
     pool.begin_frame();
     pool.recycle(SceneResources {
         target_size: (17, 19),
-        allocation: Allocation(2, dropped.clone()),
+        allocation: Allocation(2, std::rc::Rc::clone(&dropped)),
     });
     pool.clear();
     let mut ids = dropped.borrow().clone();

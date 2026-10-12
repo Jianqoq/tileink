@@ -1,6 +1,10 @@
 use super::*;
 
 impl PersistentSceneMaterializer {
+    #[allow(
+        clippy::expect_used,
+        reason = "Topology patches contain at least one node state and defined damage"
+    )]
     pub(crate) fn patch_topology_frame_override(
         &mut self,
         scene: &RetainedScene,
@@ -66,7 +70,10 @@ impl PersistentSceneMaterializer {
         }
         let mut explicit_damage = damage.to_vec();
         explicit_damage.extend(patches.iter().map(|patch| {
-            let node = patch.new.or(patch.old).unwrap();
+            let node = patch
+                .new
+                .or(patch.old)
+                .expect("Topology patches contain at least one node state and defined damage");
             let bounds = patch
                 .damage_bounds()
                 .expect("retained patch has at least one state or explicit damage");
@@ -78,7 +85,11 @@ impl PersistentSceneMaterializer {
             return false;
         }
         for patch in &patches {
-            let id = patch.new.or(patch.old).unwrap().id;
+            let id = patch
+                .new
+                .or(patch.old)
+                .expect("Topology patches contain at least one node state and defined damage")
+                .id;
             if patch.old.map(|node| node.bounds) != patch.new.map(|node| node.bounds) {
                 self.set_node_bounds_spatial(
                     id,
@@ -120,7 +131,9 @@ impl PersistentSceneMaterializer {
             index,
         }));
         let canvas = Rc::make_mut(&mut self.canvas);
-        frame.invalidated_bounds = canvas.invalidated_bounds.clone();
+        frame
+            .invalidated_bounds
+            .clone_from(&canvas.invalidated_bounds);
         frame.invalidate_all = canvas.invalidate_all;
         frame.requires_damage_propagation = !self.nonlocal_dependencies.is_empty();
         canvas.persistent_frame = Some(frame);

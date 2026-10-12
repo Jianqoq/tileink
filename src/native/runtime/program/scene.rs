@@ -40,6 +40,7 @@ pub(crate) struct SceneCache {
     plan: Option<Rc<ExecPlan>>,
 }
 
+#[derive(Clone, Copy)]
 pub(crate) struct SceneOptions<'a> {
     pub limit: u32,
     pub active: Option<&'a crate::render::damage_tiles::DamageTiles>,

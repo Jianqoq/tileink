@@ -127,6 +127,7 @@ impl Dx12 {
         let lists = [Some(work.list.cast()?)];
         let synchronization = work.synchronization.clone();
         let ticket = self.gpu.pending.track(work)?;
+        // SAFETY: Validated waits, resources and command lists belong to this queue; pending work retains all owners until completion or quarantine.
         unsafe {
             self.retirement = Retirement::Unfenced;
             if let Some(sync) = &synchronization {
@@ -151,7 +152,7 @@ impl Dx12 {
         Ok(ticket)
     }
 
-    pub fn unconfirmed(&self) -> bool {
+    pub const fn unconfirmed(&self) -> bool {
         matches!(self.retirement, Retirement::Unfenced | Retirement::Failed)
     }
 
@@ -211,6 +212,7 @@ impl Dx12 {
     pub fn is_complete(&mut self, ticket: &Ticket) -> Result<bool> {
         self.gpu.pending.get(ticket)?;
         self.retirement.wait_value()?;
+        // SAFETY: The context retains this fence throughout the completion query.
         let observed = unsafe { self.gpu.fence.GetCompletedValue() };
         if observed == u64::MAX {
             self.retirement = Retirement::Failed;
@@ -220,6 +222,7 @@ impl Dx12 {
     }
 
     fn wait_until(&self, value: u64) -> Result<u64> {
+        // SAFETY: The context owns the live fence and event; retirement retains queued resources until the requested fence value completes.
         unsafe {
             if self.gpu.fence.GetCompletedValue() == u64::MAX {
                 return Err("DX12 device removed".into());
@@ -256,6 +259,7 @@ impl Drop for Dx12 {
             // Reporting is optional; preserving unknown in-flight owners is not.
             // This fixes teardown panics when ordinary contexts have no info queue.
             if let Some(queue) = &self.gpu.messages.queue {
+                // SAFETY: The retained info queue remains live while recording this failure diagnostic.
                 unsafe {
                     let _ = queue.AddMessage(
                     D3D12_MESSAGE_CATEGORY_EXECUTION,
@@ -272,6 +276,7 @@ impl Drop for Dx12 {
             std::mem::forget(self.gpu.clone());
             return;
         }
+        // SAFETY: The context owns this event handle exclusively and closes it once after retirement.
         unsafe {
             let _ = CloseHandle(self.event);
         }

@@ -1,3 +1,4 @@
+use crate::native::runtime::renderer::FrameOptions;
 use crate::native::runtime::{
     Result,
     compute::{ComputeBatch, Resource, SurfacePool},
@@ -11,7 +12,7 @@ use std::{cell::RefCell, rc::Rc};
 fn native_image_retention_pins_gpu_output_without_copying_or_pool_reuse() -> Result<()> {
     let context = crate::native::runtime::gpu_support::context()?;
     let pool = Rc::new(RefCell::new(SurfacePool::new(&context)));
-    let mut batch = ComputeBatch::with_surfaces(pool.clone());
+    let mut batch = ComputeBatch::with_surfaces(std::rc::Rc::clone(&pool));
     let color = [10, 20, 30, 255];
     let source = batch.reusable_surface([5, 3], u32::from_le_bytes(color))?;
     let original = batch.persistent_texture(source)?.unwrap().clone();
@@ -32,7 +33,7 @@ fn native_image_retention_pins_gpu_output_without_copying_or_pool_reuse() -> Res
     drop(again);
 
     // A cached image pins its lease while later batches acquire and write other storage.
-    let mut next = ComputeBatch::with_surfaces(pool.clone());
+    let mut next = ComputeBatch::with_surfaces(std::rc::Rc::clone(&pool));
     let other = next.reusable_surface([5, 3], u32::from_le_bytes([80, 90, 100, 255]))?;
     assert!(!Rc::ptr_eq(
         &retained.state,
@@ -74,7 +75,7 @@ fn abandoned_vector_cache_is_rebuilt_before_sampling() -> Result<()> {
         .into_iter()
         .enumerate()
     {
-        let mut batch = ComputeBatch::with_surfaces(pool.clone());
+        let mut batch = ComputeBatch::with_surfaces(std::rc::Rc::clone(&pool));
         let images =
             Images::record_cached(&mut batch, &upload, &mut cache, signature, |batch, _| {
                 renders += 1;
@@ -110,6 +111,7 @@ fn abandoned_vector_cache_is_rebuilt_before_sampling() -> Result<()> {
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn native_image_cache_reuses_initialized_arrays_without_upload() -> Result<()> {
     #[cfg(feature = "dx12")]
+    // SAFETY: The serial GPU fixture enables validation before creating its context; the creation gate prevents late debug-layer changes.
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }
@@ -126,7 +128,7 @@ fn native_image_cache_reuses_initialized_arrays_without_upload() -> Result<()> {
     let upload = resources.upload_merged(&resources, 32, 4, 0, None);
     let pool = Rc::new(RefCell::new(SurfacePool::new(&context)));
     let mut cache = None;
-    let mut first = ComputeBatch::with_surfaces(pool.clone());
+    let mut first = ComputeBatch::with_surfaces(std::rc::Rc::clone(&pool));
     let images = Images::record_cached(&mut first, &upload, &mut cache, signature, |_, _| {
         panic!("empty vector resources")
     })?;
@@ -211,12 +213,12 @@ fn native_vector_aliases_share_one_recording_per_batch() -> Result<()> {
                 .unwrap();
         }
         let mut resources = crate::shared::image_resource::ImageResourceStore::default();
-        resources.insert(ImageKey(1), child.clone());
-        resources.insert(ImageKey(2), child.clone());
+        resources.insert(ImageKey(1), std::rc::Rc::clone(&child));
+        resources.insert(ImageKey(2), std::rc::Rc::clone(&child));
         let mut recording = super::super::renderer::recording::Recording::default();
         let pool = Rc::new(RefCell::new(SurfacePool::new(&context)));
         for _ in 0..2 {
-            let mut batch = ComputeBatch::with_surfaces(pool.clone());
+            let mut batch = ComputeBatch::with_surfaces(std::rc::Rc::clone(&pool));
             let target = recording.record(
                 &mut batch,
                 &canvas,
@@ -228,7 +230,7 @@ fn native_vector_aliases_share_one_recording_per_batch() -> Result<()> {
                     texture_table_len: crate::shared::gpu_constants::NATIVE_TEXTURE_TABLE_CAPACITY,
                     dispatch_dimension: 65535,
                 },
-                Default::default(),
+                FrameOptions::default(),
             )?;
             if width == 2050 {
                 let table = batch
@@ -265,6 +267,7 @@ fn native_vector_aliases_share_one_recording_per_batch() -> Result<()> {
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn retained_image_uploads_preserve_queued_array_versions() -> Result<()> {
     #[cfg(feature = "dx12")]
+    // SAFETY: The serial GPU fixture enables validation before creating its context; the creation gate prevents late debug-layer changes.
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }
@@ -278,7 +281,7 @@ fn retained_image_uploads_preserve_queued_array_versions() -> Result<()> {
     let pool = Rc::new(RefCell::new(SurfacePool::new(&context)));
     let mut receipts = Vec::new();
     let mut pinned = Vec::new();
-    let mut abandoned = ComputeBatch::with_surfaces(pool.clone());
+    let mut abandoned = ComputeBatch::with_surfaces(std::rc::Rc::clone(&pool));
     let image = abandoned.texture_array_rgba8([2, 2, 2], vec![42; 32])?;
     let unpublished = abandoned.retain_image(image)?;
     drop(abandoned);
@@ -290,7 +293,7 @@ fn retained_image_uploads_preserve_queued_array_versions() -> Result<()> {
         if revision == 2 {
             pinned.clear();
         }
-        let mut batch = ComputeBatch::with_surfaces(pool.clone());
+        let mut batch = ComputeBatch::with_surfaces(std::rc::Rc::clone(&pool));
         let mut expected = Vec::new();
         for (index, (size, layers, array)) in
             [([3, 2], 1, false), ([5, 3], 2, true), ([3, 2], 1, true)]

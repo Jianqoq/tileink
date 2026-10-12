@@ -5,6 +5,8 @@
 //! rebuild it. This prevents both duplicate concurrent compiles and reuse of a
 //! partially written shader; it does not cache failures or driver pipelines.
 
+use crate::hex;
+
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, OpenOptions},
@@ -33,7 +35,7 @@ impl CacheKey {
     }
 
     pub fn hex(&self) -> String {
-        self.0.iter().map(|byte| format!("{byte:02x}")).collect()
+        hex::encode(&self.0)
     }
 }
 
@@ -47,7 +49,7 @@ pub struct CachedShader {
 }
 
 impl ShaderCache {
-    pub fn new(root: PathBuf) -> Self {
+    pub const fn new(root: PathBuf) -> Self {
         Self { root }
     }
 
@@ -116,7 +118,7 @@ fn read_verified(path: &std::path::Path, key: &CacheKey) -> io::Result<Option<Ve
     if &header[..16] != MAGIC || header[16..48] != key.0 {
         return Ok(None);
     }
-    let length = u64::from_le_bytes(header[80..88].try_into().unwrap());
+    let length = u64::from_le_bytes(std::array::from_fn(|i| header[80 + i]));
     if length != size - HEADER_SIZE as u64 {
         return Ok(None);
     }

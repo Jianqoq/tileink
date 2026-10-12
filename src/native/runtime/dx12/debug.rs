@@ -20,22 +20,26 @@ pub(crate) unsafe fn enable_validation() -> Result<()> {
     if state.device_created {
         return Err("DX12 debug layer must be enabled before creating a device".into());
     }
+    // SAFETY: The creation mutex excludes concurrent device creation; no device has been created before enabling the debug layer.
     unsafe {
         let mut debug = None;
-        D3D12GetDebugInterface(&mut debug)?;
-        let debug: ID3D12Debug = debug.unwrap();
+        D3D12GetDebugInterface(&raw mut debug)?;
+        let debug: ID3D12Debug = debug.ok_or("DX12 returned no debug interface")?;
         debug.EnableDebugLayer();
     }
     state.debug_enabled = true;
+    drop(state);
     Ok(())
 }
 
 pub(super) fn create_device(adapter: &IDXGIAdapter1) -> Result<ID3D12Device> {
     let mut state = creation::lock(&CREATION)?;
     let mut device = None;
+    // SAFETY: The creation mutex serializes device creation with debug setup; adapter and output storage remain live during the call.
     unsafe {
-        D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, &mut device)?;
+        D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, &raw mut device)?;
     }
     state.device_created = true;
-    Ok(device.unwrap())
+    drop(state);
+    device.ok_or_else(|| "DX12 returned no created device".into())
 }

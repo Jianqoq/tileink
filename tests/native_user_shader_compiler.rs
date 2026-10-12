@@ -1,10 +1,31 @@
 //! Compile the shared runtime DXC path on every host, including Metal-only CI.
-#[allow(dead_code)]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "Test setup and assertions abort on failure; production builds are checked separately"
+    )
+)]
+#[allow(
+    dead_code,
+    reason = "Standalone compiler tests use only part of the shared build helpers"
+)]
 #[path = "../build/gpu_constants.rs"]
 mod gpu_constants;
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
+#[path = "../build/hex.rs"]
+mod hex;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 use tileink::ShaderBindingKind;
-#[allow(dead_code)] // The standalone DXC test crate omits the driver cache-hit consumer.
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)] // The standalone DXC test crate omits the driver cache-hit consumer.
 #[path = "../build/native/cache.rs"]
 mod cache;
 struct NativeSource {
@@ -20,7 +41,10 @@ impl NativeSource {
             .ok_or_else(|| "shader has no HLSL source".into())
     }
 }
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
 #[path = "../src/native/runtime/program_shader/dxc.rs"]
 mod runtime_dxc;
 #[test]

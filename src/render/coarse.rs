@@ -60,7 +60,7 @@ pub(crate) enum CoarseProgram {
     EmitChunkTileKinds,
 }
 impl CoarseProgram {
-    pub(crate) fn entry(self) -> &'static str {
+    pub(crate) const fn entry(self) -> &'static str {
         match self {
             Self::CountTiles => "coarse_count",
             Self::CountBins => "coarse_count_bins",
@@ -89,7 +89,7 @@ pub(crate) struct CoarseDispatch {
     pub(crate) grid: [u32; 3],
 }
 
-fn coarse_bin_count(lengths: GpuBufferLengths) -> u32 {
+const fn coarse_bin_count(lengths: GpuBufferLengths) -> u32 {
     let bins_x = (lengths.tiles_width as u32).div_ceil(COARSE_BIN_TILES);
     let bins_y = (lengths.tiles_height as u32).div_ceil(COARSE_BIN_TILES);
     bins_x * bins_y
@@ -183,7 +183,12 @@ impl CoarsePlan {
         if active == 0 {
             return Ok(plan);
         }
-        use CoarseProgram::*;
+        use CoarseProgram::{
+            ApplyChunkOffsets, ChunkOffsets, CountBins, CountTiles, EmitApplyChunkOffsets,
+            EmitBins, EmitChunkCounts, EmitChunkOffsets, EmitChunkParticleCounts,
+            EmitChunkParticleOffsets, EmitChunkTileKinds, EmitChunks, EmitFillRefs,
+            EmitPrefixChunks, EmitTiles, PrefixChunks, TileCountsFromEmitChunks,
+        };
         let emit = batch.draw_start < batch.draw_end && ptcl_capacity > 0;
         let chunked = emit_chunks && !incremental && emit && emit_chunk_capacity > 0;
         // Root-cause fix: large Metal damage lists previously launched 256 threads

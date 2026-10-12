@@ -73,6 +73,10 @@ impl PersistentSceneMaterializer {
         Some(id)
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Root reordering uses live offscreen nodes and the installed compiled plan"
+    )]
     pub(crate) fn root_offscreen_reorder_candidate(
         &self,
         scene: &RetainedScene,
@@ -109,6 +113,10 @@ impl PersistentSceneMaterializer {
         Some(RootOffscreenReorder { nodes, ops })
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Root reordering uses live offscreen nodes and the installed compiled plan"
+    )]
     pub(crate) fn reorder_root_offscreen_plan(&mut self, order: RootOffscreenReorder) {
         let canvas = Rc::make_mut(&mut self.canvas);
         let plan = canvas

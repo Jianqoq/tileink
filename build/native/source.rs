@@ -5,6 +5,7 @@ use std::{
 };
 
 use crate::gpu_constants::syntax;
+use std::fmt::Write as _;
 
 pub struct SourceGraph {
     pub expanded: String,
@@ -94,13 +95,18 @@ impl SourceGraph {
                             index + 1
                         ))
                     })?;
-                expanded.push_str(&self.expand(
-                    root,
-                    &path.parent().unwrap().join(relative),
-                    stack,
-                    guards,
-                )?);
-                expanded.push_str(&format!("#line {} \"{name}\"\n", index + 2));
+                expanded.push_str(
+                    &self.expand(
+                        root,
+                        &path
+                            .parent()
+                            .ok_or_else(|| io::Error::other("shader path has no parent"))?
+                            .join(relative),
+                        stack,
+                        guards,
+                    )?,
+                );
+                let _ = writeln!(expanded, "#line {} \"{name}\"", index + 2);
             } else {
                 expanded.push_str(visible);
                 expanded.push('\n');

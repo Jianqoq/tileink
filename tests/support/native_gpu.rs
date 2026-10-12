@@ -47,6 +47,10 @@ impl Gpu {
             .unwrap();
     }
 
+    #[allow(
+        clippy::unused_self,
+        reason = "Keep image readback on the GPU fixture instance alongside rendering"
+    )]
     pub fn image_target(&self, target: &Target) -> tileink::Image {
         target.texture.readback().unwrap().readback().unwrap()
     }

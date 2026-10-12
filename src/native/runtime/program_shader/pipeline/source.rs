@@ -1,5 +1,6 @@
 //! Cache application kernel source independently from per-frame bindings.
 use super::{NativeSource, ShaderKernel, ShaderKernelCode};
+use crate::hex;
 use crate::{
     ShaderBindingKind as K,
     native::shaders::{Binding, BindingKind},
@@ -11,7 +12,7 @@ pub(crate) fn source(kernel: &ShaderKernel) -> Rc<NativeSource> {
     let ShaderKernelCode::Source { native, .. } = &kernel.code else {
         unreachable!("precompiled kernels do not compile application source")
     };
-    native.get_or_init(|| make_source(kernel)).clone()
+    std::rc::Rc::clone(native.get_or_init(|| make_source(kernel)))
 }
 fn make_source(kernel: &ShaderKernel) -> Rc<NativeSource> {
     let ShaderKernelCode::Source { sources, .. } = &kernel.code else {
@@ -71,20 +72,14 @@ fn make_source(kernel: &ShaderKernel) -> Rc<NativeSource> {
         })
         .collect();
     Rc::new(NativeSource {
-        key: format!(
-            "program:{}",
-            hash.finalize()
-                .iter()
-                .map(|b| format!("{b:02x}"))
-                .collect::<String>()
-        ),
-        entry: kernel.entry.clone(),
+        key: format!("program:{}", hex::encode(&hash.finalize())),
+        entry: std::rc::Rc::clone(&kernel.entry),
         bindings,
         workgroup: kernel.workgroup,
         #[cfg(feature = "metal")]
         config: kernel.bindings.iter().any(|b| b.kind == K::Config),
         #[cfg(any(feature = "dx12", feature = "vulkan"))]
-        interface_bindings: kernel.bindings.clone(),
+        interface_bindings: std::rc::Rc::clone(&kernel.bindings),
         metal: sources.metal.as_deref().map(Rc::from),
         hlsl: sources.hlsl.as_deref().map(Rc::from),
     })

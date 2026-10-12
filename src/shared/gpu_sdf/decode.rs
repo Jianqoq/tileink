@@ -39,8 +39,8 @@ pub(crate) fn decode_sdf(blob: &[u32], offset: u32, len: u32) -> Option<Sdf> {
         })),
         GPU_SDF_TRIANGLE => Some(Sdf::Triangle(triangle_from_encoded(sdf))),
         GPU_SDF_CHECKERBOARD => Some(Sdf::Checkerboard(Checkerboard {
-            start: Point::new(sdf.coords[0] as f64, sdf.coords[1] as f64),
-            end: Point::new(sdf.coords[2] as f64, sdf.coords[3] as f64),
+            start: Point::new(f64::from(sdf.coords[0]), f64::from(sdf.coords[1])),
+            end: Point::new(f64::from(sdf.coords[2]), f64::from(sdf.coords[3])),
             cell_size: sdf.radii[0],
         })),
         GPU_SDF_STAR => Some(Sdf::Star(star_from_encoded(sdf))),
@@ -163,7 +163,7 @@ fn arc_from_encoded(sdf: EncodedSdf) -> Option<Rc> {
     })
 }
 
-fn shadow_options_from_encoded(sdf: EncodedSdf) -> ShadowOptions {
+const fn shadow_options_from_encoded(sdf: EncodedSdf) -> ShadowOptions {
     ShadowOptions {
         offset_x: sdf.shadow[0],
         offset_y: sdf.shadow[1],

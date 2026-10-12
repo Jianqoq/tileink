@@ -4,9 +4,10 @@ impl Dx12 {
         &self,
         descriptor: crate::native::interop::dx12::TextureDescriptor,
     ) -> Result<(crate::native::runtime::texture::Allocation, [u32; 2])> {
+        // SAFETY: The caller guarantees the resource is live; device identity, texture descriptor and declared state are validated before importing it.
         unsafe {
             let mut owner = None;
-            descriptor.resource.GetDevice(&mut owner)?;
+            descriptor.resource.GetDevice(&raw mut owner)?;
             let owner: ID3D12Device = owner.ok_or("DX12 image has no device")?;
             if owner.cast::<windows::core::IUnknown>()?.as_raw()
                 != self.gpu.device.cast::<windows::core::IUnknown>()?.as_raw()

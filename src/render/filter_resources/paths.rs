@@ -94,7 +94,7 @@ fn collect_filter_paths_for_ops(ops: &[ExecOp], upload: &mut FilterPathUpload) {
                 collect_filter_paths_for_ops(content, upload);
                 collect_filter_paths_for_ops(mask, upload);
             }
-            _ => {}
+            ExecOp::DrawBatch { .. } => {}
         }
     }
 }

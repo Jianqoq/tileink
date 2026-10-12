@@ -1,3 +1,12 @@
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "Test setup and assertions abort on failure; production builds are checked separately"
+    )
+)]
 #![cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
 use peniko::{Color, kurbo::Point};
 use tileink::*;
@@ -13,6 +22,7 @@ fn appended_text_preserves_fractional_pixels_after_large_coordinate_cancellation
     #[cfg(feature = "dx12")]
     let backend = NativeBackend::Dx12;
     #[cfg(feature = "dx12")]
+    // SAFETY: The serial GPU fixture enables validation before creating its context; the creation gate prevents late debug-layer changes.
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }
@@ -24,7 +34,10 @@ fn appended_text_preserves_fractional_pixels_after_large_coordinate_cancellation
         },
     )?;
     let mut renderer = NativeRenderer::with_context(&context, 128, 96)?;
-    let mut fonts = TextFontSystem::new_with_locale_and_db("en-US".into(), Default::default());
+    let mut fonts = TextFontSystem::new_with_locale_and_db(
+        "en-US".into(),
+        cosmic_text::fontdb::Database::default(),
+    );
     fonts
         .db_mut()
         .load_font_data(include_bytes!("../src/svg/fonts/NotoSans-Regular.ttf").to_vec());
@@ -42,7 +55,7 @@ fn appended_text_preserves_fractional_pixels_after_large_coordinate_cancellation
             .render_to_image_with_text(&expected, &mut fonts, &mut text)?
             .readback()?;
         assert!(expected.pixels.iter().any(|pixel| *pixel != 0));
-        let large = 16777216.0;
+        let large = 16_777_216.0;
         let mut intermediate = Canvas::new(128, 96, 1.0);
         intermediate.append(&leaf, Point::new(large + offset, large + offset));
         let mut actual = Canvas::new(128, 96, 1.0);

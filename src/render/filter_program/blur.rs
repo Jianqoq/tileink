@@ -24,7 +24,10 @@ impl<A: FilterAdapter> FilterExecutor<'_, A> {
             self.adapter.set_filter_work(previous);
         }
     }
-    #[allow(clippy::too_many_arguments)]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Explicit geometry/resource parameters preserve the renderer and native ABI contract."
+    )]
     pub(super) fn encode_downsampled_blur_stages(
         &mut self,
         source: RenderTargetId,
@@ -133,7 +136,10 @@ impl<A: FilterAdapter> FilterExecutor<'_, A> {
             }),
         }
     }
-    #[allow(clippy::too_many_arguments)]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Explicit geometry/resource parameters preserve the renderer and native ABI contract."
+    )]
     pub(super) fn downsampled_blur_to_target(
         &mut self,
         source: RenderTargetId,

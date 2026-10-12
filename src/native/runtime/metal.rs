@@ -54,7 +54,7 @@ impl Metal {
         device: Object<dyn MTLDevice>,
         queue: Object<dyn MTLCommandQueue>,
     ) -> Result<Self> {
-        if !std::ptr::eq(&*queue.device(), &*device) {
+        if !std::ptr::eq(&raw const *queue.device(), &raw const *device) {
             return Err("Metal queue belongs to another device".into());
         }
         if !device.supportsFamily(MTLGPUFamily::Apple7)
@@ -74,7 +74,11 @@ impl Metal {
             failed: false,
         })
     }
-    pub fn limits(&self) -> super::renderer::recording::Limits {
+    #[allow(
+        clippy::unused_self,
+        reason = "Backend adapters expose device limits through the same instance interface"
+    )]
+    pub const fn limits(&self) -> super::renderer::recording::Limits {
         super::renderer::recording::Limits {
             image_dimension: 16384,
             atlas_pages: 2048,
@@ -156,7 +160,7 @@ impl Metal {
             .take_completed(ticket, ticket.serial())?
             .readback())
     }
-    pub fn unconfirmed(&self) -> bool {
+    pub const fn unconfirmed(&self) -> bool {
         self.failed
     }
     pub fn pending_count(&self) -> usize {

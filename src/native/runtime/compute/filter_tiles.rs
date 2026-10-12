@@ -1,5 +1,6 @@
 //! Content-owned, frame-local tile validation and read-only GPU list reuse.
 use super::{ComputeBatch, ResourceId, Result};
+use rustc_hash::FxBuildHasher;
 use rustc_hash::FxHashSet;
 
 pub(super) struct CachedFilterTiles {
@@ -9,6 +10,7 @@ pub(super) struct CachedFilterTiles {
 
 /// Borrows immutable input until upload; only validation can produce this proof.
 /// Separating validation from upload keeps empty/error paths free of GPU resources.
+#[derive(Clone, Copy)]
 pub(crate) struct ValidatedFilterTiles<'a> {
     owner: u64,
     tiles: &'a [u32],
@@ -31,7 +33,7 @@ impl ComputeBatch {
             }
             (cached.maximum, Some(cached.buffer))
         } else {
-            let mut unique = FxHashSet::with_capacity_and_hasher(tiles.len(), Default::default());
+            let mut unique = FxHashSet::with_capacity_and_hasher(tiles.len(), FxBuildHasher);
             let mut maximum = 0;
             for &tile in tiles {
                 if u64::from(tile) >= tile_count || !unique.insert(tile) {

@@ -65,7 +65,7 @@ const SCAN_CONFIG: &[(&str, u32, u32)] = &[
     ("chunk_base", 36, 1),
     ("backdrop_base", 40, 1),
 ];
-fn buffer(binding: u32, kind: Kind) -> Resource {
+const fn buffer(binding: u32, kind: Kind) -> Resource {
     Resource {
         count: 1,
         binding,
@@ -84,6 +84,10 @@ fn sampler(binding: u32) -> Resource {
 
 // Production entries share the descriptor contract directly. Constructing a
 // validation interface just to extract this resource wastes unrelated layouts.
+#[allow(
+    clippy::expect_used,
+    reason = "Built-in ABI recipes provide the required entry, resource, field and constant before specialization"
+)]
 fn texture_table() -> Resource {
     static CAPACITY: OnceLock<u32> = OnceLock::new();
     let count = *CAPACITY.get_or_init(|| {
@@ -98,6 +102,10 @@ fn texture_table() -> Resource {
     }
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "Built-in ABI recipes provide the required entry, resource, field and constant before specialization"
+)]
 fn uniform(binding: u32, fields: &[(&str, u32, u32)], internal: bool) -> Resource {
     Resource {
         count: 1,

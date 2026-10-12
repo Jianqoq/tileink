@@ -23,6 +23,7 @@ fn compute_launch_rejects_layout_aliases_and_oversized_grids() {
     let total = batch.buffer(vec![0; 4]).unwrap();
     let foreign = other.buffer(vec![0; 4]).unwrap();
     let valid = [(0, config), (1, data), (2, data), (5, write), (6, total)];
+    // SAFETY: These calls intentionally fail structural dispatch validation before any uninitialized table contents could be interpreted.
     unsafe {
         assert!(batch.dispatch("missing", &valid, [1, 1, 1]).is_err());
         assert!(

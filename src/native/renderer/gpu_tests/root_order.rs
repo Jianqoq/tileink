@@ -17,7 +17,7 @@ pub(super) fn leaf(color: Color) -> Rc<Canvas> {
     Rc::new(canvas)
 }
 
-pub(super) fn filter(opacity: f32) -> D {
+pub(super) const fn filter(opacity: f32) -> D {
     D::Filter {
         filter: Filter::Opacity(opacity),
         sample_region: Region::rect(Rect::new(0.0, 0.0, 32.0, 32.0), Radius::ZERO),
@@ -126,7 +126,7 @@ fn root_reorder_with_parameter_and_kind_updates_matches_fresh_pixels() -> Result
             match case {
                 0 | 1 => {
                     assert!(left & 255 > 0 && left & 255 < 200);
-                    assert!(left >> 16 & 255 > 0);
+                    assert!((left >> 16) & 255 > 0);
                 }
                 2 => {
                     assert_eq!(left, 0xff00_00ff);

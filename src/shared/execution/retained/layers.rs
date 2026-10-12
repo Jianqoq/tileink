@@ -93,7 +93,7 @@ fn patch_retained_layer_ops(ops: &mut [ExecOp], id: RetainedNodeId, new: &Comman
             ) if retained_id.is_some_and(|surface| surface.node == id) => {
                 match (layer, replacement) {
                     (OffscreenLayer::Isolate { draw }, Layer::Isolate { draw: new_draw }) => {
-                        *draw = *new_draw
+                        *draw = *new_draw;
                     }
                     (
                         OffscreenLayer::Opacity { draw, opacity },

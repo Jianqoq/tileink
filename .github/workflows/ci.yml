@@ -19,12 +19,14 @@ jobs:
       - run: rustup component add rustfmt clippy
       - run: cargo fmt --all --check
       # No renderer consumes the internal execution paths in this profile.
-      - run: cargo clippy --release --lib --no-default-features -- -A dead_code -A unused_imports -D clippy::unnecessary_wraps
+      - run: cargo clippy --release --lib --no-default-features -- -A dead_code -A unused_imports -D warnings
   clippy:
     strategy:
       fail-fast: false
       matrix:
         include:
+          # Linux currently checks shader compilation and shared code without a native adapter.
+          - { os: ubuntu-latest, feature: vulkan, lint_flags: "-A dead_code -A unused_imports" }
           - { os: windows-latest, feature: dx12 }
           - { os: windows-latest, feature: vulkan }
           - { os: macos-latest, feature: metal }
@@ -34,7 +36,25 @@ jobs:
       - uses: ./.github/actions/setup-dxc
         if: runner.os != 'macOS'
       - run: rustup component add clippy
-      - run: cargo clippy --release --all-targets --no-default-features --features ${{ matrix.feature }} -- -D warnings
+      - run: cargo clippy --release --all-targets --no-default-features --features ${{ matrix.feature }} -- ${{ matrix.lint_flags }} -D warnings
+      # Restriction also includes mutually exclusive rules. Preserve every group
+      # as an audit report; only the reviewed policy above gates changes.
+      - name: Audit every Clippy group
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p target/clippy-audit
+          cargo clippy --release --all-targets --no-default-features --features ${{ matrix.feature }} --message-format=json -- \
+            --force-warn clippy::all --force-warn clippy::pedantic --force-warn clippy::nursery \
+            --force-warn clippy::restriction --force-warn clippy::cargo \
+            > target/clippy-audit/diagnostics.jsonl 2> target/clippy-audit/build.log
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: clippy-audit-${{ matrix.os }}-${{ matrix.feature }}
+          path: target/clippy-audit/
+          if-no-files-found: error
+          retention-days: 14
   tests:
     strategy:
       fail-fast: false

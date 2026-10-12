@@ -20,16 +20,16 @@ fn native_interpolation_preserves_fused_half_channel_rounding() -> Result<()> {
     // Separate multiply/add rounds these values onto a half-channel boundary;
     // fused interpolation remains below it. Exercise the production helper.
     let cases = [
-        (6u32, 0u32, 0x3f6aaaabu32, 0u32),
-        (7, 1, 0x3f6aaaab, 1),
-        (10, 0, 0x3f59999a, 1),
-        (11, 0, 0x3f5d1746, 1),
+        (6u32, 0u32, 0x3f6a_aaab_u32, 0u32),
+        (7, 1, 0x3f6a_aaab, 1),
+        (10, 0, 0x3f59_999a, 1),
+        (11, 0, 0x3f5d_1746, 1),
     ];
     let mut batch = ComputeBatch::new();
     let config = batch.buffer(bytemuck::cast_slice(&[cases.len() as u32, 0, 0, 0]).to_vec())?;
     let words: Vec<u32> = cases
         .iter()
-        .flat_map(|&(a, b, t, _)| [0, 0, a * 0x01010101, b * 0x01010101, 0, t, 0, 0])
+        .flat_map(|&(a, b, t, _)| [0, 0, a * 0x0101_0101, b * 0x0101_0101, 0, t, 0, 0])
         .collect();
     let source = batch.buffer(bytemuck::cast_slice(&words).to_vec())?;
     let output = batch.buffer(vec![0xa5; cases.len() * 56 + 4])?;
@@ -50,7 +50,7 @@ fn native_interpolation_preserves_fused_half_channel_rounding() -> Result<()> {
     for (index, &(_, _, _, expected)) in cases.iter().enumerate() {
         assert_eq!(
             &results[0][index * 56 + 28..index * 56 + 32],
-            &(expected * 0x01010101).to_le_bytes()
+            &(expected * 0x0101_0101).to_le_bytes()
         );
     }
     assert_eq!(&results[0][cases.len() * 56..], &[0xa5; 4]);

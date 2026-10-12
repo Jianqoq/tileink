@@ -69,6 +69,10 @@ impl CachedBuffer {
     /// Use the complete snapshot when storage is new or a previous batch was
     /// abandoned; otherwise transfer only the changes relative to the last
     /// accepted upload. Both sets must describe the same current CPU state.
+    #[allow(
+        clippy::expect_used,
+        reason = "Successful reserve installs a buffer before upload or patch recording"
+    )]
     pub fn patches_delta(
         &mut self,
         batch: &mut ComputeBatch,
@@ -114,11 +118,15 @@ impl CachedBuffer {
         let Resource::PersistentBuffer(upload) = &batch.resources()[id.index()] else {
             unreachable!("persistent import")
         };
-        self.accepted = Some(upload.accepted.clone());
+        self.accepted = Some(std::rc::Rc::clone(&upload.accepted));
         self.len = size;
         Ok(id)
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Successful reserve installs a buffer before upload or patch recording"
+    )]
     pub fn upload<T: bytemuck::Pod>(
         &mut self,
         batch: &mut ComputeBatch,
@@ -128,7 +136,10 @@ impl CachedBuffer {
         let bytes: &[u8] = bytemuck::cast_slice(data);
         let needed = bytes.len().max(4);
         self.reserve(batch, needed)?;
-        let buffer = self.buffer.as_ref().unwrap();
+        let buffer = self
+            .buffer
+            .as_ref()
+            .expect("Successful reserve installs a buffer before upload or patch recording");
         // CPU preparation may have advanced before recording/submit failed. Only
         // accepted uploads allow the next dirty delta to depend on prior contents.
         let reusable = buffer.state.initialized.get()
@@ -170,7 +181,7 @@ impl CachedBuffer {
         let Resource::PersistentBuffer(upload) = &batch.resources()[id.index()] else {
             unreachable!("persistent import")
         };
-        self.accepted = Some(upload.accepted.clone());
+        self.accepted = Some(std::rc::Rc::clone(&upload.accepted));
         self.len = data.len();
         if !unchanged {
             self.cached_upload.clear();

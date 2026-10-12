@@ -68,13 +68,14 @@ fn root_layer(materializer: &PersistentSceneMaterializer) -> &OffscreenLayer {
 fn offscreen_opacity_updates_its_compiled_descriptor_without_rebuilding_batches() {
     let mut scene = scene(opacity(0.25));
     let mut materializer = PersistentSceneMaterializer::new(&scene);
-    let order = materializer
-        .canvas
-        .compiled_plan
-        .as_ref()
-        .unwrap()
-        .draw_order
-        .clone();
+    let order = std::rc::Rc::clone(
+        &materializer
+            .canvas
+            .compiled_plan
+            .as_ref()
+            .unwrap()
+            .draw_order,
+    );
     for value in [0.75, 0.0, 1.0] {
         scene
             .transaction()
@@ -101,13 +102,14 @@ fn offscreen_opacity_updates_its_compiled_descriptor_without_rebuilding_batches(
 fn offscreen_blend_updates_its_compiled_descriptor_without_rebuilding_batches() {
     let mut scene = scene(blend(Mix::Multiply));
     let mut materializer = PersistentSceneMaterializer::new(&scene);
-    let order = materializer
-        .canvas
-        .compiled_plan
-        .as_ref()
-        .unwrap()
-        .draw_order
-        .clone();
+    let order = std::rc::Rc::clone(
+        &materializer
+            .canvas
+            .compiled_plan
+            .as_ref()
+            .unwrap()
+            .draw_order,
+    );
     for mix in [Mix::Screen, Mix::Normal] {
         scene
             .transaction()
@@ -284,7 +286,7 @@ fn empty_fused_groups_keep_real_stack_entries_when_updated() {
                 *opacity == expected,
             crate::shared::execution::LayerStackEntry::Blend { mode, .. } =>
                 *mode == BlendMode::new(Mix::Screen, Compose::SrcOver),
-            _ => false,
+            crate::shared::execution::LayerStackEntry::Clip { .. } => false,
         }));
     }
 }

@@ -31,6 +31,10 @@ pub(crate) struct SceneUploadStaging {
 
 impl SceneUploadStaging {
     /// Returns true when every entry was refreshed and the GPU upload must be full.
+    #[allow(
+        clippy::expect_used,
+        reason = "The full-refresh branch handles absent ranges before incremental range access"
+    )]
     pub(crate) fn refresh_layer_stack(
         &mut self,
         entries: &[LayerStackEntry],
@@ -42,7 +46,9 @@ impl SceneUploadStaging {
                 .extend(entries.iter().copied().map(LayerStackRecord::from));
             return true;
         }
-        for range in ranges.unwrap() {
+        for range in ranges
+            .expect("The full-refresh branch handles absent ranges before incremental range access")
+        {
             for index in range.clone() {
                 self.layer_stack[index] = LayerStackRecord::from(entries[index]);
             }
@@ -170,7 +176,7 @@ mod tests {
         let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
         let mut staging = SceneUploadStaging::default();
         staging.build_lengths(&canvas, None, &plan, false, None, None);
-        let shared = staging.tile_draw_bins.clone();
+        let shared = std::rc::Rc::clone(&staging.tile_draw_bins);
         assert!(
             !staging
                 .active_batch_ids(

@@ -77,7 +77,7 @@ fn reinserting_a_scene_as_an_empty_group_retires_its_command() {
 fn reinserting_an_empty_group_as_a_scene_preserves_the_flat_plan() {
     let (mut scene, target) = scene(true);
     let mut state = PersistentSceneMaterializer::new(&scene);
-    let plan = state.canvas.compiled_plan.as_ref().unwrap().clone();
+    let plan = std::rc::Rc::clone(state.canvas.compiled_plan.as_ref().unwrap());
     let root = scene.root();
     scene
         .transaction()
@@ -255,9 +255,8 @@ fn moving_plain_content_inside_a_layer_synchronizes_its_command_order() {
         .commit()
         .unwrap();
     assert!(update_materializer(&mut state, &scene));
-    let children = match state.canvas.command_lists[0].commands[0] {
-        Command::Layer { children, .. } => children,
-        _ => unreachable!(),
+    let Command::Layer { children, .. } = state.canvas.command_lists[0].commands[0] else {
+        unreachable!()
     };
     let commands = state.canvas.command_lists[children]
         .commands

@@ -17,7 +17,8 @@ pub(super) enum History {
 }
 impl<'a> NativeRenderTarget<'a> {
     /// No previous output contents are promised. Tileink keeps its own history.
-    pub fn transient(texture: &'a NativeTexture) -> Self {
+    #[must_use]
+    pub const fn transient(texture: &'a NativeTexture) -> Self {
         Self {
             texture,
             origin: [0; 2],
@@ -26,14 +27,16 @@ impl<'a> NativeRenderTarget<'a> {
     }
     /// Change the identity after any external modification or image replacement.
     /// Tileink writes through other renderers are additionally detected automatically.
-    pub fn persistent(texture: &'a NativeTexture, history: ExternalTextureHistoryId) -> Self {
+    #[must_use]
+    pub const fn persistent(texture: &'a NativeTexture, history: ExternalTextureHistoryId) -> Self {
         Self {
             texture,
             origin: [0; 2],
             history: History::Persistent(history),
         }
     }
-    pub fn with_origin(mut self, x: u32, y: u32) -> Self {
+    #[must_use]
+    pub const fn with_origin(mut self, x: u32, y: u32) -> Self {
         self.origin = [x, y];
         self
     }

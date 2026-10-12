@@ -24,7 +24,7 @@ impl PreparedTextChanges {
     }
 
     #[cfg(test)]
-    pub(crate) fn from_ranges(glyphs: Vec<Range<usize>>, runs: Vec<Range<usize>>) -> Self {
+    pub(crate) const fn from_ranges(glyphs: Vec<Range<usize>>, runs: Vec<Range<usize>>) -> Self {
         Self { glyphs, runs }
     }
 }

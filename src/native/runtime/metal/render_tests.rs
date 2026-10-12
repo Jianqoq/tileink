@@ -5,7 +5,7 @@ use crate::shared::{fine_config::FineConfig, gpu_constants::NATIVE_TEXTURE_TABLE
 #[path = "render_tests/ordering.rs"]
 mod ordering;
 
-#[derive(Default)]
+#[derive(Clone, Copy, Default)]
 struct TileOptions<'a> {
     kind: u32,
     mixed: bool,
@@ -39,7 +39,7 @@ fn solid_tiles(
         coarse[tile * 6 + 2] = (tile as u32 + 1) * particles_per_tile;
         let particle = tile_count as usize * 6 + tile * 6 * particles_per_tile as usize;
         coarse[particle] = 2; // solid premultiplied red at half opacity
-        coarse[particle + 5] = 0x80000080;
+        coarse[particle + 5] = 0x8000_0080;
         if options.empty.contains(&(tile as u32)) {
             coarse[tile * 6 + 2] = coarse[tile * 6 + 1];
             coarse[kind_base as usize + tile] = 1;
@@ -98,7 +98,8 @@ fn solid_tiles(
                     base
                 } else {
                     std::array::from_fn(|c| {
-                        ([128u8, 0, 0, 128][c] as u32 + (base[c] as u32 * 127 + 127) / 255) as u8
+                        (u32::from([128u8, 0, 0, 128][c]) + (u32::from(base[c]) * 127 + 127) / 255)
+                            as u8
                     })
                 };
                 expected[i..i + 4].copy_from_slice(&color);

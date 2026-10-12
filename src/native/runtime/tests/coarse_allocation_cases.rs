@@ -22,12 +22,12 @@ pub(super) fn emit_case(tiles: u32, truncate: bool) -> Result<(ComputeBatch, Vec
     let draw_base = tiles * 6 + 13 * 6 + 11;
     let tile_emit_base = draw_base + tiles * 2 + 17;
     let emit_base = tile_emit_base + tiles * 2;
-    let mut work = vec![0x42424242; (emit_base + capacity * 7 + tiles + 7) as usize];
+    let mut work = vec![0x4242_4242; (emit_base + capacity * 7 + tiles + 7) as usize];
     for (tile, &count) in draws.iter().enumerate() {
         work[draw_base as usize + tile * 2 + 1] = count;
     }
     let mut expected = work.clone();
-    let mut expected_chunks = vec![0x42424242; (chunks as usize + 2) * 4];
+    let mut expected_chunks = vec![0x4242_4242; (chunks as usize + 2) * 4];
     let mut offset = 0;
     for (tile, &count) in counts.iter().enumerate() {
         expected[tile_emit_base as usize + tile * 2] = count;
@@ -60,7 +60,7 @@ pub(super) fn emit_case(tiles: u32, truncate: bool) -> Result<(ComputeBatch, Vec
     config[13] = capacity;
     let config = batch.buffer(bytes(&config))?;
     let work = batch.buffer(bytes(&work))?;
-    let chunk_records = batch.buffer(bytes(&vec![0x42424242; (chunks as usize + 2) * 4]))?;
+    let chunk_records = batch.buffer(bytes(&vec![0x4242_4242; (chunks as usize + 2) * 4]))?;
     // SAFETY: packed regions and all logical records fit; each tile owns disjoint
     // references. Fill refs is explicitly capacity-bounded, including truncation.
     unsafe {
@@ -108,7 +108,7 @@ pub(super) fn particle_offset_case(tiles: u32) -> Result<(ComputeBatch, Vec<Vec<
     let total: u32 = counts.iter().sum();
     let tile_base = tiles * 8 + 13 * 6 + 11 + 17;
     let emit_base = tile_base + tiles * 2;
-    let mut work = vec![0x43434343; (emit_base + (total + 3) * 7 + tiles + 7) as usize];
+    let mut work = vec![0x4343_4343; (emit_base + (total + 3) * 7 + tiles + 7) as usize];
     // Reverse physical chunk ranges to prove offsets reset per tile and follow
     // each tile's explicit range rather than incidental record allocation order.
     let mut end = total;
@@ -118,7 +118,7 @@ pub(super) fn particle_offset_case(tiles: u32) -> Result<(ComputeBatch, Vec<Vec<
         work[tile_base as usize + tile * 2 + 1] = end;
         for local in 0..count {
             let base = (emit_base + (end + local) * 7) as usize;
-            work[base + 2] = [0, 1, u32::MAX, 0x80000001, 257][local as usize % 5];
+            work[base + 2] = [0, 1, u32::MAX, 0x8000_0001, 257][local as usize % 5];
             work[base + 4] = [u32::MAX, 3, 0, 7][local as usize % 4];
         }
     }

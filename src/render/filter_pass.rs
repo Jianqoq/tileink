@@ -35,6 +35,10 @@ pub(crate) trait FilterPassAdapter: SurfaceAdapter {
     ) -> Result<(), Self::Error>;
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "Partial filtering is selected only for a dependency with a local read radius"
+)]
 pub(crate) fn execute<A: FilterPassAdapter>(
     adapter: &mut A,
     source: RenderTargetId,

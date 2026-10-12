@@ -22,6 +22,7 @@ use crate::shared::{
 };
 use crate::{Canvas, Radius};
 use peniko::{Color, kurbo::Rect};
+use std::collections::HashMap;
 use std::{ops::Range, rc::Rc};
 #[derive(Debug, PartialEq)]
 pub(crate) enum MaskCall {
@@ -318,8 +319,8 @@ pub(crate) fn frame(revision: u64) -> RetainedFrame {
         physical_size: (32, 32),
         scale_bits: 1.0f32.to_bits(),
         nodes: vec![node].into(),
-        node_index: Rc::new([(node.id, 0)].into_iter().collect()),
-        state_pages: Rc::new(Default::default()),
+        node_index: Rc::new(std::iter::once((node.id, 0)).collect()),
+        state_pages: Rc::new(HashMap::default()),
         invalidated_bounds: Vec::new(),
         invalidate_all: false,
         version: 0,
@@ -357,8 +358,8 @@ pub(crate) fn fixture() -> (Canvas, ExecPlan) {
         layer_stack_data: Vec::new(),
         draw_order: Rc::default(),
         draw_batch_ids: Rc::default(),
-        retained_batch_ids: Default::default(),
-        layer_stack_locations: Default::default(),
+        retained_batch_ids: HashMap::default(),
+        layer_stack_locations: HashMap::default(),
         direct_root_batch_ops: None,
     };
     plan.finalize_draw_batches(canvas.draw_records.len());

@@ -2,7 +2,7 @@ use std::io::Cursor;
 
 use crate::Result;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Difference {
     Dimensions {
         before: (u32, u32),

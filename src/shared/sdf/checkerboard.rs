@@ -16,6 +16,10 @@ pub struct Checkerboard {
 }
 
 impl Checkerboard {
+    #[must_use]
+    ///
+    /// # Panics
+    /// Panics if the rectangle is nonfinite/empty or cell size is nonfinite/nonpositive.
     pub fn new(rect: Rect, cell_size: f32) -> Self {
         let checkerboard = Self {
             start: Point::new(rect.x0, rect.y0),
@@ -60,7 +64,7 @@ impl Checkerboard {
         self
     }
 
-    pub(crate) fn axis_bounds(self) -> (f64, f64, f64, f64) {
+    pub(crate) const fn axis_bounds(self) -> (f64, f64, f64, f64) {
         (
             self.start.x.min(self.end.x),
             self.start.y.min(self.end.y),

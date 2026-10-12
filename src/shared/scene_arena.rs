@@ -109,6 +109,10 @@ impl<T: Copy> SceneArena<T> {
 
     /// Changes an allocation's logical length without copying temporary local-index records.
     /// Callers that remap cross-arena offsets can then write the final physical records once.
+    #[allow(
+        clippy::expect_used,
+        reason = "Live allocation handles and synchronized free-range indices are internal arena invariants"
+    )]
     pub(crate) fn resize(&mut self, id: ArenaAllocation, len: usize) -> bool {
         let old = self.allocations[&id];
         if old.len == len {
@@ -166,6 +170,10 @@ impl<T: Copy> SceneArena<T> {
     }
 
     /// Releases a live allocation exactly once, like resize/write require a live owner.
+    #[allow(
+        clippy::expect_used,
+        reason = "Live allocation handles and synchronized free-range indices are internal arena invariants"
+    )]
     pub(crate) fn remove(&mut self, id: ArenaAllocation) {
         let allocation = self.allocations.remove(&id).expect("live arena allocation");
         self.live_len -= allocation.len;
@@ -185,7 +193,7 @@ impl<T: Copy> SceneArena<T> {
         &self.values
     }
 
-    pub(crate) fn live_len(&self) -> usize {
+    pub(crate) const fn live_len(&self) -> usize {
         self.live_len
     }
 
@@ -197,7 +205,7 @@ impl<T: Copy> SceneArena<T> {
         }
     }
 
-    pub(crate) fn compactions(&self) -> u64 {
+    pub(crate) const fn compactions(&self) -> u64 {
         self.compactions
     }
 
@@ -310,6 +318,10 @@ impl<T: Copy> SceneArena<T> {
         self.free_len += len;
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Live allocation handles and synchronized free-range indices are internal arena invariants"
+    )]
     fn remove_free(&mut self, start: usize) -> usize {
         let end = self
             .free_by_start

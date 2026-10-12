@@ -1,5 +1,6 @@
 //! Exercise version gaps through public submission errors and journal expiry.
 use super::*;
+use crate::BlurSampling;
 use crate::{
     Filter, Radius, Region, RetainedLayerDescriptor, RetainedNodeId, RetainedParent, RetainedScene,
 };
@@ -51,7 +52,7 @@ fn scene(domain: u32) -> Result<RetainedScene, Box<dyn std::error::Error>> {
                 filter: Filter::Blur {
                     std_dev_x: 1.5,
                     std_dev_y: 1.5,
-                    sampling: Default::default(),
+                    sampling: BlurSampling::default(),
                 },
                 sample_region: Region::rect(Rect::new(8.0, 8.0, 48.0, 48.0), Radius::ZERO),
             },

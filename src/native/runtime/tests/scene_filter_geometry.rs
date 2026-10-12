@@ -13,7 +13,7 @@ fn scene_filter_mask_rejects_invalid_logical_draws_before_recording() -> Result<
         let mut canvas = Canvas::new(32, 32, 1.0);
         for i in 0..count {
             canvas.push_rect(
-                Rect::new(i as f64, 0.0, 16.0, 16.0),
+                Rect::new(f64::from(i), 0.0, 16.0, 16.0),
                 crate::Radius::ZERO,
                 Color::WHITE,
             );

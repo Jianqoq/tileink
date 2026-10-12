@@ -46,7 +46,7 @@ impl Driver {
             None
         }
     }
-    fn id(&mut self) -> u64 {
+    const fn id(&mut self) -> u64 {
         self.next += 1;
         self.next
     }
@@ -57,6 +57,7 @@ pub fn with<T>(run: impl FnOnce(&mut Driver) -> T) -> T {
 }
 
 pub fn device() -> ash::Device {
+    // SAFETY: Each loaded function has the Vulkan ABI/signature and uses only the thread-local fake driver state.
     unsafe {
         ash::Device::load_with(
             |name| match name.to_bytes() {
@@ -78,10 +79,12 @@ unsafe extern "system" fn create_cache(
     output: *mut vk::PipelineCache,
 ) -> vk::Result {
     with(|d| {
+        // SAFETY: The wrapper supplies a live create-info pointer for this synchronous call.
         let info = unsafe { &*info };
         d.inputs.push(if info.initial_data_size == 0 {
             vec![]
         } else {
+            // SAFETY: The create-info bytes remain live for initial_data_size bytes and the destination Vec owns its copy.
             unsafe {
                 std::slice::from_raw_parts(info.p_initial_data.cast::<u8>(), info.initial_data_size)
                     .to_vec()
@@ -92,6 +95,7 @@ unsafe extern "system" fn create_cache(
         }
         let id = d.id();
         d.caches.insert(id);
+        // SAFETY: The Vulkan wrapper supplies writable storage for one pipeline cache handle.
         unsafe {
             output.write(vk::PipelineCache::from_raw(id));
         }
@@ -116,6 +120,7 @@ unsafe extern "system" fn create_pipelines(
             } else {
                 vk::Pipeline::null()
             };
+            // SAFETY: The wrapper allocated count writable pipeline slots; each index is strictly below count.
             unsafe {
                 output.add(index as usize).write(pipeline);
             }
@@ -134,6 +139,7 @@ unsafe extern "system" fn cache_data(
             return error;
         }
         if !data.is_null() {
+            // SAFETY: The fake query reports this exact byte length before the wrapper allocates the destination buffer.
             unsafe {
                 std::ptr::copy_nonoverlapping(d.bytes.as_ptr(), data.cast(), d.bytes.len());
             }
@@ -152,6 +158,7 @@ unsafe extern "system" fn cache_data(
                 }
             }
         }
+        // SAFETY: The wrapper supplies a writable size pointer throughout this query.
         unsafe {
             size.write(d.bytes.len());
         }

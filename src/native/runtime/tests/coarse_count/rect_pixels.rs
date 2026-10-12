@@ -35,7 +35,7 @@ pub(super) fn interpret_rectangles(
         tile_count: tiles,
         tiles_width,
         tiles_height,
-        clear_color: 0xff000000,
+        clear_color: 0xff00_0000,
         ptcl_capacity: tiles * per_tile,
         paint_sdf_shadow_base: shadow_base,
         paint_brush_base: brush_base,
@@ -193,11 +193,9 @@ fn native_rect_tile_proofs_match_fine_only_pixels() -> Result<()> {
                 4 => Affine::translate((0.375, -0.25)),
                 5 => Affine::scale_non_uniform(0.8, 0.9),
                 6 => Affine::rotate(0.15),
-                7 => Affine::translate((-1e7, 0.)),
-                8 => Affine::translate((-1.702e38, 0.)),
+                7 | 11 => Affine::translate((-1e7, 0.)),
                 9 => Affine::translate((-65408., 0.)),
                 10 => Affine::translate((65512., 0.)),
-                11 => Affine::translate((-1e7, 0.)),
                 _ => Affine::translate((-1.702e38, 0.)),
             };
             let record = &mut canvas.draw_records[draw.index()];

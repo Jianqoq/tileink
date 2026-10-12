@@ -41,13 +41,13 @@ pub(super) fn count_scene(draw_count: u32, linked: bool, stack: u32) -> CountSce
     let tile_emit_base = index_base + indices;
     let emit_base = tile_emit_base + 2;
     let kind_base = emit_base + (pages + 2) * 7;
-    let mut work = vec![0x45454545; (kind_base + 9) as usize];
+    let mut work = vec![0x4545_4545; (kind_base + 9) as usize];
     work[draw_base as usize] = if draw_count == 0 {
         u32::MAX
     } else if linked {
         0
     } else {
-        0x80000000
+        0x8000_0000
     };
     work[draw_base as usize + 1] = draw_count;
     for index in 0..draw_count {
@@ -258,7 +258,7 @@ impl CountScene {
     pub(super) fn reserve_streams(&mut self, particles: u32, glyphs: u32) {
         let old_base = (self.config[0] * 6 + self.config[7] * 6 + self.config[8]) as usize;
         let new_base = (self.config[0] * 6 + particles * 6 + glyphs) as usize;
-        let mut work = vec![0x45454545; new_base];
+        let mut work = vec![0x4545_4545; new_base];
         work[..self.config[0] as usize * 6]
             .copy_from_slice(&self.work[..self.config[0] as usize * 6]);
         work.extend_from_slice(&self.work[old_base..]);

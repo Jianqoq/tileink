@@ -4,7 +4,7 @@ use tileink::{ShaderBinding, ShaderBindingKind};
 
 const SOURCE: &str = "RWByteAddressBuffer destination : register(u3); [numthreads(256,1,1)] void paint() { destination.Store(0, 1); }";
 
-fn compiler_library() -> &'static str {
+const fn compiler_library() -> &'static str {
     if cfg!(windows) {
         "dxcompiler.dll"
     } else if cfg!(target_os = "macos") {
@@ -14,7 +14,7 @@ fn compiler_library() -> &'static str {
     }
 }
 
-fn validator_library() -> &'static str {
+const fn validator_library() -> &'static str {
     if cfg!(windows) {
         "dxil.dll"
     } else if cfg!(target_os = "macos") {
@@ -118,7 +118,7 @@ fn cached_reflection_process_errors_are_returned_without_recompiling() {
                 root,
                 "reflection-failure",
                 "deliberate reflection process failure",
-            )
+            );
         },
     );
 }

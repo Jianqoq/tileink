@@ -3,7 +3,7 @@ use super::Scene;
 use crate::native::runtime::program::filter::{layer::Geometry, stack::ClipStack};
 
 impl Scene {
-    pub(crate) fn filter_geometry(&self) -> Geometry {
+    pub(crate) const fn filter_geometry(&self) -> Geometry {
         // SAFETY: SceneCache recorded these bounded Canvas records and scan in
         // one batch. Filter recording checks resource ownership before use.
         unsafe {
@@ -17,7 +17,7 @@ impl Scene {
         }
     }
 
-    pub(crate) fn filter_clip_stack(&self) -> ClipStack {
+    pub(crate) const fn filter_clip_stack(&self) -> ClipStack {
         // SAFETY: shared LayerStackRecord conversion and plan preparation bound
         // draw indices. Offscreen ranges contain only ancestor clips; fused groups
         // remain in draw-batch ranges. Upload checked the full buffer capacity.

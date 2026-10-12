@@ -10,8 +10,8 @@ fn renderer_and_scene_keys_keep_independent_pixels_across_empty_transitions() {
     scene.insert(key, Image::from_rgba8(1, 1, [0, 0, 255, 255]));
     let mut previous = None;
     for expected in [
-        vec![(false, 0xff0000ff), (true, 0xffff0000)],
-        vec![(true, 0xffff0000)],
+        vec![(false, 0xff00_00ff), (true, 0xffff_0000)],
+        vec![(true, 0xffff_0000)],
         vec![],
     ] {
         let upload = renderer.upload_merged(&scene, 7, 4, 0, previous.as_ref());
@@ -124,7 +124,7 @@ fn texture_selection_accepts_exact_limit_and_rejects_oversized_images() {
     let mut store = ImageResourceStore::default();
     for width in [2048, 2049, 2050, 2051] {
         store.insert(
-            ImageKey::new(width as u64),
+            ImageKey::new(u64::from(width)),
             Image {
                 width,
                 height: 1,

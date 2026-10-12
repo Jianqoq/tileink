@@ -40,6 +40,10 @@ pub(crate) enum PaintData<'a> {
 }
 
 impl PaintUploadState {
+    #[allow(
+        clippy::expect_used,
+        reason = "Incremental updates require a change journal; an absent journal selects a full upload"
+    )]
     pub(crate) fn prepare<'a>(
         &'a mut self,
         canvas: &'a Canvas,
@@ -70,7 +74,7 @@ impl PaintUploadState {
                     image_resources,
                 );
             } else {
-                let changes = canvas.buffer_changes.as_ref().unwrap();
+                let changes = canvas.buffer_changes.as_ref().expect("Incremental updates require a change journal; an absent journal selects a full upload");
                 patch_u32_ranges(
                     &mut self.scene_brush_blob,
                     0,
@@ -130,7 +134,7 @@ impl PaintUploadState {
             self.paint_layout = layout;
             std::iter::once(0..self.paint_blob.len()).collect()
         } else {
-            let changes = canvas.buffer_changes.as_ref().unwrap();
+            let changes = canvas.buffer_changes.as_ref().expect("Incremental updates require a change journal; an absent journal selects a full upload");
             patch_u32_ranges(&mut self.paint_blob, 0, &canvas.sdf_blob, &changes.sdfs);
             patch_u32_ranges(
                 &mut self.paint_blob,
@@ -182,6 +186,10 @@ impl PaintUploadState {
         }
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Incremental updates require a change journal; an absent journal selects a full upload"
+    )]
     fn update_resource_brush_draws(&mut self, canvas: &Canvas) -> bool {
         let full = !self.resource_brush_draws_initialized
             || canvas.buffer_changes.is_none()
@@ -197,7 +205,7 @@ impl PaintUploadState {
             for (index, draw) in canvas.draw_records.iter().enumerate() {
                 let resource = GpuBrushUpload::draw_uses_resource_brush(draw, &canvas.brush_blob);
                 self.resource_brush_draws[index] = resource;
-                self.resource_brush_draw_count += resource as usize;
+                self.resource_brush_draw_count += usize::from(resource);
             }
             self.resource_brush_draws_initialized = true;
         } else {
@@ -216,10 +224,10 @@ impl PaintUploadState {
             for index in canvas
                 .buffer_changes
                 .as_ref()
-                .unwrap()
+                .expect("Incremental updates require a change journal; an absent journal selects a full upload")
                 .draws
                 .iter()
-                .flat_map(|range| range.clone())
+                .flat_map(std::clone::Clone::clone)
             {
                 let resource = GpuBrushUpload::draw_uses_resource_brush(
                     &canvas.draw_records[index],

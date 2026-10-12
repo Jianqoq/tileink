@@ -1,3 +1,16 @@
 # Check exported functions too: an infallible operation should expose an
 # infallible return type rather than retain a redundant Result or Option.
 avoid-breaking-exported-api = false
+# usvg and cosmic-text currently require distinct font-stack versions. Keep the
+# exception limited to these upstream overlaps so new duplicate crates are caught.
+allowed-duplicate-crates = ["font-types", "fontdb", "harfrust", "read-fonts", "roxmltree", "skrifa"]
+
+# Tests deliberately abort on failed setup and assertions. Production code is
+# checked for unwrap, expect and explicit panic.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+
+# A filter uniform is a fixed 512-byte ABI snapshot. Larger values are still
+# reported; the invocation executor documents its optional snapshot separately.
+pass-by-value-size-limit = 512

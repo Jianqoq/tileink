@@ -27,7 +27,7 @@ impl Scene {
     }
 
     pub(crate) fn plan_handle(&self) -> Rc<ExecPlan> {
-        self.plan.clone()
+        std::rc::Rc::clone(&self.plan)
     }
 
     pub(crate) fn plan(&self) -> &ExecPlan {
@@ -108,8 +108,8 @@ impl Scene {
     }
 
     /// # Safety
-    /// Image handles must match the placements supplied to SceneCache::record.
-    /// Coarse for the current draw batch must precede fine in this ComputeBatch.
+    /// Image handles must match the placements supplied to `SceneCache::record`.
+    /// Coarse for the current draw batch must precede fine in this `ComputeBatch`.
     pub(crate) unsafe fn encode_fine(
         &self,
         batch: &mut ComputeBatch,
@@ -117,7 +117,7 @@ impl Scene {
         images: &SceneImages,
         plan: &FinePlan,
     ) -> Result<()> {
-        // SAFETY: Canvas uploads and shared stack depths bound all record/spill
+        // Canvas uploads and shared stack depths bound all record/spill
         // accesses; caller supplies associated images and stage ordering.
         let extended = self
             .program_images
@@ -125,6 +125,7 @@ impl Scene {
             .map(|p| p.attach(batch, images))
             .transpose()?;
         let images = extended.as_ref().unwrap_or(images);
+        // SAFETY: Canvas uploads and shared stack depths bound record/spill access; the caller guarantees associated images and coarse-before-fine ordering.
         unsafe {
             fine::encode(
                 batch,

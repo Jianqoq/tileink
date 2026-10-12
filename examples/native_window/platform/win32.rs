@@ -10,6 +10,7 @@ pub struct Window {
     instance: HINSTANCE,
 }
 unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+    // SAFETY: Windows supplies this callback with its window/message arguments; the close branch destroys that window, and other messages are forwarded unchanged.
     unsafe {
         if msg == WM_CLOSE {
             let _ = DestroyWindow(hwnd);
@@ -21,6 +22,7 @@ unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) 
 }
 impl Window {
     pub fn new(title: &str, visible: bool) -> Result<Self> {
+        // SAFETY: The module, class name and window title remain live during registration/creation; the returned HWND is owned by Window.
         unsafe {
             let instance = HINSTANCE(GetModuleHandleW(None)?.0);
             let class = w!("TileinkNativeHost");
@@ -57,6 +59,7 @@ impl Window {
         }
     }
     pub fn inner_size(&self) -> Result<Size> {
+        // SAFETY: The Window owner retains the live HWND and supplies initialized writable RECT storage.
         unsafe {
             if IsIconic(self.hwnd).as_bool() {
                 return Ok(Size {
@@ -65,7 +68,7 @@ impl Window {
                 });
             }
             let mut r = RECT::default();
-            GetClientRect(self.hwnd, &mut r)?;
+            GetClientRect(self.hwnd, &raw mut r)?;
             Ok(Size {
                 width: (r.right - r.left) as u32,
                 height: (r.bottom - r.top) as u32,
@@ -73,13 +76,14 @@ impl Window {
         }
     }
     pub fn request_inner_size(&self, s: Size) -> Result {
+        // SAFETY: The HWND is retained and checked client dimensions are converted to a bounded outer-window size before SetWindowPos.
         unsafe {
             // Calculate the frame insets separately, then add the requested
             // client extent in wide arithmetic so neither RECT nor subtraction
             // can wrap before SetWindowPos receives its signed dimensions.
             let mut r = RECT::default();
             AdjustWindowRectEx(
-                &mut r,
+                &raw mut r,
                 WS_OVERLAPPEDWINDOW,
                 false,
                 WINDOW_EX_STYLE::default(),
@@ -97,11 +101,12 @@ impl Window {
         }
     }
     pub fn pump(&self) -> bool {
+        // SAFETY: MSG storage is initialized; the main-thread loop dispatches only messages returned by Windows.
         unsafe {
             let mut m = MSG::default();
-            while PeekMessageW(&mut m, None, 0, 0, PM_REMOVE).as_bool() {
-                let _ = TranslateMessage(&m);
-                DispatchMessageW(&m);
+            while PeekMessageW(&raw mut m, None, 0, 0, PM_REMOVE).as_bool() {
+                let _ = TranslateMessage(&raw const m);
+                DispatchMessageW(&raw const m);
             }
             IsWindow(Some(self.hwnd)).as_bool()
         }
@@ -109,6 +114,7 @@ impl Window {
 }
 impl Drop for Window {
     fn drop(&mut self) {
+        // SAFETY: This owner destroys its HWND once when the window wrapper is dropped.
         unsafe {
             let _ = DestroyWindow(self.hwnd);
         }
@@ -120,6 +126,7 @@ impl HasWindowHandle for Window {
             std::num::NonZeroIsize::new(self.hwnd.0 as isize).ok_or(HandleError::Unavailable)?,
         );
         h.hinstance = std::num::NonZeroIsize::new(self.instance.0 as isize);
+        // SAFETY: The returned borrowed handle cannot outlive the Window that owns its HWND.
         Ok(unsafe { WindowHandle::borrow_raw(RawWindowHandle::Win32(h)) })
     }
 }

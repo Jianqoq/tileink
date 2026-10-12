@@ -26,6 +26,10 @@ pub struct Rc {
 }
 
 impl Rc {
+    #[must_use]
+    ///
+    /// # Panics
+    /// Panics if the radius or stroke width is nonpositive or NaN.
     pub fn new(
         center: Point,
         radius: f32,
@@ -110,7 +114,7 @@ impl Rc {
         self
     }
 
-    pub(crate) fn cap_value(self) -> f32 {
+    pub(crate) const fn cap_value(self) -> f32 {
         self.cap as u32 as f32
     }
 

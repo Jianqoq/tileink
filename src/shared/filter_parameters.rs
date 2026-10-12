@@ -8,7 +8,7 @@ use super::layer::filter::{
 };
 use super::layer::filter::{ConvolveMatrix, DisplacementMap, Turbulence};
 
-pub(crate) fn encode_convolve_edge_mode(edge_mode: ConvolveEdgeMode) -> u32 {
+pub(crate) const fn encode_convolve_edge_mode(edge_mode: ConvolveEdgeMode) -> u32 {
     match edge_mode {
         ConvolveEdgeMode::None => 0,
         ConvolveEdgeMode::Duplicate => 1,
@@ -16,7 +16,7 @@ pub(crate) fn encode_convolve_edge_mode(edge_mode: ConvolveEdgeMode) -> u32 {
     }
 }
 
-pub(crate) fn encode_color_channel(channel: ColorChannel) -> u32 {
+pub(crate) const fn encode_color_channel(channel: ColorChannel) -> u32 {
     match channel {
         ColorChannel::R => 0,
         ColorChannel::G => 1,
@@ -25,7 +25,7 @@ pub(crate) fn encode_color_channel(channel: ColorChannel) -> u32 {
     }
 }
 
-pub(crate) fn encode_light_source_kind(light_source: LightSource) -> u32 {
+pub(crate) const fn encode_light_source_kind(light_source: LightSource) -> u32 {
     match light_source {
         LightSource::Distant { .. } => 0,
         LightSource::Point { .. } => 1,
@@ -63,7 +63,7 @@ pub(crate) fn light_source_params(light_source: LightSource) -> [f32; 9] {
     }
 }
 
-pub(crate) fn encode_composite_operator(operator: CompositeOperator) -> u32 {
+pub(crate) const fn encode_composite_operator(operator: CompositeOperator) -> u32 {
     match operator {
         CompositeOperator::Over => 0,
         CompositeOperator::In => 1,
@@ -74,28 +74,28 @@ pub(crate) fn encode_composite_operator(operator: CompositeOperator) -> u32 {
     }
 }
 
-pub(crate) fn composite_arithmetic(operator: CompositeOperator) -> [f32; 4] {
+pub(crate) const fn composite_arithmetic(operator: CompositeOperator) -> [f32; 4] {
     match operator {
         CompositeOperator::Arithmetic { k1, k2, k3, k4 } => [k1, k2, k3, k4],
         _ => [0.0; 4],
     }
 }
 
-pub(crate) fn encode_turbulence_kind(kind: TurbulenceKind) -> u32 {
+pub(crate) const fn encode_turbulence_kind(kind: TurbulenceKind) -> u32 {
     match kind {
         TurbulenceKind::Turbulence => 0,
         TurbulenceKind::FractalNoise => 1,
     }
 }
 
-pub(crate) fn encode_blur_downsample_filter(filter: BlurDownsampleFilter) -> u32 {
+pub(crate) const fn encode_blur_downsample_filter(filter: BlurDownsampleFilter) -> u32 {
     match filter {
         BlurDownsampleFilter::Nearest => 0,
         BlurDownsampleFilter::Box => 1,
     }
 }
 
-pub(crate) fn encode_blur_upsample_filter(filter: BlurUpsampleFilter) -> u32 {
+pub(crate) const fn encode_blur_upsample_filter(filter: BlurUpsampleFilter) -> u32 {
     match filter {
         BlurUpsampleFilter::Nearest => 0,
         BlurUpsampleFilter::Bilinear => 1,
@@ -181,7 +181,7 @@ pub(crate) fn configure_turbulence(
     config.turbulence_tile_height = turbulence.tile_height;
 }
 
-pub(crate) fn configure_color_matrix(config: &mut FilterConfig, matrix: [f32; 20]) {
+pub(crate) const fn configure_color_matrix(config: &mut FilterConfig, matrix: [f32; 20]) {
     config.matrix_r = [matrix[0], matrix[1], matrix[2], matrix[3]];
     config.matrix_g = [matrix[5], matrix[6], matrix[7], matrix[8]];
     config.matrix_b = [matrix[10], matrix[11], matrix[12], matrix[13]];
@@ -189,7 +189,10 @@ pub(crate) fn configure_color_matrix(config: &mut FilterConfig, matrix: [f32; 20
     config.matrix_bias = [matrix[4], matrix[9], matrix[14], matrix[19]];
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Explicit geometry/resource parameters preserve the renderer and native ABI contract."
+)]
 pub(crate) fn configure_lighting(
     config: &mut FilterConfig,
     output_kind: u32,

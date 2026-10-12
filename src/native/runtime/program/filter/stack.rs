@@ -14,6 +14,7 @@ pub enum Composite {
     Surface,
 }
 
+#[derive(Clone, Copy)]
 pub struct Textures {
     pub source: ResourceId,
     pub auxiliary: Option<ResourceId>,
@@ -21,7 +22,7 @@ pub struct Textures {
 }
 
 /// Scene-owned records for offscreen ancestor clips. Per-pass ranges must come
-/// from ExecOp::outer_stack; fused opacity/blend stacks belong to fine rasterization.
+/// from `ExecOp::outer_stack`; fused opacity/blend stacks belong to fine rasterization.
 pub struct ClipStack {
     geometry: Geometry,
     layers: ResourceId,
@@ -32,7 +33,7 @@ impl ClipStack {
     /// `layers` must contain `count` valid records for this geometry, with
     /// bounded draw indices, in the geometry's batch. Selected composite ranges
     /// must contain clips only; other scene ranges may contain fused groups.
-    pub(in crate::native::runtime::program) unsafe fn from_gpu(
+    pub(in crate::native::runtime::program) const unsafe fn from_gpu(
         geometry: Geometry,
         layers: ResourceId,
         count: u32,
@@ -44,6 +45,10 @@ impl ClipStack {
         }
     }
 
+    #[allow(
+        clippy::suspicious_operation_groupings,
+        reason = "The ordered interval must satisfy start <= end <= record count"
+    )]
     pub fn encode(
         &self,
         batch: &mut ComputeBatch,

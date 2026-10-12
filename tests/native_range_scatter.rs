@@ -1,6 +1,18 @@
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "Test setup and assertions abort on failure; production builds are checked separately"
+    )
+)]
 // This standalone validator test uses the same generated HLSLI constants as the library.
 mod shared {
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+    )]
     pub mod gpu_constants {
         include!(concat!(env!("OUT_DIR"), "/tileink_gpu_constants.rs"));
     }

@@ -21,7 +21,7 @@ impl Drop for Allocation {
 fn allocation(bytes: u64, drops: &Rc<Cell<u32>>) -> Allocation {
     Allocation {
         bytes,
-        drops: drops.clone(),
+        drops: std::rc::Rc::clone(drops),
     }
 }
 

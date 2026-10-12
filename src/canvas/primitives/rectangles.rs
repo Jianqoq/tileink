@@ -42,6 +42,10 @@ impl Canvas {
         self.draw_id_from_index(draw)
     }
 
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "Drawing commands accept owned temporary stroke descriptors, including dash storage"
+    )]
     pub fn push_rect_stroke(
         &mut self,
         rect: Rect,

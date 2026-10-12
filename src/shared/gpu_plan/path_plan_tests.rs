@@ -129,7 +129,7 @@ fn regrown_vacant_scan_slots_are_uploaded_over_retained_gpu_contents() {
     canvas.path_records.truncate(1);
     plans.update(&canvas, Some(&[]));
     plans.take_dirty();
-    canvas.path_records.push(Default::default());
+    canvas.path_records.push(PathRecord::default());
     plans.update(&canvas, Some(&[]));
     for range in plans.take_dirty().scan_ranges {
         gpu[range.clone()].copy_from_slice(&plans.scan_ranges()[range]);
@@ -153,7 +153,7 @@ fn vacant_stable_path_slot_does_not_clobber_path_zero_scan_range() {
     plans.update(&canvas, None);
     let first = plans.scan_ranges()[0];
 
-    canvas.path_records[1] = Default::default();
+    canvas.path_records[1] = PathRecord::default();
     plans.update(&canvas, Some(std::slice::from_ref(&(1..2))));
 
     assert_eq!(plans.scan_ranges()[0], first);

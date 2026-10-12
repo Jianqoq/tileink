@@ -6,6 +6,10 @@ use crate::{
     },
 };
 
+#[allow(
+    clippy::expect_used,
+    reason = "usvg normalizes color matrices to exactly twenty coefficients before lowering"
+)]
 pub(super) fn color_matrix_to_filter(matrix: &usvg::filter::ColorMatrixKind) -> Option<Filter> {
     match matrix {
         usvg::filter::ColorMatrixKind::Saturate(amount) => Some(Filter::Saturate(amount.get())),
@@ -13,7 +17,9 @@ pub(super) fn color_matrix_to_filter(matrix: &usvg::filter::ColorMatrixKind) -> 
         usvg::filter::ColorMatrixKind::Matrix(values) => {
             // usvg normalizes every matrix to twenty coefficients. Capture that
             // contract once; recognition and copying cannot encounter short rows.
-            let values: &[f32; 20] = values.as_slice().try_into().unwrap();
+            let values: &[f32; 20] = values.as_slice().try_into().expect(
+                "usvg normalizes color matrices to exactly twenty coefficients before lowering",
+            );
             if matrix_is_identity(values) {
                 None
             } else if let Some(amount) = standard_grayscale_amount(values) {
@@ -107,14 +113,11 @@ fn same_linear_rgb(
     let (rs, ri) = transfer_linear(r)?;
     let (gs, gi) = transfer_linear(g)?;
     let (bs, bi) = transfer_linear(b)?;
-    if nearly_eq(rs, gs) && nearly_eq(rs, bs) && nearly_eq(ri, gi) && nearly_eq(ri, bi) {
-        Some((rs, ri))
-    } else {
-        None
-    }
+    (nearly_eq(rs, gs) && nearly_eq(rs, bs) && nearly_eq(ri, gi) && nearly_eq(ri, bi))
+        .then_some((rs, ri))
 }
 
-fn transfer_linear(transfer: &usvg::filter::TransferFunction) -> Option<(f32, f32)> {
+const fn transfer_linear(transfer: &usvg::filter::TransferFunction) -> Option<(f32, f32)> {
     match transfer {
         usvg::filter::TransferFunction::Linear { slope, intercept } => Some((*slope, *intercept)),
         _ => None,

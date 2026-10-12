@@ -1,20 +1,47 @@
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "Test setup and assertions abort on failure; production builds are checked separately"
+    )
+)]
 #![cfg(target_os = "macos")]
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "Standalone compiler tests use only part of the shared build helpers"
+)]
 #[path = "../build/native/cache.rs"]
 mod cache;
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
 #[path = "../build/native/metal.rs"]
 mod compiler;
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
 #[path = "../build/gpu_constants.rs"]
 mod gpu_constants;
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
+#[path = "../build/hex.rs"]
+mod hex;
 #[path = "../build/native/source.rs"]
 mod source;
 
 #[test]
 fn missing_tools_and_invalid_libraries_are_rejected() {
-    assert!(compiler::MetalCompiler::discover("xcrun".into()).is_err());
-    assert!(compiler::MetalCompiler::discover("/nonexistent/tileink/xcrun".into()).is_err());
+    assert!(compiler::MetalCompiler::discover(std::path::Path::new("xcrun")).is_err());
+    assert!(
+        compiler::MetalCompiler::discover(std::path::Path::new("/nonexistent/tileink/xcrun"))
+            .is_err()
+    );
     for bytes in [b"".as_slice(), b"MTLB", b"DXBCabcdefghijklmnop"] {
         assert!(compiler::validate_container(bytes).is_err());
     }
@@ -86,7 +113,8 @@ fn metal_includes_and_target_identity_invalidate_the_common_cache() {
 #[test]
 #[ignore = "requires Xcode Metal tools"]
 fn apple_compiler_builds_independent_msl_and_rejects_invalid_source() {
-    let compiler = compiler::MetalCompiler::discover("/usr/bin/xcrun".into()).unwrap();
+    let compiler =
+        compiler::MetalCompiler::discover(std::path::Path::new("/usr/bin/xcrun")).unwrap();
     let graph = source::SourceGraph::load(
         &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/shaders/metal"),
         "probes.metal",

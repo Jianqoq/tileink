@@ -1,4 +1,6 @@
 //! Validated DXC toolchain and target-specific recipes. Discovery never downloads tools.
+use crate::hex;
+
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
@@ -13,14 +15,16 @@ pub struct Dxc {
 }
 
 impl Dxc {
-    pub fn discover(path: PathBuf) -> io::Result<Self> {
+    pub fn discover(path: &Path) -> io::Result<Self> {
         if !path.is_absolute() {
             return Err(io::Error::other("native DXC path must be absolute"));
         }
         let executable = path.canonicalize()?;
         let version = run(Command::new(&executable).arg("--version"), "DXC version")?;
         let mut files = BTreeMap::new();
-        let parent = executable.parent().unwrap();
+        let parent = executable
+            .parent()
+            .ok_or_else(|| io::Error::other("DXC executable has no parent directory"))?;
         let (compiler_name, validator_name) = if cfg!(windows) {
             ("dxcompiler.dll", "dxil.dll")
         } else if cfg!(target_os = "macos") {
@@ -122,7 +126,8 @@ pub fn validate_container(target: &str, bytes: &[u8]) -> io::Result<()> {
         "dxil" => {
             bytes.len() >= 32
                 && &bytes[..4] == b"DXBC"
-                && u32::from_le_bytes(bytes[24..28].try_into().unwrap()) as usize == bytes.len()
+                && u32::from_le_bytes(std::array::from_fn(|i| bytes[24 + i])) as usize
+                    == bytes.len()
         }
         "spirv" => {
             bytes.len() >= 20
@@ -142,10 +147,7 @@ pub fn validate_container(target: &str, bytes: &[u8]) -> io::Result<()> {
 }
 
 pub fn digest(bytes: &[u8]) -> String {
-    Sha256::digest(bytes)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+    hex::encode(&Sha256::digest(bytes))
 }
 
 fn run(command: &mut Command, context: &str) -> io::Result<Vec<u8>> {

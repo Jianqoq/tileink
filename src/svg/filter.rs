@@ -16,6 +16,7 @@ use super::{
     },
     paint::color_opacity_to_brush,
 };
+use crate::BlurSampling;
 use crate::{
     Canvas, Filter, Radius, Region,
     shared::{
@@ -143,7 +144,7 @@ impl<'a> SvgFilterGraphBuilder<'a> {
         let lowered = self.lower_primitive(primitive)?;
         self.primitives.push(lowered.primitive);
         self.source_regions.push(lowered.source_region);
-        self.results.insert(primitive.result().to_string(), index);
+        self.results.insert(primitive.result().to_owned(), index);
         Ok(())
     }
 
@@ -167,7 +168,7 @@ impl<'a> SvgFilterGraphBuilder<'a> {
                 let filter = Filter::Blur {
                     std_dev_x,
                     std_dev_y,
-                    sampling: Default::default(),
+                    sampling: BlurSampling::default(),
                 };
                 (
                     self.input(blur.input(), "feGaussianBlur")?,
@@ -338,6 +339,10 @@ impl<'a> SvgFilterGraphBuilder<'a> {
         })
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Blend and composite lowering supply both inputs before source-region analysis"
+    )]
     fn output_source_region(
         &self,
         input: FilterInput,

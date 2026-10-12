@@ -101,7 +101,7 @@ impl SceneImages {
                 *slot = batch.texture_pixels(
                     [texture.width, texture.height, 1],
                     false,
-                    texture.pixels.clone(),
+                    std::rc::Rc::clone(&texture.pixels),
                 )?;
             }
         }

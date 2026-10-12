@@ -68,7 +68,7 @@ pub(crate) struct IncrementalState {
 }
 
 impl IncrementalState {
-    pub(crate) fn invalidate_renderer_state(&mut self) {
+    pub(crate) const fn invalidate_renderer_state(&mut self) {
         self.renderer_state_invalid = true;
     }
 
@@ -105,7 +105,7 @@ impl IncrementalState {
                     .then_some(FullRedrawReason::DamageHistoryUnavailable)
             });
         let dirty_backdrops = if let Ok(Some(damage)) = &resolved {
-            Some(damage.dirty_backdrops.clone())
+            Some(std::rc::Rc::clone(&damage.dirty_backdrops))
         } else {
             frame.as_ref().and_then(|current| {
                 let previous_version = self.previous.as_ref()?.version;
@@ -114,12 +114,12 @@ impl IncrementalState {
                     && delta.from_version == previous_version
                     && current.version == delta.to_version
                     && !current.invalidate_all)
-                    .then(|| delta.dirty_backdrops.clone())
+                    .then(|| std::rc::Rc::clone(&delta.dirty_backdrops))
             })
         };
         let (changed_tiles, retained_damage) = if let Ok(Some(damage)) = &resolved {
             let mut tiles = DamageTiles::new(size);
-            for &bounds in damage.bounds.iter() {
+            for &bounds in &damage.bounds {
                 tiles.add_bounds(bounds);
             }
             (tiles, RetainedDamage::default())

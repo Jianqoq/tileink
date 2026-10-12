@@ -12,6 +12,7 @@ impl Sampler {
             SamplerFilter::Nearest => vk::Filter::NEAREST,
             SamplerFilter::Linear => vk::Filter::LINEAR,
         };
+        // SAFETY: The sampler descriptor uses supported fixed modes on this live device; the returned sampler is retained by its owner.
         let handle = unsafe {
             device.create_sampler(
                 &vk::SamplerCreateInfo::default()
@@ -27,13 +28,14 @@ impl Sampler {
             )?
         };
         Ok(Self {
-            device: device.clone(),
+            device: std::rc::Rc::clone(device),
             handle,
         })
     }
 }
 impl Drop for Sampler {
     fn drop(&mut self) {
+        // SAFETY: Pending frames retain this immutable sampler owner until completion; this destructor releases its exclusively owned handle once.
         unsafe {
             self.device.destroy_sampler(self.handle, None);
         }
@@ -57,12 +59,14 @@ impl Cache {
             SamplerFilter::Nearest => &mut self.nearest,
             SamplerFilter::Linear => &mut self.linear,
         };
-        if slot.is_none() {
-            *slot = Some(std::rc::Rc::new(Sampler::new(
+        let sampler = if let Some(sampler) = slot {
+            sampler
+        } else {
+            slot.insert(std::rc::Rc::new(Sampler::new(
                 &std::rc::Rc::new(device.clone()),
                 filter,
-            )?));
-        }
-        Ok(slot.as_ref().unwrap().clone())
+            )?))
+        };
+        Ok(std::rc::Rc::clone(sampler))
     }
 }

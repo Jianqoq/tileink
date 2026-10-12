@@ -136,7 +136,7 @@ struct SceneChunkLengths {
 }
 
 impl SceneChunkLengths {
-    fn from_canvas(canvas: &Canvas) -> Self {
+    const fn from_canvas(canvas: &Canvas) -> Self {
         Self {
             lines: canvas.lines.len(),
             paths: canvas.path_records.len(),
@@ -202,6 +202,10 @@ impl Default for MaterializedArenas {
 /// Scene data lives in stable arenas and only changed nodes are translated or copied. Command
 /// metadata is rebuilt when physical allocations or topology change; the later persistent-plan
 /// layer consumes the same stable draw slots without changing this storage contract.
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "Flags describe independent changes or statistics that may be true together"
+)]
 pub(crate) struct PersistentSceneMaterializer {
     pub(crate) scene_id: u64,
     pub(crate) version: SceneVersion,

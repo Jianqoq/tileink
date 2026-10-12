@@ -16,16 +16,26 @@ pub(crate) enum Synchronization {
     Vulkan(vulkan::TargetSynchronization),
 }
 impl Synchronization {
-    pub(crate) fn outgoing(&self) -> crate::NativeTargetState {
-        match *self {
+    #[cfg_attr(
+        not(tileink_native_runtime),
+        allow(
+            clippy::uninhabited_references,
+            reason = "Without a native adapter this enum has no variants and safe code cannot construct a synchronization contract"
+        )
+    )]
+    pub(crate) const fn outgoing(&self) -> crate::NativeTargetState {
+        #[cfg(not(tileink_native_runtime))]
+        match *self {}
+        #[cfg(tileink_native_runtime)]
+        match self {
             #[cfg(all(target_os = "macos", feature = "metal"))]
             Self::Metal(_) => crate::NativeTargetState {},
             #[cfg(all(target_os = "windows", feature = "dx12"))]
-            Self::Dx12(ref sync) => crate::NativeTargetState {
+            Self::Dx12(sync) => crate::NativeTargetState {
                 state: sync.outgoing,
             },
             #[cfg(all(target_os = "windows", feature = "vulkan"))]
-            Self::Vulkan(ref sync) => crate::NativeTargetState {
+            Self::Vulkan(sync) => crate::NativeTargetState {
                 state: sync.outgoing,
             },
         }

@@ -99,8 +99,8 @@ fn native_path_scan_preserves_holes_and_growing_allocations()
             path.move_to((2.0, 2.0));
             for index in 1..=600 {
                 path.line_to((
-                    2.0 + 26.0 * index as f64 / 600.0,
-                    2.0 + (index % 2) as f64 * 2.0,
+                    2.0 + 26.0 * f64::from(index) / 600.0,
+                    2.0 + f64::from(index % 2) * 2.0,
                 ));
             }
             path.line_to((28.0, 30.0));
@@ -128,7 +128,7 @@ fn native_path_scan_preserves_holes_and_growing_allocations()
             RetainedParent::content(root),
             None,
             RetainedNodeId::for_owner(10 + index),
-            simple.clone(),
+            std::rc::Rc::clone(&simple),
             Affine::translate((index as f64 * 32.0, 0.0)),
         );
     }

@@ -76,11 +76,15 @@ fn active_region<A: BackdropAdapter>(a: &A, bounds: Bounds) -> Option<Bounds> {
     a.retained().surface_is_dirty(bounds).then_some(bounds)
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "A cacheable backdrop owns both allocated scratch slots until they are transferred to the cache"
+)]
 pub(crate) fn execute<A: BackdropAdapter>(
     a: &mut A,
     canvas: &Canvas,
     plan: &ExecPlan,
-    layer: BackdropLayer<'_>,
+    layer: &BackdropLayer<'_>,
     target: RenderTargetId,
     cursors: &mut FilterCursors,
 ) -> Result<(), A::Error> {
@@ -231,8 +235,8 @@ pub(crate) fn execute<A: BackdropAdapter>(
         // A composite error leaves complete source/filter/coverage images valid.
         // Errors during their construction take the cleanup path above instead.
         if cache_surface {
-            let output = a.take_scratch(backdrop_slot.take().unwrap());
-            let history = a.take_scratch(source_slot.take().unwrap());
+            let output = a.take_scratch(backdrop_slot.take().expect("A cacheable backdrop owns both allocated scratch slots until they are transferred to the cache"));
+            let history = a.take_scratch(source_slot.take().expect("A cacheable backdrop owns both allocated scratch slots until they are transferred to the cache"));
             let mask = mask_slot.take().map(|slot| a.take_scratch(slot));
             a.retained_mut()
                 .cache_surface(layer.retained_id, meta, output, mask, Some(history));

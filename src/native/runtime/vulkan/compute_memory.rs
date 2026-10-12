@@ -25,6 +25,7 @@ impl Arena {
         if sizes.is_empty() {
             return Ok(this);
         }
+        // SAFETY: Checked sizes, offsets and memory-type compatibility determine allocations; this owner retains all buffers and bound memory.
         unsafe {
             let mut offsets = Vec::new();
             let mut total = 0u64;
@@ -68,6 +69,7 @@ impl Arena {
     }
     /// Staging arenas contain exactly one host-coherent buffer at memory offset zero.
     pub(super) fn write(&self, upload: &super::upload::Upload<'_>) -> Result<()> {
+        // SAFETY: The host-coherent allocation contains the upload length; mapping owns the destination range until the copy is complete.
         unsafe {
             let pointer = self.device.map_memory(
                 self.memory,
@@ -81,6 +83,7 @@ impl Arena {
         Ok(())
     }
     pub fn read(&self, size: usize) -> Result<Vec<u8>> {
+        // SAFETY: GPU completion precedes readback; the allocation contains size bytes and the copied slice is owned before unmapping.
         unsafe {
             let p =
                 self.device
@@ -93,6 +96,7 @@ impl Arena {
 }
 impl Drop for Arena {
     fn drop(&mut self) {
+        // SAFETY: No pending frame references this owner; buffers are destroyed before their exclusively owned bound memory is freed.
         unsafe {
             for buffer in self.buffers.drain(..) {
                 self.device.destroy_buffer(buffer, None);

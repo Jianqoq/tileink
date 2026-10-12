@@ -23,6 +23,7 @@ impl TextureLayout {
         let mut footprints =
             vec![D3D12_PLACED_SUBRESOURCE_FOOTPRINT::default(); desc.DepthOrArraySize as usize];
         let mut total = 0;
+        // SAFETY: The descriptor is live and the output arrays contain one slot per requested subresource.
         unsafe {
             device.GetCopyableFootprints(
                 desc,
@@ -32,7 +33,7 @@ impl TextureLayout {
                 Some(footprints.as_mut_ptr()),
                 None,
                 None,
-                Some(&mut total),
+                Some(&raw mut total),
             );
         }
         if total == u64::MAX {
@@ -67,7 +68,7 @@ impl TextureLayout {
     }
 }
 impl Readback {
-    pub fn buffer(resource: ID3D12Resource, size: usize) -> Self {
+    pub const fn buffer(resource: ID3D12Resource, size: usize) -> Self {
         Self {
             resource,
             size,
@@ -95,6 +96,7 @@ unsafe fn copy(
     layer: u32,
     upload: bool,
 ) {
+    // SAFETY: The computed footprints bound buffer offsets and row pitches; source and destination are retained same-device resources.
     unsafe {
         let mut image = D3D12_TEXTURE_COPY_LOCATION {
             pResource: ManuallyDrop::new(Some(texture.clone())),
@@ -127,6 +129,7 @@ pub(super) fn upload(
     input: &Texture,
     cached: &mut super::buffer_cache::Available,
 ) -> Result<(ID3D12Resource, super::buffer_cache::Buffer)> {
+    // SAFETY: Validated texture extents and upload layout bound every copy; frame ownership retains resources until completion.
     unsafe {
         let texture = if let Some(texture) = &input.persistent {
             let crate::native::runtime::texture::Allocation::Dx12(allocation) =
@@ -173,6 +176,7 @@ pub(super) fn readback(
     list: &ID3D12GraphicsCommandList,
     texture: &ID3D12Resource,
 ) -> Result<Readback> {
+    // SAFETY: The retained texture descriptor determines a bounded readback allocation and matching copy footprints.
     unsafe {
         let desc = texture.GetDesc();
         let layout = TextureLayout::new(device, &desc)?;
@@ -203,6 +207,7 @@ pub(super) fn allocate(
     format: crate::ShaderTextureFormat,
     state: D3D12_RESOURCE_STATES,
 ) -> Result<ID3D12Resource> {
+    // SAFETY: Checked dimensions and layer count form the descriptor; the live device writes an owned resource output.
     unsafe {
         let desc = D3D12_RESOURCE_DESC {
             Dimension: D3D12_RESOURCE_DIMENSION_TEXTURE2D,
@@ -231,11 +236,11 @@ pub(super) fn allocate(
                 ..Default::default()
             },
             D3D12_HEAP_FLAG_NONE,
-            &desc,
+            &raw const desc,
             state,
             None,
-            &mut resource,
+            &raw mut resource,
         )?;
-        Ok(resource.unwrap())
+        resource.ok_or_else(|| "DX12 texture creation returned no resource".into())
     }
 }

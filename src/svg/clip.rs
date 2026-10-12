@@ -72,7 +72,7 @@ impl SvgBuilder {
             pushed += self.push_clip_path_layers(canvas, parent, reference_transform)?;
         }
 
-        match self.clip_path_lowering(clip) {
+        match Self::clip_path_lowering(clip) {
             ClipPathLowering::Empty => canvas.push_mask_layer(
                 Canvas::new(
                     canvas.logical_width,
@@ -181,14 +181,20 @@ impl SvgBuilder {
         }
     }
 
-    fn clip_path_lowering(&self, clip: &usvg::ClipPath) -> ClipPathLowering {
+    #[allow(
+        clippy::expect_used,
+        reason = "The fused clip branch is selected only when exactly one path was collected"
+    )]
+    fn clip_path_lowering(clip: &usvg::ClipPath) -> ClipPathLowering {
         let mut paths = Vec::new();
         let mut needs_mask = false;
-        self.collect_clip_path_candidates(clip.root(), &mut paths, &mut needs_mask);
+        Self::collect_clip_path_candidates(clip.root(), &mut paths, &mut needs_mask);
         if paths.is_empty() && !needs_mask {
             ClipPathLowering::Empty
         } else if !needs_mask && paths.len() == 1 {
-            let (path, rule) = paths.pop().unwrap();
+            let (path, rule) = paths.pop().expect(
+                "The fused clip branch is selected only when exactly one path was collected",
+            );
             ClipPathLowering::Fused { path, rule }
         } else {
             ClipPathLowering::Mask
@@ -196,7 +202,6 @@ impl SvgBuilder {
     }
 
     fn collect_clip_path_candidates(
-        &self,
         group: &usvg::Group,
         paths: &mut Vec<(BezPath, FillRule)>,
         needs_mask: &mut bool,
@@ -208,13 +213,12 @@ impl SvgBuilder {
 
         for child in group.children() {
             match child {
-                Node::Group(group) => self.collect_clip_path_candidates(group, paths, needs_mask),
+                Node::Group(group) => Self::collect_clip_path_candidates(group, paths, needs_mask),
                 Node::Path(path) => {
                     if path.is_visible() {
                         let rule = path
                             .fill()
-                            .map(|fill| fill_rule(fill.rule()))
-                            .unwrap_or(FillRule::NonZero);
+                            .map_or(FillRule::NonZero, |fill| fill_rule(fill.rule()));
                         paths.push((
                             transform_to_affine(path.abs_transform())
                                 * tiny_path_to_bez(path.data()),
@@ -223,7 +227,7 @@ impl SvgBuilder {
                     }
                 }
                 Node::Text(text) => {
-                    self.collect_clip_path_candidates(text.flattened(), paths, needs_mask)
+                    Self::collect_clip_path_candidates(text.flattened(), paths, needs_mask);
                 }
                 Node::Image(_) => {}
             }

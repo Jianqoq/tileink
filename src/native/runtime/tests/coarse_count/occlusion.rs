@@ -19,7 +19,7 @@ fn opaque_scene(count: u32, linked: bool, stack: u32, alpha: u32, bins: bool) ->
         scene.draws.extend(draw);
         let mut brush = vec![0; 21];
         brush[0] = 1;
-        brush[4] = (if index == hidden { alpha } else { 119 }) << 24 | 0x224466;
+        brush[4] = ((if index == hidden { alpha } else { 119 }) << 24) | 0x0022_4466;
         scene.sdf.extend(brush);
     }
     if stack != 0 {
@@ -58,7 +58,7 @@ fn opaque_scene(count: u32, linked: bool, stack: u32, alpha: u32, bins: bool) ->
                 0,
                 0,
                 0,
-                (if index == hidden { alpha } else { 119 }) << 24 | 0x224466,
+                ((if index == hidden { alpha } else { 119 }) << 24) | 0x0022_4466,
             ]);
         }
         if wrappers != 0 {
@@ -111,8 +111,8 @@ fn native_opaque_occlusion_preserves_allocations_pages_and_layer_semantics() -> 
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn native_opaque_occlusion_chunk_resolution_respects_clip_and_group_depth() -> Result<()> {
     let routes = Routes::new()?;
-    let opaque = [2, 0, 0, 0, 0, 0xff224466];
-    let translucent = [2, 0, 0, 0, 0, 0x77224466];
+    let opaque = [2, 0, 0, 0, 0, 0xff22_4466];
+    let translucent = [2, 0, 0, 0, 0, 0x7722_4466];
     let end = [0; 6];
     for (stream, cutoff) in [
         (vec![translucent, opaque, translucent, end], 2),
@@ -241,9 +241,9 @@ fn native_opaque_occlusion_rejects_incomplete_or_truncated_streams() -> Result<(
         let mut scene = opaque_scene(3, false, 0, 255, false);
         let refs = scene.kind_base - scene.config[13] as usize * 7;
         scene.work[refs + 6] = 13;
-        scene.work[12..18].copy_from_slice(&[2, 0, 0, 0, 0, 0x77224466]);
-        scene.work[18..24].copy_from_slice(&[2, 0, 0, 0, 0, 0xff224466]);
-        scene.work[24..30].copy_from_slice(&[2, 0, 0, 0, 0, 0x77224466]);
+        scene.work[12..18].copy_from_slice(&[2, 0, 0, 0, 0, 0x7722_4466]);
+        scene.work[18..24].copy_from_slice(&[2, 0, 0, 0, 0, 0xff22_4466]);
+        scene.work[24..30].copy_from_slice(&[2, 0, 0, 0, 0, 0x7722_4466]);
         scene.work[30..36].fill(0);
         match mode {
             0 => scene.work[30] = 9,                  // missing END

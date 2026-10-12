@@ -1,10 +1,24 @@
 //! Execute the production Vulkan cache path through a controlled ash function table.
 //! This verifies driver-call/error/ownership semantics, not Vulkan GPU conformance.
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "Test setup and assertions abort on failure; production builds are checked separately"
+    )
+)]
 #[path = "native_vulkan_pipeline_cache/driver.rs"]
 mod driver;
+#[path = "../build/hex.rs"]
+mod hex;
 #[path = "../src/native/runtime/pipeline_cache.rs"]
 mod pipeline_cache;
-#[allow(dead_code)] // This standalone driver-cache crate consumes hit status, not shader bytes.
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)] // This standalone driver-cache crate consumes hit status, not shader bytes.
 #[path = "../build/native/cache.rs"]
 mod shader_cache;
 #[path = "../src/native/runtime/vulkan/compute_pipeline/cache.rs"]
@@ -50,6 +64,7 @@ fn invoke(key: &str, properties: &vk::PhysicalDeviceProperties) -> Result<bool> 
         vk::PipelineShaderStageCreateInfo::default(),
         vk::PipelineLayout::null(),
     )?;
+    // SAFETY: This pipeline is owned by the fake device and was never submitted; destroy releases its test handle.
     unsafe {
         device.destroy_pipeline(pipeline, None);
     }
@@ -92,7 +107,7 @@ fn cached_error(operation: &'static str) {
                 d.calls.iter().filter(|&&c| c == "cache").count(),
                 1,
                 "driver failure must not trigger a cold retry"
-            )
+            );
         });
         assert!(
             create(&key).unwrap(),
@@ -137,7 +152,7 @@ fn opaque_driver_cache_is_forwarded_without_host_header_policy() {
         |_| {
             driver::with(|d| d.bytes[16..32].fill(99));
             assert!(!create("opaque").unwrap());
-            driver::with(|d| d.reset_calls());
+            driver::with(driver::Driver::reset_calls);
             assert!(create("opaque").unwrap());
             driver::with(|d| assert_eq!(d.inputs.as_slice(), std::slice::from_ref(&d.bytes)));
         },

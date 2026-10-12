@@ -77,7 +77,7 @@ fn appended_multibatch_fragment_matches_fresh_for_local_and_exterior_filter_inpu
                     RetainedParent::content(id(95_002)),
                     None,
                     id(95_003),
-                    content.clone(),
+                    std::rc::Rc::clone(&content),
                     Affine::IDENTITY,
                 )
                 .commit()?;
@@ -94,10 +94,10 @@ fn appended_multibatch_fragment_matches_fresh_for_local_and_exterior_filter_inpu
                 "exterior={exterior}, cycle={cycle}"
             );
             for (x, color) in [
-                (8, 0xff0000ff),
-                (24, 0xff00ff00),
-                (40, 0xffff0000),
-                (56, 0xffffffff),
+                (8, 0xff00_00ff),
+                (24, 0xff00_ff00),
+                (40, 0xffff_0000),
+                (56, 0xffff_ffff),
             ] {
                 assert_eq!(
                     actual.pixels[8 * 64 + x],

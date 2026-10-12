@@ -34,7 +34,7 @@ fn mask_weights_preserve_defaults_and_select_the_active_raster_mode() {
 
 #[test]
 fn mask_weight_cache_keys_preserve_bitwise_float_identity() {
-    let bits = [0, 0x80000000, 0x3f000000, 0x7fc00001, 0x7fc00002];
+    let bits = [0, 0x8000_0000, 0x3f00_0000, 0x7fc0_0001, 0x7fc0_0002];
     let mut keys = HashMap::new();
     for alpha in bits {
         for lcd in bits {

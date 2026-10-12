@@ -104,8 +104,13 @@ impl DamageTiles {
     }
 
     #[inline(always)]
+    #[allow(
+        clippy::inline_always,
+        reason = "Tiny bitset operations run inside tile scans; preserve their existing forced inlining"
+    )]
     fn add_tile(&mut self, tile: u32) {
         // Every caller clips tile coordinates to the dimensions used to allocate `bits`.
+        // SAFETY: Every caller clips tile coordinates to the dimensions used to allocate bits.
         let word = unsafe { self.bits.get_unchecked_mut(tile as usize / 64) };
         let mask = 1 << (tile % 64);
         if *word & mask == 0 {
@@ -143,6 +148,10 @@ impl DamageTiles {
     }
 
     #[inline(always)]
+    #[allow(
+        clippy::inline_always,
+        reason = "Tiny bitset operations run inside tile scans; preserve their existing forced inlining"
+    )]
     fn contains(&self, tile: u32) -> bool {
         self.bits
             .get(tile as usize / 64)
@@ -150,6 +159,10 @@ impl DamageTiles {
     }
 
     #[inline(always)]
+    #[allow(
+        clippy::inline_always,
+        reason = "Tiny bitset operations run inside tile scans; preserve their existing forced inlining"
+    )]
     pub(crate) fn intersects_bounds(&self, bounds: Bounds) -> bool {
         if bounds.is_empty() {
             return false;
@@ -247,19 +260,19 @@ impl DamageTiles {
         &self.list
     }
 
-    pub(crate) fn len(&self) -> u32 {
+    pub(crate) const fn len(&self) -> u32 {
         self.list.len() as u32
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    pub(crate) const fn is_empty(&self) -> bool {
         self.list.is_empty()
     }
 
-    pub(crate) fn total_tiles(&self) -> u32 {
+    pub(crate) const fn total_tiles(&self) -> u32 {
         self.tiles_width.saturating_mul(self.tiles_height)
     }
 
-    pub(crate) fn dimensions(&self) -> (u32, u32) {
+    pub(crate) const fn dimensions(&self) -> (u32, u32) {
         (self.tiles_width, self.tiles_height)
     }
 
@@ -303,7 +316,7 @@ impl DamageTiles {
             if bits != 0 {
                 let segment_x = start - row_start;
                 x0 = x0.min(segment_x + bits.trailing_zeros());
-                x1 = x1.max(segment_x + (u64::BITS - bits.leading_zeros()).min(width));
+                x1 = x1.max(segment_x + bits.bit_width().min(width));
             }
             start += width;
         }
@@ -436,7 +449,11 @@ impl DamageTiles {
 }
 
 #[inline(always)]
-fn low_mask(width: u32) -> u64 {
+#[allow(
+    clippy::inline_always,
+    reason = "Tiny bitset operations run inside tile scans; preserve their existing forced inlining"
+)]
+const fn low_mask(width: u32) -> u64 {
     if width == 64 {
         u64::MAX
     } else {
@@ -445,7 +462,11 @@ fn low_mask(width: u32) -> u64 {
 }
 
 #[inline(always)]
-fn checked_shr(value: u64, amount: u32) -> u64 {
+#[allow(
+    clippy::inline_always,
+    reason = "Tiny bitset operations run inside tile scans; preserve their existing forced inlining"
+)]
+const fn checked_shr(value: u64, amount: u32) -> u64 {
     if amount == 64 { 0 } else { value >> amount }
 }
 

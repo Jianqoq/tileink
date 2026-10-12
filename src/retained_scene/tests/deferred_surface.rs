@@ -72,13 +72,8 @@ fn resize_with_layer_updates_defers_full_frame_and_spatial_rebuild() {
         .commit()
         .unwrap();
     let mut materializer = PersistentSceneMaterializer::new(&scene);
-    let base_nodes = materializer
-        .canvas
-        .persistent_frame
-        .as_ref()
-        .unwrap()
-        .nodes
-        .clone();
+    let base_nodes =
+        std::rc::Rc::clone(&materializer.canvas.persistent_frame.as_ref().unwrap().nodes);
 
     scene
         .transaction()
@@ -144,13 +139,8 @@ fn resize_with_hierarchy_changes_defers_full_frame_and_spatial_rebuild() {
         .commit()
         .unwrap();
     let mut materializer = PersistentSceneMaterializer::new(&scene);
-    let base_nodes = materializer
-        .canvas
-        .persistent_frame
-        .as_ref()
-        .unwrap()
-        .nodes
-        .clone();
+    let base_nodes =
+        std::rc::Rc::clone(&materializer.canvas.persistent_frame.as_ref().unwrap().nodes);
 
     scene
         .transaction()

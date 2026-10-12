@@ -85,7 +85,7 @@ fn fixed_coordinates_reject_signed_minimum_and_overflowing_products() {
     c.entry = "sample_words";
     c.params.value = [(-32768.0f32).to_bits(), 0, 1, 0];
     assert!(c.validate().is_err()); // Never negate i32::MIN in HLSL/MSL.
-    for origin in [f32::from_bits(0x46ffffff), -f32::from_bits(0x46ffffff)] {
+    for origin in [f32::from_bits(0x46ff_ffff), -f32::from_bits(0x46ff_ffff)] {
         c.params.value[0] = origin.to_bits();
         assert!(c.validate().is_ok());
     }

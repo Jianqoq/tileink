@@ -171,8 +171,9 @@ fn assert_scratch_capacity(owned_root: bool) -> Result<()> {
     #[cfg(feature = "metal")]
     let backend = NativeBackend::Metal;
     #[cfg(feature = "dx12")]
+    // SAFETY: The serial GPU fixture enables validation before creating its context; the creation gate prevents late debug-layer changes.
     unsafe {
-        NativeContext::enable_dx12_validation()?
+        NativeContext::enable_dx12_validation()?;
     };
     let context = NativeContext::new(
         backend,
@@ -185,7 +186,7 @@ fn assert_scratch_capacity(owned_root: bool) -> Result<()> {
     let main = context.create_texture(40, 32)?;
     let mut previous = None;
     for (index, size) in [[16, 12], [20, 14], [18, 13]].into_iter().enumerate() {
-        let mut batch = ComputeBatch::with_surfaces(pool.clone());
+        let mut batch = ComputeBatch::with_surfaces(std::rc::Rc::clone(&pool));
         let image = batch.import_texture(&main)?;
         let mut targets = if owned_root {
             Targets::new(&mut batch, size, 0)?
@@ -205,7 +206,7 @@ fn assert_scratch_capacity(owned_root: bool) -> Result<()> {
         }
         assert_eq!(scratch.byte_len(), batch.size(scratch.image())? as u64);
         let physical_bytes = batch.size(scratch.image())?;
-        let color = if index == 1 { 0xff352f17u32 } else { 0 };
+        let color = if index == 1 { 0xff35_2f17_u32 } else { 0 };
         if color != 0 {
             use crate::native::runtime::program::filter::{self, BasicFilter};
             use crate::shared::filter_config::FilterConfig;
@@ -256,7 +257,7 @@ fn batch_owned_pixels_cannot_become_a_retained_frame_target() -> Result<()> {
 fn retained_surfaces_import_into_later_batches_on_the_same_device() -> Result<()> {
     let context = gpu_support::context()?;
     let mut first = gpu_support::batch(&context);
-    let color = 0xff231347u32;
+    let color = 0xff23_1347_u32;
     let surface = Surface::allocate(&mut first, [3, 2], color)?;
     let submitted = context.submit_compute(&first)?;
     drop(first);

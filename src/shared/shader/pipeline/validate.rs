@@ -9,7 +9,7 @@ fn extent(e: ShaderExtent) -> bool {
     match e {
         ShaderExtent::Surface { divisor } => !divisor.contains(&0),
         ShaderExtent::Fixed(size) => {
-            !size.contains(&0) && size.iter().all(|&n| n <= i32::MAX as u32)
+            !size.contains(&0) && size.iter().all(|&n| i32::try_from(n).is_ok())
         }
     }
 }
@@ -114,7 +114,7 @@ pub(super) fn pipeline(
             ShaderResource::Uniform(bytes) => {
                 !bytes.is_empty()
                     && bytes.len().is_multiple_of(4)
-                    && bytes.len() <= u32::MAX as usize
+                    && u32::try_from(bytes.len()).is_ok()
             }
             ShaderResource::External {
                 kind: ShaderResourceKind::TextureTable(count),
@@ -174,11 +174,11 @@ pub(super) fn pipeline(
                 return Err(ShaderError::InvalidBinding);
             }
             let valid = match (b.kind, r) {
-                (ShaderBindingKind::Config, ShaderResource::Config(_)) => true,
                 (ShaderBindingKind::Uniform(n), ShaderResource::Uniform(bytes)) => {
                     bytes.len() == n as usize
                 }
-                (
+                (ShaderBindingKind::Config, ShaderResource::Config(_))
+                | (
                     ShaderBindingKind::Uniform(_),
                     ShaderResource::External {
                         kind: ShaderResourceKind::Buffer,

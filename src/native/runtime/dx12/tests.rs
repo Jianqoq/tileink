@@ -20,6 +20,7 @@ fn failed_retirement_retains_fence_owner_until_process_exit() -> Result<()> {
         let observer: windows::core::IUnknown = context.gpu.fence.cast()?;
         let before = fence_references(&observer);
         let report = context.validation_queue();
+        // SAFETY: The test retains the validation queue while querying its message count.
         let message_count = unsafe {
             report
                 .queue
@@ -31,6 +32,7 @@ fn failed_retirement_retains_fence_owner_until_process_exit() -> Result<()> {
         drop(context);
         if released == 0 {
             assert!(
+                // SAFETY: The quarantined context keeps this validation queue live during the count query.
                 unsafe {
                     report
                         .queue
@@ -47,6 +49,7 @@ fn failed_retirement_retains_fence_owner_until_process_exit() -> Result<()> {
 }
 
 fn fence_references(fence: &windows::core::IUnknown) -> u32 {
+    // SAFETY: The caller retains the fence; AddRef and Release are balanced before returning the observed count.
     unsafe {
         let count = (fence.vtable().AddRef)(fence.as_raw());
         (fence.vtable().Release)(fence.as_raw());
@@ -71,7 +74,7 @@ fn probe_pipelines_are_created_only_for_probe_submissions() -> Result<()> {
             source_offset: 0,
             destination_offset: 0,
             stride: 4,
-            value: [0x12345678, 0, 0, 0],
+            value: [0x1234_5678, 0, 0, 0],
         },
         source: vec![0; 4],
         destination: vec![0; 4],
@@ -79,7 +82,7 @@ fn probe_pipelines_are_created_only_for_probe_submissions() -> Result<()> {
     let ticket = device.submit(&command)?;
     assert_eq!(device.gpu.compute_pipelines.len(), 1);
     assert!(device.gpu.compute_pipelines.contains_key("clear_words"));
-    assert_eq!(device.readback(&ticket)?, 0x12345678u32.to_le_bytes());
+    assert_eq!(device.readback(&ticket)?, 0x1234_5678_u32.to_le_bytes());
     assert_valid(&device.validation_queue())
 }
 
@@ -117,6 +120,7 @@ fn late_validation_preserves_an_existing_plain_context() -> Result<()> {
     );
     // No externally owned device exists in this isolated test. Tileink detects
     // its own already-created device and rejects the late process-wide request.
+    // SAFETY: The test serializes device creation; the gate rejects late validation before touching a live device.
     assert!(unsafe { NativeContext::enable_dx12_validation() }.is_err());
     let after = renderer.render_to_image(&canvas)?.readback()?.pixels;
     assert_eq!(before, after);
@@ -162,6 +166,7 @@ fn rejected_cache_diagnostics_do_not_hide_other_attempts() -> Result<()> {
     }
     let context = Dx12::new(&std::env::var("TILEINK_NATIVE_GPU")?)?;
     let report = context.validation_queue();
+    // SAFETY: The test owns the validation queue; injected diagnostics use static strings and initialized message storage.
     unsafe {
         let start = report
             .queue
@@ -211,7 +216,7 @@ fn signal_failure_after_execute_retains_the_attempt_and_blocks_reuse() -> Result
             source_offset: 0,
             destination_offset: 0,
             stride: 4,
-            value: [0x12345678, 0, 0, 0],
+            value: [0x1234_5678, 0, 0, 0],
         },
         source: vec![0; 4],
         destination: vec![0; 4],
@@ -224,6 +229,7 @@ fn signal_failure_after_execute_retains_the_attempt_and_blocks_reuse() -> Result
     assert!(device.readback(&prefix).is_err());
     assert!(device.submit(&command).is_err());
     let report = device.validation_queue();
+    // SAFETY: The test retains the validation queue throughout this message-count query.
     let before = unsafe {
         report
             .queue
@@ -233,6 +239,7 @@ fn signal_failure_after_execute_retains_the_attempt_and_blocks_reuse() -> Result
     };
     drop(device);
     assert!(
+        // SAFETY: The quarantined context retains this validation queue during the message-count query.
         unsafe {
             report
                 .queue
@@ -254,6 +261,7 @@ fn optimized_clear_warning_is_reported() -> Result<()> {
     }
     let context = Dx12::new(&std::env::var("TILEINK_NATIVE_GPU")?)?;
     let report = context.validation_queue();
+    // SAFETY: The live test queue copies this static diagnostic text synchronously.
     unsafe {
         report
             .queue

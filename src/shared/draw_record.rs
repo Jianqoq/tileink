@@ -107,16 +107,16 @@ impl DrawRecord {
             .then_some(self.sdf_shadow_offset as usize..end as usize)
     }
 
-    pub(crate) fn has_analytic_geometry(&self) -> bool {
+    pub(crate) const fn has_analytic_geometry(&self) -> bool {
         self.sdf_offset != Self::NONE || self.sdf_shadow_offset != Self::NONE
     }
 
-    pub(crate) fn has_path(self) -> bool {
+    pub(crate) const fn has_path(self) -> bool {
         self.path_id != Self::NONE
     }
 
     #[cfg(test)]
-    pub(crate) fn solid_rect(self) -> bool {
+    pub(crate) const fn solid_rect(self) -> bool {
         self.solid_rect != 0
     }
 

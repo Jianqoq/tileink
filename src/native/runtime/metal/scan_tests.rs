@@ -34,13 +34,13 @@ fn scan_count_matches_cpu_clipped_tile_counts_and_keeps_guards() -> Result<()> {
         ([16.0, 16.0], [16.0, 16.0]),
         ([0.0, 16.0], [128.0, 16.0]),
         ([-16.0, -16.0], [144.0, 128.0]),
-        ([0.0, 0.000001], [128.0, 0.000001]),
+        ([0.0, 0.000_001], [128.0, 0.000_001]),
     ];
     let mut seed = 127u32;
     for _ in 0..120 {
         let mut point = || {
             std::array::from_fn(|_| {
-                seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
                 (seed % 3073) as f32 / 16.0 - 32.0
             })
         };
@@ -62,7 +62,7 @@ fn scan_count_matches_cpu_clipped_tile_counts_and_keeps_guards() -> Result<()> {
                     words[..7]
                         .iter()
                         .chain(&words[71..])
-                        .all(|&word| word == 0x12345678)
+                        .all(|&word| word == 0x1234_5678)
                 );
             }
             let total: u32 = outputs[1][28..284]

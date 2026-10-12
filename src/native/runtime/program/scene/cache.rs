@@ -3,7 +3,7 @@ use super::*;
 
 impl PreparedScene<'_> {
     pub(crate) fn plan_handle(&self) -> Rc<ExecPlan> {
-        self.plan.plan.clone()
+        std::rc::Rc::clone(&self.plan.plan)
     }
     pub(crate) fn size(&self) -> (u32, u32) {
         self.canvas.physical_size()
@@ -26,7 +26,7 @@ impl SceneCache {
     }
 
     pub(crate) fn install_retained_plan(&mut self, canvas: &Canvas) {
-        self.plan = canvas.compiled_plan.clone();
+        self.plan.clone_from(&canvas.compiled_plan);
     }
 
     pub(crate) fn prepare<'a>(&'a mut self, canvas: &'a Canvas) -> PreparedScene<'a> {

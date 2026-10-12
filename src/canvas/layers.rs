@@ -70,7 +70,7 @@ impl Canvas {
         let sdf = self.physical_sdf(sdf);
         let draw = self.push_physical_sdf_record(
             sdf,
-            Brush::Solid(Color::TRANSPARENT),
+            &Brush::Solid(Color::TRANSPARENT),
             DrawTag::Clip,
             false,
         );
@@ -90,7 +90,7 @@ impl Canvas {
         let sdf = self.physical_sdf(sdf);
         let draw = self.push_physical_sdf_record(
             sdf,
-            Brush::Solid(Color::TRANSPARENT),
+            &Brush::Solid(Color::TRANSPARENT),
             DrawTag::Clip,
             false,
         );
@@ -162,7 +162,14 @@ impl Canvas {
     /// The mask source is rendered isolated, converted to either alpha or
     /// luminance coverage, clipped to `mask.region`, then applied to this
     /// layer's content before compositing through any outer clips.
-    pub fn push_mask_layer(&mut self, mask_scene: Canvas, mask: Mask) {
+    ///
+    /// # Panics
+    /// Panics if the mask and destination use different scale factors.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "Recording consumes the temporary mask scene and releases its source storage after appending"
+    )]
+    pub fn push_mask_layer(&mut self, mask_scene: Self, mask: Mask) {
         assert!(
             (self.scale_factor - mask_scene.scale_factor).abs() <= f32::EPSILON,
             "cannot use a mask canvas with a different scale factor"
@@ -176,6 +183,9 @@ impl Canvas {
     /// Filters derive their final output bounds from this region. Blur and
     /// drop-shadow expand it internally so their output is not clipped back to
     /// the original geometry.
+    ///
+    /// # Panics
+    /// Panics if the filter contains a rectangular liquid-glass backdrop effect. Use `push_backdrop_layer` for that effect.
     pub fn push_filter_layer(&mut self, filter: Filter, sample_region: Region) {
         let filter = self.physical_filter(filter);
         let sample_region = self.physical_region(sample_region);
@@ -194,6 +204,9 @@ impl Canvas {
     /// The filter samples pixels behind this layer from `sample_region`, clips
     /// the filtered backdrop back to that region, then renders this layer's
     /// children normally on top.
+    ///
+    /// # Panics
+    /// Panics if a rectangular liquid-glass effect is supplied with a nonrectangular region.
     pub fn push_backdrop_layer(&mut self, filter: Filter, sample_region: Region) {
         let filter = self.physical_filter(filter);
         let sample_region = self.physical_region(sample_region);

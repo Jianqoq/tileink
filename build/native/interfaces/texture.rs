@@ -25,10 +25,14 @@ pub(super) fn validation() -> Interface {
     )
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "Built-in ABI recipes provide the required entry, resource, field and constant before specialization"
+)]
 pub(super) fn array() -> Interface {
     let mut result = validation();
-    result.resources.get_mut("config").unwrap().fields[2].name = "layer".into();
-    result.resources.get_mut("source").unwrap().kind = Kind::TextureArray;
+    result.resources.get_mut("config").expect("Built-in ABI recipes provide the required entry, resource, field and constant before specialization").fields[2].name = "layer".into();
+    result.resources.get_mut("source").expect("Built-in ABI recipes provide the required entry, resource, field and constant before specialization").kind = Kind::TextureArray;
     result.entries = [(
         "texture_layer".into(),
         vec!["config".into(), "source".into(), "destination".into()],

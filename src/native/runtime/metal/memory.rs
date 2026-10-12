@@ -25,7 +25,7 @@ pub(super) fn upload(device: &ProtocolDevice, bytes: &[u8]) -> Result<Object<dyn
     // SAFETY: the input slice is initialized and copied synchronously by Metal.
     unsafe {
         device.newBufferWithBytes_length_options(
-            NonNull::new(bytes.as_ptr().cast_mut().cast()).unwrap(),
+            NonNull::from(bytes).cast(),
             bytes.len(),
             MTLResourceOptions::StorageModeShared,
         )
@@ -86,14 +86,14 @@ pub(super) fn texture_format(
         .newTextureWithDescriptor(&descriptor)
         .ok_or_else(|| "Metal texture allocation failed".into())
 }
-pub(super) fn size(value: [u32; 3]) -> MTLSize {
+pub(super) const fn size(value: [u32; 3]) -> MTLSize {
     MTLSize {
         width: value[0] as usize,
         height: value[1] as usize,
         depth: value[2] as usize,
     }
 }
-pub(super) fn origin(value: [u32; 2]) -> MTLOrigin {
+pub(super) const fn origin(value: [u32; 2]) -> MTLOrigin {
     MTLOrigin {
         x: value[0] as usize,
         y: value[1] as usize,

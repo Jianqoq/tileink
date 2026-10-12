@@ -1,6 +1,7 @@
 //! Upload scene inputs and assemble scan/coarse/fine bindings.
 use super::super::{resources::allocate, scene_scan::PreparedScan};
 use super::*;
+use crate::native::runtime::program::cached_buffer::CachedBuffer;
 use crate::render::{coarse::validate_work_layout, fine::spill_layout, upload::paint::PaintData};
 use crate::shared::{
     gpu_coarse::CoarseChunkRecord,
@@ -41,8 +42,8 @@ impl SceneCache {
         let draws = if let Some(custom) = &custom {
             // These remapped offsets are frame-local. Never install them into
             // the retained dirty-journal cache of original Canvas records.
-            self.buffers.draws = Default::default();
-            self.buffers.paint = Default::default();
+            self.buffers.draws = CachedBuffer::default();
+            self.buffers.paint = CachedBuffer::default();
             batch.buffer(bytemuck::cast_slice(&custom.draws).to_vec())?
         } else {
             self.buffers.draws.upload(
@@ -169,7 +170,7 @@ impl SceneCache {
             .buffers
             .spills
             .scratch(batch, spill_words, size_of::<u32>())?;
-        self.plan = Some(prepared.plan.clone());
+        self.plan = Some(std::rc::Rc::clone(&prepared.plan));
         Ok(Scene {
             program_images: custom.map(|c| c.images),
             active_batches,
@@ -190,7 +191,9 @@ impl SceneCache {
             chunks,
             spills,
             fine_params: FineParams {
-                active_tile_count: options.active.map(|active| active.len()),
+                active_tile_count: options
+                    .active
+                    .map(crate::render::damage_tiles::DamageTiles::len),
                 width: canvas.physical_width(),
                 height: canvas.physical_height(),
                 clip_spill_depth,

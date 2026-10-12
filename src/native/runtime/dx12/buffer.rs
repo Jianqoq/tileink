@@ -9,6 +9,7 @@ pub fn create(
     flags: D3D12_RESOURCE_FLAGS,
     contents: Option<&[u8]>,
 ) -> Result<ID3D12Resource> {
+    // SAFETY: The buffer descriptor uses the checked allocation size and a live device; the output COM resource is retained by its owner.
     unsafe {
         let desc = D3D12_RESOURCE_DESC {
             Dimension: D3D12_RESOURCE_DIMENSION_BUFFER,
@@ -32,20 +33,21 @@ pub fn create(
         };
         let mut resource = None;
         device.CreateCommittedResource(
-            &properties,
+            &raw const properties,
             D3D12_HEAP_FLAG_NONE,
-            &desc,
+            &raw const desc,
             state,
             None,
-            &mut resource,
+            &raw mut resource,
         )?;
-        let resource: ID3D12Resource = resource.unwrap();
+        let resource: ID3D12Resource =
+            resource.ok_or("DX12 buffer creation returned no resource")?;
         if let Some(contents) = contents {
             let mut pointer = std::ptr::null_mut();
             resource.Map(
                 0,
                 Some(&D3D12_RANGE { Begin: 0, End: 0 }),
-                Some(&mut pointer),
+                Some(&raw mut pointer),
             )?;
             std::ptr::copy_nonoverlapping(contents.as_ptr(), pointer.cast(), contents.len());
             resource.Unmap(0, None);
@@ -59,6 +61,7 @@ pub fn transition(
     before: D3D12_RESOURCE_STATES,
     after: D3D12_RESOURCE_STATES,
 ) {
+    // SAFETY: The caller supplies a live same-device command list, resource and actual before/after states; the temporary COM barrier reference is released once.
     unsafe {
         let mut barrier = D3D12_RESOURCE_BARRIER {
             Type: D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
@@ -77,6 +80,7 @@ pub fn transition(
     }
 }
 pub fn read(readback: &ID3D12Resource, size: usize) -> Result<Vec<u8>> {
+    // SAFETY: Completion precedes readback; the retained buffer contains size readable bytes and is unmapped after copying.
     unsafe {
         let mut pointer = std::ptr::null_mut();
         readback.Map(
@@ -85,7 +89,7 @@ pub fn read(readback: &ID3D12Resource, size: usize) -> Result<Vec<u8>> {
                 Begin: 0,
                 End: size,
             }),
-            Some(&mut pointer),
+            Some(&raw mut pointer),
         )?;
         let bytes = std::slice::from_raw_parts(pointer.cast::<u8>(), size).to_vec();
         readback.Unmap(0, Some(&D3D12_RANGE { Begin: 0, End: 0 }));
@@ -93,6 +97,7 @@ pub fn read(readback: &ID3D12Resource, size: usize) -> Result<Vec<u8>> {
     }
 }
 pub fn uav_barrier(list: &ID3D12GraphicsCommandList, resource: &ID3D12Resource) {
+    // SAFETY: The resource and list belong to the same live device; the barrier reference is retained for recording and released once.
     unsafe {
         let mut barrier = D3D12_RESOURCE_BARRIER {
             Type: D3D12_RESOURCE_BARRIER_TYPE_UAV,

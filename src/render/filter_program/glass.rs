@@ -128,7 +128,10 @@ impl<A: FilterAdapter> FilterExecutor<'_, A> {
     }
     /// The refraction halo is blurred without compact output work, then the
     /// exact dirty-tile list is restored before updating the cached glass image.
-    #[allow(clippy::too_many_arguments)]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Explicit geometry/resource parameters preserve the renderer and native ABI contract."
+    )]
     pub(crate) fn apply_liquid_glass_from_source_partial(
         &mut self,
         source: RenderTargetId,

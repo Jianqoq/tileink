@@ -42,6 +42,10 @@ pub(super) fn packet(upload: &Upload) -> Option<Packet> {
     })
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "Successful scatter recording appends the dispatch before moving it ahead of rendering"
+)]
 pub(super) fn record(
     batch: &mut ComputeBatch,
     destination: ResourceId,

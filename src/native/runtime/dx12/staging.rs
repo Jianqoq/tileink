@@ -8,7 +8,7 @@ pub(super) fn prepare(
     cached: &mut super::buffer_cache::Available,
 ) -> Result<super::buffer_cache::Buffer> {
     prepare_with(device, contents.len(), cached, |mapped| {
-        mapped.write(0, contents)
+        mapped.write(0, contents);
     })
 }
 
@@ -32,12 +32,13 @@ pub(super) fn prepare_with(
         )?
         .into(),
     };
+    // SAFETY: The acquired upload resource owns at least size bytes and remains retained until the paired Unmap.
     unsafe {
         let mut pointer = std::ptr::null_mut();
         resource.resource.Map(
             0,
             Some(&D3D12_RANGE { Begin: 0, End: 0 }),
-            Some(&mut pointer),
+            Some(&raw mut pointer),
         )?;
         let mut mapped = Mapped {
             resource: &resource.resource,
@@ -60,6 +61,7 @@ impl Mapped<'_> {
         assert!(offset <= self.size && bytes.len() <= self.size - offset);
         // The mapping is exclusively owned until Drop. Padding need not be initialized:
         // texture copies consume only the texels described by each footprint.
+        // SAFETY: The upload planner bounds offset plus byte length by the mapped allocation; source and destination do not overlap.
         unsafe {
             std::ptr::copy_nonoverlapping(bytes.as_ptr(), self.pointer.add(offset), bytes.len());
         }
@@ -68,6 +70,7 @@ impl Mapped<'_> {
 
 impl Drop for Mapped<'_> {
     fn drop(&mut self) {
+        // SAFETY: This owner mapped the resource once; size bounds the written range and no later writes use the pointer.
         unsafe {
             self.resource.Unmap(
                 0,

@@ -17,7 +17,7 @@ impl Adapter {
     ) -> Result<NativeTexture> {
         let Device::Metal(device) = &*self.0.borrow();
         let texture = descriptor.texture;
-        if !std::ptr::eq(&*texture.device(), &*device.device)
+        if !std::ptr::eq(&raw const *texture.device(), &raw const *device.device)
             || texture.pixelFormat() != MTLPixelFormat::RGBA8Unorm
             || texture.sampleCount() != 1
             || texture.mipmapLevelCount() != 1

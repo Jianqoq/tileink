@@ -23,14 +23,14 @@ pub(super) fn grid_scene() -> (CountScene, Vec<u32>, usize) {
     let kind_base = emit_base + (refs + 2) * 7;
     let active_base = kind_base + tiles + 3;
     let active = [321u32, 16, 289, 1, 17, 0, 322];
-    scene.work = vec![0x45454545; active_base + active.len() + 3];
+    scene.work = vec![0x4545_4545; active_base + active.len() + 3];
     let mut index = 0;
     let mut reference = 0;
     for (tile, count) in counts.iter().enumerate() {
         scene.work[draw_base + tile * 2] = if *count == 0 {
             u32::MAX
         } else {
-            0x80000000 | index as u32
+            0x8000_0000 | index as u32
         };
         scene.work[draw_base + tile * 2 + 1] = *count;
         for _ in 0..*count {
@@ -102,8 +102,8 @@ fn native_routes_coarse_counts_cover_partial_bins_sparse_tiles_and_final_empty_r
     }
     let (mut scene, counts, base) = grid_scene();
     for (reference, count) in counts.into_iter().filter(|n| *n != 0).enumerate() {
-        scene.work[base + reference * 7 + 2] = 0xedededed;
-        scene.work[base + reference * 7 + 4] = 0xedededed;
+        scene.work[base + reference * 7 + 2] = 0xeded_eded;
+        scene.work[base + reference * 7 + 4] = 0xeded_eded;
         scene.expected[base + reference * 7 + 2] = count;
         scene.expected[base + reference * 7 + 4] = 0;
     }
@@ -130,7 +130,7 @@ fn metal_scalar_sparse_count_preserves_nonmonotonic_ids_and_padded_lanes() -> Re
             .take(active_count)
             .collect();
         let base = scene.config[17] as usize;
-        scene.work.resize(base + active.len() + 3, 0x45454545);
+        scene.work.resize(base + active.len() + 3, 0x4545_4545);
         scene.work[base..base + active.len()].copy_from_slice(&active);
         scene.config[16] = active.len() as u32;
         scene.config[18] = 1;

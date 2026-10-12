@@ -19,7 +19,7 @@ fn reusing_a_node_id_between_scene_and_layer_refreshes_placement() {
             RetainedParent::content(root),
             None,
             child,
-            source.clone(),
+            std::rc::Rc::clone(&source),
             Affine::IDENTITY,
         )
         .commit()
@@ -62,7 +62,7 @@ fn reusing_a_node_id_between_scene_and_layer_refreshes_placement() {
             RetainedParent::content(root),
             None,
             child,
-            source.clone(),
+            std::rc::Rc::clone(&source),
             transform,
         )
         .commit()

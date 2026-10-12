@@ -24,6 +24,10 @@ pub(super) struct OutputRoute<'a> {
     external: bool,
 }
 impl<'a> OutputRoute<'a> {
+    #[allow(
+        clippy::expect_used,
+        reason = "Direct rendering requires an external output; absent output selects an owned target"
+    )]
     pub fn prepare(
         renderer: &NativeRenderer,
         size: (u32, u32),
@@ -82,7 +86,7 @@ impl<'a> OutputRoute<'a> {
                 _ => renderer.context.create_texture(size.0, size.1)?,
             }
         } else {
-            output.unwrap().texture.clone()
+            output.expect("Direct rendering requires an external output; absent output selects an owned target").texture.clone()
         };
         let history = output.filter(|target| !matches!(target.history, History::Transient));
         Ok(Self {
@@ -167,7 +171,7 @@ impl<'a> OutputRoute<'a> {
         batch.readback(target).map_err(NativeError::Recording)?;
         Ok(())
     }
-    pub fn record_stats(&self, stats: &mut crate::IncrementalRenderStats) {
+    pub const fn record_stats(&self, stats: &mut crate::IncrementalRenderStats) {
         stats.history_copied_to_output = self.copy.is_some();
         stats.output_mode = if self.external && self.copy.is_none() {
             crate::IncrementalOutputMode::ExternalHistory

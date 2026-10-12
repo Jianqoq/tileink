@@ -3,6 +3,10 @@ use super::*;
 impl PersistentSceneMaterializer {
     /// Installs one root-layer subtree as an independent persistent plan
     /// fragment. Existing root batches and their large draw lists remain shared.
+    #[allow(
+        clippy::expect_used,
+        reason = "Fragment membership and command locations are built from the same installed execution plan"
+    )]
     pub(crate) fn insert_root_plan_fragment(&mut self, scene: &RetainedScene, id: RetainedNodeId) {
         // The caller installs this direct root layer at the command tail. Put its
         // authoritative command at the same painter position as its plan fragment;
@@ -87,7 +91,7 @@ impl PersistentSceneMaterializer {
             .expect("root insertion preserves the existing plan");
         let plan = Rc::make_mut(plan);
         let removed_batch = (moved_per_batch.len() == 1)
-            .then(|| moved_per_batch.into_iter().next().unwrap())
+            .then(|| moved_per_batch.into_iter().next().expect("Fragment membership and command locations are built from the same installed execution plan"))
             .and_then(|(batch, moved)| plan.remove_batch_if_all_moved(batch, moved));
         let mut insert_at = next_fragment_start.unwrap_or(plan.ops.len());
         if removed_batch

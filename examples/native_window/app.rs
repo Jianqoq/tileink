@@ -35,7 +35,7 @@ fn scene(size: [u32; 2]) -> Result<RetainedScene> {
     let mut scene = RetainedScene::new(size[0], size[1], 1.0, root)?;
     let mut canvas = Canvas::new(size[0], size[1], 1.0);
     canvas.push_rect(
-        Rect::new(0.0, 0.0, size[0] as f64, size[1] as f64),
+        Rect::new(0.0, 0.0, f64::from(size[0]), f64::from(size[1])),
         Radius::ZERO,
         Color::from_rgba8(18, 25, 39, 255),
     );

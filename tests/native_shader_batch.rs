@@ -1,10 +1,19 @@
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "Test setup and assertions abort on failure; production builds are checked separately"
+    )
+)]
 #![cfg(all(feature = "metal", target_os = "macos"))]
 use tileink::*;
 
 #[path = "native_shader_batch/samplers.rs"]
 mod samplers;
 
-const SOURCE: &str = r#"
+const SOURCE: &str = "
 #include <metal_stdlib>
 using namespace metal;
 struct Params { float4 tint; uint4 indices; };
@@ -13,7 +22,7 @@ kernel void combine(constant Params& params [[buffer(0)]], texture2d_array<float
     if (p.x >= 3 || p.y >= 2) return;
     output.write((atlas.read(p, params.indices.x) + table.images[params.indices.y].read(p)) * params.tint, p);
 }
-"#;
+";
 fn pipeline() -> Result<ShaderPipeline, Box<dyn std::error::Error>> {
     pipeline_source(SOURCE)
 }

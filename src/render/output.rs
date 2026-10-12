@@ -8,10 +8,12 @@
 pub struct ExternalTextureHistoryId(u64);
 
 impl ExternalTextureHistoryId {
+    #[must_use]
     pub const fn new(id: u64) -> Self {
         Self(id)
     }
 
+    #[must_use]
     pub const fn get(self) -> u64 {
         self.0
     }

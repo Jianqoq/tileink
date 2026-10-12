@@ -7,7 +7,7 @@ pub(super) fn allocation_size(count: usize, stride: usize) -> Result<usize> {
     count
         .max(1)
         .checked_mul(stride)
-        .filter(|&size| size <= u32::MAX as usize)
+        .filter(|&size| u32::try_from(size).is_ok())
         .ok_or_else(|| "native scan allocation exceeds raw-buffer address space".into())
 }
 

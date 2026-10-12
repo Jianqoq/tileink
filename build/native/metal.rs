@@ -1,8 +1,11 @@
 //! Apple-only compiler boundary. The input is maintained MSL, never translated
 //! WGSL/HLSL. Tool/SDK contents and all flags participate in the artifact recipe.
+use crate::hex;
+
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
+    ffi::OsStr,
     fs, io,
     path::{Path, PathBuf},
     process::Command,
@@ -26,7 +29,7 @@ pub const FLAGS: &[&str] = &[
     "-frecord-sources",
 ];
 
-fn run(tool: &Path, args: &[&str]) -> io::Result<String> {
+fn run(tool: &Path, args: &[impl AsRef<OsStr> + std::fmt::Debug]) -> io::Result<String> {
     let output = Command::new(tool).args(args).output()?;
     if !output.status.success() {
         return Err(io::Error::other(format!(
@@ -46,10 +49,7 @@ fn run(tool: &Path, args: &[&str]) -> io::Result<String> {
 }
 
 pub fn digest(bytes: &[u8]) -> String {
-    Sha256::digest(bytes)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+    hex::encode(&Sha256::digest(bytes))
 }
 
 fn tree(root: &Path, dir: &Path, files: &mut BTreeMap<String, String>) -> io::Result<()> {
@@ -61,7 +61,7 @@ fn tree(root: &Path, dir: &Path, files: &mut BTreeMap<String, String>) -> io::Re
         } else if path.is_file() {
             files.insert(
                 path.strip_prefix(root)
-                    .unwrap()
+                    .map_err(io::Error::other)?
                     .to_string_lossy()
                     .into_owned(),
                 digest(&fs::read(path)?),
@@ -72,15 +72,15 @@ fn tree(root: &Path, dir: &Path, files: &mut BTreeMap<String, String>) -> io::Re
 }
 
 impl MetalCompiler {
-    pub fn discover(xcrun: PathBuf) -> io::Result<Self> {
+    pub fn discover(xcrun: &Path) -> io::Result<Self> {
         if !xcrun.is_absolute() || !xcrun.is_file() {
             return Err(io::Error::other(
                 "Metal compilation requires an absolute existing xcrun executable",
             ));
         }
-        let sdk = PathBuf::from(run(&xcrun, &["--sdk", "macosx", "--show-sdk-path"])?);
+        let sdk = PathBuf::from(run(xcrun, &["--sdk", "macosx", "--show-sdk-path"])?);
         let resource = PathBuf::from(run(
-            &xcrun,
+            xcrun,
             &["--sdk", "macosx", "metal", "-print-resource-dir"],
         )?);
         // The resource directory is toolchain/usr/metal/VERSION/lib/clang/VERSION.
@@ -94,16 +94,16 @@ impl MetalCompiler {
         tree(toolchain, toolchain, &mut files)?;
         let mut tools = BTreeMap::new();
         for name in ["metal", "metallib"] {
-            let path = PathBuf::from(run(&xcrun, &["--sdk", "macosx", "--find", name])?);
+            let path = PathBuf::from(run(xcrun, &["--sdk", "macosx", "--find", name])?);
             tools.insert(
                 name,
                 serde_json::json!({"path":path,"sha256":digest(&fs::read(&path)?)}),
             );
         }
         let identity = serde_json::json!({
-            "compiler_version":run(&xcrun, &["--sdk", "macosx", "metal", "--version"])?,
-            "sdk_version":run(&xcrun, &["--sdk", "macosx", "--show-sdk-version"])?,
-            "sdk_build":run(&xcrun, &["--sdk", "macosx", "--show-sdk-build-version"])?,
+            "compiler_version":run(xcrun, &["--sdk", "macosx", "metal", "--version"])?,
+            "sdk_version":run(xcrun, &["--sdk", "macosx", "--show-sdk-version"])?,
+            "sdk_build":run(xcrun, &["--sdk", "macosx", "--show-sdk-build-version"])?,
             "sdk_settings_sha256":digest(&fs::read(sdk.join("SDKSettings.json"))?),
             "tools":tools,"toolchain_files":files
         });
@@ -135,21 +135,19 @@ impl MetalCompiler {
         }
         fs::write(&input, source)?;
         let mut args = Vec::new();
-        args.extend_from_slice(FLAGS);
+        args.extend(FLAGS.iter().map(OsStr::new));
         args.extend([
-            "-isysroot",
-            self.sdk
-                .to_str()
-                .ok_or_else(|| io::Error::other("non-UTF8 SDK path"))?,
-            "-c",
-            input.to_str().unwrap(),
-            "-o",
-            air.to_str().unwrap(),
+            OsStr::new("-isysroot"),
+            self.sdk.as_os_str(),
+            OsStr::new("-c"),
+            input.as_os_str(),
+            OsStr::new("-o"),
+            air.as_os_str(),
         ]);
         run(&self.metal, &args)?;
         run(
             &self.metallib,
-            &[air.to_str().unwrap(), "-o", library.to_str().unwrap()],
+            &[air.as_os_str(), OsStr::new("-o"), library.as_os_str()],
         )?;
         let bytes = fs::read(library)?;
         validate_container(&bytes)?;

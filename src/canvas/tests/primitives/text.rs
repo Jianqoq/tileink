@@ -82,7 +82,10 @@ fn push_text_layout_scales_glyph_cache_keys_to_physical_size() {
 
 // Keep text recording tests independent of system fonts and never silently skip assertions.
 fn font_system() -> TextFontSystem {
-    let mut fonts = TextFontSystem::new_with_locale_and_db("en-US".into(), Default::default());
+    let mut fonts = TextFontSystem::new_with_locale_and_db(
+        "en-US".into(),
+        cosmic_text::fontdb::Database::default(),
+    );
     fonts
         .db_mut()
         .load_font_data(include_bytes!("../../../svg/fonts/NotoSans-Regular.ttf").to_vec());

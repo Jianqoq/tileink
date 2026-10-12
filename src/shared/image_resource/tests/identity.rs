@@ -17,7 +17,7 @@ fn changed_image_after_source_release_invalidates_cached_upload() {
                 height: 1,
                 pixels: vec![red; width as usize],
             });
-            source.insert(key, image.clone());
+            source.insert(key, std::rc::Rc::clone(&image));
             let (renderer, scene) = if scene_image {
                 (&empty, &source)
             } else {
@@ -74,7 +74,7 @@ fn cached_image_identity_does_not_retain_source_pixels() {
     let image = Rc::new(Image::from_rgba8(1, 1, [255, 0, 0, 255]));
     let lifetime = Rc::downgrade(&image);
     let mut resources = ImageResourceStore::default();
-    resources.insert(ImageKey::new(1), image.clone());
+    resources.insert(ImageKey::new(1), std::rc::Rc::clone(&image));
     let upload = resources.upload_merged(&ImageResourceStore::default(), 8, 1, 0, None);
     let cached_clone = upload.clone();
     drop(upload);

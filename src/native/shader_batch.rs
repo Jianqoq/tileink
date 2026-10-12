@@ -9,27 +9,36 @@ use std::{cell::RefCell, rc::Rc};
 #[derive(Clone, Copy, Debug)]
 pub struct NativeShaderResource(pub(crate) ResourceId);
 
-/// Explicit native resource invocation. Use External descriptors with these
+/// Explicit native resource invocation.
+///
+/// Use External descriptors with these
 /// handles for buffers, arbitrary uniforms, arrays and descriptor tables. Canvas
 /// filters instead resolve Input/Output/Config automatically. Both use exactly
-/// the same ShaderPipeline descriptors, validator and pass executor.
+/// the same `ShaderPipeline` descriptors, validator and pass executor.
 pub struct NativeShaderBatch {
     context: NativeContext,
     pub(crate) batch: ComputeBatch,
 }
 impl NativeShaderBatch {
+    #[must_use]
     pub fn new(context: &NativeContext) -> Self {
         Self {
             context: context.clone(),
             batch: ComputeBatch::with_surfaces(Rc::new(RefCell::new(SurfacePool::new(context)))),
         }
     }
+    ///
+    /// # Errors
+    /// Returns an error if the buffer byte extent is invalid or exceeds native addressing limits.
     pub fn buffer(&mut self, bytes: Vec<u8>) -> Result<NativeShaderResource, NativeError> {
         self.batch
             .buffer(bytes)
             .map(NativeShaderResource)
             .map_err(NativeError::Recording)
     }
+    ///
+    /// # Errors
+    /// Returns an error if the dimensions or RGBA8 byte count are invalid.
     pub fn texture_rgba8(
         &mut self,
         size: [u32; 2],
@@ -40,6 +49,9 @@ impl NativeShaderBatch {
             .map(NativeShaderResource)
             .map_err(NativeError::Recording)
     }
+    ///
+    /// # Errors
+    /// Returns an error if the dimensions, layer count, or RGBA8 byte count are invalid.
     pub fn texture_array_rgba8(
         &mut self,
         size: [u32; 3],
@@ -51,6 +63,9 @@ impl NativeShaderBatch {
             .map_err(NativeError::Recording)
     }
     /// Import a persistent image without uploading or copying its pixels.
+    ///
+    /// # Errors
+    /// Returns an error if the texture belongs to another device or its import contract is invalid.
     pub fn import_texture(
         &mut self,
         texture: &NativeTexture,
@@ -65,6 +80,9 @@ impl NativeShaderBatch {
             .map(NativeShaderResource)
             .map_err(NativeError::Recording)
     }
+    ///
+    /// # Errors
+    /// Returns an error for invalid/foreign handles, incompatible texture kinds, or an unsupported table length.
     pub fn texture_table(
         &mut self,
         images: &[NativeShaderResource],
@@ -81,6 +99,9 @@ impl NativeShaderBatch {
             ShaderSampler::Linear => SamplerFilter::Linear,
         }))
     }
+    ///
+    /// # Errors
+    /// Returns an error for missing/foreign resources, binding/type mismatches, invalid extents, or uninitialized reads.
     pub fn record(
         &mut self,
         pipeline: &ShaderPipeline,
@@ -94,6 +115,9 @@ impl NativeShaderBatch {
         .map_err(NativeError::Recording)
     }
     /// Submit ordered passes without CPU waits or readbacks between passes.
+    ///
+    /// # Errors
+    /// Returns an error if native allocation, encoding, or queue submission fails; unconfirmed submissions are reported separately.
     pub fn submit(self) -> Result<NativeSubmission, NativeError> {
         self.context.submit_compute(&self.batch)
     }

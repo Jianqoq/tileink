@@ -10,7 +10,7 @@ pub(super) enum Geometry {
 
 // Texture extent checks and raw-buffer checks are separate. Stage-owned typed data
 // validates buffer contents/address ranges before supplying these read bindings.
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub(super) struct ReadBindings<'a> {
     pub textures: &'a [(u32, ResourceId)],
     pub texture_extent: [u32; 2],
@@ -18,7 +18,7 @@ pub(super) struct ReadBindings<'a> {
     pub images: Option<&'a crate::native::runtime::program::scene::SceneImages>,
 }
 impl<'a> ReadBindings<'a> {
-    pub fn textures(textures: &'a [(u32, ResourceId)], extent: [u32; 2]) -> Self {
+    pub const fn textures(textures: &'a [(u32, ResourceId)], extent: [u32; 2]) -> Self {
         Self {
             textures,
             texture_extent: extent,
@@ -85,7 +85,7 @@ pub(super) fn record(
     config.tiles_width = config.width.div_ceil(TILE_SIZE);
     config.tiles_height = config.height.div_ceil(TILE_SIZE);
     config.compact_tiles = u32::from(tiles.is_some());
-    config.active_tile_count = u32::try_from(tiles.map_or(0, |t| t.len()))?;
+    config.active_tile_count = u32::try_from(tiles.map_or(0, <[u32]>::len))?;
     let validated_tiles = tiles
         .map(|tiles| {
             batch.validate_filter_tiles(

@@ -29,6 +29,7 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 #[cfg(feature = "dx12")]
 pub(super) unsafe fn enable_dx12_validation() -> Result<()> {
+    // SAFETY: The caller guarantees pre-device debug setup; the creation gate serializes the forwarded DX12 call.
     unsafe { dx12::enable_validation() }
 }
 

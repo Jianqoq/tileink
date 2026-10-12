@@ -1,3 +1,12 @@
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "Test setup and assertions abort on failure; production builds are checked separately"
+    )
+)]
 #[cfg(any(feature = "dx12", feature = "vulkan"))]
 #[test]
 fn native_build_embeds_each_expected_nonempty_program() {

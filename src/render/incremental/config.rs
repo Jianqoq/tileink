@@ -33,6 +33,10 @@ impl Default for IncrementalRenderConfig {
 }
 
 impl IncrementalRenderConfig {
+    #[must_use]
+    ///
+    /// # Panics
+    /// Panics if `full_redraw_ratio` is nonfinite or outside `(0, 1]`.
     pub fn validate(self) -> Self {
         assert!(
             self.full_redraw_ratio.is_finite()
@@ -69,6 +73,10 @@ pub enum IncrementalOutputMode {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "Flags describe independent changes or statistics that may be true together"
+)]
 pub struct IncrementalRenderStats {
     pub full_redraw: bool,
     pub full_redraw_reason: Option<FullRedrawReason>,

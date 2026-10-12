@@ -1,5 +1,9 @@
 use super::*;
 impl<A: FilterAdapter> FilterExecutor<'_, A> {
+    #[allow(
+        clippy::or_fun_call,
+        reason = "Scratch release must execute even when the preceding operation failed"
+    )]
     pub(crate) fn apply_filter_graph(
         &mut self,
         target: RenderTargetId,
@@ -45,7 +49,10 @@ impl<A: FilterAdapter> FilterExecutor<'_, A> {
         }
         result
     }
-    #[allow(clippy::too_many_arguments)]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Explicit geometry/resource parameters preserve the renderer and native ABI contract."
+    )]
     fn apply_filter_graph_primitive(
         &mut self,
         source: RenderTargetId,

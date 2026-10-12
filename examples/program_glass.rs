@@ -16,7 +16,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if (x / 24 + y / 24) % 2 == 0 { 180 } else { 70 },
             );
             scene.push_rect(
-                Rect::new(x as f64, y as f64, (x + 24) as f64, (y + 24) as f64),
+                Rect::new(
+                    f64::from(x),
+                    f64::from(y),
+                    f64::from(x + 24),
+                    f64::from(y + 24),
+                ),
                 Radius::ZERO,
                 color,
             );
@@ -29,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         scene.push_backdrop_layer(
             filter.into(),
             Region::rect(
-                Rect::new(cx as f64 - 200.0, 80.0, cx as f64 + 200.0, 560.0),
+                Rect::new(f64::from(cx) - 200.0, 80.0, f64::from(cx) + 200.0, 560.0),
                 Radius::all(48.0),
             ),
         );

@@ -5,6 +5,9 @@ impl ShaderKernel {
     /// Load a build-validated native artifact without runtime source compilation.
     /// Its reflected binding ABI remains authoritative; source kernels use the
     /// same public descriptors and executor. No filter-only kernel mode exists.
+    ///
+    /// # Errors
+    /// Returns an error if the reflected workgroup or public binding interface is unsupported.
     pub fn precompiled(
         artifact: &'static crate::NativeShaderArtifact,
     ) -> Result<Self, ShaderError> {

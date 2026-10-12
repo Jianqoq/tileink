@@ -139,12 +139,12 @@ impl PreparedTextData {
         &self.images
     }
 
-    pub(crate) fn atlas_signature(&self) -> AtlasSignature {
+    pub(crate) const fn atlas_signature(&self) -> AtlasSignature {
         self.atlas_signature
     }
 
     #[cfg(test)]
-    pub(super) fn cache_generation(&self) -> u64 {
+    pub(super) const fn cache_generation(&self) -> u64 {
         self.cache_generation
     }
 }
@@ -176,21 +176,21 @@ struct StableAtlasHasher {
 }
 
 impl StableAtlasHasher {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
             a: 0xcbf2_9ce4_8422_2325,
             b: 0x9e37_79b9_7f4a_7c15,
         }
     }
 
-    fn finish128(self) -> (u64, u64) {
+    const fn finish128(self) -> (u64, u64) {
         (avalanche64(self.a), avalanche64(self.b))
     }
 
     fn mix_byte(&mut self, byte: u8) {
-        self.a ^= byte as u64;
+        self.a ^= u64::from(byte);
         self.a = self.a.wrapping_mul(0x0000_0100_0000_01b3);
-        self.b ^= (byte as u64).wrapping_add(0x9e37_79b9_7f4a_7c15);
+        self.b ^= u64::from(byte).wrapping_add(0x9e37_79b9_7f4a_7c15);
         self.b = self.b.rotate_left(27).wrapping_mul(0x3c79_ac49_2ba7_b653);
     }
 }
@@ -247,7 +247,7 @@ impl Hasher for StableAtlasHasher {
     }
 }
 
-fn avalanche64(mut value: u64) -> u64 {
+const fn avalanche64(mut value: u64) -> u64 {
     value ^= value >> 33;
     value = value.wrapping_mul(0xff51_afd7_ed55_8ccd);
     value ^= value >> 33;

@@ -27,10 +27,10 @@ pub enum BasicFilter {
     DropShadowMask,
 }
 impl BasicFilter {
-    pub fn reads_source(self) -> bool {
+    pub const fn reads_source(self) -> bool {
         !matches!(self, Self::Clear | Self::Color | Self::ColorMatrix)
     }
-    pub fn entry(self) -> &'static str {
+    pub const fn entry(self) -> &'static str {
         match self {
             Self::Clear => "filter_clear_region",
             Self::Copy => "filter_copy_region",

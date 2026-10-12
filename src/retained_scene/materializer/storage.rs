@@ -87,6 +87,10 @@ impl PersistentSceneMaterializer {
         Some(arena.insert(glyphs))
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Live chunk allocations own their arenas and resource registrations; data synchronization preserves these indices"
+    )]
     pub(crate) fn replace_glyphs(
         arenas: &mut MaterializedArenas,
         allocation: &mut Option<ArenaAllocation>,
@@ -99,7 +103,7 @@ impl PersistentSceneMaterializer {
                 .expect("live glyph allocation has an arena")
                 .replace(id, glyphs),
             (Some(id), None) => {
-                arenas.glyphs.as_mut().unwrap().remove(id);
+                arenas.glyphs.as_mut().expect("Live chunk allocations own their arenas and resource registrations; data synchronization preserves these indices").remove(id);
                 *allocation = None;
                 true
             }
@@ -111,6 +115,14 @@ impl PersistentSceneMaterializer {
         }
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Live chunk allocations own their arenas and resource registrations; data synchronization preserves these indices"
+    )]
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "Removal consumes and releases chunk storage after unregistering its allocations"
+    )]
     pub(crate) fn remove_chunk(&mut self, chunk: SceneChunk) {
         Self::remove_chunk_resources(
             &mut self.resource_refs,
@@ -124,7 +136,7 @@ impl PersistentSceneMaterializer {
         self.arenas.sdfs.remove(chunk.sdfs);
         self.arenas.shadows.remove(chunk.shadows);
         if let Some(glyphs) = chunk.glyphs {
-            self.arenas.glyphs.as_mut().unwrap().remove(glyphs);
+            self.arenas.glyphs.as_mut().expect("Live chunk allocations own their arenas and resource registrations; data synchronization preserves these indices").remove(glyphs);
         }
         self.arenas.runs.remove(chunk.runs);
         self.arenas.backdrops.remove(chunk.backdrops);
@@ -143,6 +155,10 @@ impl PersistentSceneMaterializer {
         }
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Live chunk allocations own their arenas and resource registrations; data synchronization preserves these indices"
+    )]
     pub(crate) fn remove_chunk_resources(
         resource_refs: &mut HashMap<ImageKey, usize>,
         canvas: &mut Rc<Canvas>,
@@ -195,6 +211,10 @@ impl PersistentSceneMaterializer {
         }
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Live chunk allocations own their arenas and resource registrations; data synchronization preserves these indices"
+    )]
     pub(crate) fn sync_canvas_data(&mut self, chunks_rebuilt: u32, full_scene_sync: bool) {
         let (arena_live_bytes, arena_capacity_bytes) = self.arena_usage();
         let arena_fragmentation = if arena_capacity_bytes == 0 {

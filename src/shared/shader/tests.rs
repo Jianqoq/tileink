@@ -29,7 +29,7 @@ fn brush_encoding_contains_only_source_uniforms_and_transform() {
             hlsl: Some("hlsl".into()),
         },
     ] {
-        for uniforms in [&[][..], &[0, 0x7fc00000, u32::MAX][..]] {
+        for uniforms in [&[][..], &[0, 0x7fc0_0000, u32::MAX][..]] {
             let brush =
                 ShaderProgram::new(sources.clone(), "paint", ShaderInput::None, uniforms.len())
                     .unwrap()
@@ -50,10 +50,10 @@ fn brush_encoding_contains_only_source_uniforms_and_transform() {
                 }
             }
             expected.extend(uniforms);
-            let mut blob = vec![0xfeedface; 7];
+            let mut blob = vec![0xfeed_face; 7];
             let (offset, len) = brush.0.encode(&mut blob);
             assert_eq!(offset, 7);
-            assert_eq!(&blob[..7], &[0xfeedface; 7]);
+            assert_eq!(&blob[..7], &[0xfeed_face; 7]);
             assert_eq!(&blob[7 + ENCODED_BRUSH_HEADER_WORDS..], expected);
             assert_eq!(len as usize, ENCODED_BRUSH_HEADER_WORDS + expected.len());
             assert_eq!(brush.0.word_len(), len as usize);
@@ -73,7 +73,7 @@ fn brush_encoding_contains_only_source_uniforms_and_transform() {
 #[test]
 fn brush_decode_rejects_retired_input_metadata_and_malformed_payloads() {
     use crate::shared::brush::ENCODED_BRUSH_HEADER_WORDS;
-    let brush = program(ShaderInput::None, 1).brush([0x7fc00000]).unwrap();
+    let brush = program(ShaderInput::None, 1).brush([0x7fc0_0000]).unwrap();
     let mut words = Vec::new();
     brush.0.encode(&mut words);
     let payload = &words[ENCODED_BRUSH_HEADER_WORDS..];
@@ -99,7 +99,7 @@ fn brush_decode_rejects_retired_input_metadata_and_malformed_payloads() {
 #[test]
 fn shader_source_and_instance_roundtrip_without_changing_bytes() {
     let mut brush = program(ShaderInput::None, 3)
-        .brush([0, 0x7fc00000, u32::MAX])
+        .brush([0, 0x7fc0_0000, u32::MAX])
         .unwrap();
     brush.0.transform = [0.5, 0.0, 0.0, 0.5, -2.0, -3.0];
     let mut words = Vec::new();

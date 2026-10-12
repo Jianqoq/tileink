@@ -18,10 +18,10 @@ impl<'a> Images<'a> {
             textures: SceneImages::record(batch, upload)?,
         })
     }
-    pub(super) fn upload(&self) -> &GpuImageResourceUpload {
+    pub(super) const fn upload(&self) -> &GpuImageResourceUpload {
         self.upload
     }
-    pub(crate) fn textures(&self) -> &SceneImages {
+    pub(crate) const fn textures(&self) -> &SceneImages {
         &self.textures
     }
     pub(super) fn validate(&self, batch: &ComputeBatch) -> Result<()> {

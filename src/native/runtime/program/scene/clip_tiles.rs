@@ -35,7 +35,7 @@ pub(super) fn tiles(
         return Some(Vec::new());
     }
     let stride = width.div_ceil(TILE_SIZE);
-    let original = active.map_or(stride * height.div_ceil(TILE_SIZE), DamageTiles::len);
+    let original = active.map_or_else(|| stride * height.div_ceil(TILE_SIZE), DamageTiles::len);
     let sparse_limit = original.div_ceil(3);
     // Retained damage can include content removed or reparented since the last
     // frame. An empty clip batch can still provide a mask for later draws.
@@ -137,7 +137,7 @@ fn collect_stacks(
                 }
             }
             ExecOp::OffscreenLayer { children, .. } => {
-                collect_stacks(children, canvas, ranges, content_bounds, include_content)
+                collect_stacks(children, canvas, ranges, content_bounds, include_content);
             }
             ExecOp::OffscreenMaskLayer { content, mask, .. } => {
                 collect_stacks(content, canvas, ranges, content_bounds, include_content);
@@ -174,7 +174,7 @@ impl ClipDispatch {
         let base = crate::render::coarse::validate_work_layout(lengths)?;
         let mut result = Self {
             preallocated: false,
-            ranges: Default::default(),
+            ranges: HashMap::default(),
             data: Vec::new(),
             slots: Vec::new(),
             kinds: Vec::new(),

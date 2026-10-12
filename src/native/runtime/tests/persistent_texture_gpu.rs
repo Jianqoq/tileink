@@ -12,6 +12,7 @@ fn native_surface_pool_reuses_only_resolved_batches_and_clears_old_pixels() -> R
     use crate::native::runtime::compute::{Resource, SurfacePool};
     use std::{cell::RefCell, rc::Rc};
     #[cfg(feature = "dx12")]
+    // SAFETY: The serial GPU fixture enables validation before creating its context; the creation gate prevents late debug-layer changes.
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }
@@ -24,9 +25,9 @@ fn native_surface_pool_reuses_only_resolved_batches_and_clears_old_pixels() -> R
         },
     )?;
     let pool = Rc::new(RefCell::new(SurfacePool::new(&context)));
-    let mut first = ComputeBatch::with_surfaces(pool.clone());
-    let a = first.reusable_surface([3, 2], 0xff231347)?;
-    let b = first.reusable_surface([3, 2], 0xff1d710b)?;
+    let mut first = ComputeBatch::with_surfaces(std::rc::Rc::clone(&pool));
+    let a = first.reusable_surface([3, 2], 0xff23_1347)?;
+    let b = first.reusable_surface([3, 2], 0xff1d_710b)?;
     let allocation = |batch: &ComputeBatch, id: super::super::compute::ResourceId| {
         let Resource::Texture(texture) = &batch.resources()[id.index()] else {
             panic!("surface texture")
@@ -45,7 +46,7 @@ fn native_surface_pool_reuses_only_resolved_batches_and_clears_old_pixels() -> R
         .submit_compute(&first)
         .map_err(|e| format!("{e:?}"))?;
     drop(first);
-    let mut second = ComputeBatch::with_surfaces(pool.clone());
+    let mut second = ComputeBatch::with_surfaces(std::rc::Rc::clone(&pool));
     for _ in 0..2 {
         let image = second.reusable_surface([3, 2], 0)?;
         let reused = allocation(&second, image);
@@ -63,10 +64,10 @@ fn native_surface_pool_reuses_only_resolved_batches_and_clears_old_pixels() -> R
         .map_err(|e| format!("{e:?}"))?;
     drop(second);
     assert_eq!(second_receipt.readback()?, vec![vec![0; 24]; 2]);
-    let expected = [0xff231347u32, 0xff1d710b].map(|color| color.to_le_bytes().repeat(6));
+    let expected = [0xff23_1347_u32, 0xff1d_710b].map(|color| color.to_le_bytes().repeat(6));
     assert_eq!(first_receipt.readback()?, expected);
-    let mut abandoned = ComputeBatch::with_surfaces(pool.clone());
-    let resized = abandoned.reusable_surface([9, 4], 0xff123456)?;
+    let mut abandoned = ComputeBatch::with_surfaces(std::rc::Rc::clone(&pool));
+    let resized = abandoned.reusable_surface([9, 4], 0xff12_3456)?;
     let unsubmitted = allocation(&abandoned, resized);
     // A later recording error discards all commands, including initialization.
     // The next resolved boundary may reuse storage, but cannot publish pixels
@@ -84,7 +85,7 @@ fn native_surface_pool_reuses_only_resolved_batches_and_clears_old_pixels() -> R
     );
     drop(abandoned);
     assert!(!unsubmitted.upgrade().unwrap().initialized.get());
-    let mut retry = ComputeBatch::with_surfaces(pool.clone());
+    let mut retry = ComputeBatch::with_surfaces(std::rc::Rc::clone(&pool));
     let resized = retry.reusable_surface([9, 4], 0)?;
     assert!(std::rc::Weak::ptr_eq(
         &unsubmitted,
@@ -106,6 +107,7 @@ fn native_surface_pool_reuses_only_resolved_batches_and_clears_old_pixels() -> R
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn native_persistent_texture_preserves_untouched_pixels_across_submissions() -> Result<()> {
     #[cfg(feature = "dx12")]
+    // SAFETY: The serial GPU fixture enables validation before creating its context; the creation gate prevents late debug-layer changes.
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }
@@ -258,6 +260,7 @@ fn native_surface_pool_preserves_pinned_history_across_batches() -> Result<()> {
     use crate::native::runtime::compute::SurfacePool;
     use std::{cell::RefCell, rc::Rc};
     #[cfg(feature = "dx12")]
+    // SAFETY: The serial GPU fixture enables validation before creating its context; the creation gate prevents late debug-layer changes.
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }
@@ -270,8 +273,8 @@ fn native_surface_pool_preserves_pinned_history_across_batches() -> Result<()> {
         },
     )?;
     let pool = Rc::new(RefCell::new(SurfacePool::new(&context)));
-    let mut first = ComputeBatch::with_surfaces(pool.clone());
-    let image = first.reusable_surface([3, 2], 0xff231347)?;
+    let mut first = ComputeBatch::with_surfaces(std::rc::Rc::clone(&pool));
+    let image = first.reusable_surface([3, 2], 0xff23_1347)?;
     let history = first.persistent_texture(image)?.unwrap().clone();
     let submitted = context.submit_compute(&first)?;
     drop(first);
@@ -292,7 +295,7 @@ fn native_surface_pool_preserves_pinned_history_across_batches() -> Result<()> {
     drop(history);
     assert_eq!(
         result.readback()?,
-        vec![0xff231347u32.to_le_bytes().repeat(6), vec![0; 24]]
+        vec![0xff23_1347_u32.to_le_bytes().repeat(6), vec![0; 24]]
     );
     submitted.wait()?;
     context.check_validation()?;

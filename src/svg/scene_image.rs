@@ -71,8 +71,8 @@ impl SvgBuilder {
             rect_path(Rect::new(
                 0.0,
                 0.0,
-                size.width() as f64,
-                size.height() as f64,
+                f64::from(size.width()),
+                f64::from(size.height()),
             )),
             brush,
             transform,
@@ -100,7 +100,7 @@ impl SvgBuilder {
             f64::from(height) / f64::from(size.height()),
         );
         let mut canvas = Canvas::new(width, height, 1.0);
-        SvgBuilder {
+        Self {
             options: SvgOptions {
                 tolerance: self.options.tolerance,
                 transform,
@@ -157,7 +157,7 @@ impl SvgBuilder {
                     * content_transform
                     * Affine::translate((primitive_rect.x0, primitive_rect.y0))
             };
-            SvgBuilder {
+            Self {
                 options: SvgOptions {
                     tolerance: self.options.tolerance,
                     transform: local_transform,

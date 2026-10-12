@@ -19,6 +19,7 @@ pub(super) fn options() -> Result<NativeContextOptions> {
 
 pub(super) fn context() -> Result<NativeContext> {
     #[cfg(feature = "dx12")]
+    // SAFETY: The serial GPU fixture enables validation before creating its context; the creation gate prevents late debug-layer changes.
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }

@@ -8,25 +8,29 @@ use windows::Win32::Graphics::Direct3D12::*;
 pub struct Frame {
     pub synchronization: Option<crate::native::interop::dx12::TargetSynchronization>,
     pub list: ID3D12GraphicsCommandList,
-    _allocator: ID3D12CommandAllocator,
-    _buffers: Vec<ID3D12Resource>,
+    allocator: ID3D12CommandAllocator,
+    buffers: Vec<ID3D12Resource>,
     pub(super) uploads: Vec<super::buffer_cache::Buffer>,
     pub(super) storage: Vec<super::buffer_cache::Buffer>,
     pub(super) tables: Option<super::compute_tables::Tables>,
-    _pipelines: Vec<Pipeline>,
+    pipelines: Vec<Pipeline>,
     readbacks: Vec<Readback>,
 }
 impl Frame {
     pub(super) fn command_owners(&self) -> super::command_cache::Commands {
         super::command_cache::Commands {
             list: self.list.clone(),
-            allocator: self._allocator.clone(),
+            allocator: self.allocator.clone(),
         }
     }
     #[cfg(test)]
     pub(super) fn descriptor_heaps(&self) -> Vec<ID3D12DescriptorHeap> {
         self.tables.as_ref().unwrap().heaps()
     }
+    #[allow(
+        clippy::expect_used,
+        reason = "Batch validation establishes persistent synchronized targets before command recording"
+    )]
     pub fn record(
         device: &ID3D12Device,
         batch: &ComputeBatch,
@@ -49,24 +53,25 @@ impl Frame {
             let texture = texture.persistent.as_ref().expect("registered target");
             match &texture.state.allocation {
                 crate::native::runtime::texture::Allocation::Dx12(allocation) => {
-                    super::synchronization::validate(device, &allocation.resource, sync)?
+                    super::synchronization::validate(device, &allocation.resource, sync)?;
                 }
                 #[cfg(feature = "vulkan")]
                 _ => return Err("non-DX12 target synchronization".into()),
             }
         }
+        // SAFETY: The batch has validated resources and bindings; recording owns same-device allocators, lists and resources until retirement.
         unsafe {
             let super::command_cache::Commands { allocator, list } =
                 super::command_cache::Commands::acquire(device, commands)?;
             let mut frame = Self {
                 synchronization: synchronization.map(|(_, sync)| sync.clone()),
                 list,
-                _allocator: allocator,
-                _buffers: Vec::new(),
+                allocator,
+                buffers: Vec::new(),
                 uploads: Vec::new(),
                 storage: Vec::new(),
                 tables: None,
-                _pipelines: Vec::new(),
+                pipelines: Vec::new(),
                 readbacks: Vec::new(),
             };
             let gpu = super::compute_resources::Resources::record(
@@ -84,7 +89,7 @@ impl Frame {
                 {
                     match &texture.state.allocation {
                         crate::native::runtime::texture::Allocation::Dx12(allocation) => {
-                            states[index] = allocation.state.get()
+                            states[index] = allocation.state.get();
                         }
                         #[cfg(feature = "vulkan")]
                         _ => unreachable!("validated DX12 allocation"),
@@ -136,7 +141,7 @@ impl Frame {
                 if batch.skip_initialization(pass) {
                     continue;
                 }
-                frame._pipelines.push(pipeline.clone());
+                frame.pipelines.push(pipeline.clone());
                 frame.list.SetComputeRootSignature(&pipeline.signature);
                 frame.list.SetPipelineState(&pipeline.state);
                 required_states.collect(pass, batch.resources());
@@ -219,7 +224,13 @@ impl Frame {
             for (id, resource) in batch.resources().iter().enumerate() {
                 let final_state = match resource {
                     Resource::Texture(texture) if texture.persistent.is_some() => {
-                        match &texture.persistent.as_ref().unwrap().state.allocation {
+                        match &texture
+                            .persistent
+                            .as_ref()
+                            .expect("Synchronized targets are registered persistent textures")
+                            .state
+                            .allocation
+                        {
                             crate::native::runtime::texture::Allocation::Dx12(allocation) => {
                                 Some(allocation.final_state)
                             }
@@ -240,7 +251,7 @@ impl Frame {
                     buffer::transition(&frame.list, gpu.get(id), states[id], final_state);
                 }
             }
-            (frame._buffers, frame.uploads, frame.storage) = gpu.into_owners();
+            (frame.buffers, frame.uploads, frame.storage) = gpu.into_owners();
             frame.list.Close()?;
 
             Ok(frame)

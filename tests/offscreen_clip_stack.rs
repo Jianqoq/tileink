@@ -1,3 +1,12 @@
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "Test setup and assertions abort on failure; production builds are checked separately"
+    )
+)]
 #[path = "support/native_gpu.rs"]
 mod backend;
 
@@ -114,7 +123,7 @@ fn deep_offscreen_clips_preserve_filter_mask_and_group_pixels() {
             for y in 0..32 {
                 for x in 0..32 {
                     let expected = if clip.contains((x as f64 + 0.5, y as f64 + 0.5)) {
-                        0x80808080
+                        0x8080_8080
                     } else {
                         0
                     };

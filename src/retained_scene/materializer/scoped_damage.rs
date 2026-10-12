@@ -46,6 +46,10 @@ impl PersistentSceneMaterializer {
         })
     }
 
+    #[allow(
+        clippy::unused_self,
+        reason = "Tests count bounds reads through this materializer instance"
+    )]
     pub(super) fn local_output_bounds(
         &self,
         kind: &NodeKind,
@@ -61,6 +65,10 @@ impl PersistentSceneMaterializer {
         })
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Scoped damage is published into the persistent frame installed by materialization"
+    )]
     pub(super) fn publish_scoped_damage(
         &mut self,
         scene: &RetainedScene,
@@ -93,7 +101,7 @@ impl PersistentSceneMaterializer {
                 }
                 // Retain erased old root output alongside the current command tree's
                 // dependency result. Deliver root bounds without propagating them again.
-                let current = self.canvas.persistent_frame.as_ref().unwrap();
+                let current = self.canvas.persistent_frame.as_ref().expect("Scoped damage is published into the persistent frame installed by materialization");
                 for &id in &changes.changed_nodes {
                     propagated
                         .bounds
@@ -124,7 +132,9 @@ impl PersistentSceneMaterializer {
         Rc::make_mut(&mut self.canvas)
             .persistent_frame
             .as_mut()
-            .unwrap()
+            .expect(
+                "Scoped damage is published into the persistent frame installed by materialization",
+            )
             .damage_history = history;
     }
 }

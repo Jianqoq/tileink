@@ -18,6 +18,10 @@ pub struct Triangle {
 }
 
 impl Triangle {
+    #[must_use]
+    ///
+    /// # Panics
+    /// Panics for nonfinite/collinear points or a nonfinite/negative corner radius.
     pub fn new(a: Point, b: Point, c: Point, corner_radius: f32) -> Self {
         let triangle = Self {
             a,

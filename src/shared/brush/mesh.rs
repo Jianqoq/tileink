@@ -64,13 +64,18 @@ impl std::error::Error for MeshGradientError {}
 impl MeshGradient {
     /// Builds and validates a mesh once; cloning and coordinate conversion share
     /// its compiled payload. Both clockwise and counterclockwise winding work.
+    ///
+    /// # Errors
+    /// Returns an error for invalid grid dimensions/counts, nonfinite positions/colors, unsupported grid size, or folded/degenerate topology.
     pub fn new(
         columns: usize,
         rows: usize,
         positions: impl AsRef<[[f32; 2]]>,
         colors: impl AsRef<[Color]>,
     ) -> Result<Self, MeshGradientError> {
-        use MeshGradientError::*;
+        use MeshGradientError::{
+            InvalidDimensions, InvalidTopology, NonFinite, TooLarge, VertexCount,
+        };
         if columns < 2 || rows < 2 {
             return Err(InvalidDimensions);
         }
@@ -81,10 +86,7 @@ impl MeshGradient {
             return Err(VertexCount);
         }
         if !positions.iter().flatten().all(|v| v.is_finite())
-            || !colors
-                .iter()
-                .flat_map(|c| c.components)
-                .all(|v| v.is_finite())
+            || !colors.iter().flat_map(|c| c.components).all(f32::is_finite)
         {
             return Err(NonFinite);
         }
@@ -217,7 +219,8 @@ impl MeshGradient {
         })
     }
 
-    pub fn with_interpolation(mut self, interpolation: MeshInterpolation) -> Self {
+    #[must_use]
+    pub const fn with_interpolation(mut self, interpolation: MeshInterpolation) -> Self {
         self.interpolation = interpolation;
         self
     }

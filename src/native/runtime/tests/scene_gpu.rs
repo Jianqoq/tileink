@@ -31,7 +31,7 @@ fn scene_work_allocations_are_persistent_and_reused() -> Result<()> {
     let mut previous = Vec::new();
     let mut contents = None;
     for frame in 0..3 {
-        let mut batch = ComputeBatch::with_surfaces(pool.clone());
+        let mut batch = ComputeBatch::with_surfaces(std::rc::Rc::clone(&pool));
         let scene = cache.record(&mut batch, &canvas, None, None, 65535)?;
         let ids = [
             scene.work,
@@ -47,7 +47,7 @@ fn scene_work_allocations_are_persistent_and_reused() -> Result<()> {
                 let Resource::PersistentBuffer(upload) = &batch.resources()[id.index()] else {
                     panic!("scene work storage must survive frame retirement");
                 };
-                upload.buffer.state.clone()
+                std::rc::Rc::clone(&upload.buffer.state)
             })
             .collect();
         if frame > 0 {

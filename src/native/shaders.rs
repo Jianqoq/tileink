@@ -1,3 +1,7 @@
+#![allow(
+    clippy::large_include_file,
+    reason = "Generated native shader artifacts are build-validated executable code embedded for deployment"
+)]
 //! Build-time native shader products. Loading these bytes does not invoke DXC.
 //! Driver-specific pipeline creation/caching belongs to the native adapters.
 
@@ -38,7 +42,7 @@ pub(crate) struct Binding {
 }
 
 impl BindingKind {
-    pub(crate) fn writable(self) -> bool {
+    pub(crate) const fn writable(self) -> bool {
         matches!(
             self,
             Self::Write | Self::TextureWrite | Self::TextureReadWrite

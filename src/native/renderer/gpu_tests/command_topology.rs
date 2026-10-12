@@ -86,7 +86,7 @@ fn insertion(initial: Option<Rc<Canvas>>) -> Result {
             let pixel = actual.pixels[16 * 32 + 16];
             assert!((63..=65).contains(&(pixel & 255)), "pixel={pixel:08x}");
             assert!(
-                (190..=192).contains(&(pixel >> 16 & 255)),
+                (190..=192).contains(&((pixel >> 16) & 255)),
                 "pixel={pixel:08x}"
             );
         }

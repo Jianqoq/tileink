@@ -20,11 +20,13 @@ pub enum Region {
 }
 
 impl Region {
-    pub fn rect(rect: Rect, radius: Radius) -> Self {
+    #[must_use]
+    pub const fn rect(rect: Rect, radius: Radius) -> Self {
         Self::Rect { rect, radius }
     }
 
-    pub fn path(path: BezPath, transform: Affine, tolerance: f64) -> Self {
+    #[must_use]
+    pub const fn path(path: BezPath, transform: Affine, tolerance: f64) -> Self {
         Self::Path {
             path,
             transform,

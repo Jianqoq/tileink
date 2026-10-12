@@ -1,3 +1,5 @@
+#[cfg(tileink_native_runtime)]
+use crate::native::runtime::renderer::recording::Recording;
 mod retained;
 mod submission;
 
@@ -33,7 +35,19 @@ pub struct NativeRenderer {
 ))]
 mod gpu_tests;
 
+#[cfg_attr(
+    not(tileink_native_runtime),
+    allow(
+        clippy::missing_const_for_fn,
+        clippy::unused_self,
+        clippy::needless_pass_by_ref_mut,
+        reason = "Unavailable-backend stubs retain the runtime API; native implementations are checked on Windows/macOS"
+    )
+)]
 impl NativeRenderer {
+    ///
+    /// # Errors
+    /// Returns an error if context/device creation fails or the requested dimensions are empty or exceed device/addressing limits.
     pub fn new(backend: NativeBackend, width: u32, height: u32) -> Result<Self, NativeError> {
         Self::with_context(
             &NativeContext::new(backend, &NativeContextOptions::default())?,
@@ -42,6 +56,9 @@ impl NativeRenderer {
         )
     }
 
+    ///
+    /// # Errors
+    /// Returns an error if the backend is unavailable or the requested dimensions are empty or exceed device/addressing limits.
     pub fn with_context(
         context: &NativeContext,
         width: u32,
@@ -58,7 +75,7 @@ impl NativeRenderer {
                 surfaces: Rc::new(std::cell::RefCell::new(
                     super::runtime::compute::SurfacePool::new(context),
                 )),
-                recording: Default::default(),
+                recording: Recording::default(),
                 persistent_scene: None,
                 history: None,
                 completed: None,
@@ -71,14 +88,17 @@ impl NativeRenderer {
         }
     }
 
-    pub fn context(&self) -> &NativeContext {
+    #[must_use]
+    pub const fn context(&self) -> &NativeContext {
         &self.context
     }
-    pub fn size(&self) -> (u32, u32) {
+    #[must_use]
+    pub const fn size(&self) -> (u32, u32) {
         self.size
     }
     /// Inspect a registered raster image without submitting GPU work. Hosts use this
     /// to populate independent recording destinations without repeating decoded uploads.
+    #[must_use]
     pub fn image_resource(&self, key: ImageKey) -> Option<&Image> {
         self.images.get(key)
     }
@@ -123,6 +143,9 @@ impl NativeRenderer {
     }
 
     /// Submit without a CPU wait or readback copy. Explicitly wait on the returned receipt.
+    ///
+    /// # Errors
+    /// Returns an error for invalid scene/target resources, shader compilation/encoding failures, or rejected/unconfirmed native queue submission.
     pub fn render(&mut self, canvas: &Canvas) -> Result<NativeSubmission, NativeError> {
         self.submit(
             crate::render::retained::SelectedScene::Borrowed(canvas),
@@ -131,6 +154,9 @@ impl NativeRenderer {
             None,
         )
     }
+    ///
+    /// # Errors
+    /// Returns an error for invalid scene/target resources, shader compilation/encoding failures, or rejected/unconfirmed native queue submission.
     pub fn render_with_text(
         &mut self,
         canvas: &Canvas,
@@ -145,6 +171,9 @@ impl NativeRenderer {
         )
     }
     /// Submit rendering and an explicit image readback copy; mapping/waiting is separate.
+    ///
+    /// # Errors
+    /// Returns an error for invalid scene/target resources, shader compilation/encoding failures, or rejected/unconfirmed native queue submission.
     pub fn render_to_image(
         &mut self,
         canvas: &Canvas,
@@ -157,6 +186,9 @@ impl NativeRenderer {
         )?;
         Ok(NativeImageSubmission::new(submission, self.size))
     }
+    ///
+    /// # Errors
+    /// Returns an error for invalid scene/target resources, shader compilation/encoding failures, or rejected/unconfirmed native queue submission.
     pub fn render_to_image_with_text(
         &mut self,
         canvas: &Canvas,
@@ -173,6 +205,9 @@ impl NativeRenderer {
     }
 
     /// Render an immediate frame into a target rectangle without CPU readback.
+    ///
+    /// # Errors
+    /// Returns an error for invalid scene/target resources, shader compilation/encoding failures, or rejected/unconfirmed native queue submission.
     pub fn render_to_target(
         &mut self,
         canvas: &Canvas,
@@ -188,6 +223,9 @@ impl NativeRenderer {
 
     /// Render into an existing same-device RGBA8 target, replacing the full frame.
     /// Queue ordering preserves dependencies without a CPU wait or pixel upload.
+    ///
+    /// # Errors
+    /// Returns an error for invalid scene/target resources, shader compilation/encoding failures, or rejected/unconfirmed native queue submission.
     pub fn render_to_texture(
         &mut self,
         canvas: &Canvas,
@@ -200,6 +238,9 @@ impl NativeRenderer {
             Some(target.into()),
         )
     }
+    ///
+    /// # Errors
+    /// Returns an error for invalid scene/target resources, shader compilation/encoding failures, or rejected/unconfirmed native queue submission.
     pub fn render_with_text_to_texture(
         &mut self,
         canvas: &Canvas,

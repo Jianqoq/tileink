@@ -1,4 +1,5 @@
 use super::FrameOptions;
+use crate::{BlurSampling, native::runtime::renderer::RetainedRenderState};
 
 #[test]
 fn direct_root_plan_has_no_offscreen_filter_resources() {
@@ -16,7 +17,7 @@ fn direct_root_plan_has_no_offscreen_filter_resources() {
         crate::Filter::Blur {
             std_dev_x: 2.0,
             std_dev_y: 2.0,
-            sampling: Default::default(),
+            sampling: BlurSampling::default(),
         },
         crate::Region::rect(rect, crate::Radius::ZERO),
     );
@@ -48,7 +49,7 @@ fn extracting_released_scratch_cannot_silently_discard_a_cache_entry() {
     let images = Images::record(&mut batch, &upload).unwrap();
     let canvas = Canvas::new(4, 4, 1.0);
     let mut cache = SceneCache::default();
-    let mut retained = Default::default();
+    let mut retained = RetainedRenderState::default();
     let mut filter_scenes = super::filter_scenes::FilterSceneCache::default();
     let mut execution = Execution::prepare(
         cache.prepare(&canvas),
@@ -88,7 +89,7 @@ fn frame_records_directly_into_supplied_target_without_full_frame_copy() -> Resu
         None,
         FrameOptions {
             target: Some(target),
-            clear_color: 0x80402010,
+            clear_color: 0x8040_2010,
             ..Default::default()
         },
         65535,

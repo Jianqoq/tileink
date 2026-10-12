@@ -12,6 +12,7 @@ pub(super) unsafe fn write(
     word_count: u32,
     handle: D3D12_CPU_DESCRIPTOR_HANDLE,
 ) {
+    // SAFETY: Reflected binding kind and validated resource size determine this descriptor; the heap slot is allocated from the matching device.
     unsafe {
         match binding.kind {
             BindingKind::Sampler => unreachable!("sampler descriptors use their own heap"),
@@ -163,10 +164,17 @@ impl RequiredStates {
         self.touched.sort_unstable();
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Touched indices are added together with their resource access state"
+    )]
     pub(super) fn iter(&self) -> impl Iterator<Item = (usize, D3D12_RESOURCE_STATES)> + '_ {
-        self.touched
-            .iter()
-            .map(|&id| (id, self.by_resource[id].unwrap()))
+        self.touched.iter().map(|&id| {
+            (
+                id,
+                self.by_resource[id].expect("Touched resources have a recorded access state"),
+            )
+        })
     }
 }
 

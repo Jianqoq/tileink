@@ -14,7 +14,8 @@ pub struct ImageKey(pub u64);
 
 impl ImageKey {
     #[inline]
-    pub fn new(id: u64) -> Self {
+    #[must_use]
+    pub const fn new(id: u64) -> Self {
         Self(id)
     }
 }
@@ -33,12 +34,12 @@ pub(crate) enum ImageResourceId {
 
 impl ImageResourceId {
     #[inline]
-    pub(crate) fn renderer(key: ImageKey) -> Self {
+    pub(crate) const fn renderer(key: ImageKey) -> Self {
         Self::Renderer(key)
     }
 
     #[inline]
-    pub(crate) fn scene(key: ImageKey) -> Self {
+    pub(crate) const fn scene(key: ImageKey) -> Self {
         Self::Scene(key)
     }
 
@@ -50,7 +51,7 @@ impl ImageResourceId {
     }
 
     pub(crate) fn decode(scope: u32, low: u32, high: u32) -> Option<Self> {
-        let key = ImageKey(low as u64 | ((high as u64) << 32));
+        let key = ImageKey(u64::from(low) | (u64::from(high) << 32));
         match scope {
             0 => Some(Self::Renderer(key)),
             1 => Some(Self::Scene(key)),
@@ -63,7 +64,7 @@ fn encode_key(scope: u32, key: ImageKey) -> (u32, u32, u32) {
     (
         scope,
         key.0 as u32,
-        ((key.0 >> 32) & u32::MAX as u64) as u32,
+        ((key.0 >> 32) & u64::from(u32::MAX)) as u32,
     )
 }
 
@@ -111,7 +112,7 @@ impl ImageResourceStore {
 
     pub(crate) fn upload_merged(
         &self,
-        scene: &ImageResourceStore,
+        scene: &Self,
         max_atlas_dimension: u32,
         max_atlas_pages: u32,
         texture_table_len: u32,
@@ -129,7 +130,7 @@ impl ImageResourceStore {
 
     pub(crate) fn upload_signature(
         &self,
-        scene: &ImageResourceStore,
+        scene: &Self,
         max_atlas_dimension: u32,
         max_atlas_pages: u32,
         texture_table_len: u32,
@@ -143,7 +144,7 @@ impl ImageResourceStore {
         }
     }
 
-    pub(crate) fn extend_from(&mut self, other: &ImageResourceStore) {
+    pub(crate) fn extend_from(&mut self, other: &Self) {
         for (&key, image) in &other.images {
             self.insert(key, image.clone());
         }
@@ -164,8 +165,8 @@ impl ImageResourceStore {
 fn image_entry_hash(key: ImageKey, image: &ImageSource) -> u64 {
     let mut hash = FNV_OFFSET;
     hash = fnv_mix(hash, key.0);
-    hash = fnv_mix(hash, image.width() as u64);
-    hash = fnv_mix(hash, image.height() as u64);
+    hash = fnv_mix(hash, u64::from(image.width()));
+    hash = fnv_mix(hash, u64::from(image.height()));
     let (kind, identity) = image.identity();
     hash = fnv_mix(hash, kind);
     fnv_mix(hash, identity)
@@ -186,13 +187,13 @@ struct ImageResourceStoreSignature {
     hash: u64,
 }
 
-const FNV_OFFSET: u64 = 0xcbf29ce484222325;
-const FNV_PRIME: u64 = 0x100000001b3;
+const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+const FNV_PRIME: u64 = 0x0100_0000_01b3;
 
 #[inline]
 fn fnv_mix(mut hash: u64, value: u64) -> u64 {
     for byte in value.to_le_bytes() {
-        hash ^= byte as u64;
+        hash ^= u64::from(byte);
         hash = hash.wrapping_mul(FNV_PRIME);
     }
     hash
@@ -200,7 +201,7 @@ fn fnv_mix(mut hash: u64, value: u64) -> u64 {
 pub(crate) const MAX_IMAGE_RESOURCE_TEXTURES: usize =
     crate::shared::gpu_constants::NATIVE_TEXTURE_TABLE_CAPACITY as usize;
 
-fn image_resource_id_sort_key(id: ImageResourceId) -> (u32, u64) {
+const fn image_resource_id_sort_key(id: ImageResourceId) -> (u32, u64) {
     match id {
         ImageResourceId::Renderer(key) => (0, key.0),
         ImageResourceId::Scene(key) => (1, key.0),

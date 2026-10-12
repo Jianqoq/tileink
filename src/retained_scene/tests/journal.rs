@@ -66,7 +66,7 @@ fn journal_gap_detects_remove_and_reinsert_of_the_same_node_id() {
             RetainedParent::content(root),
             None,
             child,
-            replacement.clone(),
+            std::rc::Rc::clone(&replacement),
             Affine::translate((0.0, 0.0)),
         )
         .commit()
@@ -105,24 +105,22 @@ fn long_content_delta_chain_compacts_into_state_pages() {
             RetainedParent::content(root),
             None,
             RetainedNodeId::for_owner(82_001 + index),
-            content.clone(),
+            std::rc::Rc::clone(&content),
             Affine::translate((0.0, 0.0)),
         );
     }
     transaction.commit().unwrap();
     let mut materializer = PersistentSceneMaterializer::new(&scene);
-    let base_nodes = materializer
-        .canvas
-        .persistent_frame
-        .as_ref()
-        .unwrap()
-        .nodes
-        .clone();
+    let base_nodes =
+        std::rc::Rc::clone(&materializer.canvas.persistent_frame.as_ref().unwrap().nodes);
 
     for index in 0..256 {
         scene
             .transaction()
-            .replace_scene(RetainedNodeId::for_owner(82_001 + index), content.clone())
+            .replace_scene(
+                RetainedNodeId::for_owner(82_001 + index),
+                std::rc::Rc::clone(&content),
+            )
             .commit()
             .unwrap();
         assert!(update_materializer(&mut materializer, &scene));

@@ -3,6 +3,10 @@ use super::{Result, pipeline_cache};
 use ash::vk;
 use std::{cell::RefCell, io};
 
+#[allow(
+    clippy::expect_used,
+    reason = "Successful cache lookup or compilation installs the pipeline before ownership transfer"
+)]
 pub(super) fn create(
     device: &ash::Device,
     properties: &vk::PhysicalDeviceProperties,
@@ -27,13 +31,20 @@ pub(super) fn create(
         },
         || {
             let created = build(&[])?;
+            // SAFETY: Owned retains the live same-device cache until its data has been read.
             let bytes = unsafe { device.get_pipeline_cache_data(created.cache) }
                 .map_err(io::Error::other)?;
             *owned.borrow_mut() = Some(created);
             Ok(bytes)
         },
     )?;
-    Ok((owned.into_inner().unwrap().take_pipeline(), hit))
+    Ok((
+        owned
+            .into_inner()
+            .expect("Successful cache lookup or compilation installs the pipeline")
+            .take_pipeline(),
+        hit,
+    ))
 }
 
 /// Keep both native objects owned until cache publication succeeds. This also
@@ -52,6 +63,7 @@ impl<'a> Owned<'a> {
     ) -> std::result::Result<Self, vk::Result> {
         let mut owned = Self {
             device,
+            // SAFETY: The device is live and the cache bytes have passed container validation; Vulkan reports driver-specific rejection.
             cache: unsafe {
                 device.create_pipeline_cache(
                     &vk::PipelineCacheCreateInfo::default().initial_data(data),
@@ -60,6 +72,7 @@ impl<'a> Owned<'a> {
             },
             pipeline: vk::Pipeline::null(),
         };
+        // SAFETY: Stage, layout, and cache belong to this device and remain live until synchronous pipeline creation returns.
         unsafe {
             match device.create_compute_pipelines(
                 owned.cache,
@@ -85,6 +98,7 @@ impl<'a> Owned<'a> {
 }
 impl Drop for Owned<'_> {
     fn drop(&mut self) {
+        // SAFETY: Owned exclusively owns these handles; created pipelines are either transferred out or destroyed here, with no submitted work.
         unsafe {
             self.device.destroy_pipeline(self.pipeline, None);
             self.device.destroy_pipeline_cache(self.cache, None);

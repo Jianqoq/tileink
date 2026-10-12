@@ -12,8 +12,8 @@ pub enum ShaderResourceKind {
     Sampler,
 }
 
-/// Metadata written into the standard ShaderConfig. This describes the ABI only;
-/// declare retained input dependencies on ShaderPipeline separately.
+/// Metadata written into the standard `ShaderConfig`. This describes the ABI only;
+/// declare retained input dependencies on `ShaderPipeline` separately.
 #[derive(Clone, Copy, Debug)]
 pub struct ShaderConfigDescriptor {
     pub extent: ShaderExtent,
@@ -21,6 +21,7 @@ pub struct ShaderConfigDescriptor {
     pub uniform_words: u32,
 }
 impl ShaderConfigDescriptor {
+    #[must_use]
     pub const fn new(extent: ShaderExtent) -> Self {
         Self {
             extent,
@@ -30,10 +31,11 @@ impl ShaderConfigDescriptor {
     }
 }
 impl ShaderResource {
+    #[must_use]
     pub const fn config(extent: ShaderExtent) -> Self {
         Self::Config(ShaderConfigDescriptor::new(extent))
     }
-    pub(crate) fn kind(&self) -> ShaderResourceKind {
+    pub(crate) const fn kind(&self) -> ShaderResourceKind {
         use ShaderResourceKind as K;
         match self {
             Self::Config(_) | Self::Uniform(_) | Self::Buffer(_) | Self::ActiveTiles => K::Buffer,

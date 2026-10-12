@@ -52,7 +52,7 @@ impl Canvas {
         self.scene_images.insert(key, image).then_some(key)
     }
 
-    pub(crate) fn scene_image_resources(&self) -> &ImageResourceStore {
+    pub(crate) const fn scene_image_resources(&self) -> &ImageResourceStore {
         &self.scene_images
     }
 }

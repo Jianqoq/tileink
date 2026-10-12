@@ -69,13 +69,13 @@ pub(super) fn paint_scene(mode: u32, bins: bool) -> CountScene {
     scene.sdf[3] = 16f32.to_bits();
     scene.sdf[4] = 16f32.to_bits();
     scene.sdf[12] = 1;
-    scene.sdf[16] = 0xff336699;
+    scene.sdf[16] = 0xff33_6699;
     let mut record = [9, 0, 0, 0, 0, 0];
     let mut kind = 3;
     match mode {
         0 => {
             scene.draws[2] = u32::MAX;
-            record = [2, 1, 0, 0, 0, 0xff336699];
+            record = [2, 1, 0, 0, 0, 0xff33_6699];
             kind = 2;
         }
         1 => {
@@ -91,7 +91,7 @@ pub(super) fn paint_scene(mode: u32, bins: bool) -> CountScene {
             kind = 0;
         }
         3 => {
-            record = [2, 0, 0, 0, 0, 0xff336699];
+            record = [2, 0, 0, 0, 0, 0xff33_6699];
             kind = 2;
         }
         4 => scene.sdf[5] = 4f32.to_bits(),
@@ -160,9 +160,9 @@ pub(super) fn paint_scene(mode: u32, bins: bool) -> CountScene {
             scene.draws[6] = 2;
             scene.sdf[12] = 0;
             scene.sdf[14] = 1;
-            scene.sdf[18] = 0xff336699;
+            scene.sdf[18] = 0xff33_6699;
             scene.backdrops[0] = u32::MAX;
-            record = [2, u32::MAX, 0, 0, 0, 0xff336699];
+            record = [2, u32::MAX, 0, 0, 0, 0xff33_6699];
             kind = 2;
         }
         _ => unreachable!(),

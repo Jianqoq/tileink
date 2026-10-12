@@ -159,6 +159,6 @@ fn collect_layer_stack_draws(
     }
 }
 
-fn pixel_bounds_overlap(bounds: PixelBounds, region: Bounds) -> bool {
+const fn pixel_bounds_overlap(bounds: PixelBounds, region: Bounds) -> bool {
     bounds.x0 < region.x1 && bounds.x1 > region.x0 && bounds.y0 < region.y1 && bounds.y1 > region.y0
 }

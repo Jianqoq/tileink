@@ -50,8 +50,8 @@ fn translated_text_layout_bounds_do_not_wrap_at_coordinate_edges() {
 fn scaled_text_layout_bounds_transform_before_coordinate_clipping() {
     let (_, _, layout) = layout();
     for (origin, scale) in [
-        (4294967296.0f64, 2.0f32.powi(-28)),
-        (-4294967296.0, 2.0f32.powi(-28)),
+        (4_294_967_296.0_f64, 2.0f32.powi(-28)),
+        (-4_294_967_296.0, 2.0f32.powi(-28)),
         (12.125, 2.75),
         (0.0, 1.0e30),
     ] {
@@ -204,7 +204,7 @@ fn text_translation_preserves_fractional_offsets_after_large_coordinate_cancella
     let (_, _, layout) = layout();
     let glyph = scene_glyphs_at_origin(&layout, Point::ZERO).next().unwrap();
     for offset in [-0.5, -0.25, 0.25, 0.5] {
-        let large = 16777216.0;
+        let large = 16_777_216.0;
         let actual = glyph
             .translated(large + offset, 0.0)
             .translated(-large, 0.0);

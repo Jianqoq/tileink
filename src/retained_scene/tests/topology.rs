@@ -16,14 +16,14 @@ fn flat_topology_commands_patch_order_and_reuse_fragment_storage() {
             RetainedParent::content(root),
             None,
             base,
-            content.clone(),
+            std::rc::Rc::clone(&content),
             Affine::IDENTITY,
         )
         .insert_scene(
             RetainedParent::content(root),
             None,
             anchor,
-            content.clone(),
+            std::rc::Rc::clone(&content),
             Affine::IDENTITY,
         )
         .commit()
@@ -37,14 +37,14 @@ fn flat_topology_commands_patch_order_and_reuse_fragment_storage() {
             RetainedParent::content(root),
             Some(anchor),
             first,
-            content.clone(),
+            std::rc::Rc::clone(&content),
             Affine::IDENTITY,
         )
         .insert_scene(
             RetainedParent::content(root),
             Some(anchor),
             second,
-            content.clone(),
+            std::rc::Rc::clone(&content),
             Affine::IDENTITY,
         )
         .commit()
@@ -62,7 +62,7 @@ fn flat_topology_commands_patch_order_and_reuse_fragment_storage() {
             RetainedParent::content(root),
             Some(second),
             recycled,
-            content.clone(),
+            content,
             Affine::IDENTITY,
         )
         .commit()

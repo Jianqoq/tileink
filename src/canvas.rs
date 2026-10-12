@@ -128,6 +128,10 @@ pub(crate) struct OpenLayer {
 }
 
 #[derive(Clone, Debug, Default)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "Flags describe independent changes or statistics that may be true together"
+)]
 pub(crate) struct SceneBufferChanges {
     pub(crate) lines: Vec<Range<usize>>,
     pub(crate) paths: Vec<Range<usize>>,
@@ -174,7 +178,8 @@ pub struct DrawId {
 }
 
 impl DrawId {
-    pub fn index(self) -> usize {
+    #[must_use]
+    pub const fn index(self) -> usize {
         self.index as usize
     }
 }
@@ -195,9 +200,9 @@ fn valid_scale_factor(scale_factor: f32) -> f32 {
 }
 
 fn scaled_canvas_extent(value: u32, scale: f32) -> u32 {
-    ((value as f64) * f64::from(scale))
+    (f64::from(value) * f64::from(scale))
         .ceil()
-        .clamp(0.0, u32::MAX as f64) as u32
+        .clamp(0.0, f64::from(u32::MAX)) as u32
 }
 
 fn scale_brush_transform(transform: [f32; 6], scale: f32) -> [f32; 6] {

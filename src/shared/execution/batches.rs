@@ -152,7 +152,7 @@ fn collect_draw_metadata(ops: &[ExecOp], order: &mut Vec<u32>, batches: &mut Vec
                 }
             }
             ExecOp::OffscreenLayer { children, .. } => {
-                collect_draw_metadata(children, order, batches)
+                collect_draw_metadata(children, order, batches);
             }
             ExecOp::OffscreenMaskLayer { content, mask, .. } => {
                 collect_draw_metadata(content, order, batches);
@@ -239,7 +239,7 @@ fn coalesce_draw_batches_in(ops: &mut Vec<ExecOp>, layer_stacks: &[LayerStackEnt
                 coalesce_draw_batches_in(content, layer_stacks);
                 coalesce_draw_batches_in(mask, layer_stacks);
             }
-            _ => {}
+            ExecOp::DrawBatch { .. } => {}
         }
     }
 

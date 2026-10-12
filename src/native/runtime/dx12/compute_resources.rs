@@ -14,6 +14,10 @@ pub(super) struct Resources {
 }
 
 impl Resources {
+    #[allow(
+        clippy::expect_used,
+        reason = "Packed uniform offsets refer to the nonempty uniform arena created before recording"
+    )]
     pub fn record(
         device: &ID3D12Device,
         list: &ID3D12GraphicsCommandList,
@@ -44,6 +48,7 @@ impl Resources {
         } else {
             Vec::new().into()
         };
+        // SAFETY: Batch validation bounds each upload and binding; frame ownership retains same-device buffers and texture resources through completion.
         unsafe {
             let uniform = if uniforms.bytes.is_empty() {
                 None
@@ -144,6 +149,10 @@ impl Resources {
             Ok(this)
         }
     }
+    #[allow(
+        clippy::expect_used,
+        reason = "Validated buffer/image bindings refer to materialized resources, never sampler/table slots"
+    )]
     pub fn get(&self, index: usize) -> &ID3D12Resource {
         self.handles[index]
             .as_ref()

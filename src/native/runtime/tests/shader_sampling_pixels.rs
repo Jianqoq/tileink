@@ -23,7 +23,12 @@ fn native_shader_sampling_coordinates_survive_dpi_append_and_offscreen() -> Resu
             for y in 6..38 {
                 for x in 4..36 {
                     child.push_rect(
-                        Rect::new(x as f64, y as f64, x as f64 + 1.0, y as f64 + 1.0),
+                        Rect::new(
+                            f64::from(x),
+                            f64::from(y),
+                            f64::from(x) + 1.0,
+                            f64::from(y) + 1.0,
+                        ),
                         Radius::ZERO,
                         Color::from_rgb8(x as u8 * 5, y as u8 * 5, 80),
                     );
@@ -189,7 +194,7 @@ fn native_shader_sampling_retained_neighbour_damage_matches_fresh_layers_and_bac
             let x = if phase >= 2 { 13 } else { 11 };
             assert_eq!(
                 actual[17 * 64 + x],
-                if phase == 0 { 0xff7850b4 } else { 0xff78b450 }
+                if phase == 0 { 0xff78_50b4 } else { 0xff78_b450 }
             );
             assert_eq!(actual[17 * 64 + 3], 0);
         }
@@ -222,7 +227,7 @@ fn native_shader_backdrop_samples_outside_its_output_region() -> Result<()> {
     scene.pop_layer();
     let mut renderer = NativeRenderer::with_context(&context, 32, 32)?;
     let image = renderer.render_to_image(&scene)?.readback()?;
-    assert_eq!(image.pixels[11 * 32 + 9], 0xff7850b4);
+    assert_eq!(image.pixels[11 * 32 + 9], 0xff78_50b4);
     context.check_validation()?;
     Ok(())
 }

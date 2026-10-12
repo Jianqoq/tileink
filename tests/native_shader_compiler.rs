@@ -1,9 +1,26 @@
-#[allow(dead_code)]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "Test setup and assertions abort on failure; production builds are checked separately"
+    )
+)]
 #[path = "../build/native/dxc.rs"]
 mod dxc;
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
 #[path = "../build/gpu_constants.rs"]
 mod gpu_constants;
+#[allow(
+    dead_code,
+    reason = "Shared compiler helpers expose different entry points in standalone tests and backend builds."
+)]
+#[path = "../build/hex.rs"]
+mod hex;
 
 #[path = "native_shader_compiler/entries.rs"]
 mod entries;
@@ -11,16 +28,16 @@ mod entries;
 fn pinned_compiler() -> dxc::Dxc {
     let path = std::env::var_os("TILEINK_NATIVE_DXC_PATH")
         .expect("set TILEINK_NATIVE_DXC_PATH to an absolute pinned DXC executable");
-    dxc::Dxc::discover(path.into()).unwrap()
+    dxc::Dxc::discover(std::path::Path::new(&path)).unwrap()
 }
 
 #[test]
 fn unavailable_compilers_and_unknown_targets_fail_explicitly() {
-    assert!(dxc::Dxc::discover("relative/dxc.exe".into()).is_err());
+    assert!(dxc::Dxc::discover(std::path::Path::new("relative/dxc.exe")).is_err());
     let missing = std::env::temp_dir()
         .join(format!("tileink-missing-dxc-{}", std::process::id()))
         .join("dxc.exe");
-    assert!(dxc::Dxc::discover(missing).is_err());
+    assert!(dxc::Dxc::discover(&missing).is_err());
     assert!(dxc::Dxc::flags("metal", "clear_words").is_err());
     for target in ["dxil", "spirv", "unknown"] {
         assert!(dxc::validate_container(target, b"not a shader").is_err());

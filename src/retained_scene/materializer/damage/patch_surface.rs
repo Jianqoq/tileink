@@ -76,7 +76,9 @@ impl PersistentSceneMaterializer {
         frame.scale_bits = scene.scale.to_bits();
         frame.version = scene.version.get();
         let canvas = Rc::make_mut(&mut self.canvas);
-        frame.invalidated_bounds = canvas.invalidated_bounds.clone();
+        frame
+            .invalidated_bounds
+            .clone_from(&canvas.invalidated_bounds);
         frame.invalidate_all = true;
         canvas.persistent_frame = Some(frame);
         self.surface_metadata_stale = true;

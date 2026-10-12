@@ -5,13 +5,17 @@ use crate::native::shaders::BindingKind;
 use ash::vk;
 use std::{collections::BTreeMap, ffi::CString};
 
+#[allow(
+    clippy::struct_field_names,
+    reason = "The wrapper owns a native API handle named after its Vulkan or DX12 object kind"
+)]
 pub struct Pipeline {
     device: ash::Device,
     pub bindings: vk::DescriptorSetLayout,
     pub layout: vk::PipelineLayout,
     pub pipeline: vk::Pipeline,
 }
-pub fn descriptor(kind: BindingKind) -> vk::DescriptorType {
+pub const fn descriptor(kind: BindingKind) -> vk::DescriptorType {
     match kind {
         BindingKind::Sampler => vk::DescriptorType::SAMPLER,
         BindingKind::Uniform => vk::DescriptorType::UNIFORM_BUFFER,
@@ -59,6 +63,7 @@ pub fn ensure(
         properties.limits.max_compute_work_group_size,
         properties.limits.max_compute_work_group_invocations,
     )?;
+    // SAFETY: Reflection validates layouts and shader entry; live same-device handles and creation descriptors remain owned through pipeline creation.
     unsafe {
         let mut result = Pipeline {
             device: device.clone(),
@@ -112,6 +117,7 @@ pub fn ensure(
 }
 impl Drop for Pipeline {
     fn drop(&mut self) {
+        // SAFETY: This owner exclusively owns the pipeline and layouts; pending frames retain it until completion.
         unsafe {
             self.device.destroy_pipeline(self.pipeline, None);
             self.device.destroy_pipeline_layout(self.layout, None);

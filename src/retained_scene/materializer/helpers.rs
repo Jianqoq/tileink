@@ -1,5 +1,6 @@
 use super::*;
 use crate::shared::execution::ROOT_COMMAND_LIST_ID;
+use crate::shared::{affine::GpuAffine, bounds::PixelBounds};
 
 pub(super) fn sync_arena<T: Copy>(
     dst: &mut Vec<T>,
@@ -70,6 +71,10 @@ pub(super) fn merge_index_ranges(
 /// immutable mapping independently of patch revisions and bounds. Larger maps
 /// rebuild directly: probing all slots before a late mismatch duplicated the
 /// linear indexing work. Version nodes and patch payloads remain independent.
+#[allow(
+    clippy::expect_used,
+    reason = "Validated scene topology and node patches provide the parent, order key and node identity being queried"
+)]
 pub(super) fn retained_patch_index(
     patches: &[RetainedNodePatch],
     previous: Option<&Rc<HashMap<RetainedNodeId, usize>>>,
@@ -78,7 +83,7 @@ pub(super) fn retained_patch_index(
         && let Some(previous) = previous
         && previous.len() == patches.len()
         && patches.iter().enumerate().all(|(index, patch)| {
-            previous.get(&patch.new.or(patch.old).unwrap().id) == Some(&index)
+            previous.get(&patch.new.or(patch.old).expect("Validated scene topology and node patches provide the parent, order key and node identity being queried").id) == Some(&index)
         })
     {
         return Rc::clone(previous);
@@ -87,7 +92,7 @@ pub(super) fn retained_patch_index(
         patches
             .iter()
             .enumerate()
-            .map(|(index, patch)| (patch.new.or(patch.old).unwrap().id, index))
+            .map(|(index, patch)| (patch.new.or(patch.old).expect("Validated scene topology and node patches provide the parent, order key and node identity being queried").id, index))
             .collect(),
     )
 }
@@ -96,11 +101,11 @@ pub(super) fn prune_shadowed_delta(
     mut previous: Option<Rc<RetainedFrameDelta>>,
     index: &HashMap<RetainedNodeId, usize>,
 ) -> (Option<Rc<RetainedFrameDelta>>, u16) {
-    while previous
+    while let Some(delta) = previous
         .as_ref()
-        .is_some_and(|delta| delta.index.keys().all(|id| index.contains_key(id)))
+        .filter(|delta| delta.index.keys().all(|id| index.contains_key(id)))
     {
-        previous = previous.unwrap().previous.clone();
+        previous = delta.previous.clone();
     }
     let depth = previous.as_ref().map_or(1, |delta| delta.depth + 1);
     (previous, depth)
@@ -120,7 +125,7 @@ pub(super) fn collect_scene_leaves(
     }
 }
 
-pub(super) fn is_local_bounds_layer(layer: &RetainedLayerDescriptor) -> bool {
+pub(super) const fn is_local_bounds_layer(layer: &RetainedLayerDescriptor) -> bool {
     matches!(
         layer,
         RetainedLayerDescriptor::ClipPath { .. }
@@ -182,6 +187,10 @@ pub(super) fn set_stable_batch(
     true
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "Validated scene topology and node patches provide the parent, order key and node identity being queried"
+)]
 pub(super) fn painter_path(scene: &RetainedScene, mut id: RetainedNodeId) -> Rc<[u128]> {
     let mut reversed = Vec::new();
     while id != scene.root {
@@ -235,11 +244,11 @@ pub(super) fn inactive_draw() -> DrawRecord {
         brush_len: 0,
         tag: DrawTagWord::default(),
         fill_rule: FillRuleWord::default(),
-        pixel_bounds: Default::default(),
-        local_pixel_bounds: Default::default(),
+        pixel_bounds: PixelBounds::default(),
+        local_pixel_bounds: PixelBounds::default(),
         solid_rect: 0,
-        transform: Default::default(),
-        inverse_transform: Default::default(),
+        transform: GpuAffine::default(),
+        inverse_transform: GpuAffine::default(),
     }
 }
 
@@ -311,7 +320,7 @@ pub(super) fn backdrop_dependencies(canvas: &Canvas) -> Vec<BackdropDependency> 
                     collect(canvas, *mask, true, result);
                 }
                 Command::MaterializedRetainedScene { fragment, .. } => {
-                    collect(canvas, fragment.start, scoped, result)
+                    collect(canvas, fragment.start, scoped, result);
                 }
                 Command::Draw(_) => {}
             }

@@ -106,7 +106,10 @@ fn path() -> Region {
 fn transfer() -> Filter {
     Filter::ComponentTransfer(Box::new([7; COMPONENT_TRANSFER_TABLE_LEN]))
 }
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Explicit geometry/resource parameters preserve the renderer and native ABI contract."
+)]
 fn render(
     a: &mut Adapter,
     canvas: &Canvas,
@@ -122,7 +125,7 @@ fn render(
         a,
         canvas,
         plan,
-        BackdropLayer {
+        &BackdropLayer {
             retained_id: retained.then(id),
             filter,
             region,
@@ -385,7 +388,7 @@ fn cached_composite_failure_preserves_history_and_consumes_backdrop_resources() 
             &mut a,
             &canvas,
             &plan,
-            BackdropLayer {
+            &BackdropLayer {
                 retained_id: Some(id()),
                 filter: &transfer(),
                 region: &path(),
@@ -458,7 +461,7 @@ fn nested_backdrop_foreground_preserves_its_scratch_target() {
         &mut a,
         &canvas,
         &plan,
-        BackdropLayer {
+        &BackdropLayer {
             retained_id: None,
             filter: &transfer(),
             region: &path(),

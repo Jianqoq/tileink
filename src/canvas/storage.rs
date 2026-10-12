@@ -54,11 +54,11 @@ impl Canvas {
     }
 
     pub(super) fn push_brush(&mut self, brush: Brush) -> (u32, u32) {
-        self.push_physical_brush(self.physical_brush(brush))
+        self.push_physical_brush(&self.physical_brush(brush))
     }
 
-    pub(super) fn push_physical_brush(&mut self, brush: Brush) -> (u32, u32) {
-        push_encoded_brush(&mut self.brush_blob, &brush)
+    pub(super) fn push_physical_brush(&mut self, brush: &Brush) -> (u32, u32) {
+        push_encoded_brush(&mut self.brush_blob, brush)
     }
 
     pub(super) fn push_sdf(&mut self, sdf: Sdf) -> (u32, u32) {
@@ -69,6 +69,10 @@ impl Canvas {
         push_encoded_sdf_shadow(&mut self.sdf_shadow_blob, sdf_shadow)
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Present canvas records are encoder-owned; decode failure indicates internal corruption"
+    )]
     pub(crate) fn draw_brush_for_record(&self, draw: &DrawRecord) -> Option<Brush> {
         // NONE represents absence. A present record is encoder-owned and must
         // decode; treating corruption as absence silently drops paint on append.
@@ -78,12 +82,20 @@ impl Canvas {
         })
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Present canvas records are encoder-owned; decode failure indicates internal corruption"
+    )]
     pub(crate) fn draw_sdf(&self, draw: &DrawRecord) -> Option<Sdf> {
         (draw.sdf_offset != DrawRecord::NONE).then(|| {
             decode_sdf(&self.sdf_blob, draw.sdf_offset, draw.sdf_len).expect("encoded canvas SDF")
         })
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Present canvas records are encoder-owned; decode failure indicates internal corruption"
+    )]
     pub(crate) fn draw_sdf_shadow(&self, draw: &DrawRecord) -> Option<SdfShadow> {
         (draw.sdf_shadow_offset != DrawRecord::NONE).then(|| {
             decode_sdf_shadow(

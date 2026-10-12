@@ -2,7 +2,10 @@ use super::*;
 
 #[test]
 fn load_font_file_makes_font_available_to_layout() {
-    let mut font_system = FontSystem::new_with_locale_and_db("en-US".into(), Default::default());
+    let mut font_system = FontSystem::new_with_locale_and_db(
+        "en-US".into(),
+        cosmic_text::fontdb::Database::default(),
+    );
     let mut context = TextContext::new();
     let font_path =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("src/svg/fonts/NotoSans-Regular.ttf");
@@ -127,6 +130,10 @@ fn layout_outline_path_extracts_scalable_glyph_paths() {
     assert!(path.bounding_box().height() > 1.0);
 }
 
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "The oracle takes ownership of its temporary layout options"
+)]
 fn assert_shaped_cosmic_buffer_matches_owned_layout(options: TextLayoutOptions<'_>) {
     let mut font_system = font_system();
     let mut context = TextContext::new();

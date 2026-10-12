@@ -88,7 +88,7 @@ fn sample(
     )?;
     let paint = batch.buffer(bytemuck::cast_slice(&paint).to_vec())?;
     let positions = batch.buffer(bytemuck::cast_slice(&words).to_vec())?;
-    let sentinel = 0xa1b2c3d4;
+    let sentinel = 0xa1b2_c3d4;
     let output =
         batch.buffer(bytemuck::cast_slice(&vec![sentinel; requests.len() + 4]).to_vec())?;
     // SAFETY: bounded paint/requests are owned by the batch. Extra invocations

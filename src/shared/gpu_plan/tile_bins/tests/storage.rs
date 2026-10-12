@@ -19,10 +19,9 @@ fn tile_bins_recycle_dirty_record_and_page_capacities() {
 #[test]
 fn tile_bins_release_oversized_dirty_capacity() {
     let mut bins = TileDrawBins::default();
-    bins.dirty_records
-        .extend(0..RETAINED_TILE_DIRTY_CAPACITY + 1);
+    bins.dirty_records.extend(0..=RETAINED_TILE_DIRTY_CAPACITY);
     bins.dirty_pages
-        .extend((0..RETAINED_TILE_DIRTY_CAPACITY + 1).map(|page| page as u32));
+        .extend((0..=RETAINED_TILE_DIRTY_CAPACITY).map(|page| page as u32));
     let (_, records, pages) = bins.take_dirty();
 
     bins.recycle_dirty(records, pages);
@@ -204,11 +203,15 @@ fn tile_page_arena_compacts_after_fragmentation_exceeds_threshold() {
     let mut moved = Canvas::new(crate::TILE_SIZE * 20, crate::TILE_SIZE, 1.0);
     for tile in 0..20 {
         initial.push_rect(
-            Rect::new((tile * 16) as f64, 0.0, (tile * 16 + 16) as f64, 16.0),
+            Rect::new(f64::from(tile * 16), 0.0, f64::from(tile * 16 + 16), 16.0),
             crate::Radius::ZERO,
             Color::BLACK,
         );
-        let x = if tile < 8 { 1000.0 } else { (tile * 16) as f64 };
+        let x = if tile < 8 {
+            1000.0
+        } else {
+            f64::from(tile * 16)
+        };
         moved.push_rect(
             Rect::new(x, 0.0, x + 16.0, 16.0),
             crate::Radius::ZERO,

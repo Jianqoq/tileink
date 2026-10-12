@@ -69,6 +69,10 @@ impl PersistentSceneMaterializer {
         }
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "A materialized scene leaf has a parent in the validated retained topology"
+    )]
     pub(crate) fn scene_node_metadata(
         scene: &RetainedScene,
         id: RetainedNodeId,

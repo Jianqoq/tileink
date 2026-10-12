@@ -7,6 +7,10 @@ pub(super) enum LocalDrawOrder {
 }
 
 impl LocalDrawOrder {
+    #[allow(
+        clippy::expect_used,
+        reason = "Compiled draw indices and their sequential count must fit the GPU u32 ABI"
+    )]
     pub(super) fn from_compiled(draws: Rc<Vec<u32>>) -> Self {
         if draws
             .iter()

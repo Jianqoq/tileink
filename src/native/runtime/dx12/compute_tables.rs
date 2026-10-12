@@ -4,6 +4,10 @@ use crate::native::shaders::BindingKind;
 use windows::Win32::Graphics::Direct3D12::*;
 
 #[derive(Clone)]
+#[allow(
+    clippy::struct_field_names,
+    reason = "The wrapper owns a native API handle named after its Vulkan or DX12 object kind"
+)]
 struct Heap {
     heap: ID3D12DescriptorHeap,
     step: usize,
@@ -35,6 +39,7 @@ impl Heap {
             return Ok(None);
         }
         let capacity = count.next_power_of_two().min(limit);
+        // SAFETY: The checked descriptor capacity and heap kind form a live-device allocation; the heap is retained by this owner.
         unsafe {
             Ok(Some(Self {
                 heap: device.CreateDescriptorHeap(&D3D12_DESCRIPTOR_HEAP_DESC {
@@ -50,6 +55,7 @@ impl Heap {
         }
     }
     unsafe fn visible(&self) -> D3D12_GPU_DESCRIPTOR_HANDLE {
+        // SAFETY: The current descriptor index lies within the owned heap capacity and step is the device-reported stride.
         unsafe {
             D3D12_GPU_DESCRIPTOR_HANDLE {
                 ptr: self.heap.GetGPUDescriptorHandleForHeapStart().ptr
@@ -59,6 +65,7 @@ impl Heap {
     }
     unsafe fn allocate(&mut self) -> D3D12_CPU_DESCRIPTOR_HANDLE {
         debug_assert!(self.next < self.capacity);
+        // SAFETY: The page planner reserves capacity before allocation; the returned CPU handle addresses the next owned heap slot.
         unsafe {
             let handle = D3D12_CPU_DESCRIPTOR_HANDLE {
                 ptr: self.heap.GetCPUDescriptorHandleForHeapStart().ptr + self.next * self.step,
@@ -124,6 +131,7 @@ impl Tables {
                 .map(|page| (page.resources, page.samplers))
                 .unwrap_or_default();
             pages.push(Page {
+                // SAFETY: The resource page uses the live device and the capacity reserved by the descriptor planner.
                 resources: unsafe {
                     Heap::new(
                         device,
@@ -132,6 +140,7 @@ impl Tables {
                         resources,
                     )?
                 },
+                // SAFETY: The sampler page uses the live device and the capacity reserved by the descriptor planner.
                 samplers: unsafe {
                     Heap::new(
                         device,
@@ -145,6 +154,7 @@ impl Tables {
         }
         let this = Self { pages, current: 0 };
         if let Some(page) = this.pages.first() {
+            // SAFETY: The newly owned page and command list belong to the same device and remain retained by the frame.
             unsafe { page.bind(list) };
         }
         Ok(this)
@@ -164,8 +174,10 @@ impl Tables {
         if self.current != previous {
             // A heap switch invalidates root tables. Page::write rebinds every
             // table used by the next pass; earlier pages remain owned until completion.
+            // SAFETY: The selected page was reserved for this pass and remains retained while bound to the same-device list.
             unsafe { self.pages[self.current].bind(list) };
         }
+        // SAFETY: Validated reflection and resource indices fit this pass page; the frame retains every referenced descriptor resource.
         unsafe { self.pages[self.current].write(device, list, pass, inputs, gpu, pipeline) };
     }
 
@@ -193,9 +205,14 @@ impl Page {
             .filter_map(|heap| heap.as_ref().map(|heap| Some(heap.heap.clone())))
             .collect();
         if !heaps.is_empty() {
+            // SAFETY: Only live owned heaps from this device are bound; the command list remains live during recording.
             unsafe { list.SetDescriptorHeaps(&heaps) };
         }
     }
+    #[allow(
+        clippy::expect_used,
+        reason = "Reflection allocates the resource/sampler heap before any matching descriptor is written"
+    )]
     pub unsafe fn write(
         &mut self,
         device: &ID3D12Device,
@@ -205,15 +222,25 @@ impl Page {
         gpu: &super::compute_resources::Resources,
         pipeline: &super::compute_pipeline::Pipeline,
     ) {
+        // SAFETY: Pipeline root slots and page capacities come from validated reflection; every resource and sampler descriptor remains frame-owned.
         unsafe {
             if let Some(root) = pipeline.resources {
                 list.SetComputeRootDescriptorTable(
                     root,
-                    self.resources.as_ref().unwrap().visible(),
+                    self.resources
+                        .as_ref()
+                        .expect("Reflected descriptor bindings have a corresponding allocated heap")
+                        .visible(),
                 );
             }
             if let Some(root) = pipeline.samplers {
-                list.SetComputeRootDescriptorTable(root, self.samplers.as_ref().unwrap().visible());
+                list.SetComputeRootDescriptorTable(
+                    root,
+                    self.samplers
+                        .as_ref()
+                        .expect("Reflected descriptor bindings have a corresponding allocated heap")
+                        .visible(),
+                );
             }
             for (binding, id) in &pass.bindings {
                 let index = id.index();
@@ -225,11 +252,15 @@ impl Page {
                             gpu.get(image.index()),
                             0,
                             0,
-                            self.resources.as_mut().unwrap().allocate(),
+                            self.resources.as_mut().expect("Reflected descriptor bindings have a corresponding allocated heap").allocate(),
                         );
                     }
                 } else if let Resource::Sampler(filter) = inputs[index] {
-                    let handle = self.samplers.as_mut().unwrap().allocate();
+                    let handle = self
+                        .samplers
+                        .as_mut()
+                        .expect("Reflected descriptor bindings have a corresponding allocated heap")
+                        .allocate();
                     device.CreateSampler(
                         &D3D12_SAMPLER_DESC {
                             Filter: match filter {
@@ -254,7 +285,12 @@ impl Page {
                         gpu.get(index),
                         gpu.uniform_offset(index).unwrap_or(0),
                         (inputs[index].byte_len() / 4) as u32,
-                        self.resources.as_mut().unwrap().allocate(),
+                        self.resources
+                            .as_mut()
+                            .expect(
+                                "Reflected descriptor bindings have a corresponding allocated heap",
+                            )
+                            .allocate(),
                     );
                 }
             }

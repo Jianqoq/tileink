@@ -1,4 +1,5 @@
 use super::*;
+use crate::BlurSampling;
 
 #[test]
 fn journal_removal_propagates_old_pixels_through_backdrop() {
@@ -22,7 +23,7 @@ fn journal_removal_propagates_old_pixels_through_backdrop() {
         damage: Rc::new([]),
         dirty_backdrops: Rc::new([]),
         backdrop_damage_complete: false,
-        index: Rc::new([(old.id, 0)].into_iter().collect()),
+        index: Rc::new(std::iter::once((old.id, 0)).collect()),
     }));
     let mut state = IncrementalState::default();
     state.commit(Some(previous));
@@ -62,7 +63,7 @@ fn journal_removal_propagates_old_pixels_through_backdrop() {
             crate::Filter::Blur {
                 std_dev_x: 2.0,
                 std_dev_y: 2.0,
-                sampling: Default::default(),
+                sampling: BlurSampling::default(),
             },
             crate::Region::rect(
                 peniko::kurbo::Rect::new(0.0, 0.0, 128.0, 64.0),
@@ -91,14 +92,14 @@ fn dirty_threshold_switches_to_the_full_fast_path() {
     let mut state = IncrementalState {
         previous: Some(old),
         renderer_state_invalid: false,
-        frame_diff: Default::default(),
+        frame_diff: FrameDiffScratch::default(),
     };
     let plan = state.plan(
         Some(new),
         (128, 64),
         IncrementalRenderConfig {
             full_redraw_ratio: 0.7,
-            ..Default::default()
+            ..IncrementalRenderConfig::default()
         },
         true,
     );
@@ -116,7 +117,7 @@ fn stale_history_preserves_scene_damage_for_output_strategy() {
     let mut state = IncrementalState {
         previous: Some(old),
         renderer_state_invalid: false,
-        frame_diff: Default::default(),
+        frame_diff: FrameDiffScratch::default(),
     };
 
     let plan = state.plan(
@@ -143,7 +144,7 @@ fn surface_change_forces_full_redraw() {
     let mut state = IncrementalState {
         previous: Some(old),
         renderer_state_invalid: false,
-        frame_diff: Default::default(),
+        frame_diff: FrameDiffScratch::default(),
     };
     let plan = state.plan(
         Some(resized),
@@ -163,7 +164,7 @@ fn renderer_invalidation_reports_its_own_fallback_reason() {
     let mut state = IncrementalState {
         previous: Some(retained.clone()),
         renderer_state_invalid: true,
-        frame_diff: Default::default(),
+        frame_diff: FrameDiffScratch::default(),
     };
     let plan = state.plan(
         Some(retained),

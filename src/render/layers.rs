@@ -52,7 +52,7 @@ pub(crate) fn execute<A: GroupAdapter + FilterAdapter + BackdropAdapter>(
                 adapter,
                 canvas,
                 plan,
-                BackdropLayer {
+                &BackdropLayer {
                     retained_id: op.retained_id,
                     filter,
                     region: sample_region,

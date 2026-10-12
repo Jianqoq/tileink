@@ -1,3 +1,12 @@
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "Test setup and assertions abort on failure; production builds are checked separately"
+    )
+)]
 #![cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
 
 #[path = "../examples/common/svg.rs"]
@@ -6,7 +15,7 @@ mod common;
 use std::path::Path;
 use tileink::{NativeBackend, NativeContext, NativeContextOptions, NativeRenderer};
 
-fn backend() -> NativeBackend {
+const fn backend() -> NativeBackend {
     #[cfg(feature = "dx12")]
     {
         NativeBackend::Dx12

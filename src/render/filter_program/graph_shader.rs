@@ -1,7 +1,10 @@
 //! Graph edges bind native images directly; only final primitive cropping copies pixels.
 use super::*;
 impl<A: FilterAdapter> FilterExecutor<'_, A> {
-    #[allow(clippy::too_many_arguments)]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Explicit geometry/resource parameters preserve the renderer and native ABI contract."
+    )]
     pub(super) fn apply_shader_graph_primitive(
         &mut self,
         source: RenderTargetId,

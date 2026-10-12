@@ -1,3 +1,4 @@
+use super::shader_resources::ShaderResourcePool;
 use std::{cell::RefCell, rc::Rc};
 
 use super::{ComputeBatch, ResourceId};
@@ -28,7 +29,7 @@ impl SurfacePool {
     pub(crate) fn new(context: &NativeContext) -> Self {
         Self {
             context: context.clone(),
-            shader_resources: Default::default(),
+            shader_resources: ShaderResourcePool::default(),
             resources: SceneResourcePool::default(),
             scratch_resources: SceneResourcePool::default(),
             #[cfg(any(feature = "dx12", feature = "vulkan"))]
@@ -228,6 +229,7 @@ mod tests {
         use super::*;
         use crate::native::{NativeBackend, NativeContextOptions};
         #[cfg(feature = "dx12")]
+        // SAFETY: The serial GPU fixture enables validation before creating its context; the creation gate prevents late debug-layer changes.
         unsafe {
             NativeContext::enable_dx12_validation()?;
         }

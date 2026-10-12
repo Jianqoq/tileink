@@ -1,5 +1,6 @@
 //! Read the deliberately small shared HLSL uint-constant language without a shader compiler.
 //! Reject unsupported syntax instead of letting host and shader interpretation silently diverge.
+use std::fmt::Write as _;
 use std::{collections::BTreeMap, env, fs, io, path::Path, sync::OnceLock};
 
 #[path = "hlsl_source.rs"]
@@ -58,6 +59,10 @@ pub fn parse(source: &str) -> io::Result<BTreeMap<String, u32>> {
     Ok(constants)
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "Missing or invalid checked-in shader constants are a build configuration error"
+)]
 fn definitions() -> &'static BTreeMap<String, u32> {
     static CONSTANTS: OnceLock<BTreeMap<String, u32>> = OnceLock::new();
     CONSTANTS.get_or_init(|| read_hlsl("constants.hlsli").expect("read shared HLSL constants"))
@@ -66,6 +71,10 @@ fn definitions() -> &'static BTreeMap<String, u32> {
 // Only native shader recipes query individual constants. Backend-free builds
 // still generate the complete host definitions without this unused accessor.
 #[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
+#[allow(
+    clippy::panic,
+    reason = "A missing checked-in shader constant is a build configuration error"
+)]
 pub fn get(name: &str) -> u32 {
     *definitions()
         .get(name)
@@ -130,7 +139,7 @@ fn rust_constants(constants: &BTreeMap<String, u32>) -> String {
         } else {
             "pub(crate)"
         };
-        source.push_str(&format!("{visibility} const {name}: u32 = {value};\n"));
+        let _ = writeln!(source, "{visibility} const {name}: u32 = {value};");
     }
     source
 }
@@ -141,9 +150,12 @@ pub fn read_hlsl(source: &str) -> io::Result<BTreeMap<String, u32>> {
 }
 
 fn read_source(source: &str) -> io::Result<String> {
-    let path = Path::new(&env::var_os("CARGO_MANIFEST_DIR").unwrap())
-        .join("src/shaders/hlsl")
-        .join(source);
+    let path = Path::new(
+        &env::var_os("CARGO_MANIFEST_DIR")
+            .ok_or_else(|| io::Error::other("missing CARGO_MANIFEST_DIR"))?,
+    )
+    .join("src/shaders/hlsl")
+    .join(source);
     println!("cargo:rerun-if-changed={}", path.display());
     fs::read_to_string(path)
 }

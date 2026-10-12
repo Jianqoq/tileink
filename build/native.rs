@@ -27,18 +27,27 @@ mod toolchain;
 
 use cache::{CacheKey, ShaderCache};
 use dxc::{Dxc, digest};
+use std::fmt::Write as _;
 use std::{
     env, fs, io,
     path::{Path, PathBuf},
 };
 
+#[allow(
+    clippy::unnecessary_debug_formatting,
+    reason = "Generated Rust requires quoted and escaped path literals for include_bytes"
+)]
 pub fn generate() -> io::Result<()> {
     println!(
         "cargo:rustc-env=TILEINK_BUILD_TARGET={}",
-        env::var("TARGET").unwrap()
+        env::var("TARGET").map_err(io::Error::other)?
     );
-    let root = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let out = PathBuf::from(env::var_os("OUT_DIR").unwrap());
+    let root = PathBuf::from(
+        env::var_os("CARGO_MANIFEST_DIR")
+            .ok_or_else(|| io::Error::other("missing CARGO_MANIFEST_DIR"))?,
+    );
+    let out =
+        PathBuf::from(env::var_os("OUT_DIR").ok_or_else(|| io::Error::other("missing OUT_DIR"))?);
     for variable in [
         "TILEINK_NATIVE_DXC_PATH",
         "TILEINK_NATIVE_SHADER_CACHE_DIR",
@@ -69,7 +78,7 @@ pub fn generate() -> io::Result<()> {
     ] {
         println!("cargo:rerun-if-changed={}", root.join(file).display());
     }
-    let os = env::var("CARGO_CFG_TARGET_OS").unwrap();
+    let os = env::var("CARGO_CFG_TARGET_OS").map_err(io::Error::other)?;
     let mut targets = Vec::new();
     if cfg!(feature = "dx12") && os == "windows" {
         targets.push("dxil");
@@ -92,21 +101,30 @@ pub fn generate() -> io::Result<()> {
                 .map(PathBuf::from)
                 .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
         };
-        let roots = toolchain::cache_roots(&root, &out, &env::var("TARGET").unwrap(), user_cache);
+        let roots = toolchain::cache_roots(
+            &root,
+            &out,
+            &env::var("TARGET").map_err(io::Error::other)?,
+            user_cache,
+        );
         let explicit = env::var_os("TILEINK_NATIVE_DXC_PATH").map(PathBuf::from);
-        let compiler = Dxc::discover(toolchain::resolve(explicit, &roots)?)?;
-        for path in compiler.identity["files"].as_object().unwrap().keys() {
+        let compiler = Dxc::discover(&toolchain::resolve(explicit, &roots)?)?;
+        for path in compiler.identity["files"]
+            .as_object()
+            .ok_or_else(|| io::Error::other("missing DXC file identity"))?
+            .keys()
+        {
             println!("cargo:rerun-if-changed={path}");
         }
-        let target_triple = env::var("TARGET").unwrap();
-        let cache_root = env::var_os("TILEINK_NATIVE_SHADER_CACHE_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| {
+        let target_triple = env::var("TARGET").map_err(io::Error::other)?;
+        let cache_root = env::var_os("TILEINK_NATIVE_SHADER_CACHE_DIR").map_or_else(
+            || {
                 env::var_os("CARGO_TARGET_DIR")
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|| root.join("target"))
+                    .map_or_else(|| root.join("target"), PathBuf::from)
                     .join("tileink-native-shaders")
-            });
+            },
+            PathBuf::from,
+        );
         let cache = ShaderCache::new(if cache_root.is_absolute() {
             cache_root
         } else {
@@ -143,7 +161,12 @@ pub fn generate() -> io::Result<()> {
                     write_changed(&output, &artifact.bytes)?;
                     let workgroup = format!("{:?}", description.workgroup);
                     let bindings = abi::binding_declarations(&description, entry)?;
-                    declarations.push_str(&format!("NativeShaderArtifact {{ format: {target:?}, entry: {entry:?}, cache_key: {:?}, workgroup: {workgroup}, bindings: {bindings}, bytes: include_bytes!({:?}) }},\n",key.hex(),output));
+                    let _ = writeln!(
+                        declarations,
+                        "NativeShaderArtifact {{ format: {target:?}, entry: {entry:?}, cache_key: {:?}, workgroup: {workgroup}, bindings: {bindings}, bytes: include_bytes!({:?}) }},",
+                        key.hex(),
+                        output
+                    );
                     manifest.push(serde_json::json!({"key":key.hex(),"artifact_sha256":digest(&artifact.bytes),"recipe":recipe}));
                     println!(
                         "native shader {target}/{entry}: {}",

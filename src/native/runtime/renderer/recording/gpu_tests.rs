@@ -1,4 +1,5 @@
 use super::*;
+use crate::{BlurSampling, native::runtime::renderer::FrameOptions};
 
 #[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
 #[test]
@@ -31,7 +32,7 @@ fn filter_scene_buffers_survive_between_frames_without_sibling_aliasing() -> Res
             crate::Filter::Blur {
                 std_dev_x: 2.0,
                 std_dev_y: 2.0,
-                sampling: Default::default(),
+                sampling: BlurSampling::default(),
             },
             crate::Region::rect(rect, crate::Radius::ZERO),
         );
@@ -42,20 +43,22 @@ fn filter_scene_buffers_survive_between_frames_without_sibling_aliasing() -> Res
     let mut previous = Vec::new();
     let mut pixels = None;
     for frame in 0..3 {
-        let mut batch = ComputeBatch::with_surfaces(pool.clone());
+        let mut batch = ComputeBatch::with_surfaces(std::rc::Rc::clone(&pool));
         let target = recording.record(
             &mut batch,
             &canvas,
             &ImageResourceStore::default(),
             None,
             context.adapter.limits(),
-            Default::default(),
+            FrameOptions::default(),
         )?;
         let buffers: Vec<_> = batch
             .resources()
             .iter()
             .filter_map(|resource| match resource {
-                Resource::PersistentBuffer(upload) => Some(upload.buffer.state.clone()),
+                Resource::PersistentBuffer(upload) => {
+                    Some(std::rc::Rc::clone(&upload.buffer.state))
+                }
                 _ => None,
             })
             .collect();

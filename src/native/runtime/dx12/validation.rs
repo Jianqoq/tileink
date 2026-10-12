@@ -17,7 +17,7 @@ pub struct Validation {
 }
 
 impl Validation {
-    pub fn new(queue: Option<ID3D12InfoQueue>) -> Self {
+    pub const fn new(queue: Option<ID3D12InfoQueue>) -> Self {
         Self {
             queue,
             rejected_cache_messages: RefCell::new(BTreeSet::new()),
@@ -25,6 +25,7 @@ impl Validation {
     }
 
     pub fn count(&self) -> u64 {
+        // SAFETY: The retained info queue is live and this call only queries its message count.
         unsafe {
             self.queue
                 .as_ref()
@@ -35,6 +36,7 @@ impl Validation {
         let Some(queue) = &self.queue else {
             return Ok(());
         };
+        // SAFETY: The retained queue is live; message reads use the queue-reported buffer size.
         unsafe {
             for index in start..queue.GetNumStoredMessages() {
                 let (id, _, description) = message(queue, index)?;
@@ -51,14 +53,14 @@ impl Validation {
     }
 }
 
-pub fn cache_retryable(code: HRESULT) -> bool {
+pub const fn cache_retryable(code: HRESULT) -> bool {
     matches!(
         code,
         E_INVALIDARG | D3D12_ERROR_ADAPTER_NOT_FOUND | D3D12_ERROR_DRIVER_VERSION_MISMATCH
     )
 }
 
-fn cache_message(id: D3D12_MESSAGE_ID) -> bool {
+const fn cache_message(id: D3D12_MESSAGE_ID) -> bool {
     matches!(
         id,
         D3D12_MESSAGE_ID_CREATEPIPELINESTATE_INVALIDCACHEDBLOB
@@ -72,12 +74,13 @@ fn message(
     queue: &ID3D12InfoQueue,
     index: u64,
 ) -> Result<(D3D12_MESSAGE_ID, D3D12_MESSAGE_SEVERITY, String)> {
+    // SAFETY: The first query determines storage size; u64 storage provides D3D12_MESSAGE alignment and owns the returned description until copied.
     unsafe {
         let mut size = 0;
-        queue.GetMessage(index, None, &mut size)?;
+        queue.GetMessage(index, None, &raw mut size)?;
         let mut storage = vec![0u64; size.div_ceil(8)];
         let pointer = storage.as_mut_ptr().cast::<D3D12_MESSAGE>();
-        queue.GetMessage(index, Some(pointer), &mut size)?;
+        queue.GetMessage(index, Some(pointer), &raw mut size)?;
         let message = &*pointer;
         let description = std::slice::from_raw_parts(
             message.pDescription.cast::<u8>(),
@@ -95,6 +98,7 @@ pub fn assert_valid(validation: &Validation) -> Result<()> {
     let Some(queue) = &validation.queue else {
         return Ok(());
     };
+    // SAFETY: The retained queue is live and message copies use the bounded query helper.
     unsafe {
         for index in 0..queue.GetNumStoredMessages() {
             let (_, severity, description) = message(queue, index)?;

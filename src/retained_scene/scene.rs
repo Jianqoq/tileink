@@ -25,6 +25,9 @@ pub struct RetainedScene {
 }
 
 impl RetainedScene {
+    ///
+    /// # Errors
+    /// Returns an error if the dimensions or scale are invalid or the physical canvas extent cannot be represented.
     pub fn new(
         width: u32,
         height: u32,
@@ -47,34 +50,39 @@ impl RetainedScene {
         })
     }
 
-    pub fn version(&self) -> SceneVersion {
+    #[must_use]
+    pub const fn version(&self) -> SceneVersion {
         self.version
     }
 
-    pub fn root(&self) -> RetainedNodeId {
+    #[must_use]
+    pub const fn root(&self) -> RetainedNodeId {
         self.root
     }
 
-    pub fn logical_size(&self) -> (u32, u32) {
+    #[must_use]
+    pub const fn logical_size(&self) -> (u32, u32) {
         (self.width, self.height)
     }
 
+    #[must_use]
     pub fn physical_size(&self) -> (u32, u32) {
         (
-            ((self.width as f64) * f64::from(self.scale)).ceil() as u32,
-            ((self.height as f64) * f64::from(self.scale)).ceil() as u32,
+            (f64::from(self.width) * f64::from(self.scale)).ceil() as u32,
+            (f64::from(self.height) * f64::from(self.scale)).ceil() as u32,
         )
     }
 
-    pub fn scale_factor(&self) -> f32 {
+    #[must_use]
+    pub const fn scale_factor(&self) -> f32 {
         self.scale
     }
 
-    pub(crate) fn id(&self) -> u64 {
+    pub(crate) const fn id(&self) -> u64 {
         self.id
     }
 
-    pub fn transaction(&mut self) -> RetainedSceneTransaction<'_> {
+    pub const fn transaction(&mut self) -> RetainedSceneTransaction<'_> {
         RetainedSceneTransaction {
             scene: self,
             mutations: Vec::new(),
@@ -127,6 +135,10 @@ impl RetainedScene {
         Ok(self.version)
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Undo records refer to nodes, parents and order keys established by successful validated mutations"
+    )]
     fn undo(&mut self, mutation: UndoMutation) {
         match mutation {
             UndoMutation::None => {}
@@ -156,7 +168,7 @@ impl RetainedScene {
             } => {
                 self.undo_child_insertion(new_parent, id, new_insertion);
                 self.insert_child_at(old_parent, old_key, id);
-                self.nodes.get_mut(&id).unwrap().parent = Some(old_parent);
+                self.nodes.get_mut(&id).expect("Undo records refer to nodes, parents and order keys established by successful validated mutations").parent = Some(old_parent);
             }
             UndoMutation::Remove {
                 parent,
@@ -186,6 +198,10 @@ impl RetainedScene {
             .insert_before(id, before)
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Undo records refer to nodes, parents and order keys established by successful validated mutations"
+    )]
     fn undo_child_insertion(
         &mut self,
         parent: RetainedParent,
@@ -224,6 +240,10 @@ impl RetainedScene {
         Ok(())
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Undo records refer to nodes, parents and order keys established by successful validated mutations"
+    )]
     fn insert_child_at(&mut self, parent: RetainedParent, key: u128, id: RetainedNodeId) {
         self.nodes
             .get_mut(&parent.node)

@@ -156,8 +156,8 @@ impl SvgBuilder {
             Paint::LinearGradient(source) => {
                 let stops = gradient_stops(source.stops(), opacity);
                 let gradient = Gradient::new_linear(
-                    (source.x1() as f64, source.y1() as f64),
-                    (source.x2() as f64, source.y2() as f64),
+                    (f64::from(source.x1()), f64::from(source.y1())),
+                    (f64::from(source.x2()), f64::from(source.y2())),
                 )
                 .with_extend(spread_method(source.spread_method()))
                 .with_interpolation_alpha_space(InterpolationAlphaSpace::Unpremultiplied)
@@ -173,9 +173,9 @@ impl SvgBuilder {
             Paint::RadialGradient(source) => {
                 let stops = gradient_stops(source.stops(), opacity);
                 let gradient = Gradient::new_two_point_radial(
-                    (source.fx() as f64, source.fy() as f64),
+                    (f64::from(source.fx()), f64::from(source.fy())),
                     source.fr().get(),
-                    (source.cx() as f64, source.cy() as f64),
+                    (f64::from(source.cx()), f64::from(source.cy())),
                     source.r().get(),
                 )
                 .with_extend(spread_method(source.spread_method()))
@@ -233,7 +233,7 @@ impl SvgBuilder {
         );
 
         let mut tile_scene = Canvas::new(tile_width, tile_height, 1.0);
-        SvgBuilder {
+        Self {
             options: SvgOptions {
                 pixel_grid: None,
                 ..self.options
@@ -294,15 +294,15 @@ fn pattern_content_correction(root: &usvg::Group) -> Affine {
     }
 }
 
-pub(super) fn color_opacity_to_brush(color: usvg::Color, opacity: f32) -> Brush {
+pub(super) const fn color_opacity_to_brush(color: usvg::Color, opacity: f32) -> Brush {
     Brush::Solid(Color::from_rgb8(color.red, color.green, color.blue).multiply_alpha(opacity))
 }
 
 pub(super) fn color_to_rgb(color: usvg::Color) -> [f32; 3] {
     [
-        color.red as f32 / 255.0,
-        color.green as f32 / 255.0,
-        color.blue as f32 / 255.0,
+        f32::from(color.red) / 255.0,
+        f32::from(color.green) / 255.0,
+        f32::from(color.blue) / 255.0,
     ]
 }
 
@@ -324,7 +324,7 @@ fn gradient_stops(stops: &[usvg::Stop], opacity: f32) -> Vec<ColorStop> {
         .collect()
 }
 
-fn spread_method(method: SpreadMethod) -> Extend {
+const fn spread_method(method: SpreadMethod) -> Extend {
     match method {
         SpreadMethod::Pad => Extend::Pad,
         SpreadMethod::Reflect => Extend::Reflect,

@@ -82,7 +82,7 @@ pub(super) fn find_retained_offscreen(ops: &[ExecOp], id: RetainedNodeId) -> Opt
                 find_retained_offscreen(content, id).or_else(|| find_retained_offscreen(mask, id))
             }
         }
-        _ => None,
+        ExecOp::DrawBatch { .. } => None,
     })
 }
 
@@ -130,7 +130,7 @@ fn find_retained_offscreen_ancestor(
                     return Some(found);
                 }
             }
-            _ => {}
+            ExecOp::DrawBatch { .. } => {}
         }
     }
     None
@@ -145,6 +145,10 @@ pub(super) fn replace_retained_offscreen(
     replace_retained_offscreen_inner(ops, id, &mut replacement)
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "The replacement token is present until the first matching node consumes it and immediately returns"
+)]
 fn replace_retained_offscreen_inner(
     ops: &mut [ExecOp],
     id: RetainedNodeId,
@@ -156,10 +160,10 @@ fn replace_retained_offscreen_inner(
             | ExecOp::OffscreenMaskLayer { retained_id, .. } => {
                 retained_id.is_some_and(|retained| retained.node == id)
             }
-            _ => false,
+            ExecOp::DrawBatch { .. } => false,
         };
         if matches {
-            *op = replacement.take().unwrap();
+            *op = replacement.take().expect("The replacement token is present until the first matching node consumes it and immediately returns");
             return true;
         }
         let found = match op {
@@ -170,7 +174,7 @@ fn replace_retained_offscreen_inner(
                 replace_retained_offscreen_inner(content, id, replacement)
                     || replace_retained_offscreen_inner(mask, id, replacement)
             }
-            _ => false,
+            ExecOp::DrawBatch { .. } => false,
         };
         if found {
             return true;

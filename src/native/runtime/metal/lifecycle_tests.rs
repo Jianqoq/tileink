@@ -1,4 +1,5 @@
 use super::*;
+use crate::NativeContextOptions;
 use crate::native::interop::metal::{
     ContextDescriptor, EventPoint, TargetSynchronization, TextureDescriptor,
 };
@@ -18,6 +19,7 @@ fn imported_target_waits_and_signals_without_blocking_submission() -> Result<()>
             queue,
         })?
     };
+    // SAFETY: The test owns the texture and queues; the following event contract serializes access.
     let target = unsafe {
         context.import_metal_texture(TextureDescriptor {
             texture,
@@ -27,6 +29,7 @@ fn imported_target_waits_and_signals_without_blocking_submission() -> Result<()>
     let mut renderer = crate::NativeRenderer::with_context(&context, 17, 3)?;
     renderer.set_clear_color(peniko::Color::from_rgba8(80, 40, 20, 128));
     let canvas = crate::Canvas::new(17, 3, 1.0);
+    // SAFETY: The host wait is signaled below before rendering; outgoing completion controls subsequent readback access.
     let usage = unsafe {
         crate::NativeRenderTarget::transient(&target).with_metal_synchronization(
             TargetSynchronization {
@@ -152,6 +155,7 @@ fn incompatible_imports_and_foreign_logical_targets_are_rejected() -> Result<()>
             .newTextureWithDescriptor(&descriptor)
             .ok_or("test texture")?;
         assert!(
+            // SAFETY: The test owns this unused texture exclusively; initialization is explicitly false.
             unsafe {
                 context.import_metal_texture(TextureDescriptor {
                     texture,
@@ -161,7 +165,10 @@ fn incompatible_imports_and_foreign_logical_targets_are_rejected() -> Result<()>
             .is_err()
         );
     }
-    let other = crate::NativeContext::new(crate::NativeBackend::Metal, &Default::default())?;
+    let other = crate::NativeContext::new(
+        crate::NativeBackend::Metal,
+        &NativeContextOptions::default(),
+    )?;
     let foreign = other.create_texture(17, 3)?;
     let mut renderer = crate::NativeRenderer::with_context(&context, 17, 3)?;
     let canvas = crate::Canvas::new(17, 3, 1.0);

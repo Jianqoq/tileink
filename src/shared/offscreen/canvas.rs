@@ -1,6 +1,10 @@
 //! Copy selected geometry and encoded payloads into compact offscreen storage.
 use super::*;
 
+#[allow(
+    clippy::expect_used,
+    reason = "Translated geometry copies encoder-owned records and each translated path has an owning draw"
+)]
 pub(super) fn translated_scene_for_draws(
     canvas: &Canvas,
     local: LocalSpace,
@@ -95,16 +99,18 @@ pub(super) fn translated_scene_for_draws(
     translated.backdrop_pool_capacity = translated
         .path_records
         .last()
-        .map(|record| record.data_offset + record.data_len)
-        .unwrap_or(0);
+        .map_or(0, |record| record.data_offset + record.data_len);
     translated.tile_cnt = translated
         .path_records
         .last()
-        .map(|record| record.segment_start + record.segment_capacity)
-        .unwrap_or(0);
+        .map_or(0, |record| record.segment_start + record.segment_capacity);
     (translated, draw_map)
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "Translated geometry copies encoder-owned records and each translated path has an owning draw"
+)]
 fn rebuild_translated_path_backdrops(canvas: &mut Canvas) {
     let mut path_bounds: Vec<Option<PixelBounds>> = vec![None; canvas.path_records.len()];
     for draw in &canvas.draw_records {

@@ -114,7 +114,7 @@ pub(super) fn graph_filter(pipeline: ShaderPipeline, duplicate: bool) -> Filter 
                     pipeline,
                     inputs: vec![
                         I::Primitive(0),
-                        I::Primitive(if duplicate { 0 } else { 1 }),
+                        I::Primitive(usize::from(!duplicate)),
                         I::SourceAlpha,
                     ],
                 },

@@ -39,7 +39,7 @@ pub(crate) struct DamageHistory {
 }
 
 impl DamageHistory {
-    pub(crate) fn initial(scoped: bool, version: u64) -> Self {
+    pub(crate) const fn initial(scoped: bool, version: u64) -> Self {
         Self {
             scoped,
             floor: if scoped { version } else { 0 },
@@ -47,7 +47,7 @@ impl DamageHistory {
         }
     }
 
-    pub(crate) fn is_scoped(&self) -> bool {
+    pub(crate) const fn is_scoped(&self) -> bool {
         self.scoped
     }
 

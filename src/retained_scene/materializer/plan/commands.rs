@@ -17,6 +17,10 @@ impl PersistentSceneMaterializer {
         self.append_children(scene, scene.root, RetainedChildBranch::Content, 0);
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Command assembly traverses validated branches and updates an installed compiled plan"
+    )]
     pub(crate) fn append_children(
         &mut self,
         scene: &RetainedScene,
@@ -162,6 +166,10 @@ impl PersistentSceneMaterializer {
 
     /// Patches translated offscreen descriptors owned by one otherwise unchanged scene leaf.
     /// Draw records and stable batch membership live in arenas and do not need plan rebuilding.
+    #[allow(
+        clippy::expect_used,
+        reason = "Command assembly traverses validated branches and updates an installed compiled plan"
+    )]
     pub(crate) fn patch_scene_position_plan(&mut self, id: RetainedNodeId) -> bool {
         let location = self.scene_command_locations[&id];
         let command =

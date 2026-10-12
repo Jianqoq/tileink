@@ -1,7 +1,10 @@
 //! Shared ABI checks for uniforms in compute, vertex, fragment, and tile stages.
 use super::*;
 
-#[allow(deprecated)]
+#[allow(
+    deprecated,
+    reason = "Required Metal reflection/AppKit APIs preserve supported macOS versions."
+)]
 pub(super) fn uniform(
     argument: &MTLArgument,
     shader: &ShaderArtifact<'_>,

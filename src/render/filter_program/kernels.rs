@@ -10,7 +10,7 @@ pub(crate) enum ColorFilterKind {
     Saturate,
     Sepia,
 }
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) enum FilterKernel<'a> {
     ShaderPipelineToTarget {
         inputs: &'a [RenderTargetId],

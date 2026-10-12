@@ -60,17 +60,29 @@ impl SurfaceAdapter for Execution<'_> {
     fn acquire_scratch(&mut self) -> Result<RenderTargetId> {
         self.targets.acquire(self.batch)
     }
+    #[allow(
+        clippy::expect_used,
+        reason = "Shared scheduling transfers same-context surfaces through occupied scratch slots"
+    )]
     fn install_scratch(&mut self, target: RenderTargetId, surface: Surface) {
         // Shared scheduling only installs a surface from this context's cache.
         self.targets
             .install(self.batch, target, surface)
             .expect("validated native surface context");
     }
+    #[allow(
+        clippy::expect_used,
+        reason = "Shared scheduling transfers same-context surfaces through occupied scratch slots"
+    )]
     fn take_scratch(&mut self, target: RenderTargetId) -> Surface {
         self.targets
             .take(target)
             .expect("occupied native scratch slot")
     }
+    #[allow(
+        clippy::expect_used,
+        reason = "Shared scheduling transfers same-context surfaces through occupied scratch slots"
+    )]
     fn release_scratch(&mut self, target: RenderTargetId) {
         self.targets
             .release(target)

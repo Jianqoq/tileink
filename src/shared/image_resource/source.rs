@@ -77,7 +77,7 @@ impl From<Rc<Canvas>> for ImageSource {
 }
 
 /// Pin allocation identity without retaining source pixels or the scene graph.
-/// Weak references also prevent a caller's Rc::make_mut from editing a cached identity.
+/// Weak references also prevent a caller's `Rc::make_mut` from editing a cached identity.
 #[derive(Clone)]
 pub(super) enum ImageIdentityGuard {
     Raster { _owner: Weak<Image> },

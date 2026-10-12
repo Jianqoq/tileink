@@ -63,9 +63,16 @@ pub struct NativeContext {
     pub(super) adapter: super::runtime::adapter::Adapter,
 }
 
+#[cfg_attr(
+    not(tileink_native_runtime),
+    allow(
+        clippy::missing_const_for_fn,
+        reason = "Unavailable-backend stubs retain the runtime API; native implementations are checked on Windows/macOS"
+    )
+)]
 impl NativeContext {
     #[cfg(tileink_native_runtime)]
-    pub(super) fn from_adapter(
+    pub(super) const fn from_adapter(
         backend: NativeBackend,
         adapter: super::runtime::adapter::Adapter,
     ) -> Self {
@@ -137,6 +144,9 @@ impl NativeContext {
 
     /// Allocate a persistent RGBA8 target. Its first submitted use clears it on
     /// the GPU; subsequent submissions preserve untouched pixels without upload.
+    ///
+    /// # Errors
+    /// Returns an error for an unavailable backend, invalid/device-exceeding dimensions, or native allocation failure.
     pub fn create_texture(
         &self,
         width: u32,
@@ -158,9 +168,17 @@ impl NativeContext {
     /// # Safety
     /// Before the first successful call, no DX12 device created outside Tileink may
     /// exist, and external device creation must not run concurrently with this call.
+    ///
+    /// # Errors
+    /// Returns an error if DX12 is unavailable, validation cannot be enabled, or a Tileink device was already created.
+    #[allow(
+        clippy::missing_const_for_fn,
+        reason = "The Windows implementation enables driver validation through runtime API calls"
+    )]
     pub unsafe fn enable_dx12_validation() -> Result<(), NativeError> {
         #[cfg(all(target_os = "windows", feature = "dx12"))]
         {
+            // SAFETY: The caller guarantees validation is enabled before external device creation; this forwards that contract.
             unsafe { super::runtime::enable_dx12_validation().map_err(NativeError::Initialization) }
         }
         #[cfg(not(all(target_os = "windows", feature = "dx12")))]
@@ -168,6 +186,9 @@ impl NativeContext {
             Err(NativeError::Unavailable(NativeBackend::Dx12.unavailable()))
         }
     }
+    ///
+    /// # Errors
+    /// Returns an error if the backend/adapter is unavailable, device creation or required validation fails, or device limits do not support the renderer.
     pub fn new(
         backend: NativeBackend,
         options: &NativeContextOptions,
@@ -190,11 +211,15 @@ impl NativeContext {
         }
     }
 
-    pub fn backend(&self) -> NativeBackend {
+    #[must_use]
+    pub const fn backend(&self) -> NativeBackend {
         self.backend
     }
 
     /// Check enabled native validation after completion. All DX12 warnings and errors fail.
+    ///
+    /// # Errors
+    /// Returns an error for unavailable backends or messages reported by enabled native API validation.
     pub fn check_validation(&self) -> Result<(), NativeError> {
         #[cfg(tileink_native_runtime)]
         {

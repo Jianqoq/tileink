@@ -11,8 +11,8 @@ pub(super) fn workgroup(group: [u32; 3], dimensions: [u32; 3], invocations: u32)
         .any(|(size, limit)| size == 0 || size > limit)
         || group
             .into_iter()
-            .try_fold(1u64, |total, size| total.checked_mul(size as u64))
-            .is_none_or(|total| total > invocations as u64)
+            .try_fold(1u64, |total, size| total.checked_mul(u64::from(size)))
+            .is_none_or(|total| total > u64::from(invocations))
     {
         return Err("native Vulkan workgroup exceeds physical device limits".into());
     }

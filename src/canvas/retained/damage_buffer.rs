@@ -41,6 +41,10 @@ impl DamageBuffer {
         scope
     }
 
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "Finishing consumes a scope token so the same scope cannot be finished twice"
+    )]
     pub(super) fn finish_scope(&mut self, scope: DamageScope) {
         debug_assert_eq!(self.start, scope.parent_end);
         let mut write = scope.parent_end;

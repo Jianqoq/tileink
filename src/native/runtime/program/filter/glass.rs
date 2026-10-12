@@ -82,7 +82,7 @@ pub fn encode(
         if (start + end).abs() > max || (end - start).abs() > max {
             return Err("liquid glass rectangle center or span overflows".into());
         }
-        let center = (start + end) * 0.5;
+        let center = f64::midpoint(start, end);
         let half = ((end - start) * 0.5).max(0.0);
         let point = (-0.5 - center)
             .abs()

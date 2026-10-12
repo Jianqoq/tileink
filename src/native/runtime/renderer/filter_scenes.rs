@@ -9,7 +9,7 @@ pub(super) struct FilterSceneCache {
 }
 
 impl FilterSceneCache {
-    pub(super) fn frame(&mut self) -> FilterScenes<'_> {
+    pub(super) const fn frame(&mut self) -> FilterScenes<'_> {
         FilterScenes {
             scenes: &mut self.scenes,
             used: 0,

@@ -21,15 +21,18 @@ pub(super) fn tiny_path_to_bez(path: &usvg::tiny_skia_path::Path) -> BezPath {
     let mut out = BezPath::new();
     for segment in path.segments() {
         match segment {
-            PathSegment::MoveTo(p) => out.move_to((p.x as f64, p.y as f64)),
-            PathSegment::LineTo(p) => out.line_to((p.x as f64, p.y as f64)),
+            PathSegment::MoveTo(p) => out.move_to((f64::from(p.x), f64::from(p.y))),
+            PathSegment::LineTo(p) => out.line_to((f64::from(p.x), f64::from(p.y))),
             PathSegment::QuadTo(p0, p1) => {
-                out.quad_to((p0.x as f64, p0.y as f64), (p1.x as f64, p1.y as f64));
+                out.quad_to(
+                    (f64::from(p0.x), f64::from(p0.y)),
+                    (f64::from(p1.x), f64::from(p1.y)),
+                );
             }
             PathSegment::CubicTo(p0, p1, p2) => out.curve_to(
-                (p0.x as f64, p0.y as f64),
-                (p1.x as f64, p1.y as f64),
-                (p2.x as f64, p2.y as f64),
+                (f64::from(p0.x), f64::from(p0.y)),
+                (f64::from(p1.x), f64::from(p1.y)),
+                (f64::from(p2.x), f64::from(p2.y)),
             ),
             PathSegment::Close => out.close_path(),
         }
@@ -71,14 +74,14 @@ pub(super) fn has_zero_length_subpath(path: &usvg::tiny_skia_path::Path) -> bool
 }
 
 pub(super) fn stroke_to_kurbo(stroke: &usvg::Stroke) -> Stroke {
-    let mut out = Stroke::new(stroke.width().get() as f64)
+    let mut out = Stroke::new(f64::from(stroke.width().get()))
         .with_join(match stroke.linejoin() {
             usvg::LineJoin::Miter => Join::Miter,
             usvg::LineJoin::Round => Join::Round,
             usvg::LineJoin::Bevel => Join::Bevel,
             usvg::LineJoin::MiterClip => unreachable!("handled by tiny-skia stroke outline"),
         })
-        .with_miter_limit(stroke.miterlimit().get() as f64)
+        .with_miter_limit(f64::from(stroke.miterlimit().get()))
         .with_caps(match stroke.linecap() {
             usvg::LineCap::Butt => Cap::Butt,
             usvg::LineCap::Round => Cap::Round,
@@ -87,21 +90,21 @@ pub(super) fn stroke_to_kurbo(stroke: &usvg::Stroke) -> Stroke {
 
     if let Some(dasharray) = stroke.dasharray() {
         out = out.with_dashes(
-            stroke.dashoffset() as f64,
-            dasharray.iter().map(|dash| *dash as f64),
+            f64::from(stroke.dashoffset()),
+            dasharray.iter().map(|dash| f64::from(*dash)),
         );
     }
     out
 }
 
-pub(super) fn fill_rule(rule: usvg::FillRule) -> FillRule {
+pub(super) const fn fill_rule(rule: usvg::FillRule) -> FillRule {
     match rule {
         usvg::FillRule::NonZero => FillRule::NonZero,
         usvg::FillRule::EvenOdd => FillRule::EvenOdd,
     }
 }
 
-pub(super) fn blend_mode_to_mix(mode: usvg::BlendMode) -> Mix {
+pub(super) const fn blend_mode_to_mix(mode: usvg::BlendMode) -> Mix {
     match mode {
         usvg::BlendMode::Normal => Mix::Normal,
         usvg::BlendMode::Multiply => Mix::Multiply,
@@ -124,12 +127,12 @@ pub(super) fn blend_mode_to_mix(mode: usvg::BlendMode) -> Mix {
 
 pub(super) fn transform_to_affine(transform: usvg::Transform) -> Affine {
     Affine::new([
-        transform.sx as f64,
-        transform.ky as f64,
-        transform.kx as f64,
-        transform.sy as f64,
-        transform.tx as f64,
-        transform.ty as f64,
+        f64::from(transform.sx),
+        f64::from(transform.ky),
+        f64::from(transform.kx),
+        f64::from(transform.sy),
+        f64::from(transform.tx),
+        f64::from(transform.ty),
     ])
 }
 
@@ -167,8 +170,8 @@ pub(super) fn transform_filter_vector(transform: Affine, x: f32, y: f32) -> (f32
     // SVG filter lengths are in user space, while renderer filter kernels run in canvas pixels.
     let [a, b, c, d, _, _] = transform.as_coeffs();
     (
-        (a * x as f64 + c * y as f64) as f32,
-        (b * x as f64 + d * y as f64) as f32,
+        (a * f64::from(x) + c * f64::from(y)) as f32,
+        (b * f64::from(x) + d * f64::from(y)) as f32,
     )
 }
 
@@ -197,7 +200,7 @@ pub(super) fn transform_rect_to_bounds(rect: Rect, transform: Affine) -> Bounds 
     })
 }
 
-pub(super) fn rect_to_bounds(rect: Rect) -> Bounds {
+pub(super) const fn rect_to_bounds(rect: Rect) -> Bounds {
     Bounds::new(
         rect.x0.floor() as i32,
         rect.y0.floor() as i32,
@@ -212,9 +215,9 @@ pub(super) fn rect_path(rect: Rect) -> BezPath {
 
 pub(super) fn nonzero_rect_to_kurbo(rect: usvg::NonZeroRect) -> Rect {
     Rect::new(
-        rect.left() as f64,
-        rect.top() as f64,
-        rect.right() as f64,
-        rect.bottom() as f64,
+        f64::from(rect.left()),
+        f64::from(rect.top()),
+        f64::from(rect.right()),
+        f64::from(rect.bottom()),
     )
 }

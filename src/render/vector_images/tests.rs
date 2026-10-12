@@ -71,7 +71,7 @@ fn shared_vector_sources_reuse_one_cached_renderer() {
     assert_eq!(cache.get_or_insert(&source, || 7).value, 7);
     assert_eq!(
         cache
-            .get_or_insert(&source.clone(), || panic!("must reuse"))
+            .get_or_insert(&std::rc::Rc::clone(&source), || panic!("must reuse"))
             .value,
         7
     );
@@ -89,7 +89,7 @@ fn detached_vectors_are_evicted_even_while_external_owners_survive() {
     let source = Rc::new(Canvas::new(3, 2, 1.0));
     let drops = Rc::new(Cell::new(0));
     let mut cache = VectorImageCache::default();
-    cache.get_or_insert(&source, || Owner(drops.clone()));
+    cache.get_or_insert(&source, || Owner(std::rc::Rc::clone(&drops)));
     cache.retain_sources(std::iter::empty());
     assert_eq!(drops.get(), 1);
     assert_eq!(Rc::strong_count(&source), 1);

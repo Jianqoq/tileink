@@ -56,13 +56,17 @@ impl Frame {
             .collect()
     }
     #[cfg(test)]
-    pub(super) fn command_handles(&self) -> (vk::CommandPool, vk::DescriptorPool, vk::Fence) {
+    pub(super) const fn command_handles(&self) -> (vk::CommandPool, vk::DescriptorPool, vk::Fence) {
         self.commands.handles()
     }
     #[cfg(test)]
     pub(super) fn storage_buffers(&self) -> &[vk::Buffer] {
         &self.gpu.as_ref().unwrap().buffers
     }
+    #[allow(
+        clippy::expect_used,
+        reason = "Storage and upload planning precede recording and use the same resource iteration order"
+    )]
     pub fn record(
         device: &ash::Device,
         memory: &vk::PhysicalDeviceMemoryProperties,
@@ -169,7 +173,12 @@ impl Frame {
                     .collect::<Vec<_>>(),
             )?,
         );
-        let mut buffers = this.gpu.as_ref().unwrap().buffers.iter();
+        let mut buffers = this
+            .gpu
+            .as_ref()
+            .expect("Resource planning allocates each buffer and nonempty upload before recording")
+            .buffers
+            .iter();
         let mut resource_device = None;
         for (index, resource) in batch.resources().iter().enumerate() {
             this.resources.push(match resource {
@@ -177,14 +186,14 @@ impl Frame {
                 Resource::PersistentBuffer(upload) => {
                     let crate::native::runtime::buffer::Allocation::Vulkan(allocation) =
                         &upload.buffer.state.allocation;
-                    this.persistent_buffers.push(allocation.clone());
+                    this.persistent_buffers.push(std::rc::Rc::clone(allocation));
                     GpuResource::Buffer(allocation.buffers[0])
                 }
                 Resource::Buffer(_) => {
                     GpuResource::Buffer(if this.uniform_offsets[index].is_some() {
-                        this.upload.as_ref().unwrap().arena.buffers[0]
+                        this.upload.as_ref().expect("Resource planning allocates each buffer and nonempty upload before recording").arena.buffers[0]
                     } else {
-                        *buffers.next().unwrap()
+                        *buffers.next().expect("Resource planning allocates each buffer and nonempty upload before recording")
                     })
                 }
                 Resource::Sampler(filter) => {
@@ -194,7 +203,8 @@ impl Frame {
                     if let Some(texture) = &texture.persistent {
                         let crate::native::runtime::texture::Allocation::Vulkan(image) =
                             &texture.state.allocation;
-                        this.resources.push(GpuResource::Image(image.clone()));
+                        this.resources
+                            .push(GpuResource::Image(std::rc::Rc::clone(image)));
                         continue;
                     }
                     let shared =
@@ -212,6 +222,7 @@ impl Frame {
                 host,
             )?);
         }
+        // SAFETY: The acquired command slot is retired and exclusively owned; validated resources and descriptors remain frame-owned through submission.
         unsafe {
             let command = this.commands.command;
             // A retired slot is reset and recorded again before its next submit;
@@ -255,7 +266,7 @@ impl Frame {
                             .collect();
                         device.cmd_copy_buffer(
                             command,
-                            this.upload.as_ref().unwrap().arena.buffers[0],
+                            this.upload.as_ref().expect("Resource planning allocates each buffer and nonempty upload before recording").arena.buffers[0],
                             gpu[i].buffer(),
                             &copies,
                         );
@@ -288,14 +299,14 @@ impl Frame {
                     }
                     image.upload(
                         command,
-                        this.upload.as_ref().unwrap().arena.buffers[0],
+                        this.upload.as_ref().expect("Resource planning allocates each buffer and nonempty upload before recording").arena.buffers[0],
                         source_offsets[i],
                     );
                     continue;
                 }
                 device.cmd_copy_buffer(
                     command,
-                    this.upload.as_ref().unwrap().arena.buffers[0],
+                    this.upload.as_ref().expect("Resource planning allocates each buffer and nonempty upload before recording").arena.buffers[0],
                     gpu[i].buffer(),
                     &[vk::BufferCopy {
                         src_offset: source_offsets[i],
@@ -442,6 +453,7 @@ unsafe fn barrier(
     read: vk::AccessFlags,
     write: vk::AccessFlags,
 ) {
+    // SAFETY: The caller supplies the live recording command and stage/access masks describing prior and following resource use.
     unsafe {
         device.cmd_pipeline_barrier(
             command,

@@ -76,7 +76,10 @@ pub(super) fn active_tiles(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Explicit geometry/resource parameters preserve the renderer and native ABI contract."
+)]
 pub(super) fn buffer(
     batch: &mut ComputeBatch,
     pipeline: &ShaderPipeline,
@@ -100,7 +103,7 @@ pub(super) fn buffer(
     };
     let compact = matches!(dispatch, ShaderDispatch::Pixels) && tiles.is_some();
     let active_tile_count = if compact {
-        u32::try_from(tiles.unwrap().len())?
+        u32::try_from(tiles.map_or(0, <[u32]>::len))?
     } else {
         0
     };

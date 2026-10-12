@@ -20,6 +20,10 @@ pub struct Star {
 }
 
 impl Star {
+    #[must_use]
+    ///
+    /// # Panics
+    /// Panics if the center/rotation is nonfinite, radii are invalid, or corner radius is nonfinite/negative. The inner radius must be smaller than the outer radius.
     pub fn new(
         center: Point,
         outer_radius: f32,
@@ -111,6 +115,10 @@ pub struct StarStroke {
 }
 
 impl StarStroke {
+    #[must_use]
+    ///
+    /// # Panics
+    /// Panics if the star is invalid or stroke width is nonfinite/nonpositive.
     pub fn new(star: Star, width: f32) -> Self {
         let stroke = Self {
             star,

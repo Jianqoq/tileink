@@ -189,7 +189,7 @@ pub(crate) fn encode_sdf(sdf: Sdf) -> EncodedSdf {
     }
 }
 
-pub(crate) fn encode_sdf_shadow(sdf_shadow: SdfShadow) -> EncodedSdf {
+pub(crate) const fn encode_sdf_shadow(sdf_shadow: SdfShadow) -> EncodedSdf {
     match sdf_shadow {
         SdfShadow::Rect(shadow) => {
             let (x0, y0, x1, y1) = shadow.rect.axis_bounds();
@@ -325,7 +325,7 @@ fn encoded_words(blob: &[u32], offset: u32, len: u32) -> Option<&[u32]> {
     (words.len() == ENCODED_SDF_WORDS).then_some(words)
 }
 
-fn encoded_star(star: Star, kind: u32, half_width: f32) -> EncodedSdf {
+const fn encoded_star(star: Star, kind: u32, half_width: f32) -> EncodedSdf {
     EncodedSdf {
         kind,
         coords: [
@@ -340,7 +340,7 @@ fn encoded_star(star: Star, kind: u32, half_width: f32) -> EncodedSdf {
     }
 }
 
-fn encoded_callout(callout: Callout, kind: u32, half_width: f32) -> EncodedSdf {
+const fn encoded_callout(callout: Callout, kind: u32, half_width: f32) -> EncodedSdf {
     let (x0, y0, x1, y1) = callout.axis_bounds();
     EncodedSdf {
         kind,

@@ -1,5 +1,12 @@
 use super::*;
 
+#[cfg_attr(
+    not(tileink_native_runtime),
+    allow(
+        clippy::needless_pass_by_ref_mut,
+        reason = "Unavailable-backend stubs retain the runtime API; native implementations are checked on Windows/macOS"
+    )
+)]
 impl NativeRenderer {
     pub(super) fn submit(
         &mut self,
@@ -10,6 +17,14 @@ impl NativeRenderer {
     ) -> Result<NativeSubmission, NativeError> {
         self.submit_synchronized(selected, text, readback, output, None)
     }
+    #[allow(
+        clippy::expect_used,
+        reason = "Target synchronization is supplied only together with its validated external output"
+    )]
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "Submission owns the selected scene snapshot through command recording"
+    )]
     pub(crate) fn submit_synchronized(
         &mut self,
         selected: crate::render::retained::SelectedScene<'_>,
@@ -76,12 +91,12 @@ impl NativeRenderer {
             let result = if let Some(completed) = completed {
                 Ok(NativeSubmission::already_completed(
                     self.context.backend(),
-                    completed.clone(),
+                    std::rc::Rc::clone(completed),
                 ))
             } else {
                 (|| {
                     let mut batch = crate::native::runtime::compute::ComputeBatch::with_surfaces(
-                        self.surfaces.clone(),
+                        std::rc::Rc::clone(&self.surfaces),
                     );
                     let output_id = batch
                         .import_texture(&route.render_target)
