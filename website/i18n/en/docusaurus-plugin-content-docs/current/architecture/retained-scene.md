@@ -57,6 +57,14 @@ surface's spatial index; a simultaneous resize defers that index, so insertion c
 new structure directly. These rules fix missing/stale commands and spatial-index overflow
 while preserving unrelated batch and draw storage for local edits.
 
+The current command tree owns its storage: each Scene command owns the complete list range
+copied from its source Canvas, and each layer command owns its branch lists. Local recompilation
+releases the old subtree before installing its replacement; leaving Mask releases its retired
+mask branch. Free ranges coalesce and are reused, trailing free storage shrinks, and other live
+list indices stay stable. Single-fragment compilation reads the command and ancestor clip stack
+directly without a temporary root list. Repeated insertion, removal and reparenting therefore
+do not accumulate old commands, while published Canvas snapshots remain immutable.
+
 Root fragments follow actual command scope, including root-level layers inside groups.
 Pure offscreen reordering validates the complete operation permutation before synchronizing
 command locations and fragment ranges; later removal still shares unrelated subtree draw

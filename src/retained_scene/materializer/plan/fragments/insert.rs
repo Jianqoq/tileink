@@ -3,12 +3,7 @@ use super::*;
 impl PersistentSceneMaterializer {
     /// Installs one root-layer subtree as an independent persistent plan
     /// fragment. Existing root batches and their large draw lists remain shared.
-    pub(crate) fn insert_root_plan_fragment(
-        &mut self,
-        scene: &RetainedScene,
-        id: RetainedNodeId,
-        command_lists: std::ops::Range<usize>,
-    ) {
+    pub(crate) fn insert_root_plan_fragment(&mut self, scene: &RetainedScene, id: RetainedNodeId) {
         // The caller installs this direct root layer at the command tail. Put its
         // authoritative command at the same painter position as its plan fragment;
         // a later full compile must not replay the old append order.
@@ -25,15 +20,8 @@ impl PersistentSceneMaterializer {
             self.refresh_command_indices(ROOT_COMMAND_LIST_ID, next.command_index);
         }
         let location = self.layer_command_locations[&id];
-        let command = Rc::make_mut(&mut self.canvas).command_lists[0].commands
-            [location.command_index]
-            .clone();
-        let temporary = self.push_command_list();
-        Rc::make_mut(&mut self.canvas).command_lists[temporary]
-            .commands
-            .push(command);
-        let fragment = Rc::make_mut(&mut self.canvas).compile(temporary);
-        let _ = Rc::make_mut(&mut self.canvas).command_lists.pop();
+        let command = &self.canvas.command_lists[0].commands[location.command_index];
+        let fragment = self.canvas.compile_command(command, Vec::new());
 
         let mut nodes = Vec::new();
         scene.collect_subtree(id, &mut nodes);
@@ -143,7 +131,6 @@ impl PersistentSceneMaterializer {
             id,
             RootPlanFragment {
                 ops,
-                command_lists,
                 nodes: node_set,
                 reassigned_batches,
                 removed_batch,

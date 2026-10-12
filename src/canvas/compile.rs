@@ -23,14 +23,22 @@ impl Canvas {
     }
 
     pub(super) fn compile_uncached(&self, list_id: CommandListId) -> ExecPlan {
-        self.compile_with_layer_stack(list_id, Vec::new())
+        self.compile_commands(&self.command_lists[list_id].commands, Vec::new())
     }
 
-    /// Retained offscreen fragments keep their ancestor clips when recompiled.
-    /// Backdrop children also inherit this stack, just as in a full compilation.
-    pub(crate) fn compile_with_layer_stack(
+    /// Compile a retained fragment directly, preserving its ancestor clip stack without
+    /// allocating a synthetic root list in persistent command storage.
+    pub(crate) fn compile_command(
         &self,
-        list_id: CommandListId,
+        command: &Command,
+        layer_stack: Vec<LayerStackEntry>,
+    ) -> ExecPlan {
+        self.compile_commands(std::slice::from_ref(command), layer_stack)
+    }
+
+    fn compile_commands(
+        &self,
+        commands: &[Command],
         mut layer_stack: Vec<LayerStackEntry>,
     ) -> ExecPlan {
         let mut ops = Vec::new();
@@ -45,7 +53,7 @@ impl Canvas {
         };
         let mut surface_slots = std::collections::HashMap::new();
         self.compile_into(
-            list_id,
+            commands,
             &mut ops,
             &mut plan,
             &mut layer_stack,
@@ -81,11 +89,12 @@ impl Canvas {
                         hasher.write_u8(0);
                         hasher.write_usize(*draw);
                     }
-                    Command::MaterializedRetainedScene { id, children, .. } => {
+                    Command::MaterializedRetainedScene { id, fragment, .. } => {
                         hasher.write_u8(1);
                         hasher.write_u64(id.owner);
                         hasher.write_u32(id.slot);
-                        hasher.write_usize(*children);
+                        hasher.write_usize(fragment.start);
+                        hasher.write_usize(fragment.end);
                     }
                     Command::Layer {
                         retained,
@@ -124,7 +133,7 @@ impl Canvas {
 
     fn compile_into(
         &self,
-        list_id: CommandListId,
+        commands: &[Command],
         ops: &mut Vec<ExecOp>,
         plan: &mut ExecPlan,
         layer_stack: &mut Vec<LayerStackEntry>,
@@ -158,17 +167,17 @@ impl Canvas {
             });
         };
 
-        for command in &self.command_lists[list_id].commands {
+        for command in commands {
             match command {
                 Command::Draw(draw_ix) => pending_batch.push(*draw_ix),
                 Command::MaterializedRetainedScene {
                     id,
                     revision: _,
-                    children,
+                    fragment,
                 } => {
                     flush_batch(&mut pending_batch, ops, plan, layer_stack, batch_owner);
                     self.compile_into(
-                        *children,
+                        &self.command_lists[fragment.start].commands,
                         ops,
                         plan,
                         layer_stack,
@@ -198,7 +207,7 @@ impl Canvas {
                             // draws remain analytic through the batch's stack snapshot.
                             layer_stack.push(entry);
                             self.compile_into(
-                                *children,
+                                &self.command_lists[*children].commands,
                                 ops,
                                 plan,
                                 layer_stack,
@@ -232,7 +241,7 @@ impl Canvas {
                                         Vec::new()
                                     };
                                     self.compile_into(
-                                        *children,
+                                        &self.command_lists[*children].commands,
                                         &mut child_ops,
                                         plan,
                                         &mut child_layer_stack,
@@ -284,7 +293,7 @@ impl Canvas {
                             let mut child_ops = Vec::new();
                             let mut child_layer_stack = Vec::new();
                             self.compile_into(
-                                *content,
+                                &self.command_lists[*content].commands,
                                 &mut child_ops,
                                 plan,
                                 &mut child_layer_stack,
@@ -300,7 +309,7 @@ impl Canvas {
                             let mut mask_ops = Vec::new();
                             let mut mask_layer_stack = Vec::new();
                             self.compile_into(
-                                *mask,
+                                &self.command_lists[*mask].commands,
                                 &mut mask_ops,
                                 plan,
                                 &mut mask_layer_stack,
@@ -353,8 +362,8 @@ impl Canvas {
             .iter()
             .any(|command| match command {
                 Command::Draw(_) => false,
-                Command::MaterializedRetainedScene { children, .. } => {
-                    self.command_list_contains_offscreen(*children)
+                Command::MaterializedRetainedScene { fragment, .. } => {
+                    self.command_list_contains_offscreen(fragment.start)
                 }
                 Command::Layer {
                     layer, children, ..

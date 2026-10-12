@@ -11,7 +11,7 @@ impl PersistentSceneMaterializer {
         canvas.persistent_root = Some(scene.root);
         self.scene_command_locations.clear();
         self.layer_command_locations.clear();
-        self.vacant_command_fragments.clear();
+        self.command_storage.reset();
         self.root_plan_fragments.clear();
         self.root_fragment_owners.clear();
         self.append_children(scene, scene.root, RetainedChildBranch::Content, 0);
@@ -44,95 +44,70 @@ impl PersistentSceneMaterializer {
         id: RetainedNodeId,
         target: usize,
     ) {
+        if matches!(scene.nodes[&id].kind, NodeKind::Group) {
+            self.append_children(scene, id, RetainedChildBranch::Content, target);
+            return;
+        }
+        let location = CommandLocation {
+            parent_list: target,
+            command_index: self.canvas.command_lists[target].commands.len(),
+        };
+        let command = self.build_node_command(scene, id, location);
+        Rc::make_mut(&mut self.canvas).command_lists[target]
+            .commands
+            .push(command);
+    }
+
+    /// A node's command owns the exact lists allocated while building it. This also allows
+    /// offscreen replacement at an existing location without a temporary parent container.
+    pub(super) fn build_node_command(
+        &mut self,
+        scene: &RetainedScene,
+        id: RetainedNodeId,
+        location: CommandLocation,
+    ) -> Command {
         let node = &scene.nodes[&id];
+        let revision = NodeRevision::new(node.instance, node.generation);
         match &node.kind {
-            NodeKind::Group => {
-                self.append_children(scene, id, RetainedChildBranch::Content, target)
-            }
             NodeKind::Scene { .. } => {
                 let fragment = self.install_chunk_commands(id, None);
-                let command_index = Rc::make_mut(&mut self.canvas).command_lists[target]
-                    .commands
-                    .len();
-                Rc::make_mut(&mut self.canvas).command_lists[target]
-                    .commands
-                    .push(Command::MaterializedRetainedScene {
-                        id,
-                        revision: NodeRevision::new(node.instance, node.generation),
-                        children: fragment.start,
-                    });
-                self.scene_command_locations.insert(
+                self.scene_command_locations.insert(id, location);
+                Command::MaterializedRetainedScene {
                     id,
-                    SceneCommandLocation {
-                        parent_list: target,
-                        command_index,
-                        fragment_start: fragment.start,
-                        fragment_count: fragment.len(),
-                    },
-                );
+                    revision,
+                    fragment,
+                }
             }
             NodeKind::Layer(RetainedLayerDescriptor::Mask(mask)) => {
-                let content = self.push_command_list();
-                let mask_commands = self.push_command_list();
+                let content = self.allocate_command_lists(1).start;
+                let mask_commands = self.allocate_command_lists(1).start;
                 self.append_children(scene, id, RetainedChildBranch::Content, content);
                 self.append_children(scene, id, RetainedChildBranch::Mask, mask_commands);
-                let command_index = Rc::make_mut(&mut self.canvas).command_lists[target]
-                    .commands
-                    .len();
-                Rc::make_mut(&mut self.canvas).command_lists[target]
-                    .commands
-                    .push(Command::MaskLayer {
-                        retained: Some(PersistentLayerKey::new(
-                            id,
-                            NodeRevision::new(node.instance, node.generation),
-                        )),
-                        layer: mask.clone(),
-                        content,
-                        mask: mask_commands,
-                    });
-                self.layer_command_locations.insert(
-                    id,
-                    LayerCommandLocation {
-                        parent_list: target,
-                        command_index,
-                    },
-                );
+                self.layer_command_locations.insert(id, location);
+                Command::MaskLayer {
+                    retained: Some(PersistentLayerKey::new(id, revision)),
+                    layer: mask.clone(),
+                    content,
+                    mask: mask_commands,
+                }
             }
             NodeKind::Layer(_) => {
                 let chunk = &self.chunks[&id];
                 let draw_base = self.arenas.draws.range(chunk.draws).start;
-                let root = &chunk.canvas.command_lists[ROOT_COMMAND_LIST_ID];
-                let template = root
-                    .commands
-                    .first()
-                    .expect("layer chunk has one root command")
-                    .clone();
-                let children = self.push_command_list();
-                self.append_children(scene, id, RetainedChildBranch::Content, children);
+                let template = chunk.canvas.command_lists[ROOT_COMMAND_LIST_ID].commands[0].clone();
                 let Command::Layer { layer, .. } = template else {
                     unreachable!("non-mask layer chunk has a layer command")
                 };
-                let command_index = Rc::make_mut(&mut self.canvas).command_lists[target]
-                    .commands
-                    .len();
-                Rc::make_mut(&mut self.canvas).command_lists[target]
-                    .commands
-                    .push(Command::Layer {
-                        retained: Some(PersistentLayerKey::new(
-                            id,
-                            NodeRevision::new(node.instance, node.generation),
-                        )),
-                        layer: layer.remap_draw(draw_base),
-                        children,
-                    });
-                self.layer_command_locations.insert(
-                    id,
-                    LayerCommandLocation {
-                        parent_list: target,
-                        command_index,
-                    },
-                );
+                let children = self.allocate_command_lists(1).start;
+                self.append_children(scene, id, RetainedChildBranch::Content, children);
+                self.layer_command_locations.insert(id, location);
+                Command::Layer {
+                    retained: Some(PersistentLayerKey::new(id, revision)),
+                    layer: layer.remap_draw(draw_base),
+                    children,
+                }
             }
+            NodeKind::Group => unreachable!("groups flatten into their parent's command list"),
         }
     }
 
@@ -141,70 +116,57 @@ impl PersistentSceneMaterializer {
         id: RetainedNodeId,
         reuse: Option<std::ops::Range<usize>>,
     ) -> std::ops::Range<usize> {
+        let count = self.chunks[&id].canvas.command_lists.len();
+        let fragment = match reuse {
+            Some(range) if range.len() == count => range,
+            old => {
+                if let Some(old) = old {
+                    self.release_command_lists(old);
+                }
+                self.allocate_command_lists(count)
+            }
+        };
         let chunk = &self.chunks[&id];
         let draw_base = self.arenas.draws.range(chunk.draws).start;
-        let list_count = chunk.canvas.command_lists.len();
-        let list_base = reuse.filter(|range| range.len() == list_count).map_or_else(
-            || Rc::make_mut(&mut self.canvas).command_lists.len(),
-            |range| range.start,
-        );
-        let lists = chunk
-            .canvas
-            .command_lists
-            .iter()
-            .map(|list| CommandList {
-                commands: list
+        let lists = &mut Rc::make_mut(&mut self.canvas).command_lists[fragment.clone()];
+        for (target, source) in lists.iter_mut().zip(chunk.canvas.command_lists.iter()) {
+            target.commands.clear();
+            target.commands.extend(
+                source
                     .commands
                     .iter()
                     .cloned()
-                    .map(|command| Canvas::remap_command(command, draw_base, list_base))
-                    .collect(),
-            })
-            .collect::<Vec<_>>();
-        let command_lists = &mut Rc::make_mut(&mut self.canvas).command_lists;
-        if list_base == command_lists.len() {
-            command_lists.extend(lists);
-        } else {
-            command_lists[list_base..list_base + list_count].clone_from_slice(&lists);
+                    .map(|command| Canvas::remap_command(command, draw_base, fragment.start)),
+            );
         }
-        list_base..list_base + list_count
+        fragment
     }
 
     pub(crate) fn patch_scene_commands(&mut self, scene: &RetainedScene, id: RetainedNodeId) {
-        let old = self.scene_command_locations[&id].clone();
-        let fragment = self.install_chunk_commands(
+        let location = self.scene_command_locations[&id];
+        let Command::MaterializedRetainedScene { fragment, .. } =
+            self.canvas.command_lists[location.parent_list].commands[location.command_index]
+                .clone()
+        else {
+            unreachable!("scene location owns a scene command")
+        };
+        let fragment = self.install_chunk_commands(id, Some(fragment));
+        let command = Command::MaterializedRetainedScene {
             id,
-            Some(old.fragment_start..old.fragment_start + old.fragment_count),
-        );
-        Rc::make_mut(&mut self.canvas).command_lists[old.parent_list].commands[old.command_index] =
-            Command::MaterializedRetainedScene {
-                id,
-                revision: NodeRevision::new(scene.nodes[&id].instance, scene.nodes[&id].generation),
-                children: fragment.start,
-            };
-        self.scene_command_locations.insert(
-            id,
-            SceneCommandLocation {
-                fragment_start: fragment.start,
-                fragment_count: fragment.len(),
-                ..old
-            },
-        );
+            revision: NodeRevision::new(scene.nodes[&id].instance, scene.nodes[&id].generation),
+            fragment,
+        };
+        Rc::make_mut(&mut self.canvas).command_lists[location.parent_list].commands
+            [location.command_index] = command;
     }
 
     /// Patches translated offscreen descriptors owned by one otherwise unchanged scene leaf.
     /// Draw records and stable batch membership live in arenas and do not need plan rebuilding.
     pub(crate) fn patch_scene_position_plan(&mut self, id: RetainedNodeId) -> bool {
-        let location = &self.scene_command_locations[&id];
-        let command = Rc::make_mut(&mut self.canvas).command_lists[location.parent_list].commands
-            [location.command_index]
-            .clone();
-        let temporary = self.push_command_list();
-        Rc::make_mut(&mut self.canvas).command_lists[temporary]
-            .commands
-            .push(command);
-        let fragment = self.canvas.compile(temporary);
-        Rc::make_mut(&mut self.canvas).command_lists.pop();
+        let location = self.scene_command_locations[&id];
+        let command =
+            &self.canvas.command_lists[location.parent_list].commands[location.command_index];
+        let fragment = self.canvas.compile_command(command, Vec::new());
         let plan = Rc::make_mut(&mut self.canvas)
             .compiled_plan
             .as_mut()
@@ -212,23 +174,24 @@ impl PersistentSceneMaterializer {
         Rc::make_mut(plan).patch_retained_scene_position(id, &fragment)
     }
 
-    /// Replaces one retained layer fragment without walking or rewriting unrelated siblings.
-    /// Child command lists remain stable, including the two independent mask branches.
+    /// Replaces one retained layer descriptor. Content stays owned by the new command;
+    /// leaving Mask releases its retired branch rather than keeping an unreachable list.
     pub(crate) fn patch_layer_command(
         &mut self,
         scene: &RetainedScene,
         id: RetainedNodeId,
     ) -> (Command, Command) {
         let location = self.layer_command_locations[&id];
-        let old = Rc::make_mut(&mut self.canvas).command_lists[location.parent_list].commands
-            [location.command_index]
+        let old = self.canvas.command_lists[location.parent_list].commands[location.command_index]
             .clone();
         let revision = NodeRevision::new(scene.nodes[&id].instance, scene.nodes[&id].generation);
         let command = match &scene.nodes[&id].kind {
             NodeKind::Layer(RetainedLayerDescriptor::Mask(mask)) => {
                 let (content, mask_commands) = match old.clone() {
                     Command::MaskLayer { content, mask, .. } => (content, mask),
-                    Command::Layer { children, .. } => (children, self.push_command_list()),
+                    Command::Layer { children, .. } => {
+                        (children, self.allocate_command_lists(1).start)
+                    }
                     _ => unreachable!("retained layer location must reference a layer command"),
                 };
                 Command::MaskLayer {
@@ -241,7 +204,10 @@ impl PersistentSceneMaterializer {
             NodeKind::Layer(_) => {
                 let children = match old.clone() {
                     Command::Layer { children, .. } => children,
-                    Command::MaskLayer { content, .. } => content,
+                    Command::MaskLayer { content, mask, .. } => {
+                        self.release_command_branch(mask);
+                        content
+                    }
                     _ => unreachable!("retained layer location must reference a layer command"),
                 };
                 let chunk = &self.chunks[&id];

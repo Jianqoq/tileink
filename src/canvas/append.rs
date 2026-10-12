@@ -437,11 +437,11 @@ impl Canvas {
             Command::MaterializedRetainedScene {
                 id,
                 revision,
-                children,
+                fragment,
             } => Command::MaterializedRetainedScene {
                 id,
                 revision,
-                children: children + child_list_offset,
+                fragment: fragment.start + child_list_offset..fragment.end + child_list_offset,
             },
             Command::Layer {
                 retained,

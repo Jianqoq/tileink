@@ -21,7 +21,7 @@ impl PersistentSceneMaterializer {
             plan_cache_key: next_plan_cache_key(),
             scene_command_locations: HashMap::default(),
             layer_command_locations: HashMap::default(),
-            vacant_command_fragments: Vec::new(),
+            command_storage: CommandStorage::default(),
             resource_refs: HashMap::default(),
             dependency_free: false,
             scoped_backdrop: false,
@@ -514,10 +514,8 @@ impl PersistentSceneMaterializer {
             };
         let root_layer_plan_patched =
             if let Some(id) = root_layer_add_candidate.filter(|_| !compacted) {
-                let command_start = self.canvas.command_lists.len();
                 self.append_node_commands(scene, id, ROOT_COMMAND_LIST_ID);
-                let command_end = self.canvas.command_lists.len();
-                self.insert_root_plan_fragment(scene, id, command_start..command_end);
+                self.insert_root_plan_fragment(scene, id);
                 commands_dirty = false;
                 plan_compiled_during_update = true;
                 true

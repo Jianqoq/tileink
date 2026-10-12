@@ -148,6 +148,12 @@ Metal output; it does **not** resolve that pre-existing canonical mismatch or
 change its expected hash. Consequently the full test command still exits with
 a failure, and the migration must not be described as an entirely green run.
 
+This describes the migration revision. [The later fix](cleanup-2026-10.md#phase-48-resolve-the-three-outstanding-test-failures)
+replaces the archived-hash oracle with an independent f64 implementation of SVG noise semantics.
+Both 300- and 1600-pixel renders pass with at most one RGBA8 channel unit of difference from the
+mathematical reference, and repeated Metal renders remain byte-exact. The production turbulence
+shader and its output are unchanged; the archived hash is not claimed to match.
+
 ## Clip scheduling follow-up
 
 Full-raster, indirect-routing, and SIMD experiments were rejected and removed;

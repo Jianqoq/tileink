@@ -129,7 +129,7 @@ impl PersistentSceneMaterializer {
         for (command_index, id) in order.nodes.into_iter().enumerate() {
             self.layer_command_locations.insert(
                 id,
-                LayerCommandLocation {
+                CommandLocation {
                     parent_list: ROOT_COMMAND_LIST_ID,
                     command_index,
                 },

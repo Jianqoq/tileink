@@ -3053,9 +3053,85 @@ package.json, and all 1000 current implementation files have one audit owner and
 are fully read. Repeated nested recompilation's command-list ownership is the next
 storage contract to verify.
 
+## Phase 57: reclaim command lists through subtree ownership
+
+Three focused regressions fail before production changes: the first nested removal
+leaks command lists, the second Mask kind cycle leaves another retired branch, and
+the second reparenting retains old offscreen trees. The existing local compiler
+appends both replacement branches and a temporary root without releasing the old
+lists. Flat topology has a separate exact-size reuse list; root removal reclaims
+only an appended tail range. Those policies do not describe actual live ownership.
+
+Each Scene command now owns its complete copied source-list range, including
+internal clip, filter and mask lists. Layer commands own their retained branch
+lists recursively. Replacement and removal release those exact old commands,
+independently of already-mutated chunks or node-location maps. Sorted free ranges
+coalesce, split for reuse, and truncate a free tail without moving live list IDs.
+Leaving Mask releases its retired mask branch. Current locations survive hierarchy
+swaps where another fragment has already published the moved node's new command.
+
+Single-command compilation consumes a command slice and the original ancestor
+clip stack directly. All three synthetic-root allocation paths are removed, along
+with detached flat-only fragments, root command-range tombstones and duplicate
+Scene/Layer location structures. This fixes storage lifetime at its owner; it does
+not periodically rebuild the scene to conceal accumulated commands. Real execution
+shape decisions still select structural compilation when necessary.
+
+Eleven permanent tests include six retained CPU, three allocator and two Metal
+cases. They check bounded repeated edits, ownership partitions, fresh command
+order, offscreen migration/swaps, Mask transitions, internal source lists, stable
+indices, split/coalesced holes, immutable previous Canvas snapshots and shared
+unrelated draw batches. The GPU tests perform 99 fresh-renderer comparisons and
+verify independent background pixels. Focused release runs pass 12 command-storage
+and 221 retained cases. Full single-thread release testing, including ignored GPU
+cases, passes 1205 tests in 44 binaries with zero failures or ignored tests.
+Formatting, release clippy, backend-free compilation, all examples and Windows
+DX12/Vulkan all-target type checks pass. New lint diagnostics are removed; the
+existing one library/eight library-test warnings remain.
+
+All 1730 freshly rendered SVG PNGs and seven image examples match baseline bytes;
+SVG sources remain unchanged. Native presentation completes eight frames at
+640×360 and 480×270. The five previously tracked artifact manifests and actual
+DXC compiler/validator hashes are unchanged. Historical glass/turbulence notes
+now link the resolved three failures instead of leaving their historical state
+ambiguous. DX12/Vulkan GPU execution remains unverified on this Metal host.
+
+The [application report](benchmarks/cleanup-phase57-metal-2026-10-12.json) measures
+a 1280×800 dashboard with 32 filtered cards and 25 draws per card. One long-lived
+renderer repeatedly inserts/removes a nested filtered tooltip across all cards.
+The exact same frozen source is used before/after; each observation warms up 256
+frames and measures 2048. Transactions and image readback stay outside the
+submission-through-completion timer. Correctness runs enable Metal validation;
+timing disables it. All twelve application PNGs match the original workload.
+
+The first fixed schedule has 20 before/after pairs and 20 interleaved identical-
+current pairs, reversing block and label order on odd pairs. The median of run
+means is 0.864100 versus 0.919152 ms; paired median +6.938%, descriptive bootstrap
+interval [-10.285%, +22.353%]. Identical-current paired median is -6.533%, interval
+[-30.368%, +27.829%]. These noisy results are retained and are inconclusive.
+
+A separately declared follow-up compiles the clean baseline and current revision
+into one temporary application. Only the baseline Cargo package name changes.
+The same application body runs four long-lived renderers: before, after, and two
+identical-current controls. Twenty processes rotate label positions and reverse
+render order every insertion/removal pair, independently of edit kind. All eight
+follow-up PNGs match the original application. Median run means are 0.984541 and
+0.969067 ms; paired median -0.583%, interval [-1.233%, -0.294%]. Identical-current
+paired median is -0.643%, interval [-1.354%, -0.020%]. The descriptive control-
+adjusted median is -0.035%, interval [-1.062%, +1.015%]. No attributable speedup or
+material regression is resolved at this precision; smaller differences remain
+possible. Late-frame paired median is +0.520%, interval [-1.395%, +1.897%]. The
+verified benefit is bounded storage, not a claimed throughput gain.
+
+Both complete schedules retain all 327680 measured frame times in linked gzip
+JSON datasets. All 25 temporary source/executable/build artifacts are removed.
+Bilingual architecture guides document ownership and direct fragment compilation.
+All 65 benchmark JSON/gzip files parse, npm declarations match package.json,
+and all 1004 current implementation files have one audit owner and are read.
+
 ## Remaining audit work
 
-- All current implementation files are fully read. The progressive/glass shader, SVG lowering, filter distance, text coordinate, retained layer descriptor, typed offscreen, recording geometry, coarse stack, native creation/resource policy and retained plan ownership cleanup are implemented. Metal GPU correctness and portable native-policy regressions pass; DX12 resource runtime still needs Windows verification. Full-plan membership length, root ranges, adjacent-run insertion, root command-scope ownership, plan publication, flat command synchronization, same-ID revision identity and complete nested removal scope now have direct semantic coverage. Verify bounded command-list ownership under repeated nested recompilation, then finish remaining hierarchy/caller and Cargo/module reachability proofs. Clip geometry replacement inside/outside filters and fragment/resize combinations have fresh-renderer and analytic GPU coverage; continue tracing wider retained metadata patching rules. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
+- All current implementation files are fully read. The progressive/glass shader, SVG lowering, filter distance, text coordinate, retained layer descriptor, typed offscreen, recording geometry, coarse stack, native creation/resource policy and retained plan ownership cleanup are implemented. Metal GPU correctness and portable native-policy regressions pass; DX12 resource runtime still needs Windows verification. Full-plan membership length, root ranges, adjacent-run insertion, root command-scope ownership, plan publication, flat command synchronization, same-ID revision identity and complete nested removal scope now have direct semantic coverage. Command-list ownership now has bounded-storage, snapshot and recycled-pixel regressions. Finish remaining hierarchy/caller and Cargo/module reachability proofs. Clip geometry replacement inside/outside filters and fragment/resize combinations have fresh-renderer and analytic GPU coverage; continue tracing wider retained metadata patching rules. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
 - Execute the HLSL editor test against the actual ShaderTools language server; local protocol regressions pass, but the server is unavailable locally.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

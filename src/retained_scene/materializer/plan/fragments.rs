@@ -100,10 +100,6 @@ impl PersistentSceneMaterializer {
                 id,
                 RootPlanFragment {
                     ops: 0..0,
-                    // Initial command lists can be interleaved with later root siblings. They
-                    // remain stable tombstones when this fragment is removed; appended fragments
-                    // still record reclaimable tail ranges.
-                    command_lists: 0..0,
                     nodes: nodes.into_iter().collect(),
                     reassigned_batches: HashMap::default(),
                     removed_batch: None,

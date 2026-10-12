@@ -310,8 +310,8 @@ pub(super) fn backdrop_dependencies(canvas: &Canvas) -> Vec<BackdropDependency> 
                     collect(canvas, *content, true, result);
                     collect(canvas, *mask, true, result);
                 }
-                Command::MaterializedRetainedScene { children, .. } => {
-                    collect(canvas, *children, scoped, result)
+                Command::MaterializedRetainedScene { fragment, .. } => {
+                    collect(canvas, fragment.start, scoped, result)
                 }
                 Command::Draw(_) => {}
             }

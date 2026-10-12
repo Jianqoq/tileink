@@ -62,12 +62,17 @@ Current raw samples, source/library/binary hashes and protocols are in
 
 ## Verification
 
-The final release suite runs with one test thread and one Rayon thread, including
-ignored physical-GPU tests: **967 passed, 9 failed**. The failures already occur
+At the comparison revision, the release suite ran with one test thread and one Rayon thread,
+including ignored physical-GPU tests: **967 passed, 9 failed**. The failures already occurred
 in the prior implementation: one exact same-device SDF/WGSL comparison, five
 coarse count/emit oracle comparisons, two tests requiring the unavailable pinned
 DXC installation, and `scaled_turbulence_matches_canonical_rgba`. These failures
-are not reported as passing.
+were not reported as passing.
+
+These historical failures have since been resolved. The [cleanup record](cleanup-2026-10.md#phase-48-resolve-the-three-outstanding-test-failures)
+details the last three: pinned DXC discovery and real HLSL compilation errors are fixed, and
+scaled turbulence is checked against an independent SVG noise reference rather than an archived
+GPU hash. Actual DXC checks now run for both DXIL and SPIR-V; the Metal turbulence output is unchanged.
 
 New native-source semantic and regression tests pass. Coverage includes complete
 source preservation, parameter bits and pipeline identity, compiler/entry/backend/
@@ -79,11 +84,11 @@ blur and an eight-frame native window/resize smoke run execute successfully with
 Metal validation. Formatting and release Clippy checks complete; existing lint
 warnings remain.
 
-GPU execution and measurements use Apple M5. Shared DXC/reflection host tests
-pass, but this host has neither pinned DXC nor DX12/Vulkan devices. HLSL device
-execution and runtime/offline performance equivalence require verification on
-those platforms. Website content is updated; its build is not run because the
-website dependencies are not installed.
+GPU execution and measurements use Apple M5. At the comparison revision, the host
+had neither pinned DXC nor DX12/Vulkan devices. Later cleanup verifies actual DXC
+compilation and reflection; HLSL device execution and runtime/offline performance
+equivalence still require those GPU platforms. Website content is updated; its build
+is not run because the website dependencies are not installed.
 
 ## Historical interpreter comparison
 

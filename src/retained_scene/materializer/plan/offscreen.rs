@@ -164,27 +164,23 @@ impl PersistentSceneMaterializer {
             return false;
         };
         let old_location = self.layer_command_locations[&id];
-        let temporary = self.push_command_list();
-        self.append_node_commands(scene, id, temporary);
-        let command = Rc::make_mut(&mut self.canvas).command_lists[temporary]
-            .commands
-            .first()
-            .cloned()
-            .expect("offscreen fragment root command");
-        let fragment = self.canvas.compile_with_layer_stack(temporary, outer_stack);
+        let old = self.canvas.command_lists[old_location.parent_list].commands
+            [old_location.command_index]
+            .clone();
+        self.release_command(old);
+        let command = self.build_node_command(scene, id, old_location);
+        let fragment = self.canvas.compile_command(&command, outer_stack);
+        Rc::make_mut(&mut self.canvas).command_lists[old_location.parent_list].commands
+            [old_location.command_index] = command;
         let plan = Rc::make_mut(&mut self.canvas)
             .compiled_plan
             .as_mut()
-            .expect("temporary compilation preserves the existing plan");
+            .expect("fragment compilation preserves the existing plan");
         let Some(draw_batches) =
             Rc::make_mut(plan).replace_retained_offscreen_fragment(id, fragment)
         else {
             return false;
         };
-        Rc::make_mut(&mut self.canvas).command_lists[old_location.parent_list].commands
-            [old_location.command_index] = command;
-        self.layer_command_locations.insert(id, old_location);
-
         let mut nodes = Vec::new();
         scene.collect_subtree(id, &mut nodes);
         self.install_fragment_batches(scene, &nodes, &draw_batches);

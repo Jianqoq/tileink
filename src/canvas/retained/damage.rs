@@ -134,8 +134,8 @@ fn list_visual_bounds(canvas: &Canvas, list_id: usize, offset: SceneOffset) -> B
                 Command::Draw(draw) => {
                     offset.bounds(pixel_bounds(canvas.draw_records[*draw].pixel_bounds))
                 }
-                Command::MaterializedRetainedScene { children, .. } => {
-                    list_visual_bounds(canvas, *children, offset)
+                Command::MaterializedRetainedScene { fragment, .. } => {
+                    list_visual_bounds(canvas, fragment.start, offset)
                 }
                 Command::Layer {
                     layer, children, ..
@@ -209,10 +209,10 @@ fn propagate_list_damage(
     for command in &canvas.command_lists[list_id].commands {
         match command {
             Command::Draw(_) => {}
-            Command::MaterializedRetainedScene { id, children, .. } => {
+            Command::MaterializedRetainedScene { id, fragment, .. } => {
                 propagate_list_damage(
                     canvas,
-                    *children,
+                    fragment.start,
                     pending,
                     damage,
                     dirty_backdrops,

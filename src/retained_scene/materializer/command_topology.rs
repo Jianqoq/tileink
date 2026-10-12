@@ -3,12 +3,6 @@ use super::helpers::painter_path;
 use super::*;
 use crate::shared::execution::{ExecOp, ROOT_COMMAND_LIST_ID};
 
-#[derive(Clone, Copy)]
-struct DetachedSceneCommand {
-    fragment_start: usize,
-    fragment_count: usize,
-}
-
 impl PersistentSceneMaterializer {
     /// A lack of backdrop dependencies does not imply a flat plan: Scenes can own
     /// clips and filters. Root-wide reuse needs the actual single unscoped batch.
@@ -67,7 +61,7 @@ impl PersistentSceneMaterializer {
             if live {
                 insertions.insert(id);
             }
-            removals.push((location.parent_list, location.command_index, id, live));
+            removals.push((location.parent_list, location.command_index, id));
         }
         for &id in &changes.changed_nodes {
             let Some(node) = scene.nodes.get(&id) else {
@@ -90,7 +84,7 @@ impl PersistentSceneMaterializer {
             };
             let location = &self.scene_command_locations[&id];
             if !self.scene_command_is_current(scene, id, location) {
-                removals.push((location.parent_list, location.command_index, id, true));
+                removals.push((location.parent_list, location.command_index, id));
                 insertions.insert(id);
             } else if previous.instance != node.instance || previous.generation != node.generation {
                 patches.push(id);
@@ -107,24 +101,9 @@ impl PersistentSceneMaterializer {
         // Descending indices keep every not-yet-removed location stable. Each removal only repairs
         // the suffix that physically shifted in its own Vec.
         removals.sort_unstable_by(|a, b| a.0.cmp(&b.0).then_with(|| b.1.cmp(&a.1)));
-        let mut detached = HashMap::default();
-        for (_, _, id, live) in removals {
-            let location = self
-                .scene_command_locations
-                .get(&id)
-                .cloned()
-                .expect("classified retained command location remains live");
+        for (_, _, id) in removals {
+            let location = self.scene_command_locations[&id];
             self.remove_scene_command(id, &location);
-            let command = DetachedSceneCommand {
-                fragment_start: location.fragment_start,
-                fragment_count: location.fragment_count,
-            };
-            if live {
-                detached.insert(id, command);
-            } else {
-                self.vacant_command_fragments
-                    .push(command.fragment_start..command.fragment_start + command.fragment_count);
-            }
         }
         for id in patches {
             self.patch_scene_commands(scene, id);
@@ -145,17 +124,7 @@ impl PersistentSceneMaterializer {
                     || self.canvas.command_lists[parent_list].commands.len(),
                     |location| location.command_index,
                 );
-            let reuse = detached.remove(&id).map(|command| {
-                command.fragment_start..command.fragment_start + command.fragment_count
-            });
-            let reuse = reuse.or_else(|| {
-                let count = self.chunks[&id].canvas.command_lists.len();
-                self.vacant_command_fragments
-                    .iter()
-                    .position(|range| range.len() == count)
-                    .map(|index| self.vacant_command_fragments.swap_remove(index))
-            });
-            let fragment = self.install_chunk_commands(id, reuse);
+            let fragment = self.install_chunk_commands(id, None);
             Rc::make_mut(&mut self.canvas).command_lists[parent_list]
                 .commands
                 .insert(
@@ -166,28 +135,25 @@ impl PersistentSceneMaterializer {
                             scene.nodes[&id].instance,
                             scene.nodes[&id].generation,
                         ),
-                        children: fragment.start,
+                        fragment,
                     },
                 );
             self.scene_command_locations.insert(
                 id,
-                SceneCommandLocation {
+                CommandLocation {
                     parent_list,
                     command_index,
-                    fragment_start: fragment.start,
-                    fragment_count: fragment.len(),
                 },
             );
             self.refresh_command_indices(parent_list, command_index);
         }
-        debug_assert!(detached.is_empty());
     }
 
     fn scene_command_is_current(
         &self,
         scene: &RetainedScene,
         id: RetainedNodeId,
-        location: &SceneCommandLocation,
+        location: &CommandLocation,
     ) -> bool {
         let container = command_container(scene, id);
         let parent_list = self.command_list_for_container(scene, container);
@@ -230,18 +196,11 @@ impl PersistentSceneMaterializer {
         id: RetainedNodeId,
         container: RetainedParent,
         parent_list: usize,
-    ) -> Option<LayerCommandLocation> {
+    ) -> Option<CommandLocation> {
         let mut next = command_neighbor(scene, id, container, Direction::Next);
         while let Some(id) = next {
             let location = match &scene.nodes[&id].kind {
-                NodeKind::Scene { .. } => {
-                    self.scene_command_locations
-                        .get(&id)
-                        .map(|location| LayerCommandLocation {
-                            parent_list: location.parent_list,
-                            command_index: location.command_index,
-                        })
-                }
+                NodeKind::Scene { .. } => self.scene_command_locations.get(&id).copied(),
                 NodeKind::Layer(_) => self.layer_command_locations.get(&id).copied(),
                 NodeKind::Group => None,
             };
@@ -253,7 +212,7 @@ impl PersistentSceneMaterializer {
         None
     }
 
-    fn remove_scene_command(&mut self, id: RetainedNodeId, location: &SceneCommandLocation) {
+    fn remove_scene_command(&mut self, id: RetainedNodeId, location: &CommandLocation) {
         let removed = Rc::make_mut(&mut self.canvas).command_lists[location.parent_list]
             .commands
             .remove(location.command_index);
@@ -263,6 +222,7 @@ impl PersistentSceneMaterializer {
         );
         self.scene_command_locations.remove(&id);
         self.refresh_command_indices(location.parent_list, location.command_index);
+        self.release_command(removed);
     }
 
     pub(super) fn refresh_command_indices(&mut self, parent_list: usize, start: usize) {
@@ -296,11 +256,10 @@ impl PersistentSceneMaterializer {
                 } => {
                     *layer_command_locations
                         .get_mut(&key.id)
-                        .expect("live retained layer command has a location") =
-                        LayerCommandLocation {
-                            parent_list,
-                            command_index,
-                        };
+                        .expect("live retained layer command has a location") = CommandLocation {
+                        parent_list,
+                        command_index,
+                    };
                 }
                 _ => unreachable!("retained container lists only contain retained commands"),
             }

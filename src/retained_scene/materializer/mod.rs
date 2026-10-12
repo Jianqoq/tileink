@@ -4,6 +4,7 @@ pub(crate) use super::scene::RetainedScene;
 
 mod chunks;
 mod command_order;
+mod command_storage;
 mod command_topology;
 mod damage;
 mod draw_order;
@@ -15,6 +16,7 @@ mod scoped_damage;
 mod spatial_tiles;
 mod storage;
 
+use self::command_storage::CommandStorage;
 use self::draw_order::LocalDrawOrder;
 use self::helpers::inactive_draw;
 
@@ -149,23 +151,14 @@ impl SceneChunkLengths {
     }
 }
 
-#[derive(Clone)]
-struct SceneCommandLocation {
-    parent_list: usize,
-    command_index: usize,
-    fragment_start: usize,
-    fragment_count: usize,
-}
-
 #[derive(Clone, Copy)]
-struct LayerCommandLocation {
+struct CommandLocation {
     parent_list: usize,
     command_index: usize,
 }
 
 struct RootPlanFragment {
     ops: std::ops::Range<usize>,
-    command_lists: std::ops::Range<usize>,
     nodes: HashSet<RetainedNodeId>,
     reassigned_batches: HashMap<RetainedNodeId, u32>,
     removed_batch: Option<(usize, crate::shared::execution::ExecOp)>,
@@ -222,11 +215,9 @@ pub(crate) struct PersistentSceneMaterializer {
     /// frames instead of allocating and hashing every path owner on every interactive resize.
     surface_resized_painter_nodes: Vec<RetainedNodeId>,
     plan_cache_key: u64,
-    scene_command_locations: HashMap<RetainedNodeId, SceneCommandLocation>,
-    layer_command_locations: HashMap<RetainedNodeId, LayerCommandLocation>,
-    /// Detached plain-scene command-list ranges, reused by later topology insertions with the
-    /// same fragment shape so repeated conditional UI does not grow command storage forever.
-    vacant_command_fragments: Vec<std::ops::Range<usize>>,
+    scene_command_locations: HashMap<RetainedNodeId, CommandLocation>,
+    layer_command_locations: HashMap<RetainedNodeId, CommandLocation>,
+    command_storage: CommandStorage,
     // Preserve deferred vector sources through materialization; only the selected
     // GPU executor may rasterize them. Counts follow live retained chunks.
     resource_refs: HashMap<ImageKey, usize>,

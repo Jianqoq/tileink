@@ -92,6 +92,9 @@ mod command_topology;
 #[path = "tests/nested_changes.rs"]
 mod nested_changes;
 
+#[path = "tests/command_storage.rs"]
+mod command_storage;
+
 #[path = "tests/fragment_membership.rs"]
 mod fragment_membership;
 

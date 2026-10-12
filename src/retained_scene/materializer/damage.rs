@@ -224,13 +224,6 @@ impl PersistentSceneMaterializer {
             .map(|damage| damage.intersect(bounds))
             .fold(Bounds::new(0, 0, 0, 0), Bounds::union)
     }
-
-    pub(crate) fn push_command_list(&mut self) -> usize {
-        let canvas = Rc::make_mut(&mut self.canvas);
-        let id = canvas.command_lists.len();
-        canvas.command_lists.push(CommandList::default());
-        id
-    }
 }
 
 #[cfg(test)]

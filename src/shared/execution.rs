@@ -54,7 +54,8 @@ pub(crate) enum Command {
     MaterializedRetainedScene {
         id: RetainedNodeId,
         revision: NodeRevision,
-        children: CommandListId,
+        /// The scene owns every list copied from its source, including internal layer lists.
+        fragment: Range<CommandListId>,
     },
     Layer {
         retained: Option<PersistentLayerKey>,

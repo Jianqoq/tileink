@@ -1,6 +1,7 @@
 use super::*;
 
 mod clip_geometry;
+mod command_storage;
 mod command_topology;
 mod fragment_membership;
 mod fragment_resize;

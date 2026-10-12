@@ -8,11 +8,6 @@ impl PersistentSceneMaterializer {
             .remove(&id)
             .expect("selected root fragment");
         let location = self.layer_command_locations[&id];
-        if !fragment.command_lists.is_empty() {
-            // Appended root fragments may truncate the command-list tail. Discard recycled ranges
-            // before their indices can become invalid; the detached storage itself is harmless.
-            self.vacant_command_fragments.clear();
-        }
         let canvas = Rc::make_mut(&mut self.canvas);
         let plan = canvas
             .compiled_plan
@@ -28,7 +23,7 @@ impl PersistentSceneMaterializer {
         }
         let root_commands = &mut canvas.command_lists[0].commands;
         let removed_tail_command = location.command_index + 1 == root_commands.len();
-        root_commands.remove(location.command_index);
+        let removed = root_commands.remove(location.command_index);
         // Appended root fragments are normally removed from the tail. In that case no command
         // location can shift, so scanning every retained leaf would turn a two-node removal into
         // O(scene nodes) work. Non-tail removal still repairs every affected stable location.
@@ -48,11 +43,6 @@ impl PersistentSceneMaterializer {
                 }
             }
         }
-        if !fragment.command_lists.is_empty()
-            && fragment.command_lists.end == canvas.command_lists.len()
-        {
-            canvas.command_lists.truncate(fragment.command_lists.start);
-        }
         if let Some((index, op)) = fragment.removed_batch {
             Rc::make_mut(plan).restore_removed_batch(index, op);
             for other in self.root_plan_fragments.values_mut() {
@@ -62,6 +52,7 @@ impl PersistentSceneMaterializer {
                 }
             }
         }
+        self.release_command(removed);
         let restored = fragment.reassigned_batches;
         for (&node, &batch) in &restored {
             self.node_batches.insert(node, batch);
