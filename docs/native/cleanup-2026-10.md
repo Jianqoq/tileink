@@ -3277,6 +3277,13 @@ tests still fail. All five then pass with the complete fix. The old source-strin
 assertion is removed. Non-Windows execution explicitly requires a real PowerShell
 executable; Windows CI runs the tests with Windows PowerShell by default.
 
+The first actual Windows CI run catches a separate test-driver mistake: Windows
+PowerShell emits a root JSON array as one pipeline object, whereas PowerShell 7
+enumerates it. Wrapping that pipeline in another array merged the intended
+arguments into one string. The test protocol now places the arguments in an
+object property, preserving empty and multi-element arrays in both runtimes.
+The same five semantic tests verify the corrected input protocol.
+
 The local PowerShell 7.6.6 ARM package is verified against its official SHA-256.
 All 1217 serial release tests pass in 45 binaries, with zero failures and zero
 ignored tests. Formatting, zero-warning release clippy for Metal and Windows

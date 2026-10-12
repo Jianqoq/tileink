@@ -66,7 +66,13 @@ impl Runner {
             path
         };
         let input = self.temp.path().join("arguments.json");
-        fs::write(&input, serde_json::to_vec(arguments).unwrap()).unwrap();
+        // A property preserves the array without pipeline enumeration changing
+        // its shape between Windows PowerShell and PowerShell 7.
+        fs::write(
+            &input,
+            serde_json::to_vec(&serde_json::json!({ "arguments": arguments })).unwrap(),
+        )
+        .unwrap();
         let path = env::join_paths(
             [
                 self.temp.path().join("bin"),
@@ -84,8 +90,8 @@ impl Runner {
                 "-Command",
                 r#"
 $ErrorActionPreference = 'Stop'
-$cargoArguments = @(Get-Content -LiteralPath $env:TILEINK_RUNNER_ARGS -Raw -Encoding UTF8 | ConvertFrom-Json)
-& $env:TILEINK_RUNNER_SCRIPT -CargoArgs $cargoArguments
+$runnerRequest = Get-Content -LiteralPath $env:TILEINK_RUNNER_ARGS -Raw -Encoding UTF8 | ConvertFrom-Json
+& $env:TILEINK_RUNNER_SCRIPT -CargoArgs $runnerRequest.arguments
 "#,
             ])
             .current_dir(self.temp.path())
