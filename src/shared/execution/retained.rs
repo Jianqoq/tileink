@@ -22,9 +22,9 @@ impl ExecPlan {
         find_retained_offscreen_ancestor(&self.ops, owner, None)
     }
 
-    pub(crate) fn reorder_root_offscreen(&mut self, order: &[RetainedNodeId]) -> bool {
+    pub(crate) fn root_offscreen_order(&self, order: &[RetainedNodeId]) -> Option<Vec<usize>> {
         if self.ops.len() != order.len() {
-            return false;
+            return None;
         }
         let mut by_node = HashMap::with_capacity(self.ops.len());
         for (index, op) in self.ops.iter().enumerate() {
@@ -37,25 +37,21 @@ impl ExecPlan {
                     retained_id: Some(id),
                     ..
                 } => id.node,
-                _ => return false,
+                _ => return None,
             };
-            if by_node.insert(node, index).is_some() {
-                return false;
-            }
+            // Accepted root operations come from distinct validated retained layer IDs.
+            by_node.insert(node, index);
         }
-        let Some(indices) = order
-            .iter()
-            .map(|id| by_node.get(id).copied())
-            .collect::<Option<Vec<_>>>()
-        else {
-            return false;
-        };
+        order.iter().map(|id| by_node.get(id).copied()).collect()
+    }
+
+    /// Applies the permutation selected from this plan before any structural mutation.
+    pub(crate) fn reorder_root_offscreen(&mut self, indices: &[usize]) {
         self.ops = indices
-            .into_iter()
-            .map(|index| self.ops[index].clone())
+            .iter()
+            .map(|&index| self.ops[index].clone())
             .collect();
         self.refresh_direct_root_batch_ops();
-        true
     }
 }
 

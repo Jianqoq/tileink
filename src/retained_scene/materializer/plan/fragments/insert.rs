@@ -1,18 +1,30 @@
 use super::*;
 
 impl PersistentSceneMaterializer {
-    /// Installs one newly appended root-layer subtree as an independent persistent plan
+    /// Installs one root-layer subtree as an independent persistent plan
     /// fragment. Existing root batches and their large draw lists remain shared.
-    pub(crate) fn append_root_plan_fragment(
+    pub(crate) fn insert_root_plan_fragment(
         &mut self,
         scene: &RetainedScene,
         id: RetainedNodeId,
         command_lists: std::ops::Range<usize>,
-    ) -> bool {
-        let location = self.layer_command_locations[&id];
-        if location.parent_list != 0 {
-            return false;
+    ) {
+        // The caller installs this direct root layer at the command tail. Put its
+        // authoritative command at the same painter position as its plan fragment;
+        // a later full compile must not replay the old append order.
+        if let Some(next) = self.next_located_command(
+            scene,
+            id,
+            RetainedParent::content(scene.root),
+            ROOT_COMMAND_LIST_ID,
+        ) {
+            let appended = self.layer_command_locations[&id].command_index;
+            Rc::make_mut(&mut self.canvas).command_lists[ROOT_COMMAND_LIST_ID].commands
+                [next.command_index..=appended]
+                .rotate_right(1);
+            self.refresh_command_indices(ROOT_COMMAND_LIST_ID, next.command_index);
         }
+        let location = self.layer_command_locations[&id];
         let command = Rc::make_mut(&mut self.canvas).command_lists[0].commands
             [location.command_index]
             .clone();
@@ -28,6 +40,23 @@ impl PersistentSceneMaterializer {
         let node_set = nodes.iter().copied().collect::<HashSet<_>>();
         let layer_bounds = chunk_layer_influence_bounds(&self.chunks[&id]);
         let layer_painter = painter_path(scene, id);
+        let next_layer = self.canvas.command_lists[ROOT_COMMAND_LIST_ID]
+            .commands
+            .iter()
+            .skip(location.command_index + 1)
+            .find_map(|command| match command {
+                Command::Layer {
+                    retained: Some(key),
+                    ..
+                }
+                | Command::MaskLayer {
+                    retained: Some(key),
+                    ..
+                } => Some(key.id),
+                _ => None,
+            });
+        let next_fragment_start = next_layer.map(|id| self.root_plan_fragments[&id].ops.start);
+        let end_painter = next_layer.map(|id| painter_path(scene, id));
         // Only later leaves whose pixels intersect this layer can cross the new execution
         // boundary. Querying the retained tile index makes the work proportional to affected
         // pixels instead of walking every later sibling in the scene.
@@ -36,8 +65,12 @@ impl PersistentSceneMaterializer {
             .into_iter()
             .filter_map(|node| {
                 if !matches!(scene.nodes.get(&node)?.kind, NodeKind::Scene { .. })
+                    || node_set.contains(&node)
                     || self.root_fragment_owners.contains_key(&node)
                     || self.painter_bases.get(&node)?.as_ref() <= layer_painter.as_ref()
+                    || end_painter
+                        .as_ref()
+                        .is_some_and(|end| self.painter_bases[&node].as_ref() >= end.as_ref())
                 {
                     return None;
                 }
@@ -60,22 +93,10 @@ impl PersistentSceneMaterializer {
         for (&node, &batch) in &reassigned_batches {
             *moved_per_batch.entry(batch).or_default() += self.node_physical_draws(node).len();
         }
-        let mut after_id = false;
-        let next_fragment_start = scene.nodes[&scene.root].content.values().find_map(|child| {
-            if *child == id {
-                after_id = true;
-                None
-            } else if after_id {
-                self.root_plan_fragments
-                    .get(child)
-                    .map(|fragment| fragment.ops.start)
-            } else {
-                None
-            }
-        });
-        let Some(plan) = Rc::make_mut(&mut self.canvas).compiled_plan.as_mut() else {
-            return false;
-        };
+        let plan = Rc::make_mut(&mut self.canvas)
+            .compiled_plan
+            .as_mut()
+            .expect("root insertion preserves the existing plan");
         let plan = Rc::make_mut(plan);
         let removed_batch = (moved_per_batch.len() == 1)
             .then(|| moved_per_batch.into_iter().next().unwrap())
@@ -128,6 +149,5 @@ impl PersistentSceneMaterializer {
                 removed_batch,
             },
         );
-        true
     }
 }

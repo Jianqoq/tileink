@@ -213,7 +213,7 @@ impl PersistentSceneMaterializer {
         }
     }
 
-    fn next_located_command(
+    pub(super) fn next_located_command(
         &self,
         scene: &RetainedScene,
         id: RetainedNodeId,
@@ -254,7 +254,7 @@ impl PersistentSceneMaterializer {
         self.refresh_command_indices(location.parent_list, location.command_index);
     }
 
-    fn refresh_command_indices(&mut self, parent_list: usize, start: usize) {
+    pub(super) fn refresh_command_indices(&mut self, parent_list: usize, start: usize) {
         let Self {
             canvas,
             scene_command_locations,

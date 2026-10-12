@@ -1,5 +1,6 @@
 use super::helpers::*;
 use super::*;
+use crate::shared::execution::ROOT_COMMAND_LIST_ID;
 
 impl PersistentSceneMaterializer {
     pub(crate) fn new(scene: &RetainedScene) -> Self {
@@ -232,18 +233,7 @@ impl PersistentSceneMaterializer {
             && !changes.hierarchy_changed
             && changes.removed_nodes.is_empty()
             && changes.changed_nodes == changes.changed_layers;
-        // A removal-only fragment patch cannot install or update other live nodes.
-        // Mixed page switches must rebuild the authoritative plan, otherwise the old
-        // page disappears but the newly inserted clip subtree is never executed.
-        let root_layer_remove_candidate = (!changes.removed_nodes.is_empty()
-            && changes.changed_nodes.is_empty())
-        .then(|| {
-            self.root_plan_fragments.iter().find_map(|(&id, fragment)| {
-                let location = self.layer_command_locations.get(&id)?;
-                (fragment.nodes == changes.removed_nodes && location.parent_list == 0).then_some(id)
-            })
-        })
-        .flatten();
+        let root_layer_remove_candidate = self.root_layer_remove_candidate(&changes);
         let mut stable_batch_candidate = !changes.topology_changed;
         let mut reorder_damage = Vec::new();
         let mut plain_topology_damage = Vec::new();
@@ -434,29 +424,7 @@ impl PersistentSceneMaterializer {
         if plain_topology_candidate {
             self.node_batches.extend(topology_batch_updates);
         }
-        // Only topology changes can introduce a layer. Avoid rescanning content-only updates.
-        let root_layer_add_candidate = (changes.topology_changed
-            && changes.removed_nodes.is_empty())
-        .then(|| {
-            let mut layers = changes.changed_nodes.iter().filter(|id| {
-                scene.nodes.get(id).is_some_and(|node| {
-                    matches!(node.kind, NodeKind::Layer(_))
-                        && !self.layer_command_locations.contains_key(id)
-                        && node.parent == Some(RetainedParent::content(scene.root))
-                })
-            });
-            let id = *layers.next()?;
-            if layers.next().is_some()
-                || !changes
-                    .changed_nodes
-                    .iter()
-                    .all(|changed| is_descendant_or_self(scene, *changed, id))
-            {
-                return None;
-            }
-            Some(id)
-        })
-        .flatten();
+        let root_layer_add_candidate = self.root_layer_add_candidate(scene, &changes);
         let nested_offscreen_add_candidate = root_layer_add_candidate
             .is_none()
             .then(|| self.nested_offscreen_add_candidate(scene, &changes))
@@ -472,21 +440,12 @@ impl PersistentSceneMaterializer {
         } else {
             Vec::new()
         };
-        let root_offscreen_reorder_candidate = nested_offscreen_hierarchy_candidates.is_empty()
-            && changes.hierarchy_changed
-            && changes.removed_nodes.is_empty()
-            && !changes.changed_nodes.is_empty()
-            && changes.changed_nodes.iter().all(|id| {
-                scene.nodes.get(id).is_some_and(|node| {
-                    matches!(node.kind, NodeKind::Layer(_))
-                        && node.parent == Some(RetainedParent::content(scene.root))
-                        && self.layer_command_locations.contains_key(id)
-                })
-            })
-            && scene.nodes[&scene.root]
-                .content
-                .values()
-                .all(|id| matches!(scene.nodes[id].kind, NodeKind::Layer(_)));
+        // Validate the permutation against the old plan before choosing command reuse.
+        let root_offscreen_reorder_candidate = (nested_offscreen_hierarchy_candidates.is_empty()
+            && chunks_rebuilt == 0
+            && !surface_plan_changed)
+            .then(|| self.root_offscreen_reorder_candidate(scene, &changes))
+            .flatten();
 
         if !changes.topology_changed && !self.dependency_free {
             delta_eligible = changes.changed_nodes.iter().all(|id| {
@@ -536,41 +495,27 @@ impl PersistentSceneMaterializer {
             // delta so unchanged geometry and spatial bins remain reusable.
             Rc::make_mut(&mut self.canvas).buffer_changes = Some(SceneBufferChanges::default());
         }
-        if commands_dirty
-            && (compacted
-                || (changes.topology_changed
-                    && !root_painter_update
-                    && !root_reorder_candidate
-                    && !plain_topology_candidate
-                    && root_layer_add_candidate.is_none()
-                    && root_layer_remove_candidate.is_none()
-                    && nested_offscreen_candidate.is_none()
-                    && nested_offscreen_hierarchy_candidates.is_empty()
-                    && !root_offscreen_reorder_candidate))
-        {
-            self.rebuild_commands(scene);
-            commands_dirty = false;
-        }
-        let root_layer_remove_patched = root_layer_remove_candidate
-            .filter(|_| !compacted)
-            .is_some_and(|id| self.remove_root_plan_fragment(id));
-        if root_layer_remove_patched {
-            commands_dirty = false;
-            plan_compiled_during_update = true;
-        }
+        let root_layer_remove_patched =
+            if let Some(id) = root_layer_remove_candidate.filter(|_| !compacted) {
+                self.remove_root_plan_fragment(id);
+                commands_dirty = false;
+                plan_compiled_during_update = true;
+                true
+            } else {
+                false
+            };
         let root_layer_plan_patched =
-            root_layer_add_candidate
-                .filter(|_| !compacted)
-                .is_some_and(|id| {
-                    let command_start = Rc::make_mut(&mut self.canvas).command_lists.len();
-                    self.append_node_commands(scene, id, 0);
-                    let command_end = Rc::make_mut(&mut self.canvas).command_lists.len();
-                    self.append_root_plan_fragment(scene, id, command_start..command_end)
-                });
-        if root_layer_plan_patched {
-            commands_dirty = false;
-            plan_compiled_during_update = true;
-        }
+            if let Some(id) = root_layer_add_candidate.filter(|_| !compacted) {
+                let command_start = self.canvas.command_lists.len();
+                self.append_node_commands(scene, id, ROOT_COMMAND_LIST_ID);
+                let command_end = self.canvas.command_lists.len();
+                self.insert_root_plan_fragment(scene, id, command_start..command_end);
+                commands_dirty = false;
+                plan_compiled_during_update = true;
+                true
+            } else {
+                false
+            };
         let nested_offscreen_plan_patched = nested_offscreen_candidate
             .filter(|_| !compacted)
             .is_some_and(|id| {
@@ -600,35 +545,44 @@ impl PersistentSceneMaterializer {
             commands_dirty = false;
             plan_compiled_during_update = true;
         }
-        let root_offscreen_reorder_patched = root_offscreen_reorder_candidate
-            && !compacted
-            && self.reorder_root_offscreen_plan(scene);
-        if root_offscreen_reorder_patched {
-            commands_dirty = false;
-            plan_compiled_during_update = true;
-        }
-        let layer_plan_patched = layer_update_candidate
-            && !compacted
-            && !layer_plan_patches.is_empty()
-            && Rc::make_mut(&mut self.canvas)
-                .compiled_plan
-                .as_mut()
-                .is_some_and(|plan| {
-                    let plan = Rc::make_mut(plan);
-                    for (id, old, new) in &layer_plan_patches {
-                        if let Command::Layer { layer, .. } = old
-                            && let Some(draw) = layer.hidden_draw()
-                        {
-                            plan_layer_stack_changes.extend(plan.layer_stack_ranges_for_draw(draw));
-                        }
-                        if !plan.patch_retained_layer(*id, old, new) {
-                            return false;
-                        }
+        let root_offscreen_reorder_patched =
+            if let Some(order) = root_offscreen_reorder_candidate.filter(|_| !compacted) {
+                self.reorder_root_offscreen_plan(order);
+                commands_dirty = false;
+                plan_compiled_during_update = true;
+                true
+            } else {
+                false
+            };
+        let layer_plan_patched =
+            layer_update_candidate && !compacted && !layer_plan_patches.is_empty() && {
+                let plan = Rc::make_mut(
+                    Rc::make_mut(&mut self.canvas)
+                        .compiled_plan
+                        .as_mut()
+                        .expect("layer patches preserve the existing plan"),
+                );
+                layer_plan_patches.iter().all(|(id, old, new)| {
+                    if let Command::Layer { layer, .. } = old
+                        && let Some(draw) = layer.hidden_draw()
+                    {
+                        plan_layer_stack_changes.extend(plan.layer_stack_ranges_for_draw(draw));
                     }
-                    true
-                });
+                    plan.patch_retained_layer(*id, old, new)
+                })
+            };
         plan_layer_stack_changes = merge_index_ranges(plan_layer_stack_changes);
         plan_compiled_during_update |= layer_plan_patched;
+        // Finalize structural commands before rebuilding their plan and painter membership.
+        // Flat reuse synchronizes its targeted command edits below; compaction always rebuilds.
+        if commands_dirty
+            && (compacted
+                || !(root_painter_update || root_reorder_candidate || plain_topology_candidate))
+        {
+            self.rebuild_commands(scene);
+            commands_dirty = false;
+            plan_compiled_during_update = false;
+        }
         // Any command topology or layer parameter change invalidates the previous immutable
         // plan before painter metadata asks Canvas to compile. Clearing it only at the end would
         // let rebuild_painter_metadata copy batch membership from the stale plan.
@@ -771,6 +725,8 @@ impl PersistentSceneMaterializer {
         }
         if commands_dirty {
             self.rebuild_commands(scene);
+            // A late flat-command rebuild invalidates any previously compiled snapshot.
+            plan_compiled_during_update = false;
         }
         if plan_dirty {
             self.plan_cache_key = next_plan_cache_key();

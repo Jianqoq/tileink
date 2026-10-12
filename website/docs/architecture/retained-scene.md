@@ -60,6 +60,12 @@ Opacity／Blend 包含离屏子层时，在该子树合成完成后应用到整�
 普通 leaf 插入只复用其实际绘制位置相邻的执行 batch，不能跨越 clip、filter 等执行边界。
 Group 在查找相邻命令时展开；空 layer 的 content 和 mask 分支各自保留独立 batch。
 
+根级 fragment 按实际 command scope 索引，Group 内的根级 layer 同样保留所有权。
+纯离屏图层重排先验证完整的操作排列，再同步命令位置与 fragment 范围；随后删除仍共享其他子树的 draw 存储。
+同事务的参数、类型或依赖 surface 的描述变化需要编译当前结构。
+中间插入根图层会同时更新命令顺序和执行顺序，batch 迁移止于下一个 layer 边界。
+后续 Scene 自带离屏操作、跨越多个 batch 时，按其完整结构编译。
+
 ## Resize fast path
 
 Responsive hierarchy changes committed with a resize preserve the previous immutable frame and

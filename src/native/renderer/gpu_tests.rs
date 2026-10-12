@@ -8,6 +8,8 @@ mod layer_updates;
 mod offscreen_clips;
 mod plan_fragments;
 mod retained_damage;
+mod root_insertions;
+mod root_order;
 
 fn context() -> Result<NativeContext, Box<dyn std::error::Error>> {
     #[cfg(feature = "dx12")]

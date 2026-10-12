@@ -65,13 +65,12 @@ impl PersistentSceneMaterializer {
         scene: &RetainedScene,
         mut id: RetainedNodeId,
     ) -> Option<RetainedNodeId> {
-        while let Some(parent) = scene.nodes.get(&id)?.parent {
-            if parent.node == scene.root {
-                return self.root_plan_fragments.contains_key(&id).then_some(id);
+        loop {
+            if self.root_plan_fragments.contains_key(&id) {
+                return Some(id);
             }
-            id = parent.node;
+            id = scene.nodes[&id].parent?.node;
         }
-        None
     }
 
     pub(crate) fn index_root_plan_fragments(&mut self, scene: &RetainedScene) {
@@ -79,11 +78,20 @@ impl PersistentSceneMaterializer {
 
         self.root_plan_fragments.clear();
         self.root_fragment_owners.clear();
-        for &id in scene.nodes[&scene.root]
-            .content
-            .values()
-            .filter(|id| matches!(scene.nodes[id].kind, NodeKind::Layer(_)))
-        {
+        // Groups flatten into the root command list. Their layers own the same
+        // independent execution ranges as direct graph-root layers.
+        for command in &self.canvas.command_lists[ROOT_COMMAND_LIST_ID].commands {
+            let id = match command {
+                Command::Layer {
+                    retained: Some(key),
+                    ..
+                }
+                | Command::MaskLayer {
+                    retained: Some(key),
+                    ..
+                } => key.id,
+                _ => continue,
+            };
             let mut nodes = Vec::new();
             scene.collect_subtree(id, &mut nodes);
             self.root_fragment_owners

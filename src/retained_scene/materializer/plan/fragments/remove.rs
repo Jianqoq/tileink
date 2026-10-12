@@ -1,10 +1,12 @@
 use super::*;
 
 impl PersistentSceneMaterializer {
-    pub(crate) fn remove_root_plan_fragment(&mut self, id: RetainedNodeId) -> bool {
-        let Some(fragment) = self.root_plan_fragments.remove(&id) else {
-            return false;
-        };
+    pub(crate) fn remove_root_plan_fragment(&mut self, id: RetainedNodeId) {
+        // Candidate selection owns this exact root subtree and its current range.
+        let fragment = self
+            .root_plan_fragments
+            .remove(&id)
+            .expect("selected root fragment");
         let location = self.layer_command_locations[&id];
         if !fragment.command_lists.is_empty() {
             // Appended root fragments may truncate the command-list tail. Discard recycled ranges
@@ -12,14 +14,11 @@ impl PersistentSceneMaterializer {
             self.vacant_command_fragments.clear();
         }
         let canvas = Rc::make_mut(&mut self.canvas);
-        let Some(plan) = canvas.compiled_plan.as_mut() else {
-            self.root_plan_fragments.insert(id, fragment);
-            return false;
-        };
-        if location.parent_list != 0 || !Rc::make_mut(plan).remove_fragment(fragment.ops.clone()) {
-            self.root_plan_fragments.insert(id, fragment);
-            return false;
-        }
+        let plan = canvas
+            .compiled_plan
+            .as_mut()
+            .expect("root removal preserves the existing plan");
+        Rc::make_mut(plan).remove_fragment(fragment.ops.clone());
         let removed_ops = fragment.ops.clone();
         for other in self.root_plan_fragments.values_mut() {
             if other.ops.start >= removed_ops.end {
@@ -78,6 +77,5 @@ impl PersistentSceneMaterializer {
                 .retain(|parent, _| parent.node != node);
         }
         self.update_painter_metadata(&restored.keys().copied().collect());
-        true
     }
 }

@@ -5,7 +5,7 @@ use peniko::{
     kurbo::{Affine, Point, Rect, Shape},
 };
 
-fn descriptor(kind: usize) -> RetainedLayerDescriptor {
+pub(super) fn descriptor(kind: usize) -> RetainedLayerDescriptor {
     let rect = Rect::new(0.0, 0.0, 32.0, 32.0);
     let path = rect.to_path(0.1);
     let sample_region = Region::rect(rect, Radius::ZERO);

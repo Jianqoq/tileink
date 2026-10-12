@@ -18,7 +18,11 @@ impl PersistentSceneMaterializer {
         {
             return None;
         }
-        let plan = self.canvas.compiled_plan.as_ref()?;
+        let plan = self
+            .canvas
+            .compiled_plan
+            .as_ref()
+            .expect("materialized scene owns a plan");
         let mut candidate = None;
         for &id in &changes.changed_nodes {
             if self.layer_command_locations.contains_key(&id)
@@ -51,7 +55,11 @@ impl PersistentSceneMaterializer {
         if !changes.topology_changed || changes.removed_nodes.is_empty() {
             return None;
         }
-        let plan = self.canvas.compiled_plan.as_ref()?;
+        let plan = self
+            .canvas
+            .compiled_plan
+            .as_ref()
+            .expect("materialized scene owns a plan");
         let mut removed_layers = changes.removed_nodes.iter().filter(|id| {
             // Removed chunks have already been released by the time candidates are selected.
             // Layer command ownership is the stable pre-removal type/index needed here.
@@ -80,9 +88,11 @@ impl PersistentSceneMaterializer {
         if !changes.hierarchy_changed || !changes.removed_nodes.is_empty() {
             return Vec::new();
         }
-        let Some(plan) = self.canvas.compiled_plan.as_ref() else {
-            return Vec::new();
-        };
+        let plan = self
+            .canvas
+            .compiled_plan
+            .as_ref()
+            .expect("materialized scene owns a plan");
         let mut candidates = Vec::new();
         for &id in &changes.changed_nodes {
             let Some(node) = scene.nodes.get(&id) else {
@@ -120,63 +130,6 @@ impl PersistentSceneMaterializer {
         candidates
     }
 
-    pub(crate) fn reorder_root_offscreen_plan(&mut self, scene: &RetainedScene) -> bool {
-        let order = scene.nodes[&scene.root]
-            .content
-            .values()
-            .copied()
-            .collect::<Vec<_>>();
-        let canvas = Rc::make_mut(&mut self.canvas);
-        let Some(plan) = canvas.compiled_plan.as_mut() else {
-            return false;
-        };
-        if !Rc::make_mut(plan).reorder_root_offscreen(&order) {
-            return false;
-        }
-
-        let mut commands = HashMap::with_capacity_and_hasher(
-            canvas.command_lists[0].commands.len(),
-            Default::default(),
-        );
-        for command in &canvas.command_lists[0].commands {
-            let id = match command {
-                Command::Layer {
-                    retained: Some(key),
-                    ..
-                }
-                | Command::MaskLayer {
-                    retained: Some(key),
-                    ..
-                } => key.id,
-                _ => return false,
-            };
-            commands.insert(id, command.clone());
-        }
-        let Some(reordered) = order
-            .iter()
-            .map(|id| commands.remove(id))
-            .collect::<Option<Vec<_>>>()
-        else {
-            return false;
-        };
-        if !commands.is_empty() {
-            return false;
-        }
-        canvas.command_lists[0].commands = reordered;
-        for (command_index, &id) in order.iter().enumerate() {
-            self.layer_command_locations.insert(
-                id,
-                LayerCommandLocation {
-                    parent_list: 0,
-                    command_index,
-                },
-            );
-        }
-        self.root_plan_fragments.clear();
-        self.root_fragment_owners.clear();
-        true
-    }
-
     /// Recompiles only one retained offscreen ancestor and installs its new command/plan
     /// fragment. Unchanged branch owners keep their BatchIds; new nested branches receive fresh
     /// IDs without rewriting unrelated root operations.
@@ -189,7 +142,8 @@ impl PersistentSceneMaterializer {
             .canvas
             .compiled_plan
             .as_ref()
-            .and_then(|plan| plan.retained_offscreen_stack(id))
+            .expect("offscreen patches preserve the existing plan")
+            .retained_offscreen_stack(id)
             .map(<[_]>::to_vec)
         else {
             return false;
@@ -203,9 +157,10 @@ impl PersistentSceneMaterializer {
             .cloned()
             .expect("offscreen fragment root command");
         let fragment = self.canvas.compile_with_layer_stack(temporary, outer_stack);
-        let Some(plan) = Rc::make_mut(&mut self.canvas).compiled_plan.as_mut() else {
-            return false;
-        };
+        let plan = Rc::make_mut(&mut self.canvas)
+            .compiled_plan
+            .as_mut()
+            .expect("temporary compilation preserves the existing plan");
         let Some(draw_batches) =
             Rc::make_mut(plan).replace_retained_offscreen_fragment(id, fragment)
         else {

@@ -205,10 +205,11 @@ impl PersistentSceneMaterializer {
             .push(command);
         let fragment = self.canvas.compile(temporary);
         Rc::make_mut(&mut self.canvas).command_lists.pop();
-        Rc::make_mut(&mut self.canvas)
+        let plan = Rc::make_mut(&mut self.canvas)
             .compiled_plan
             .as_mut()
-            .is_some_and(|plan| Rc::make_mut(plan).patch_retained_scene_position(id, &fragment))
+            .expect("position patches preserve the existing plan");
+        Rc::make_mut(plan).patch_retained_scene_position(id, &fragment)
     }
 
     /// Replaces one retained layer fragment without walking or rewriting unrelated siblings.

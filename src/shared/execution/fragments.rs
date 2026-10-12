@@ -26,16 +26,12 @@ impl ExecPlan {
         (index..index + len, draw_batches)
     }
 
-    pub(crate) fn remove_fragment(&mut self, range: Range<usize>) -> bool {
-        if range.start > range.end || range.end > self.ops.len() {
-            return false;
-        }
+    pub(crate) fn remove_fragment(&mut self, range: Range<usize>) {
         self.ops.drain(range);
         compact_layer_stacks(&mut self.ops, &mut self.layer_stack_data);
         self.refresh_retained_batch_ids();
         self.refresh_layer_stack_locations();
         self.refresh_direct_root_batch_ops();
-        true
     }
 
     /// Replaces one retained offscreen subtree while preserving stable batches owned by

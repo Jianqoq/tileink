@@ -36,4 +36,12 @@ only an execution batch adjacent to its actual painter position; it cannot cross
 boundaries. Neighbour lookup flattens groups, and empty layer content and mask branches retain
 independent batches.
 
+Root fragments follow actual command scope, including root-level layers inside groups.
+Pure offscreen reordering validates the complete operation permutation before synchronizing
+command locations and fragment ranges; later removal still shares unrelated subtree draw
+storage. Parameter, kind, or surface-dependent descriptor changes in the same transaction
+compile the current structure. Middle root insertion updates command and execution order
+together, and batch migration stops at the next layer boundary. A following Scene spanning
+its own offscreen operations requires compilation of its complete structure.
+
 Each non-group node becomes a local-indexed `SceneChunk`. Stable arenas prevent unrelated variable-length updates from moving live data. Tile draw pages and plan fragments update only affected regions/ancestors. During continuous resize, Tileink preserves chunks, defers exact spatial metadata, uses dense one-frame tile bins, and restores the persistent reverse index on the first later incremental mutation. Responsive hierarchy changes committed with a resize also preserve the previous immutable frame/spatial pages because the full redraw makes them unobservable; the first later non-resize mutation reconstructs the exact current hierarchy before incremental damage tracking resumes.
