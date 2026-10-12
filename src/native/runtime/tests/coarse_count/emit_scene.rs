@@ -2,12 +2,12 @@ use super::*;
 
 pub(super) fn emission_scene(
     draws: u32,
-    linked: bool,
+    relocated: bool,
     stack: u32,
     capacity: u32,
     bins: bool,
 ) -> CountScene {
-    let mut scene = count_scene(draws, linked, stack);
+    let mut scene = count_scene(draws, relocated, stack);
     scene.reserve_streams(capacity, 3);
     for draw in scene.draws.as_chunks_mut::<31>().0 {
         draw[6] = u32::MAX;

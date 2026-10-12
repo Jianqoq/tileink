@@ -27,11 +27,7 @@ pub(super) fn grid_scene() -> (CountScene, Vec<u32>, usize) {
     let mut index = 0;
     let mut reference = 0;
     for (tile, count) in counts.iter().enumerate() {
-        scene.work[draw_base + tile * 2] = if *count == 0 {
-            u32::MAX
-        } else {
-            0x8000_0000 | index as u32
-        };
+        scene.work[draw_base + tile * 2] = if *count == 0 { u32::MAX } else { index as u32 };
         scene.work[draw_base + tile * 2 + 1] = *count;
         for _ in 0..*count {
             scene.work[index_base + index] = 0;

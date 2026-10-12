@@ -153,13 +153,13 @@ impl TileDrawBins {
                 });
             }
         }
-        if self.index_format == IndexFormat::FlatPrefix
+        if self.prefix_visibility
             && self.occlusion.single_batch
             && self.membership_changed.is_empty()
         {
             for index in 0..self.affected_tiles.len() {
                 let tile = self.affected_tiles.get(index);
-                self.refresh_flat_prefix(tile);
+                self.refresh_record(tile);
                 self.dirty_records.push(tile);
             }
             self.draw_bboxes.truncate(new_len);
@@ -168,14 +168,11 @@ impl TileDrawBins {
             self.occlusion.clear_changes(new_len);
             return true;
         }
-        if self.index_format == IndexFormat::FlatPrefix {
-            self.index_format = IndexFormat::Flat;
-        }
         let membership_changed = &self.membership_changed;
         for index in 0..self.affected_tiles.len() {
             let tile = self.affected_tiles.get(index);
-            self.tile_refs[tile].retain(|draw| {
-                let draw = *draw as usize;
+            self.tile_refs.retain(tile, |draw| {
+                let draw = draw as usize;
                 !membership_changed.contains(draw)
             });
         }
@@ -185,7 +182,7 @@ impl TileDrawBins {
                 continue;
             }
             for_tile_in_bbox(self.draw_bboxes[draw], tiles_size.0, |tile| {
-                self.tile_refs[tile].push(draw as u32);
+                self.tile_refs.push(tile, draw as u32);
             });
         }
         if !self.membership_changed.is_empty() {
@@ -196,26 +193,23 @@ impl TileDrawBins {
                 });
             }
         }
-        if !self.affected_tiles.is_empty() {
-            if self.index_format == IndexFormat::Pages {
-                for index in 0..self.affected_tiles.len() {
-                    self.rewrite_tile(self.affected_tiles.get(index));
-                }
-                self.maybe_compact_pages();
-            } else if self.prefer_flat_update() {
-                self.index_format = if self.occlusion.single_batch {
-                    IndexFormat::FlatPrefix
-                } else {
-                    IndexFormat::Flat
-                };
-                self.build_flat_full_upload();
-                self.full_upload = true;
-            } else {
-                // Full uploads have no speculative page copy. Build the delta arena once,
-                // after CPU membership and painter order reflect this mutation.
-                self.materialize_pages();
+        if self.prefix_visibility == self.occlusion.single_batch {
+            for index in 0..self.affected_tiles.len() {
+                let tile = self.affected_tiles.get(index);
+                self.tile_refs.release_empty(tile);
+                self.rewrite_tile(tile);
             }
+            if self.indices.maybe_compact() {
+                self.dirty_indices.clear();
+                self.dirty_records.clear();
+                self.refresh_records();
+                self.full_upload = true;
+            }
+        } else {
+            self.prefix_visibility = self.occlusion.single_batch;
+            self.rebuild_indices();
         }
+        self.tile_refs.maybe_compact();
         self.draw_bboxes.truncate(new_len);
         self.draw_ranks.truncate(new_len);
         self.draw_ptcl_capacities.truncate(new_len);

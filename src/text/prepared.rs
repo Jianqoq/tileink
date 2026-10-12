@@ -19,6 +19,7 @@ pub(crate) use reconcile::PreparedTextChanges;
 
 #[derive(Clone, Debug)]
 pub(crate) struct PreparedTextData {
+    pub(crate) materialization: Option<crate::canvas::MaterializationStamp>,
     runs: Vec<TextRun>,
     glyphs: Vec<PreparedGlyph>,
     images: Vec<PreparedGlyphImage>,
@@ -71,6 +72,7 @@ impl PreparedTextData {
         atlas_hasher.write_u64(cache_generation);
 
         Self {
+            materialization: None,
             runs: runs.to_vec(),
             glyphs: prepared_glyphs,
             images,

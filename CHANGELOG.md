@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- CPU tile memberships and GPU draw references use compact contiguous arenas with local dirty-range uploads. Retained geometry scan/cumsum reuses accepted unchanged paths and dispatches complete changed paths, rebuilding after version gaps, abandoned batches or output-buffer growth.
+- Retained version gaps refresh draw/paint/text/layer uploads and derived spatial metadata together, fixing stale colors, placements and geometry after a materialized frame was skipped.
 - Incrementally inserted retained subtrees preserve every draw batch and filter input, including sources outside the canvas. Filter localization now reads current retained order and membership instead of stale compilation tables.
 - Retained filter, backdrop and mask subtrees preserve ancestor clips when nested layers are inserted or removed. Offscreen compositing now evaluates only its ancestor clips, removing unused fixed-depth group handling from Metal and HLSL.
 - SVG `feComposite` and `feConvolveMatrix` now honor each primitive's filter color space. Convolution processes premultiplied colors by default and applies bias using the unclamped result alpha, matching the reference output.

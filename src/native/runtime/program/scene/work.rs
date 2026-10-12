@@ -1,11 +1,8 @@
 //! Upload CPU tile/clip inputs into the reusable GPU work arena.
 use super::*;
-use crate::shared::{
-    gpu_coarse::{
-        TileDrawRecord, coarse_work_tile_draw_index_word_offset,
-        coarse_work_tile_draw_record_word_offset,
-    },
-    gpu_plan::TILE_DRAW_PAGE_WORDS,
+use crate::shared::gpu_coarse::{
+    TileDrawRecord, coarse_work_tile_draw_index_word_offset,
+    coarse_work_tile_draw_record_word_offset,
 };
 
 impl SceneCache {
@@ -39,7 +36,7 @@ impl SceneCache {
             lengths,
             prepared.stack_depths.0,
         )?;
-        let (bins_full, dirty_records, dirty_pages) =
+        let (bins_full, dirty_records, dirty_indices) =
             Rc::make_mut(&mut self.staging.tile_draw_bins).take_dirty();
         if !clip_dispatch.preallocated {
             self.buffers.clip_slot_snapshot = None;
@@ -120,7 +117,7 @@ impl SceneCache {
                 record_base,
                 index_base,
                 &dirty_records,
-                &dirty_pages,
+                &dirty_indices,
             ));
         }
         dirty_updates.extend_from_slice(&tail_updates);
@@ -142,17 +139,17 @@ impl SceneCache {
             snapshot.0.extend_from_slice(records);
             snapshot.1.clear();
             snapshot.1.extend_from_slice(indices);
-        } else if !dirty_records.is_empty() || !dirty_pages.is_empty() {
+        } else if !dirty_records.is_empty() || !dirty_indices.is_empty() {
             self.buffers.tile_bin_snapshot = None;
         }
         self.buffers.tile_bin_layout = Some(layout);
         clip_dispatch.discard_upload_data();
-        Rc::make_mut(&mut self.staging.tile_draw_bins).recycle_dirty(dirty_records, dirty_pages);
+        Rc::make_mut(&mut self.staging.tile_draw_bins).recycle_dirty(dirty_records, dirty_indices);
         Ok((work, clip_dispatch))
     }
 }
 
-/// Convert sorted dirty tile IDs into bounded, coalesced regions of the page arena.
+/// Convert dirty tile records and exact index ranges into bounded GPU uploads.
 /// The complete snapshot remains available when storage/layout changes or a batch fails.
 pub(super) fn tile_bin_dirty_updates<'a>(
     records: &'a [TileDrawRecord],
@@ -160,7 +157,7 @@ pub(super) fn tile_bin_dirty_updates<'a>(
     record_base: usize,
     index_base: usize,
     dirty_records: &[usize],
-    dirty_pages: &[u32],
+    dirty_indices: &[std::ops::Range<usize>],
 ) -> Vec<(usize, &'a [u8])> {
     use crate::render::upload::ranges::contiguous_index_runs;
     let mut updates = Vec::new();
@@ -168,8 +165,7 @@ pub(super) fn tile_bin_dirty_updates<'a>(
         let bytes = bytemuck::cast_slice(&records[run.clone()]);
         updates.push((record_base + run.start * size_of::<TileDrawRecord>(), bytes));
     }
-    for run in contiguous_index_runs(dirty_pages.iter().map(|&page| page as usize)) {
-        let words = run.start * TILE_DRAW_PAGE_WORDS..run.end * TILE_DRAW_PAGE_WORDS;
+    for words in dirty_indices {
         let bytes = bytemuck::cast_slice(&indices[words.clone()]);
         updates.push((index_base + words.start * size_of::<u32>(), bytes));
     }

@@ -1,7 +1,45 @@
 use super::*;
 
 #[test]
-fn incremental_tile_pages_rewrite_only_old_and_new_bounds_tiles() {
+fn sustained_sparse_low_density_bins_keep_compact_index_storage() {
+    let mut canvas = Canvas::new(320, 320, 1.0);
+    for _ in 0..4 {
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, 320.0, 320.0),
+            crate::Radius::ZERO,
+            Color::from_rgba8(20, 40, 80, 120),
+        );
+    }
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
+        Color::from_rgba8(80, 40, 20, 120),
+    );
+    let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+    let mut bins = TileDrawBins::default();
+    build_tile_draw_bins_into(&canvas, &plan, &mut bins, &mut Vec::new());
+    let _ = bins.take_dirty();
+    for step in 0..128 {
+        let x = if step % 2 == 0 { 16 } else { 0 };
+        canvas.draw_records[4].pixel_bounds.x0 = x;
+        canvas.draw_records[4].pixel_bounds.x1 = x + 16;
+        assert!(bins.update_changed(
+            &canvas.draw_records,
+            &plan.draw_order,
+            None,
+            (20, 20),
+            std::slice::from_ref(&(4..5))
+        ));
+        let _ = bins.take_dirty();
+    }
+    // Storage scales with live references, not 256 padded slots per occupied tile.
+    assert!(bins.upload_index_count() <= 2 * (4 * 400 + 1));
+    assert_eq!(bins.tile_draws(0), [0, 1, 2, 3, 4]);
+    assert_eq!(bins.tile_draws(1), [0, 1, 2, 3]);
+}
+
+#[test]
+fn incremental_tile_ranges_rewrite_only_old_and_new_bounds_tiles() {
     let mut initial = Canvas::new(crate::TILE_SIZE * 3, crate::TILE_SIZE, 1.0);
     initial.push_rect(
         Rect::new(0.0, 0.0, 16.0, 16.0),
@@ -17,13 +55,9 @@ fn incremental_tile_pages_rewrite_only_old_and_new_bounds_tiles() {
     let mut bins = TileDrawBins::default();
     let mut cursors = Vec::new();
     build_tile_draw_bins_into(&initial, &plan, &mut bins, &mut cursors);
-    // Delta locality is a property of the established page arena; the initial upload is flat.
-    bins.materialize_pages();
     let _ = bins.take_dirty();
-    let unaffected_page = bins.records[2].start;
-    let unaffected_words = bins.draw_indices[unaffected_page as usize * TILE_DRAW_PAGE_WORDS
-        ..(unaffected_page as usize + 1) * TILE_DRAW_PAGE_WORDS]
-        .to_vec();
+    let unaffected_start = bins.records[2].start as usize;
+    let unaffected_words = bins.upload_indices()[unaffected_start..=unaffected_start].to_vec();
 
     let mut moved = Canvas::new(crate::TILE_SIZE * 3, crate::TILE_SIZE, 1.0);
     moved.push_rect(
@@ -43,16 +77,19 @@ fn incremental_tile_pages_rewrite_only_old_and_new_bounds_tiles() {
         (3, 1),
         std::slice::from_ref(&(0..1)),
     ));
-    let (_, dirty_records, dirty_pages) = bins.take_dirty();
+    let (_, dirty_records, dirty_indices) = bins.take_dirty();
 
     assert_eq!(bins.tile_draws(0), Vec::<u32>::new());
     assert_eq!(bins.tile_draws(1), vec![0]);
     assert_eq!(bins.tile_draws(2), vec![1]);
     assert_eq!(dirty_records, vec![0, 1]);
-    assert!(!dirty_pages.contains(&unaffected_page));
+    assert!(
+        !dirty_indices
+            .iter()
+            .any(|range| range.contains(&unaffected_start))
+    );
     assert_eq!(
-        &bins.draw_indices[unaffected_page as usize * TILE_DRAW_PAGE_WORDS
-            ..(unaffected_page as usize + 1) * TILE_DRAW_PAGE_WORDS],
+        &bins.upload_indices()[unaffected_start..=unaffected_start],
         unaffected_words
     );
 }
@@ -226,7 +263,7 @@ fn dense_retained_spatial_change_stays_flat_only_while_geometry_keeps_moving() {
 }
 
 #[test]
-fn sustained_sparse_motion_amortizes_page_materialization_before_local_deltas() {
+fn sustained_sparse_motion_uses_local_deltas_from_first_edit() {
     let mut canvas = Canvas::new(320, 320, 1.0);
     for _ in 0..64 {
         canvas.push_rect(
@@ -244,8 +281,6 @@ fn sustained_sparse_motion_amortizes_page_materialization_before_local_deltas() 
     let mut bins = TileDrawBins::default();
     build_tile_draw_bins_into(&canvas, &plan, &mut bins, &mut Vec::new());
     let _ = bins.take_dirty();
-    let mut promoted = false;
-    let mut local_delta = false;
     for step in 0..16 {
         let x = if step % 2 == 0 { 16 } else { 0 };
         canvas.draw_records[64].pixel_bounds.x0 = x;
@@ -257,32 +292,13 @@ fn sustained_sparse_motion_amortizes_page_materialization_before_local_deltas() 
             (20, 20),
             std::slice::from_ref(&(64..65))
         ));
-        let (full, records, pages) = bins.take_dirty();
-        assert_eq!(
-            bins.tile_draws(x as usize / 16),
-            (0..65).collect::<Vec<_>>()
-        );
-        assert_eq!(
-            bins.tile_draws(1 - x as usize / 16),
-            (0..64).collect::<Vec<_>>()
-        );
-        if step == 0 {
-            assert_eq!(bins.index_format, IndexFormat::Flat);
-        }
-        if promoted {
-            assert!(!full);
-            assert_eq!(records, [0, 1]);
-            assert_eq!(pages.len(), 2);
-            local_delta = true;
-            break;
-        }
-        promoted = bins.index_format == IndexFormat::Pages;
-        assert!(full);
+        let (full, records, indices) = bins.take_dirty();
+        assert!(!full);
+        assert_eq!(records, [0, 1]);
+        assert!(indices.iter().map(std::ops::Range::len).sum::<usize>() <= 130);
+        let occupied = usize::from(x != 0);
+        assert_eq!(bins.tile_draws(occupied), (0..65).collect::<Vec<_>>());
     }
-    assert!(
-        local_delta,
-        "sustained sparse edits never established their delta arena"
-    );
 }
 
 #[test]
@@ -344,7 +360,7 @@ fn local_motion_does_not_trigger_whole_scene_bin_rebuild() {
 }
 
 #[test]
-fn dirty_draw_with_stable_bounds_and_rank_does_not_rewrite_tile_pages() {
+fn dirty_draw_with_stable_bounds_and_rank_does_not_rewrite_tile_indices() {
     let mut canvas = Canvas::new(crate::TILE_SIZE * 2, crate::TILE_SIZE, 1.0);
     canvas.push_rect(
         Rect::new(0.0, 0.0, 16.0, 16.0),
@@ -365,10 +381,10 @@ fn dirty_draw_with_stable_bounds_and_rank_does_not_rewrite_tile_pages() {
         (2, 1),
         std::slice::from_ref(&(0..1)),
     ));
-    let (full, dirty_records, dirty_pages) = bins.take_dirty();
+    let (full, dirty_records, dirty_indices) = bins.take_dirty();
     assert!(!full);
     assert!(dirty_records.is_empty());
-    assert!(dirty_pages.is_empty());
+    assert!(dirty_indices.is_empty());
     assert_eq!(bins.upload_index_count(), compact_indices);
-    assert_eq!(bins.upload_indices(), bins.draw_indices);
+    assert_eq!(bins.upload_indices(), bins.indices.values);
 }

@@ -1,7 +1,7 @@
 //! Painter-ordered tile membership and persistent upload storage.
 //! No statistics are maintained for retired kernel-selection policies.
 use super::{
-    COARSE_CHUNK_SIZE, TILE_DRAW_PAGE_WORDS,
+    COARSE_CHUNK_SIZE,
     capacity::{draw_ptcl_capacity, plan_stack_depths},
 };
 use crate::{
@@ -16,27 +16,18 @@ use crate::{
 };
 use std::collections::HashSet;
 
-const TILE_DRAW_FLAT_FLAG: u32 = 1 << 31;
 const RETAINED_TILE_DIRTY_CAPACITY: usize = 1_024;
 
 mod active_batches;
 pub(crate) use active_batches::ActiveBatches;
 
 mod build;
+mod lists;
 mod occlusion;
-mod pages;
+mod storage;
+use lists::PackedLists;
 mod transient;
 mod update;
-
-/// One GPU arena, stored flat for full uploads or as pages for spatial deltas.
-/// `FlatPrefix` retains complete indices and edits only each tile's visible suffix.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum IndexFormat {
-    #[default]
-    Flat,
-    Pages,
-    FlatPrefix,
-}
 
 /// Per-tile draw references for native coarse binning.
 ///
@@ -44,25 +35,25 @@ enum IndexFormat {
 /// each tile's candidate draws in canvas order so the GPU only filters local
 /// candidates while preserving compositing order.
 #[derive(Clone, Debug, Default)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "Upload state, source validity and occlusion representation are independent invariants"
+)]
 pub(crate) struct TileDrawBins {
     pub(crate) records: Vec<TileDrawRecord>,
-    /// Flat full-upload IDs, or pages with a next-page word and 256 painter-ordered IDs.
-    pub(crate) draw_indices: Vec<u32>,
-    tile_pages: Vec<Vec<u32>>,
-    tile_refs: Vec<Vec<u32>>,
-    free_pages: Vec<u32>,
+    indices: PackedLists,
+    tile_refs: PackedLists,
     draw_bboxes: Vec<TileBbox>,
     draw_ranks: Vec<PainterKey>,
     draw_ptcl_capacities: Vec<usize>,
     draw_ptcl_capacity: usize,
     tiles_size: (u32, u32),
-    active_pages: usize,
+    active_chunks: usize,
     dirty_records: Vec<usize>,
-    dirty_pages: Vec<u32>,
+    dirty_indices: Vec<std::ops::Range<usize>>,
     full_upload: bool,
-    index_format: IndexFormat,
-    /// Extra flat rebuild work accumulated toward the one-time cost of establishing pages.
-    flat_rebuild_work: usize,
+    /// A single raster batch can change visibility by selecting a suffix of complete IDs.
+    prefix_visibility: bool,
     /// Complete CPU reverse membership, independent of the current GPU arena format.
     spatial_index_valid: bool,
     visited_draws: GenerationMarks,
@@ -75,6 +66,10 @@ pub(crate) struct TileDrawBins {
 }
 
 impl TileDrawBins {
+    pub(crate) const fn invalidate(&mut self) {
+        self.spatial_index_valid = false;
+    }
+
     pub(super) fn update_occlusion(&mut self, canvas: &Canvas, plan: &ExecPlan) {
         self.occlusion.update(canvas, plan);
     }
@@ -90,26 +85,10 @@ impl TileDrawBins {
         if record.end == 0 {
             return;
         }
-        if record.start & TILE_DRAW_FLAT_FLAG != 0 {
-            let start = (record.start & !TILE_DRAW_FLAT_FLAG) as usize;
-            self.draw_indices[start..start + record.end as usize]
-                .iter()
-                .copied()
-                .for_each(&mut visit);
-            return;
-        }
-        let mut page = record.start;
-        let mut remaining = record.end as usize;
-        while page != u32::MAX && remaining != 0 {
-            let base = page as usize * TILE_DRAW_PAGE_WORDS;
-            let count = remaining.min(COARSE_CHUNK_SIZE as usize);
-            self.draw_indices[base + 1..base + 1 + count]
-                .iter()
-                .copied()
-                .for_each(&mut visit);
-            remaining -= count;
-            page = self.draw_indices[base];
-        }
+        self.indices.values[record.start as usize..record.start as usize + record.end as usize]
+            .iter()
+            .copied()
+            .for_each(&mut visit);
     }
 
     /// Returns conservative painter-ordered source candidates for a pixel region. Persistent
@@ -218,7 +197,7 @@ impl TileDrawBins {
         // Every non-empty tile needs one terminator. Fused layer-stack entries additionally emit
         // one begin and one end particle per active tile. These hidden wrappers are absent from
         // draw_order/tile bins, so omitting them underallocates coarse work and lets later tiles
-        // overwrite the page arena (portable backends exposed this as a missing second tile).
+        // overwrite the index arena (portable backends exposed this as a missing second tile).
         self.records.len()
             + self.draw_ptcl_capacity
             + self.records.len() * 2 * (clip_depth + group_depth)
@@ -271,7 +250,7 @@ fn build_tile_draw_bins_for_draws_into(
 
     TileDrawCounts {
         index_count: bins.upload_index_count(),
-        chunk_count: bins.active_pages,
+        chunk_count: bins.active_chunks,
     }
 }
 

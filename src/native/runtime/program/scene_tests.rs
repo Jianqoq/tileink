@@ -7,35 +7,23 @@ use peniko::{
 };
 
 #[test]
-fn sparse_tile_bin_uploads_only_changed_records_and_pages() {
-    use crate::shared::gpu_plan::TILE_DRAW_PAGE_WORDS;
+fn sparse_tile_bin_uploads_only_changed_records_and_exact_index_ranges() {
     let records: Vec<_> = (0..8)
         .map(|start| TileDrawRecord { start, end: 1 })
         .collect();
-    let indices: Vec<_> = (0..8 * TILE_DRAW_PAGE_WORDS)
-        .map(|word| word as u32)
-        .collect();
-    let updates = tile_bin_dirty_updates(&records, &indices, 64, 256, &[1, 2, 6], &[2, 3, 7]);
+    let indices: Vec<_> = (0..16u32).collect();
+    let updates = tile_bin_dirty_updates(&records, &indices, 64, 256, &[1, 2, 6], &[4..8, 14..15]);
     assert_eq!(updates.len(), 4);
     assert_eq!(updates[0].0, 64 + size_of::<TileDrawRecord>());
-    assert_eq!(updates[0].1.len(), 2 * size_of::<TileDrawRecord>());
+    assert_eq!(updates[0].1, bytemuck::cast_slice::<_, u8>(&records[1..3]));
     assert_eq!(updates[1].0, 64 + 6 * size_of::<TileDrawRecord>());
-    assert_eq!(updates[2].0, 256 + 2 * TILE_DRAW_PAGE_WORDS * 4);
-    assert_eq!(updates[2].1.len(), 2 * TILE_DRAW_PAGE_WORDS * 4);
-    assert_eq!(updates[3].0, 256 + 7 * TILE_DRAW_PAGE_WORDS * 4);
-    assert_eq!(
-        updates[0].1,
-        bytemuck::cast_slice::<TileDrawRecord, u8>(&records[1..3])
-    );
-    assert_eq!(
-        updates[2].1,
-        bytemuck::cast_slice::<u32, u8>(
-            &indices[2 * TILE_DRAW_PAGE_WORDS..4 * TILE_DRAW_PAGE_WORDS]
-        )
-    );
+    assert_eq!(updates[2].0, 256 + 4 * 4);
+    assert_eq!(updates[2].1, bytemuck::cast_slice::<_, u8>(&indices[4..8]));
+    assert_eq!(updates[3].0, 256 + 14 * 4);
+    assert_eq!(updates[3].1.len(), 4);
     assert_eq!(
         updates.iter().map(|(_, bytes)| bytes.len()).sum::<usize>(),
-        3 * size_of::<TileDrawRecord>() + 3 * TILE_DRAW_PAGE_WORDS * 4
+        3 * size_of::<TileDrawRecord>() + 5 * 4
     );
     assert!(tile_bin_dirty_updates(&records, &indices, 64, 256, &[], &[]).is_empty());
 }

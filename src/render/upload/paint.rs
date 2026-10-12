@@ -40,6 +40,13 @@ pub(crate) enum PaintData<'a> {
 }
 
 impl PaintUploadState {
+    pub(crate) fn invalidate(&mut self) {
+        self.paint_blob.clear();
+        self.paint_layout = (0, 0, 0);
+        self.resource_brush_draws_initialized = false;
+        self.image_resource_generation = None;
+    }
+
     #[allow(
         clippy::expect_used,
         reason = "Incremental updates require a change journal; an absent journal selects a full upload"

@@ -173,7 +173,52 @@ fn draw_membership_changes_refresh_program_detection_without_reencoding_brushes(
 }
 
 #[test]
-fn text_preparation_creates_reconciles_and_applies_retained_ranges() {
+fn text_journal_gap_reconciles_skipped_glyph_positions() {
+    use crate::retained_scene::PersistentSceneMaterializer;
+    use crate::text::CanvasGlyph;
+    use crate::{RetainedNodeId, RetainedScene};
+    let scene = RetainedScene::new(64, 64, 1.0, RetainedNodeId::for_owner(1)).unwrap();
+    let mut canvas = (*PersistentSceneMaterializer::new(&scene).canvas()).clone();
+    let (cache_key, x, y) = cosmic_text::CacheKey::new(
+        cosmic_text::fontdb::ID::dummy(),
+        0,
+        16.0,
+        (0.0, 0.0),
+        cosmic_text::fontdb::Weight::NORMAL,
+        cosmic_text::CacheKeyFlags::empty(),
+    );
+    canvas.text_glyphs.push(CanvasGlyph { cache_key, x, y });
+    canvas.text_runs.push(TextRun {
+        glyph_start: 0,
+        glyph_count: 1,
+    });
+    let mut fonts = TextFontSystem::new();
+    let mut context = TextContext::new();
+    let mut prepared = None;
+    prepare_text(&mut prepared, &canvas, &mut fonts, &mut context);
+    let version = canvas.persistent_frame.as_ref().unwrap().version;
+    canvas.persistent_frame.as_mut().unwrap().version += 2;
+    canvas.text_glyphs[0].x = 17;
+    // The position changed in the skipped version; this later journal is empty.
+    canvas.buffer_changes = Some(SceneBufferChanges {
+        from_version: Some(version + 1),
+        ..Default::default()
+    });
+    prepare_text(&mut prepared, &canvas, &mut fonts, &mut context);
+    assert_eq!(prepared.as_ref().unwrap().glyph(0).unwrap().x, 17);
+    canvas.persistent_frame.as_mut().unwrap().version += 1;
+    canvas.text_glyphs[0].x = 23;
+    canvas.buffer_changes = Some(SceneBufferChanges {
+        from_version: Some(version + 2),
+        glyphs: std::iter::once(0..1).collect(),
+        ..Default::default()
+    });
+    assert!(prepare_text(&mut prepared, &canvas, &mut fonts, &mut context).is_none());
+    assert_eq!(prepared.as_ref().unwrap().glyph(0).unwrap().x, 23);
+}
+
+#[test]
+fn text_preparation_reconciles_immediate_and_unproven_journals() {
     let mut font_system = TextFontSystem::new();
     let mut context = TextContext::new();
     let mut data = None;
@@ -196,9 +241,11 @@ fn text_preparation_creates_reconciles_and_applies_retained_ranges() {
         text_runs: std::iter::once(1..2).collect(),
         ..Default::default()
     });
-    assert!(prepare_text(&mut data, &canvas, &mut font_system, &mut context).is_none());
+    // Without a materialization stamp, supplied ranges cannot prove continuity.
+    let changes = prepare_text(&mut data, &canvas, &mut font_system, &mut context).unwrap();
+    assert_eq!(changes.runs(), std::slice::from_ref(&(1..2)));
     // Some(empty) means the flat frame needs no patch; None requests full text upload.
-    // The preceding retained update must have installed the second run already.
+    // Reconciliation must have installed the second run already.
     canvas.buffer_changes = None;
     let unchanged = prepare_text(&mut data, &canvas, &mut font_system, &mut context).unwrap();
     assert!(unchanged.runs().is_empty());

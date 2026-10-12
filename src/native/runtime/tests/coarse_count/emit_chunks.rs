@@ -17,10 +17,10 @@ fn native_routes_coarse_emit_chunks_chain_preserves_order_and_ignores_spare_capa
 {
     let routes = Routes::new()?;
     for draws in [0u32, 1, 255, 256, 257, 513] {
-        for linked in [false, true] {
+        for relocated in [false, true] {
             for stack in 0..4 {
                 let mut scene =
-                    super::emit_scene::emission_scene(draws, linked, stack, draws + 8, false);
+                    super::emit_scene::emission_scene(draws, relocated, stack, draws + 8, false);
                 let base = stale_refs(&mut scene);
                 let mut offset = 0u32;
                 for chunk in 0..draws.div_ceil(COARSE_WORKGROUP_SIZE) {
@@ -43,7 +43,7 @@ fn native_routes_coarse_emit_chunks_chain_preserves_order_and_ignores_spare_capa
                 routes.check(
                     &scene.emit_chunks_batch()?,
                     &[bytes(&scene.expected)],
-                    &format!("chunk emission draws {draws} linked {linked} stack {stack}"),
+                    &format!("chunk emission draws {draws} relocated {relocated} stack {stack}"),
                 )?;
             }
         }
@@ -80,8 +80,8 @@ fn native_routes_coarse_emit_chunks_classifies_paint_and_keeps_glyph_destination
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn native_routes_coarse_emit_chunks_chain_carries_glyphs_and_nonzero_tile_ranges() -> Result<()> {
     let routes = Routes::new()?;
-    for linked in [false, true] {
-        let mut scene = super::glyphs::glyph_page_scene(linked, false);
+    for relocated in [false, true] {
+        let mut scene = super::glyphs::glyph_chunk_scene(relocated, false);
         let base = stale_refs(&mut scene);
         let glyphs = COARSE_WORKGROUP_SIZE * 3;
         scene.expected[base + 2..base + 7].copy_from_slice(&[256, 0, glyphs, 0, 4]);
@@ -89,7 +89,7 @@ fn native_routes_coarse_emit_chunks_chain_carries_glyphs_and_nonzero_tile_ranges
         routes.check(
             &scene.emit_chunks_batch()?,
             &[bytes(&scene.expected)],
-            &format!("chunk glyph carry linked {linked}"),
+            &format!("chunk glyph carry relocated {relocated}"),
         )?;
     }
     let mut scene = super::emit_scene::emission_grid_scene(0);

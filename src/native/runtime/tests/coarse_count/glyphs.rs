@@ -23,8 +23,8 @@ pub(super) fn bitmap_text(xs: &[i32]) -> Vec<u32> {
     words
 }
 
-pub(super) fn glyph_page_scene(linked: bool, bins: bool) -> CountScene {
-    let mut scene = count_scene(257, linked, 0);
+pub(super) fn glyph_chunk_scene(relocated: bool, bins: bool) -> CountScene {
+    let mut scene = count_scene(257, relocated, 0);
     let capacity = 1 + 257 * 3;
     scene.reserve_streams(260, capacity);
     let paint = super::emit_scene::paint_scene(14, false);
@@ -37,11 +37,7 @@ pub(super) fn glyph_page_scene(linked: bool, bins: bool) -> CountScene {
     scene.config[15] = 1;
     let index_base = 6 + 260 * 6 + capacity as usize + 2;
     for index in 0..257usize {
-        let word = if linked {
-            index / 256 * 257 + 1 + index % 256
-        } else {
-            index
-        };
+        let word = index + if relocated { 13 } else { 0 };
         scene.work[index_base + word] = 0;
     }
     scene.work[..6].copy_from_slice(&[258, 1, 259, 257 * 3, 1, 1 + 257 * 3]);
@@ -83,8 +79,8 @@ fn glyph_fixture_oracles_include_bilinear_border_candidates() {
             _ => unreachable!(),
         }
     }
-    for linked in [false, true] {
-        let scene = glyph_page_scene(linked, false);
+    for relocated in [false, true] {
+        let scene = glyph_chunk_scene(relocated, false);
         assert_eq!(scene.work[3], 257 * 3);
         assert_eq!(scene.work[5], 1 + 257 * 3);
         for index in 0..257 {

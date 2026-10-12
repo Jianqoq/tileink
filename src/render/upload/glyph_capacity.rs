@@ -25,6 +25,10 @@ pub(crate) struct GlyphCapacityCache {
 }
 
 impl GlyphCapacityCache {
+    pub(crate) const fn invalidate(&mut self) {
+        self.initialized = false;
+    }
+
     pub(crate) fn update(
         &mut self,
         canvas: &Canvas,

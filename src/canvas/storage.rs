@@ -37,6 +37,7 @@ impl Canvas {
         self.invalidate_all = false;
         self.buffer_changes = None;
         self.plan_cache_key = None;
+        self.materialization_key = None;
         self.compiled_plan = None;
         self.persistent_frame = None;
         self.painter = PainterMetadata::default();

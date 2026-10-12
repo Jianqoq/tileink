@@ -9,12 +9,8 @@ impl TileDrawBins {
         tiles_size: (u32, u32),
     ) {
         let tile_count = tiles_size.0 as usize * tiles_size.1 as usize;
-        for pages in &mut self.tile_pages {
-            pages.clear();
-        }
-        self.free_pages.clear();
-        self.flat_rebuild_work = 0;
         self.spatial_index_valid = true;
+        self.records.clear();
         self.records.resize(
             tile_count,
             TileDrawRecord {
@@ -22,11 +18,6 @@ impl TileDrawBins {
                 end: 0,
             },
         );
-        self.tile_pages.resize_with(tile_count, Vec::new);
-        self.tile_refs.resize_with(tile_count, Vec::new);
-        for draws in &mut self.tile_refs {
-            draws.clear();
-        }
         self.draw_bboxes.clear();
         self.draw_bboxes.resize(
             draw_records.len(),
@@ -45,13 +36,9 @@ impl TileDrawBins {
         self.draw_ptcl_capacity = 0;
         self.tiles_size = tiles_size;
         self.transient_occlusion = false;
-        self.index_format = if self.occlusion.single_batch {
-            IndexFormat::FlatPrefix
-        } else {
-            IndexFormat::Flat
-        };
+        self.prefix_visibility = self.occlusion.single_batch;
         self.dirty_records.clear();
-        self.dirty_pages.clear();
+        self.dirty_indices.clear();
         let mut stable_order = Vec::new();
         let ordered = if let Some(keys) = painter_keys {
             stable_order.extend(
@@ -78,12 +65,19 @@ impl TileDrawBins {
             self.draw_ptcl_capacities[draw_ix as usize] = capacity;
             self.draw_ptcl_capacity += capacity;
             for_tile_in_bbox(bbox, tiles_size.0, |tile| {
-                self.tile_refs[tile].push(draw_ix);
+                self.records[tile].end += 1;
             });
         }
-        self.build_flat_full_upload();
+        self.tile_refs
+            .reset_counts(self.records.iter().map(|record| record.end as usize));
+        for &draw in ordered {
+            for_tile_in_bbox(self.draw_bboxes[draw as usize], tiles_size.0, |tile| {
+                self.tile_refs.push(tile, draw);
+            });
+        }
+        self.rebuild_indices();
         self.dirty_records.clear();
-        self.dirty_pages.clear();
+        self.dirty_indices.clear();
         self.full_upload = true;
         self.occlusion.clear_changes(draw_records.len());
     }

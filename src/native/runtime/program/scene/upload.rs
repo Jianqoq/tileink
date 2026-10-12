@@ -29,6 +29,17 @@ impl SceneCache {
         }
         self.pending = Some(batch.acceptance());
         let limit = options.limit;
+        let deltas_valid = self.buffers.scan.accepts_delta(canvas);
+        if !deltas_valid {
+            // The physical Canvas journal can advance without a GPU submission.
+            // Every derived CPU cache and GPU upload must cross that gap together;
+            // rescanning paths alone still leaves stale paint, bounds and membership.
+            if canvas.materialization_key.is_some() {
+                self.staging.invalidate_journals();
+            } else {
+                self.staging.path_plans = crate::shared::gpu_plan::PersistentPathPlans::default();
+            }
+        }
         let (scan, lengths) = PreparedScan::for_scene(canvas, &mut self.staging, text, &prepared);
         let work_words = validate_work_layout(lengths)?;
         let output = scene_scan::encode_cached(batch, &scan, limit, &mut self.buffers.scan)?;
@@ -49,7 +60,11 @@ impl SceneCache {
             self.buffers.draws.upload(
                 batch,
                 &canvas.draw_records,
-                canvas.buffer_changes.as_ref().map(|c| c.draws.as_slice()),
+                canvas
+                    .buffer_changes
+                    .as_ref()
+                    .filter(|_| deltas_valid)
+                    .map(|c| c.draws.as_slice()),
             )?
         };
         let paint = self.staging.paint.prepare(canvas, images);
@@ -92,7 +107,7 @@ impl SceneCache {
             canvas,
             text,
             self.staging.text.atlas_signature,
-            canvas.buffer_changes.as_ref(),
+            canvas.buffer_changes.as_ref().filter(|_| deltas_valid),
             None,
         );
         let coarse_text = self.buffers.coarse_text.upload(
@@ -108,7 +123,7 @@ impl SceneCache {
         let layer_ranges = canvas
             .buffer_changes
             .as_ref()
-            .filter(|_| prepared.reused_metadata)
+            .filter(|_| deltas_valid && prepared.reused_metadata)
             .map(|changes| changes.plan_layer_stack.as_slice());
         let full_layers = self
             .staging
@@ -118,12 +133,16 @@ impl SceneCache {
             &self.staging.layer_stack,
             if full_layers { None } else { layer_ranges },
         )?;
-        let batch_ranges = canvas.buffer_changes.as_ref().map(|changes| {
-            crate::render::upload::ranges::merge_sorted_dirty_ranges(
-                &changes.draws,
-                &changes.painter,
-            )
-        });
+        let batch_ranges = canvas
+            .buffer_changes
+            .as_ref()
+            .filter(|_| deltas_valid)
+            .map(|changes| {
+                crate::render::upload::ranges::merge_sorted_dirty_ranges(
+                    &changes.draws,
+                    &changes.painter,
+                )
+            });
         let batch_ids = canvas.raster_batch_ids(&prepared.plan);
         let batch_dirty = canvas.retained_painter().and(batch_ranges.as_deref());
         let batches = self.buffers.batches.upload(batch, batch_ids, batch_dirty)?;

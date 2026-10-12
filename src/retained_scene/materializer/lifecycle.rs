@@ -884,6 +884,9 @@ impl PersistentSceneMaterializer {
         );
         self.sync_node_metadata(scene, &changes);
         self.surface_resized_painter_nodes = surface_resized_painter_nodes;
+        if let Some(changes) = &mut Rc::make_mut(&mut self.canvas).buffer_changes {
+            changes.from_version = Some(self.version.get());
+        }
         self.version = scene.version;
         scene_data_changed
     }
@@ -953,6 +956,7 @@ impl PersistentSceneMaterializer {
             .plan_fragments_rebuilt = scene.nodes.len() as u32;
         Rc::make_mut(&mut self.canvas).plan_cache_key = Some(self.plan_cache_key);
         self.rebuild_frame_override(scene);
+        Rc::make_mut(&mut self.canvas).materialization_key = Some(self.plan_cache_key);
         self.rebuild_spatial_index(scene);
         self.node_metadata = scene
             .nodes

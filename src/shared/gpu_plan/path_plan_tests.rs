@@ -6,6 +6,36 @@ use peniko::{
 };
 
 #[test]
+fn selected_cumsum_rows_preserve_offsets_and_rebase_chunk_ownership() {
+    let mut canvas = Canvas::new(9000, 64, 1.0);
+    for y in [0.0, 16.0, 32.0] {
+        canvas.push_path(
+            Rect::new(0.0, y, 9000.0, y + 16.0).to_path(0.0),
+            Color::WHITE,
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.0,
+        );
+    }
+    let mut plans = PersistentPathPlans::default();
+    plans.update(&canvas, None);
+    canvas.path_records[1] = PathRecord::default();
+    plans.update(&canvas, Some(std::slice::from_ref(&(1..2))));
+    let selected = plans.cumsum_for_paths(&[2, 0]);
+    assert_eq!(selected.row_chunk_starts, [0, 3]);
+    assert_eq!(selected.row_chunk_ends, [3, 6]);
+    assert_eq!(selected.chunk_lens, [256, 256, 51, 256, 256, 51]);
+    let a = canvas.path_records[2].data_offset;
+    let b = canvas.path_records[0].data_offset;
+    assert_eq!(
+        selected.chunk_backdrop_offsets,
+        [a, a + 256, a + 512, b, b + 256, b + 512]
+    );
+    assert_eq!(plans.cumsum_for_paths(&[1]), GpuCumsumPlan::default());
+    assert_eq!(plans.cumsum_for_paths(&[]), GpuCumsumPlan::default());
+}
+
+#[test]
 fn scan_plan_records_are_gpu_word_layouts() {
     assert_eq!(std::mem::size_of::<GpuScanChunk>(), 16);
     assert_eq!(std::mem::align_of::<GpuScanChunk>(), 4);

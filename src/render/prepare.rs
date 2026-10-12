@@ -114,7 +114,9 @@ pub(crate) fn prepare_text(
     context: &mut TextContext,
 ) -> Option<PreparedTextChanges> {
     if let Some(text) = prepared {
-        if let Some(changes) = &canvas.buffer_changes {
+        let changes = if canvas.journal_follows(text.materialization)
+            && let Some(changes) = &canvas.buffer_changes
+        {
             text.update(
                 &canvas.text_glyphs,
                 &canvas.text_runs,
@@ -126,14 +128,14 @@ pub(crate) fn prepare_text(
             None
         } else {
             text.reconcile(&canvas.text_glyphs, &canvas.text_runs, font_system, context)
-        }
+        };
+        text.materialization = canvas.materialization_stamp();
+        changes
     } else {
-        *prepared = Some(PreparedTextData::new(
-            &canvas.text_glyphs,
-            &canvas.text_runs,
-            font_system,
-            context,
-        ));
+        let mut text =
+            PreparedTextData::new(&canvas.text_glyphs, &canvas.text_runs, font_system, context);
+        text.materialization = canvas.materialization_stamp();
+        *prepared = Some(text);
         None
     }
 }

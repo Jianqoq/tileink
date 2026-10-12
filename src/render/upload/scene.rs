@@ -30,6 +30,15 @@ pub(crate) struct SceneUploadStaging {
 }
 
 impl SceneUploadStaging {
+    /// A missing accepted version invalidates every derived journal, not just
+    /// path plans. Retain reusable vector/work capacity while rebuilding content.
+    pub(crate) fn invalidate_journals(&mut self) {
+        self.path_plans = PersistentPathPlans::default();
+        self.glyph_capacity.invalidate();
+        Rc::make_mut(&mut self.tile_draw_bins).invalidate();
+        self.paint.invalidate();
+    }
+
     /// Returns true when every entry was refreshed and the GPU upload must be full.
     #[allow(
         clippy::expect_used,

@@ -1,6 +1,7 @@
 mod append;
 mod compile;
 mod draw;
+mod journal;
 mod layers;
 mod offset;
 mod painter;
@@ -68,6 +69,7 @@ use crate::shared::{
 use crate::text::{TextRun, layout_bounds_at_scaled_origin, scene_glyphs_at_scaled_origin};
 use crate::{TextContext, TextFontSystem, TextLayout};
 
+pub(crate) use journal::MaterializationStamp;
 pub(crate) use painter::{PainterKey, PainterMetadata};
 pub use retained::RetainedNodeId;
 pub(crate) mod damage_history;
@@ -110,6 +112,9 @@ pub struct Canvas {
     /// only when topology or physical draw slots change, so buffer-only edits do not scan the
     /// whole command graph during prepare.
     pub(crate) plan_cache_key: Option<u64>,
+    /// Identity of one materialized scene's physical arenas. Descriptor/command edits
+    /// can change the plan key without replacing geometry; a full rebuild gets a new identity.
+    pub(crate) materialization_key: Option<u64>,
     pub(crate) compiled_plan: Option<SharedRc<ExecPlan>>,
     pub(crate) persistent_frame: Option<RetainedFrame>,
     pub(crate) painter: PainterMetadata,
@@ -133,6 +138,9 @@ pub(crate) struct OpenLayer {
     reason = "Flags describe independent changes or statistics that may be true together"
 )]
 pub(crate) struct SceneBufferChanges {
+    /// Materialized CPU version these ranges replace. Geometry reuse must follow
+    /// this journal, independently of damage-frame compaction or plan patching.
+    pub(crate) from_version: Option<u64>,
     pub(crate) lines: Vec<Range<usize>>,
     pub(crate) paths: Vec<Range<usize>>,
     pub(crate) draws: Vec<Range<usize>>,

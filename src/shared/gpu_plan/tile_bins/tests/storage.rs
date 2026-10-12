@@ -1,17 +1,17 @@
 use super::*;
 
 #[test]
-fn tile_bins_recycle_dirty_record_and_page_capacities() {
+fn tile_bins_recycle_dirty_record_and_index_capacities() {
     let mut bins = TileDrawBins::default();
     bins.dirty_records.extend(0..64);
-    bins.dirty_pages.extend(0..64);
-    let (_, records, pages) = bins.take_dirty();
-    let capacities = (records.capacity(), pages.capacity());
+    bins.dirty_indices.extend((0..64).map(|i| i..i + 1));
+    let (_, records, indices) = bins.take_dirty();
+    let capacities = (records.capacity(), indices.capacity());
 
-    bins.recycle_dirty(records, pages);
+    bins.recycle_dirty(records, indices);
 
     assert_eq!(
-        (bins.dirty_records.capacity(), bins.dirty_pages.capacity()),
+        (bins.dirty_records.capacity(), bins.dirty_indices.capacity()),
         capacities
     );
 }
@@ -20,18 +20,18 @@ fn tile_bins_recycle_dirty_record_and_page_capacities() {
 fn tile_bins_release_oversized_dirty_capacity() {
     let mut bins = TileDrawBins::default();
     bins.dirty_records.extend(0..=RETAINED_TILE_DIRTY_CAPACITY);
-    bins.dirty_pages
-        .extend((0..=RETAINED_TILE_DIRTY_CAPACITY).map(|page| page as u32));
-    let (_, records, pages) = bins.take_dirty();
+    bins.dirty_indices
+        .extend((0..=RETAINED_TILE_DIRTY_CAPACITY).map(|index| index..index + 1));
+    let (_, records, indices) = bins.take_dirty();
 
-    bins.recycle_dirty(records, pages);
+    bins.recycle_dirty(records, indices);
 
     assert_eq!(bins.dirty_records.capacity(), 0);
-    assert_eq!(bins.dirty_pages.capacity(), 0);
+    assert_eq!(bins.dirty_indices.capacity(), 0);
 }
 
 #[test]
-fn tile_bins_switch_from_transient_flat_upload_back_to_persistent_pages() {
+fn tile_bins_switch_from_transient_upload_back_to_persistent_ranges() {
     let mut transient = Canvas::new(crate::TILE_SIZE * 2, crate::TILE_SIZE, 1.0);
     transient.push_rect(
         Rect::new(0.0, 0.0, 16.0, 16.0),
@@ -143,7 +143,7 @@ fn retained_surface_resize_uses_dense_bins_then_restores_incremental_index() {
 }
 
 #[test]
-fn transient_bins_preserve_persistent_tile_allocations_for_recovery() {
+fn transient_bins_reuse_packed_arenas_when_persistent_membership_recovers() {
     let mut canvas = Canvas::new(128, 64, 1.0);
     canvas.push_rect(
         Rect::new(0.0, 0.0, 128.0, 64.0),
@@ -154,13 +154,7 @@ fn transient_bins_preserve_persistent_tile_allocations_for_recovery() {
     let mut bins = TileDrawBins::default();
     let mut cursors = Vec::new();
     build_tile_draw_bins_into(&canvas, &plan, &mut bins, &mut cursors);
-    bins.materialize_pages();
-    let pages = bins
-        .tile_pages
-        .iter()
-        .map(Vec::capacity)
-        .collect::<Vec<_>>();
-    let refs = bins.tile_refs.iter().map(Vec::capacity).collect::<Vec<_>>();
+    let capacity = bins.tile_refs.values.capacity();
     bins.reset_transient(
         &canvas.draw_records,
         &plan.draw_order,
@@ -169,37 +163,17 @@ fn transient_bins_preserve_persistent_tile_allocations_for_recovery() {
         &mut cursors,
         true,
     );
-    assert_eq!(
-        bins.tile_pages
-            .iter()
-            .map(Vec::capacity)
-            .collect::<Vec<_>>(),
-        pages
-    );
-    assert_eq!(
-        bins.tile_refs.iter().map(Vec::capacity).collect::<Vec<_>>(),
-        refs
-    );
+    assert_eq!(bins.tile_refs.values.capacity(), capacity);
     build_tile_draw_bins_into(&canvas, &plan, &mut bins, &mut cursors);
     assert!(bins.spatial_index_valid);
-    assert_eq!(
-        bins.tile_pages
-            .iter()
-            .map(Vec::capacity)
-            .collect::<Vec<_>>(),
-        pages
-    );
-    assert_eq!(
-        bins.tile_refs.iter().map(Vec::capacity).collect::<Vec<_>>(),
-        refs
-    );
+    assert!(bins.tile_refs.values.capacity() >= capacity);
     for tile in 0..bins.records.len() {
         assert_eq!(bins.tile_draws(tile), [0]);
     }
 }
 
 #[test]
-fn tile_page_arena_compacts_after_fragmentation_exceeds_threshold() {
+fn tile_index_arena_compacts_after_fragmentation_exceeds_threshold() {
     let mut initial = Canvas::new(crate::TILE_SIZE * 20, crate::TILE_SIZE, 1.0);
     let mut moved = Canvas::new(crate::TILE_SIZE * 20, crate::TILE_SIZE, 1.0);
     for tile in 0..20 {
@@ -223,7 +197,6 @@ fn tile_page_arena_compacts_after_fragmentation_exceeds_threshold() {
     let mut bins = TileDrawBins::default();
     let mut cursors = Vec::new();
     build_tile_draw_bins_into(&initial, &plan, &mut bins, &mut cursors);
-    bins.materialize_pages();
     let _ = bins.take_dirty();
 
     assert!(bins.update_changed(
@@ -235,9 +208,8 @@ fn tile_page_arena_compacts_after_fragmentation_exceeds_threshold() {
     ));
     let (full, _, _) = bins.take_dirty();
     assert!(full);
-    assert_eq!(bins.active_page_count(), 12);
-    assert_eq!(bins.draw_indices.len(), 12 * TILE_DRAW_PAGE_WORDS);
-    assert!(bins.free_pages.is_empty());
+    assert_eq!(bins.active_chunk_count(), 12);
+    assert_eq!(bins.upload_index_count(), 12);
     for tile in 0..20 {
         let expected = if tile < 8 {
             Vec::new()

@@ -3,8 +3,8 @@
 use super::emit_scene::paint_scene;
 use super::*;
 
-fn opaque_scene(count: u32, linked: bool, stack: u32, alpha: u32, bins: bool) -> CountScene {
-    let mut scene = count_scene(count, linked, stack);
+fn opaque_scene(count: u32, relocated: bool, stack: u32, alpha: u32, bins: bool) -> CountScene {
+    let mut scene = count_scene(count, relocated, stack);
     scene.reserve_streams(count + 4, 4);
     let paint = paint_scene(3, false);
     scene.config[14] = 12;
@@ -31,11 +31,7 @@ fn opaque_scene(count: u32, linked: bool, stack: u32, alpha: u32, bins: bool) ->
     }
     let list = 6 + scene.config[7] as usize * 6 + scene.config[8] as usize + 2;
     for index in 0..count as usize {
-        let at = if linked {
-            index / 256 * 257 + 1 + index % 256
-        } else {
-            index
-        };
+        let at = index + if relocated { 13 } else { 0 };
         scene.work[list + at] = index as u32;
     }
     let wrappers = u32::from(stack == 2);
@@ -91,14 +87,14 @@ fn opaque_scene(count: u32, linked: bool, stack: u32, alpha: u32, bins: bool) ->
 fn native_opaque_occlusion_preserves_allocations_pages_and_layer_semantics() -> Result<()> {
     let routes = Routes::new()?;
     for count in [0, 1, 255, 256, 257, 513] {
-        for linked in [false, true] {
+        for relocated in [false, true] {
             for stack in 0..3 {
                 for alpha in [0, 254, 255] {
                     for entry in ["coarse_emit", "coarse_emit_bins"] {
                         let scene =
-                            opaque_scene(count, linked, stack, alpha, entry.ends_with("bins"));
+                            opaque_scene(count, relocated, stack, alpha, entry.ends_with("bins"));
                         routes.check(&scene.emit_batch(entry)?, &[bytes(&scene.expected)],
-                            &format!("{entry} occlusion count={count} linked={linked} stack={stack} alpha={alpha}"))?;
+                            &format!("{entry} occlusion count={count} relocated={relocated} stack={stack} alpha={alpha}"))?;
                     }
                 }
             }
@@ -201,10 +197,10 @@ fn native_opaque_occlusion_keeps_reused_preallocated_stream_origins() -> Result<
 fn native_opaque_occlusion_chunk_chain_skips_only_proven_hidden_prefixes() -> Result<()> {
     let routes = Routes::new()?;
     for count in [0, 1, 255, 256, 257, 513] {
-        for linked in [false, true] {
+        for relocated in [false, true] {
             for stack in 0..3 {
                 for alpha in [0, 254, 255] {
-                    let mut scene = opaque_scene(count, linked, stack, alpha, true);
+                    let mut scene = opaque_scene(count, relocated, stack, alpha, true);
                     let base = scene.kind_base - scene.config[13] as usize * 7;
                     for chunk in 0..count.div_ceil(256) {
                         let start = chunk * 256;
@@ -225,7 +221,7 @@ fn native_opaque_occlusion_chunk_chain_skips_only_proven_hidden_prefixes() -> Re
                             .fill(0);
                     }
                     routes.check(&scene.emit_chunks_resolved_batch()?, &[bytes(&scene.expected)],
-                        &format!("chunk occlusion count={count} linked={linked} stack={stack} alpha={alpha}"))?;
+                        &format!("chunk occlusion count={count} relocated={relocated} stack={stack} alpha={alpha}"))?;
                 }
             }
         }

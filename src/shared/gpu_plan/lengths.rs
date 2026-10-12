@@ -1,11 +1,11 @@
 //! Canvas-derived native buffer extents and current tile-index update policy.
+#[cfg(test)]
+use super::tile_bins::for_tile_in_bbox;
 use super::{
     COARSE_CHUNK_SIZE, CUMSUM_CHUNK_SIZE, SCAN_CHUNK_SIZE,
     capacity::{coarse_glyph_capacity, coarse_ptcl_capacity},
     tile_bins::{TileDrawBins, TileDrawCounts, build_tile_draw_bins_into},
 };
-#[cfg(test)]
-use super::{TILE_DRAW_PAGE_WORDS, tile_bins::for_tile_in_bbox};
 #[cfg(test)]
 use crate::shared::draw_record::DrawRecord;
 use crate::{canvas::Canvas, shared::execution::ExecPlan, text::PreparedTextData};
@@ -144,12 +144,12 @@ impl GpuBufferLengths {
                 );
                 TileDrawCounts {
                     index_count: bins.upload_index_count(),
-                    chunk_count: bins.active_page_count(),
+                    chunk_count: bins.active_chunk_count(),
                 }
             } else if updated {
                 TileDrawCounts {
                     index_count: bins.upload_index_count(),
-                    chunk_count: bins.active_page_count(),
+                    chunk_count: bins.active_chunk_count(),
                 }
             } else if canvas.persistent_root.is_none() && canvas.buffer_changes.is_none() {
                 bins.reset_transient(
@@ -162,7 +162,7 @@ impl GpuBufferLengths {
                 );
                 TileDrawCounts {
                     index_count: bins.upload_index_count(),
-                    chunk_count: bins.active_page_count(),
+                    chunk_count: bins.active_chunk_count(),
                 }
             } else {
                 build_tile_draw_bins_into(canvas, plan, bins, cursors)
@@ -272,12 +272,13 @@ fn tile_draw_counts_for_order(
             },
         );
     }
+    let index_count = counts.iter().sum();
     let chunk_count: usize = counts
         .into_iter()
         .map(|count| count.div_ceil(COARSE_CHUNK_SIZE as usize))
         .sum();
     TileDrawCounts {
-        index_count: chunk_count * TILE_DRAW_PAGE_WORDS,
+        index_count,
         chunk_count,
     }
 }

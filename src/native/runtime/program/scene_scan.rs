@@ -10,6 +10,8 @@ use super::cumsum::CumsumPlan;
 use super::resources::{allocation_size, upload};
 #[path = "scene_scan/prepare.rs"]
 mod prepare;
+#[path = "scene_scan/work.rs"]
+mod work;
 use crate::shared::{
     gpu_constants::SCAN_CHUNK_SIZE,
     gpu_plan::{GpuScanChunk, GpuScanChunkRange},
@@ -43,6 +45,17 @@ pub(crate) struct ScanBuffers {
     paths: super::cached_buffer::CachedBuffer,
     chunks: super::cached_buffer::CachedBuffer,
     ranges: super::cached_buffer::CachedBuffer,
+    history: Option<work::History>,
+    selected: crate::shared::dense_set::DenseIndexSet,
+    // Sparse plans use different row indices. Reuse can also consume a metadata
+    // journal without uploading it; the next full scan must then refresh it.
+    cumsum_full_current: bool,
+}
+
+impl ScanBuffers {
+    pub(crate) fn accepts_delta(&self, canvas: &crate::Canvas) -> bool {
+        self.history.as_ref().is_some_and(|h| h.contiguous(canvas))
+    }
 }
 pub fn encode_scene(
     batch: &mut ComputeBatch,
@@ -72,20 +85,8 @@ pub(crate) fn encode_cached(
         lengths,
         dirty,
     } = prepared;
-    let line_count = u32::try_from(lengths.line_count)?;
-    let path_count = u32::try_from(lengths.path_count)?;
-    let chunk_count = u32::try_from(lengths.scan_chunk_count)?;
     let backdrop_count = u32::try_from(lengths.backdrop_len)?;
     let segment_count = u32::try_from(lengths.segment_capacity)?;
-    let clear_count = backdrop_count.max(path_count).max(chunk_count);
-    for count in [clear_count, line_count, path_count] {
-        if count.div_ceil(SCAN_CHUNK_SIZE) > maximum_dimension {
-            return Err("native scan dispatch exceeds device grid".into());
-        }
-    }
-    let chunk_grid = grid(chunk_count, maximum_dimension)?;
-    let cumsum = plans.cumsum_plan();
-    let cumsum = CumsumPlan::from_shared(cumsum, lengths.backdrop_len)?;
     // Preflight every byte extent before any potentially large allocation.
     for (count, stride) in [
         (lengths.line_count, size_of::<Line>()),
@@ -105,28 +106,44 @@ pub(crate) fn encode_cached(
             return Err("native scan path allocation exceeds prepared capacity".into());
         }
     }
-    let config = batch.buffer(
-        bytemuck::cast_slice(&[
-            clear_count,
-            backdrop_count,
-            path_count,
-            chunk_count,
-            line_count,
-            segment_count,
-            0,
-            0,
-            0,
-            0,
-            0,
-        ])
-        .to_vec(),
+    let preserve = buffers.backdrops.preserves(lengths.backdrop_len.max(1) * 4)
+        && buffers
+            .tile_segment_ranges
+            .preserves(lengths.backdrop_len.max(1) * size_of::<TileSegmentRange>())
+        && buffers
+            .segments
+            .preserves(lengths.segment_capacity.max(1) * size_of::<LineSegment>());
+    let deltas_valid = buffers.accepts_delta(canvas);
+    let work = work::ScanWork::new(
+        prepared,
+        buffers.history.as_ref(),
+        preserve,
+        &mut buffers.selected,
     )?;
+    let [clear_count, _, path_count, chunk_count, line_count, ..] = work.config;
+    if !work.reuse {
+        for count in [clear_count, line_count, path_count] {
+            if count.div_ceil(SCAN_CHUNK_SIZE) > maximum_dimension {
+                return Err("native scan dispatch exceeds device grid".into());
+            }
+        }
+    }
+    let chunk_grid = grid(chunk_count, maximum_dimension)?;
+    let cumsum = if work.reuse {
+        None
+    } else {
+        Some(CumsumPlan::from_shared(
+            work.cumsum.as_ref().unwrap_or_else(|| plans.cumsum_plan()),
+            lengths.backdrop_len,
+        )?)
+    };
     let lines = buffers.lines.upload(
         batch,
         &canvas.lines,
         canvas
             .buffer_changes
             .as_ref()
+            .filter(|_| deltas_valid)
             .map(|changes| changes.lines.as_slice()),
     )?;
     let paths = buffers.paths.upload(
@@ -135,16 +152,19 @@ pub(crate) fn encode_cached(
         canvas
             .buffer_changes
             .as_ref()
+            .filter(|_| deltas_valid)
             .map(|changes| changes.paths.as_slice()),
     )?;
-    let chunks = buffers
-        .chunks
-        .upload(batch, plans.scan_chunks(), Some(&dirty.scan_chunks))?;
-    let chunk_ranges =
-        buffers
-            .ranges
-            .upload(batch, plans.scan_ranges(), Some(&dirty.scan_ranges))?;
-    let active = upload(batch, &[0u32])?;
+    let chunks = buffers.chunks.upload(
+        batch,
+        plans.scan_chunks(),
+        deltas_valid.then_some(dirty.scan_chunks.as_slice()),
+    )?;
+    let chunk_ranges = buffers.ranges.upload(
+        batch,
+        plans.scan_ranges(),
+        deltas_valid.then_some(dirty.scan_ranges.as_slice()),
+    )?;
     let backdrops = buffers
         .backdrops
         .scratch(batch, lengths.backdrop_len, size_of::<i32>())?;
@@ -152,6 +172,32 @@ pub(crate) fn encode_cached(
         batch,
         lengths.backdrop_len,
         size_of::<TileSegmentRange>(),
+    )?;
+    let segments =
+        buffers
+            .segments
+            .scratch(batch, lengths.segment_capacity, size_of::<LineSegment>())?;
+    let output = ScanOutput {
+        paths,
+        backdrops,
+        tile_segment_ranges,
+        segments,
+    };
+    if work.reuse {
+        if !dirty.cumsum_chunks.is_empty() || !dirty.cumsum_rows.is_empty() {
+            buffers.cumsum_full_current = false;
+        }
+        buffers.history = Some(work::History::new(canvas, batch.acceptance()));
+        return Ok(output);
+    }
+    let config = batch.buffer(bytemuck::cast_slice(&work.config).to_vec())?;
+    let active = upload(
+        batch,
+        if work.indices.is_empty() {
+            &[0u32]
+        } else {
+            &work.indices
+        },
     )?;
     let counts = buffers
         .counts
@@ -168,15 +214,12 @@ pub(crate) fn encode_cached(
     let offsets = buffers
         .offsets
         .scratch(batch, lengths.scan_chunk_count, size_of::<u32>())?;
-    let segments =
-        buffers
-            .segments
-            .scratch(batch, lengths.segment_capacity, size_of::<LineSegment>())?;
     // SAFETY: Canvas builds bounded path/line records and disjoint path work
     // allocations. PersistentPathPlans partitions those allocations into bounded
     // chunks. Their extents are checked above. The ordered clear/count/prefix/
     // offset/apply/emit chain initializes every value consumed by its successor;
-    // shaders guard dispatch tails. This is full-scene scan, not sparse replay.
+    // shaders guard dispatch tails. Sparse work includes all lines, chunks and
+    // backdrops of each selected path; other accepted outputs remain untouched.
     unsafe {
         if clear_count != 0 {
             batch.dispatch(
@@ -267,19 +310,18 @@ pub(crate) fn encode_cached(
             )?;
         }
     }
-    cumsum.encode_cached(
-        batch,
-        backdrops,
-        maximum_dimension,
-        &mut buffers.cumsum,
-        Some(dirty),
-    )?;
-    Ok(ScanOutput {
-        paths,
-        backdrops,
-        tile_segment_ranges,
-        segments,
-    })
+    if let Some(cumsum) = cumsum {
+        cumsum.encode_cached(
+            batch,
+            backdrops,
+            maximum_dimension,
+            &mut buffers.cumsum,
+            (deltas_valid && work.config[6] == 0 && buffers.cumsum_full_current).then_some(dirty),
+        )?;
+    }
+    buffers.cumsum_full_current = work.config[6] == 0;
+    buffers.history = Some(work::History::new(canvas, batch.acceptance()));
+    Ok(output)
 }
 
 fn grid(count: u32, limit: u32) -> Result<[u32; 3]> {

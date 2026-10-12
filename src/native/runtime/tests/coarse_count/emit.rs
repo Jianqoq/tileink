@@ -1,5 +1,5 @@
 use super::emit_scene::*;
-use super::glyphs::glyph_page_scene;
+use super::glyphs::glyph_chunk_scene;
 use super::*;
 
 #[test]
@@ -7,12 +7,17 @@ use super::*;
 fn native_routes_coarse_emit_preserves_order_wrappers_and_capacity_guards() -> Result<()> {
     let routes = Routes::new()?;
     for draws in [0, 1, 255, 256, 257, 513] {
-        for linked in [false, true] {
+        for relocated in [false, true] {
             for stack in 0..4 {
                 for capacity in [0, 3, draws + 8] {
                     for entry in ["coarse_emit", "coarse_emit_bins"] {
-                        let mut scene =
-                            emission_scene(draws, linked, stack, capacity, entry.ends_with("bins"));
+                        let mut scene = emission_scene(
+                            draws,
+                            relocated,
+                            stack,
+                            capacity,
+                            entry.ends_with("bins"),
+                        );
                         parallel_kinds(&mut scene, entry);
                         if stack == 3 && scene.work[1] < scene.work[2] {
                             if capacity > 1 {
@@ -22,7 +27,7 @@ fn native_routes_coarse_emit_preserves_order_wrappers_and_capacity_guards() -> R
                                 scene.expected[scene.kind_base] = 1;
                             }
                         }
-                        routes.check(&scene.emit_batch(entry)?, &[bytes(&scene.expected)], &format!("{entry} draws {draws} linked {linked} stack {stack} capacity {capacity}"))?;
+                        routes.check(&scene.emit_batch(entry)?, &[bytes(&scene.expected)], &format!("{entry} draws {draws} relocated {relocated} stack {stack} capacity {capacity}"))?;
                     }
                 }
             }
@@ -87,14 +92,14 @@ fn native_routes_coarse_emit_reverses_nested_stack_end_order() -> Result<()> {
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn native_routes_coarse_emit_carries_glyph_offsets_across_draw_pages() -> Result<()> {
     let routes = Routes::new()?;
-    for linked in [false, true] {
+    for relocated in [false, true] {
         for entry in ["coarse_emit", "coarse_emit_bins"] {
-            let mut scene = glyph_page_scene(linked, entry.ends_with("bins"));
+            let mut scene = glyph_chunk_scene(relocated, entry.ends_with("bins"));
             parallel_kinds(&mut scene, entry);
             routes.check(
                 &scene.emit_batch(entry)?,
                 &[bytes(&scene.expected)],
-                &format!("{entry} 257 glyph draws linked {linked}"),
+                &format!("{entry} 257 glyph draws relocated {relocated}"),
             )?;
         }
     }

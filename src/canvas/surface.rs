@@ -32,6 +32,7 @@ impl Canvas {
             invalidate_all: false,
             buffer_changes: None,
             plan_cache_key: None,
+            materialization_key: None,
             compiled_plan: None,
             persistent_frame: None,
             painter: PainterMetadata::default(),

@@ -1,7 +1,7 @@
 use super::*;
 
 impl TileDrawBins {
-    /// Builds page-form tile bins for a one-shot immediate canvas without allocating persistent
+    /// Builds compact tile bins for a one-shot immediate canvas without allocating persistent
     /// per-draw ranks, bboxes, or per-tile vectors. Immediate canvases are rebuilt every frame, so
     /// maintaining mutation indexes only adds CPU and allocation cost without enabling reuse.
     pub(in crate::shared::gpu_plan) fn reset_transient(
@@ -42,16 +42,8 @@ impl TileDrawBins {
             self.fill_transient_plain(draw_records, ordered, tiles_size, cursors)
         };
 
-        // Retain per-tile allocations across transient motion. Dropping them made the
-        // first sparse frame allocate thousands of vectors as the spring settled.
-        for pages in &mut self.tile_pages {
-            pages.clear();
-        }
-        for refs in &mut self.tile_refs {
-            refs.clear();
-        }
-        self.free_pages.clear();
-        self.flat_rebuild_work = 0;
+        // Keep the arenas' capacities for recovery without per-tile heap allocations.
+        self.tile_refs.clear(0);
         self.draw_bboxes.clear();
         if preserve_draw_bboxes || self.transient_occlusion {
             self.draw_bboxes
@@ -73,11 +65,11 @@ impl TileDrawBins {
         self.draw_ranks.clear();
         self.draw_ptcl_capacities.clear();
         self.tiles_size = tiles_size;
-        self.active_pages = chunk_count;
+        self.active_chunks = chunk_count;
         self.spatial_index_valid = false;
-        self.index_format = IndexFormat::Flat;
+        self.prefix_visibility = false;
         self.dirty_records.clear();
-        self.dirty_pages.clear();
+        self.dirty_indices.clear();
         self.full_upload = true;
         self.occlusion.clear_changes(draw_records.len());
     }
@@ -104,8 +96,8 @@ impl TileDrawBins {
             let bbox = draw_records[draw as usize].tile_bbox(tiles_size.0, tiles_size.1);
             for_tile_in_bbox(bbox, tiles_size.0, |tile| {
                 let ordinal = cursors[tile];
-                let start = self.records[tile].start & !TILE_DRAW_FLAT_FLAG;
-                self.draw_indices[(start + ordinal) as usize] = draw;
+                let start = self.records[tile].start;
+                self.indices.values[(start + ordinal) as usize] = draw;
                 cursors[tile] += 1;
             });
         }
@@ -131,8 +123,8 @@ impl TileDrawBins {
         self.occlusion
             .for_each_visible(draw_records, ordered, tiles_size, |tile, draw| {
                 cursors[tile] -= 1;
-                let start = self.records[tile].start & !TILE_DRAW_FLAT_FLAG;
-                self.draw_indices[(start + cursors[tile]) as usize] = draw;
+                let start = self.records[tile].start;
+                self.indices.values[(start + cursors[tile]) as usize] = draw;
             });
         chunks
     }
@@ -142,17 +134,12 @@ impl TileDrawBins {
         let mut chunks = 0usize;
         for record in &mut self.records {
             let count = record.end;
-            record.start = if count == 0 {
-                u32::MAX
-            } else {
-                assert!(next_index < TILE_DRAW_FLAT_FLAG);
-                TILE_DRAW_FLAT_FLAG | next_index
-            };
+            record.start = if count == 0 { u32::MAX } else { next_index };
             next_index += count;
             chunks += count.div_ceil(COARSE_CHUNK_SIZE) as usize;
         }
-        self.draw_indices.clear();
-        self.draw_indices.resize(next_index as usize, u32::MAX);
+        self.indices.values.clear();
+        self.indices.values.resize(next_index as usize, u32::MAX);
         cursors.clear();
         cursors.resize(self.records.len(), 0);
         chunks

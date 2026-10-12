@@ -25,6 +25,17 @@ pub(crate) struct CachedBuffer {
 #[path = "cached_buffer_tests.rs"]
 mod tests;
 impl CachedBuffer {
+    /// Previous GPU outputs are usable only after successful submission and while
+    /// the same allocation can hold the complete current logical extent.
+    pub(crate) fn preserves(&self, size: usize) -> bool {
+        self.buffer.as_ref().is_some_and(|buffer| {
+            buffer.state.initialized.get() && buffer.state.size as usize >= size.max(4)
+        }) && self
+            .accepted
+            .as_ref()
+            .is_some_and(|accepted| accepted.get())
+    }
+
     /// GPU work is initialized once. The caller's scan/coarse/fine passes must
     /// overwrite every value they consume; previous frame outputs are not cleared
     /// or transferred from the CPU again.

@@ -412,6 +412,28 @@ impl PersistentPathPlans {
         &self.cumsum_plan
     }
 
+    /// Gather complete rows for changed paths. Cumsum mutates backdrops in place,
+    /// so replaying an unchanged row would accumulate its already-scanned values twice.
+    pub(crate) fn cumsum_for_paths(&self, paths: &[u32]) -> GpuCumsumPlan {
+        let mut plan = GpuCumsumPlan::default();
+        for &path in paths {
+            let Some(allocation) = self.allocations[path as usize] else {
+                continue;
+            };
+            for row in self.cumsum_rows.range(allocation.cumsum_rows) {
+                let start = self.cumsum_plan.row_chunk_starts[row] as usize;
+                let end = self.cumsum_plan.row_chunk_ends[row] as usize;
+                plan.row_chunk_starts.push(plan.chunk_lens.len() as u32);
+                plan.chunk_backdrop_offsets
+                    .extend_from_slice(&self.cumsum_plan.chunk_backdrop_offsets[start..end]);
+                plan.chunk_lens
+                    .extend_from_slice(&self.cumsum_plan.chunk_lens[start..end]);
+                plan.row_chunk_ends.push(plan.chunk_lens.len() as u32);
+            }
+        }
+        plan
+    }
+
     pub(crate) fn take_dirty(&mut self) -> GpuPathPlanDirty {
         GpuPathPlanDirty {
             scan_chunks: std::mem::take(&mut self.dirty_scan_chunks),

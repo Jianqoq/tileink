@@ -4,8 +4,8 @@ pub(super) fn bytes(words: &[u32]) -> Vec<u8> {
     words.iter().flat_map(|w| w.to_le_bytes()).collect()
 }
 
-pub(super) fn count_scene(draw_count: u32, linked: bool, stack: u32) -> CountScene {
-    // One active tile with a variable-length paged list. Alternating kinds cover
+pub(super) fn count_scene(draw_count: u32, relocated: bool, stack: u32) -> CountScene {
+    // One active tile with a contiguous list, optionally relocated behind an unrelated arena prefix. Alternating kinds cover
     // SDF/shadow, winding/segments, vector glyphs, clips, ignored tags and batches.
     let pattern = [1u32, 1, 1, 1, 0, 0, 1, 0];
     let mut draws = Vec::new();
@@ -31,40 +31,20 @@ pub(super) fn count_scene(draw_count: u32, linked: bool, stack: u32) -> CountSce
         draws.extend(draw);
     }
     let pages = draw_count.div_ceil(COARSE_WORKGROUP_SIZE);
-    let indices = if linked {
-        pages * (COARSE_WORKGROUP_SIZE + 1)
-    } else {
-        draw_count
-    };
+    let prefix = if relocated { 13 } else { 0 };
+    let indices = prefix + draw_count;
     let draw_base = 6 + 3 * 6 + 5;
     let index_base = draw_base + 2;
     let tile_emit_base = index_base + indices;
     let emit_base = tile_emit_base + 2;
     let kind_base = emit_base + (pages + 2) * 7;
     let mut work = vec![0x4545_4545; (kind_base + 9) as usize];
-    work[draw_base as usize] = if draw_count == 0 {
-        u32::MAX
-    } else if linked {
-        0
-    } else {
-        0x8000_0000
-    };
+    work[draw_base as usize] = if draw_count == 0 { u32::MAX } else { prefix };
     work[draw_base as usize + 1] = draw_count;
     for index in 0..draw_count {
-        let word = if linked {
-            index / COARSE_WORKGROUP_SIZE * (COARSE_WORKGROUP_SIZE + 1)
-                + 1
-                + index % COARSE_WORKGROUP_SIZE
-        } else {
-            index
-        };
-        work[(index_base + word) as usize] = index % 8;
+        work[(index_base + prefix + index) as usize] = index % 8;
     }
     for page in 0..pages {
-        if linked {
-            work[(index_base + page * (COARSE_WORKGROUP_SIZE + 1)) as usize] =
-                if page + 1 < pages { page + 1 } else { u32::MAX };
-        }
         let base = (emit_base + page * 7) as usize;
         work[base] = 0;
         work[base + 1] = page;

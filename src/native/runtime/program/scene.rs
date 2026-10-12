@@ -127,3 +127,7 @@ use work::tile_bin_dirty_updates;
 #[cfg(test)]
 #[path = "../tests/scene_filter_geometry.rs"]
 mod filter_geometry_tests;
+
+#[cfg(test)]
+#[path = "../tests/scene_scan_retained.rs"]
+mod scan_retained_tests;

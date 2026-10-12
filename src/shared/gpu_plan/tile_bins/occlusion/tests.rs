@@ -131,14 +131,12 @@ fn early_occlusion_full_rebuild_uses_one_gpu_arena_across_spatial_edits() {
     bins.update_occlusion(&canvas, &plan);
     build_tile_draw_bins_into(&canvas, &plan, &mut bins, &mut Vec::new());
     assert_eq!(bins.records, bins.upload_records());
-    assert_eq!(bins.draw_indices, bins.upload_indices());
-    assert!(bins.tile_pages.iter().all(Vec::is_empty));
+    assert_eq!(bins.indices.values, bins.upload_indices());
     let _ = bins.take_dirty();
     canvas.brush_blob[canvas.draw_records[1].brush_offset as usize + 4] = 0xfeff_ffff;
     bins.update_occlusion(&canvas, &plan);
     assert!(bins.update_changed(&canvas.draw_records, &plan.draw_order, None, (4, 4), &[]));
     assert_eq!(bins.tile_draws(0), [0, 1]);
-    assert!(bins.tile_pages.iter().all(Vec::is_empty));
     canvas.draw_records[1].transform.e = 32.0;
     canvas.draw_records[1].pixel_bounds.x0 += 32;
     canvas.draw_records[1].pixel_bounds.x1 += 32;
@@ -152,8 +150,8 @@ fn early_occlusion_full_rebuild_uses_one_gpu_arena_across_spatial_edits() {
     ));
     assert_eq!(bins.tile_draws(0), [0]);
     assert_eq!(bins.tile_draws(2), [0, 1]);
-    assert_eq!(bins.index_format, IndexFormat::FlatPrefix);
-    assert!(bins.take_dirty().0);
+    assert!(bins.prefix_visibility);
+    assert!(!bins.take_dirty().1.is_empty());
 }
 
 #[test]

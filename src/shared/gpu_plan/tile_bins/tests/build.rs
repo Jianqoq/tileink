@@ -87,7 +87,7 @@ fn fused_lengths_reuse_the_same_tile_draw_bins() {
     );
 
     assert_eq!(lengths.tile_draw_index_count, bins.upload_index_count());
-    assert_eq!(bins.upload_indices(), bins.draw_indices);
+    assert_eq!(bins.upload_indices(), bins.indices.values);
     // Complete flat capacity stays resident across later opacity changes.
     assert_eq!(lengths.tile_draw_chunk_count, 3);
     // All but the final opaque draw are removed before the coarse upload.
@@ -96,7 +96,7 @@ fn fused_lengths_reuse_the_same_tile_draw_bins() {
 }
 
 #[test]
-fn tile_page_capacity_includes_fused_layer_stack_particles() {
+fn tile_capacity_includes_fused_layer_stack_particles() {
     let mut canvas = Canvas::new(crate::TILE_SIZE * 2, crate::TILE_SIZE, 1.0);
     canvas.push_opacity_layer(
         Rect::new(0.0, 0.0, 32.0, 16.0).to_path(0.0),
@@ -150,6 +150,9 @@ fn tile_draw_chunk_count_sums_per_tile_draw_chunks() {
 
     let lengths = GpuBufferLengths::from_scene(&canvas);
 
-    assert_eq!(lengths.tile_draw_index_count, 3 * TILE_DRAW_PAGE_WORDS);
+    assert_eq!(
+        lengths.tile_draw_index_count,
+        COARSE_CHUNK_SIZE as usize + 2
+    );
     assert_eq!(lengths.tile_draw_chunk_count, 3);
 }

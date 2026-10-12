@@ -47,14 +47,16 @@ is independent of its format. Building pages and then copying another flat arena
 both duplicated work and increased real-application rebuild cost. Immediately
 constructing all pages on the first later edit also introduced a P95 latency spike.
 
-The format decision estimates index work from complete CPU membership: the flat
+The implementation measured below estimated index work from complete CPU membership: the flat
 arena, all pages, and pages affected by this edit, including tile records. Short edit sequences
 keep compact flat uploads. Their accumulated extra work relative to page deltas
 pays toward the one-time page construction cost; sustained sparse motion eventually
 establishes pages and then updates only affected ones. While flat, edits whose estimated page transfer cost cannot beat a full flat
 rebuild do not accumulate that cost. There is no fixed frame or scene
 threshold. Tests cover a short edit staying flat, eventual page promotion, and later
-delta locality/fragmentation. This is an index storage policy for early occlusion.
+delta locality/fragmentation. This historical storage policy has since been
+replaced by compact continuous ranges that support local uploads immediately;
+see [cache-friendly preparation](cache-friendly-preparation.md).
 
 Visibility changes dirty both the old and new proof regions. Transient retained
 bounds exclude inactive storage slots: a focused regression first demonstrated that
@@ -62,9 +64,10 @@ stale geometry could inflate the complete membership estimate and misclassify a
 dense edit. All these fixes address the underlying index maintenance; they are not
 temporary measurement paths or animation caching.
 
-The shared native upload path supplies both Metal and HLSL backends. Shader source
-and public APIs are unchanged. Path scan, scene materialization and source upload
-still run, and persistent particle capacity remains conservative. Early occlusion
+The shared native upload path supplies both Metal and HLSL backends. The early
+occlusion change did not alter shader source or public APIs. It does not itself
+skip path scan, scene materialization or source upload, and persistent particle
+capacity remains conservative. Early occlusion
 therefore does not promise a speedup for every scene or eliminate all work on a
 hidden object. The existing GPU fine-stage proof remains a fallback.
 
