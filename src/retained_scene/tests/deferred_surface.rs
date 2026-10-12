@@ -1,6 +1,51 @@
 use super::*;
 
 #[test]
+fn resize_with_root_filter_insertion_avoids_the_deferred_spatial_index() {
+    let root = RetainedNodeId::for_owner(62_120);
+    let mut scene = RetainedScene::new(32, 32, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            RetainedNodeId::for_owner(62_121),
+            leaf(Color::WHITE),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+    let mut state = PersistentSceneMaterializer::new(&scene);
+    scene
+        .transaction()
+        .resize(64, 32, 1.0)
+        .insert_layer(
+            RetainedParent::content(root),
+            None,
+            RetainedNodeId::for_owner(62_122),
+            RetainedLayerDescriptor::Filter {
+                filter: Filter::Opacity(0.5),
+                sample_region: Region::rect(Rect::new(0.0, 0.0, 16.0, 32.0), Radius::ZERO),
+            },
+        )
+        .commit()
+        .unwrap();
+    assert!(update_materializer(&mut state, &scene));
+    assert_eq!(state.canvas.logical_size(), (64, 32));
+    assert!(state.surface_metadata_stale);
+    scene
+        .transaction()
+        .set_transform(
+            RetainedNodeId::for_owner(62_121),
+            Affine::translate((1.0, 0.0)),
+        )
+        .commit()
+        .unwrap();
+    assert!(update_materializer(&mut state, &scene));
+    assert_eq!(state.spatial_tiles_size, (4, 2));
+}
+
+#[test]
 fn resize_with_layer_updates_defers_full_frame_and_spatial_rebuild() {
     let root = RetainedNodeId::for_owner(62_100);
     let clip = RetainedNodeId::for_owner(62_101);

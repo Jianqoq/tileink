@@ -48,6 +48,15 @@ An absence of backdrop dependencies does not establish this structure: a Scene c
 its own clips or filters. Plain content crossing an offscreen boundary uses its actual
 adjacent batch, and moves inside layers also synchronize authoritative command order.
 
+A nested offscreen removal can rebuild one surviving ancestor only when it owns the whole
+transaction in both the previously published tree and the current tree. Moving content in
+must retire its old outer command; moving content out must install its new command. The
+ancestor must also retain its parent branch and painter position. Changes crossing these
+boundaries compile the current command structure. Root-layer insertion needs the current
+surface's spatial index; a simultaneous resize defers that index, so insertion compiles the
+new structure directly. These rules fix missing/stale commands and spatial-index overflow
+while preserving unrelated batch and draw storage for local edits.
+
 Root fragments follow actual command scope, including root-level layers inside groups.
 Pure offscreen reordering validates the complete operation permutation before synchronizing
 command locations and fragment ranges; later removal still shares unrelated subtree draw

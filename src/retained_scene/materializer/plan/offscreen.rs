@@ -60,24 +60,39 @@ impl PersistentSceneMaterializer {
             .compiled_plan
             .as_ref()
             .expect("materialized scene owns a plan");
-        let mut removed_layers = changes.removed_nodes.iter().filter(|id| {
+        let first = *changes.removed_nodes.iter().find(|id| {
             // Removed chunks have already been released by the time candidates are selected.
             // Layer command ownership is the stable pre-removal type/index needed here.
             self.layer_command_locations.contains_key(id)
-        });
-        let first = *removed_layers.next()?;
-        let surviving_ancestor = |mut node| {
-            let mut ancestor = plan.retained_offscreen_ancestor_of(node)?;
-            while changes.removed_nodes.contains(&ancestor) {
-                node = ancestor;
-                ancestor = plan.retained_offscreen_ancestor_of(node)?;
+        })?;
+        let mut candidate = plan.retained_offscreen_ancestor_of(first)?;
+        while changes.removed_nodes.contains(&candidate) {
+            candidate = plan.retained_offscreen_ancestor_of(candidate)?;
+        }
+        // Replacing this fragment preserves its parent command position and outer stack.
+        // Moving the ancestor itself must instead compile the current command hierarchy.
+        let old = self.node_metadata[&candidate];
+        let current = Self::scene_node_metadata(scene, candidate);
+        if old.parent != current.parent || old.order_key != current.order_key {
+            return None;
+        }
+        let was_inside = |mut id| loop {
+            if id == candidate {
+                return true;
             }
-            scene.nodes.contains_key(&ancestor).then_some(ancestor)
+            let Some(parent) = self.node_metadata.get(&id).and_then(|node| node.parent) else {
+                return false;
+            };
+            id = parent.node;
         };
-        let candidate = surviving_ancestor(first)?;
-        removed_layers
-            .all(|&layer| surviving_ancestor(layer) == Some(candidate))
-            .then_some(candidate)
+        // Check the complete delta in both trees. Current ancestry alone misses old commands
+        // outside the fragment when a node moves in; layer-only removal checks miss plain leaves.
+        (changes.removed_nodes.iter().all(|&id| was_inside(id))
+            && changes.changed_nodes.iter().all(|&id| {
+                is_descendant_or_self(scene, id, candidate)
+                    && (!self.node_metadata.contains_key(&id) || was_inside(id))
+            }))
+        .then_some(candidate)
     }
 
     pub(crate) fn nested_offscreen_hierarchy_candidates(

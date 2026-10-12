@@ -2980,9 +2980,82 @@ match package.json, and all 997 current implementation files have one audit owne
 and are fully read. Windows GPU runtime checks remain pending. Nested mixed-removal
 eligibility is the next producer contract to test.
 
+## Phase 56: make nested removal own the whole transaction
+
+Nested offscreen removal selected one surviving ancestor from removed Layer
+commands alone. It did not account for other changed or removed nodes in the same
+transaction. The local rebuild could omit new root commands, retain removed plain
+commands, lose content moving out, duplicate commands moving in, or preserve an
+ancestor's previous painter position. Replacing an external plain Scene with
+filtered content also left its old execution structure. Pristine-production
+regressions progress from two passes/seven failures to six passes/twelve failures
+as these cases and positive contracts are added. Five actual Metal cases have
+wrong pixels; CPU contracts additionally expose stale commands masked by current
+GPU batch membership.
+
+Selection now checks the complete delta against both the published metadata tree
+and the current scene. Every retired node must belong to the rebuilt ancestor;
+each changed live node must belong there now and, if previously published, before
+the edit too. The ancestor retains its parent branch and painter position.
+Cross-scope edits compile the current command structure. This replaces repeated
+layer-only plan walks and removes the redundant live-ancestor substitute. Instance
+retirement already guarantees that the surviving ancestor retains its identity,
+so an extra instance comparison is unnecessary. Real fragment-shape decisions
+remain: removing children can turn an offscreen group into a fused clip, and
+hierarchy candidates can overlap.
+
+Review also reproduces a separate resize defect in both CPU and public renderer
+tests. Root-layer insertion queries the spatial index after the canvas changes
+size, while resize intentionally defers that index. The changed row stride indexes
+beyond its old allocation. A simultaneous resize now selects structural compilation
+for root insertion before mutation. No spatial lookup is clamped or replaced with
+an empty result, and unused resize damage metadata is not eagerly reconstructed.
+Other local fragment edits retain their valid resize behavior.
+
+Twenty permanent tests include eleven CPU and nine Metal tests. They cover root
+Scene/Layer insertion, unrelated removal, movement into/out of the ancestor,
+external filter structure, ancestor ordering/fusion, local insertion and shared
+unrelated draw storage. Four resize edit kinds check the exposed filter area and
+the following incremental frame. GPU tests make 24 fresh-renderer comparisons
+and verify independent analytic pixels. Focused release runs pass 18 nested,
+one four-case resize, four deferred-surface and 212 retained tests. Full
+single-thread release tests, including ignored GPU cases, pass 1194 cases with
+zero failures or ignored. Formatting, release clippy, backend-free compilation,
+all examples and Windows DX12/Vulkan all-target checks pass. The existing one
+library/eight library-test clippy warnings remain.
+
+All 1730 freshly written SVG PNGs and seven image examples match baseline bytes,
+with unchanged SVG source hashes. Presentation completes eight frames at 640×360
+and 480×270. All five native artifact manifests and actual DXC compiler/validator
+identities match phase 55. Windows GPU runtime execution remains pending.
+
+The [application report](benchmarks/cleanup-phase56-metal-2026-10-12.json) records
+a 1280×800 retained dashboard with 32 filtered chart cards and 13 draws per card.
+It repeatedly removes/reinstalls one nested tooltip filter while the other cards
+stay unchanged. Four before/after PNGs are byte-exact. Twenty fixed before/after
+pairs interleave with twenty identical-current pairs; block and label order reverse
+on odd pairs. All 80 observations remain. Each process warms up 25 frames and
+measures 75 frames with API validation off. Transactions and PNG readback stay
+outside the render timer, which includes submission completion. Mixed resize
+previously panicked; timing measures the valid local-edit workload.
+
+Removal medians change 0.642176 to 0.643325 ms (+0.179%), descriptive paired
+bootstrap interval [-1.281%, +3.879%]. Addition changes 0.738324 to 0.732395 ms
+(-0.803%), interval [-3.716%, +0.938%]. The 75-frame total changes 90.251413 to
+90.153147 ms (-0.109%), interval [-1.175%, +1.310%]. Identical-current total medians
+vary +0.439%, interval [-0.698%, +1.216%]. No overall timing change or regression is
+resolved; smaller changes within these intervals remain possible.
+
+The temporary workload and eight copied/compiled artifacts are removed. Bilingual
+architecture guides document complete subtree ownership and deferred resize
+selection. All 62 benchmark JSON/gzip files parse, npm root declarations match
+package.json, and all 1000 current implementation files have one audit owner and
+are fully read. Repeated nested recompilation's command-list ownership is the next
+storage contract to verify.
+
 ## Remaining audit work
 
-- All current implementation files are fully read. The progressive/glass shader, SVG lowering, filter distance, text coordinate, retained layer descriptor, typed offscreen, recording geometry, coarse stack, native creation/resource policy and retained plan ownership cleanup are implemented. Metal GPU correctness and portable native-policy regressions pass; DX12 resource runtime still needs Windows verification. Full-plan membership length, root ranges, adjacent-run insertion, root command-scope ownership, plan publication, flat command synchronization and same-ID revision identity now have direct semantic coverage. Prove nested offscreen eligibility/caller contracts, including removal mixed with changes outside the selected ancestor. Clip geometry replacement inside/outside filters has fresh-renderer and analytic GPU coverage; continue tracing wider retained metadata patching rules. Continue checking current Cargo/module reachability for retired code after the orphan example removal. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
+- All current implementation files are fully read. The progressive/glass shader, SVG lowering, filter distance, text coordinate, retained layer descriptor, typed offscreen, recording geometry, coarse stack, native creation/resource policy and retained plan ownership cleanup are implemented. Metal GPU correctness and portable native-policy regressions pass; DX12 resource runtime still needs Windows verification. Full-plan membership length, root ranges, adjacent-run insertion, root command-scope ownership, plan publication, flat command synchronization, same-ID revision identity and complete nested removal scope now have direct semantic coverage. Verify bounded command-list ownership under repeated nested recompilation, then finish remaining hierarchy/caller and Cargo/module reachability proofs. Clip geometry replacement inside/outside filters and fragment/resize combinations have fresh-renderer and analytic GPU coverage; continue tracing wider retained metadata patching rules. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
 - Execute the HLSL editor test against the actual ShaderTools language server; local protocol regressions pass, but the server is unavailable locally.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

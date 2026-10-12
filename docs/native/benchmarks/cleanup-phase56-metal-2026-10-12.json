@@ -1,0 +1,2027 @@
+{
+  "baseline_commit": "b7584a568debde1797545523206efd0249df1838",
+  "scope": "Complete old/new transaction ownership for nested offscreen removal; correct root-fragment insertion eligibility during deferred resize metadata. Remove repeated layer-only ancestor walks and proven redundant surviving-instance substitutes.",
+  "recorded_at": "2026-10-12T00:49:44.787521+00:00",
+  "tests": {
+    "passed": 1194,
+    "failed": 0,
+    "ignored": 0,
+    "test_binaries": 44
+  },
+  "test_policy": "Release, RAYON_NUM_THREADS=1 and --test-threads=1; ignored GPU tests included with physical Metal adapter pinned and API validation enabled.",
+  "regressions_before_fix": [
+    {
+      "log": "target/cleanup-audit/nested-red-initial.log",
+      "sha256": "ef94c1b1f146226f04f9ae9c3544f2260170eb72e27c151fe6ba903b478b690d",
+      "summary": "2 passed; 7 failed; 0 ignored"
+    },
+    {
+      "log": "target/cleanup-audit/nested-red-expanded.log",
+      "sha256": "ec5a9d194a0813b0f027f50e2fc56f818e64c685bb46ba2864501b1d339f08c3",
+      "summary": "2 passed; 11 failed; 0 ignored"
+    },
+    {
+      "log": "target/cleanup-audit/nested-red-contracts.log",
+      "sha256": "1b707abb1d2b43ca8de0e8113f138c89cc8b8b15efab66d5d8cfde8820521a4f",
+      "summary": "5 passed; 11 failed; 0 ignored"
+    },
+    {
+      "log": "target/cleanup-audit/nested-red-scopes.log",
+      "sha256": "b99d5525c8fd09db857ad290a1acebad1ce228d21fbcb5bfd5a95b30dcf4077e",
+      "summary": "6 passed; 12 failed; 0 ignored"
+    },
+    {
+      "log": "target/cleanup-audit/nested-review-resize-before.log",
+      "sha256": "46b214e4e6f51850dbedd1664f1e03f096010fe81069aeb062df2aeeba8a2c67",
+      "summary": "0 passed; 1 failed; 0 ignored; spatial index out of bounds"
+    },
+    {
+      "log": "target/cleanup-audit/nested-red-resize-cpu.log",
+      "sha256": "a1fb6100310bd37f6d3f0f136decaba71f5dc51ce24ba12f4e6366421057168e",
+      "summary": "0 passed; 1 failed; 0 ignored; same spatial index out-of-bounds as renderer regression"
+    }
+  ],
+  "semantic_coverage": {
+    "new_permanent_tests": 20,
+    "new_cpu_tests": 11,
+    "new_gpu_tests": 9,
+    "nested_gpu_scenarios": 8,
+    "resize_gpu_scenarios": 4,
+    "fresh_renderer_pixel_comparisons": 24,
+    "independent_analytic_pixels": true,
+    "focused_nested_tests": 18,
+    "focused_resize_tests": 1,
+    "focused_resize_scenarios": 4,
+    "focused_deferred_surface_tests": 4,
+    "focused_retained_tests": 212,
+    "unrelated_draw_storage_remains_shared": true
+  },
+  "producer_and_algorithm_review": [
+    "Phase55 baseline pushed and clean; ra-lsp unavailable. Review next tests nested offscreen selectors with mixed changes outside the selected ancestor.",
+    "Pristine production stages: 2/7, 2/11, 5/11 and 6/12 pass/fail. Reparenting in retains a stale outer command even where current GPU binning masks its pixels.",
+    "Nested removal selection now owns the complete transaction in published and current trees, and requires the selected ancestor to preserve instance, parent and painter order. Removed Scene/Group scope is checked as well as Layer scope.",
+    "Separate CPU and renderer resize regressions reproduce root insertion reading a deferred old-size spatial index. Root insertion now selects structural compilation on simultaneous resize instead of rebuilding unused damage metadata or clipping away invalid indices.",
+    "Actual execution-shape decisions remain required: a filtered ancestor can become fused after removal, and hierarchy candidates can overlap. Offscreen fragment shape rejection is live semantics, not a proven impossible retry.",
+    "Final review removes the extra candidate instance comparison: every replaced instance is already retired, so the selected surviving ancestor retains that identity. Parent and order checks remain necessary. Focused contracts and broad retained tests rerun before freezing the final application executable.",
+    "Twenty fixed comparison pairs and twenty interleaved identical-current pairs complete: total median -0.109%, interval [-1.175%, +1.310%]; no resolved overall timing change. All 80 observations retained and four before/after PNGs byte-exact. Temporary source and eight executable/dependency artifacts removed."
+  ],
+  "validation": {
+    "commands": {
+      "fmt": {
+        "command": [
+          "cargo",
+          "fmt"
+        ],
+        "exit_code": 0,
+        "seconds": 0.6824406660161912,
+        "log": "target/cleanup-audit/nested-fmt.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "focused-nested": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--lib",
+          "nested_changes",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 18.229452250001486,
+        "log": "target/cleanup-audit/nested-focused-nested.log",
+        "log_sha256": "fa1a6660d2f7621455d0636a383286fc233b05e5d0bcf8d73d25c6d25cdd9b75"
+      },
+      "focused-resize": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--lib",
+          "fragment_resize",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 0.1423517500224989,
+        "log": "target/cleanup-audit/nested-focused-resize.log",
+        "log_sha256": "634a40523413a960713e1bb8129e92a123c8a008d2fd1b11bae270e101b262cf"
+      },
+      "focused-deferred": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--lib",
+          "deferred_surface",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 0.06736162499873899,
+        "log": "target/cleanup-audit/nested-focused-deferred.log",
+        "log_sha256": "85c2fa40707caf2630b864eac52da0bcbf029a269a09a298a21eafc3a68b2e88"
+      },
+      "focused-retained": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--lib",
+          "retained",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5469641250092536,
+        "log": "target/cleanup-audit/nested-focused-retained.log",
+        "log_sha256": "8e92e5c381f715e76a12f54ade2c004631bb67920ff826a32731d82010341072"
+      },
+      "fmt-final": {
+        "command": [
+          "cargo",
+          "fmt"
+        ],
+        "exit_code": 0,
+        "seconds": 0.6170292079914361,
+        "log": "target/cleanup-audit/nested-fmt-final.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "focused-final-nested": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--lib",
+          "nested_changes",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 16.89243812498171,
+        "log": "target/cleanup-audit/nested-focused-final-nested.log",
+        "log_sha256": "470e4ab1b2c8bbeeaebe38a8ca9f9bd511dd46e2854e3f9e2daac2bdf1e676e9"
+      },
+      "focused-final-resize": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--lib",
+          "fragment_resize",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 0.1760401249921415,
+        "log": "target/cleanup-audit/nested-focused-final-resize.log",
+        "log_sha256": "2ad47206626c355e50f383677ad8e07326060104bd45c33a33e6e9bad65ea0d7"
+      },
+      "focused-final-retained": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--lib",
+          "retained",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5407289580034558,
+        "log": "target/cleanup-audit/nested-focused-final-retained.log",
+        "log_sha256": "76d1c5917b970ac1d0e6112c2fa47c6b321d549c348622eeeef069f4da36d7f3"
+      },
+      "build-after": {
+        "command": [
+          "cargo",
+          "build",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--example",
+          "cleanup_nested"
+        ],
+        "exit_code": 0,
+        "seconds": 7.866551209008321,
+        "log": "target/cleanup-audit/nested-build-after.log",
+        "log_sha256": "31c3fe80d9f98b00876a6e3870823d05009e484e78d36f7c19603801bb34a754"
+      },
+      "fmt-all": {
+        "command": [
+          "cargo",
+          "fmt"
+        ],
+        "exit_code": 0,
+        "seconds": 0.6257046249811538,
+        "log": "target/cleanup-audit/nested-fmt-all.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "release-all": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets",
+          "--no-fail-fast",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 68.58375404099934,
+        "log": "target/cleanup-audit/nested-release-all.log",
+        "log_sha256": "80c60e35b2d45eea5a2e24cc1846ac3f92cb018babbae7b1b54602cbd920b940"
+      },
+      "clippy": {
+        "command": [
+          "cargo",
+          "clippy",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets"
+        ],
+        "exit_code": 0,
+        "seconds": 3.7091539579851087,
+        "log": "target/cleanup-audit/nested-clippy.log",
+        "log_sha256": "a724dcf2de2ed6dd127ace3605efa7ecc0b3c139e929b988999c03540588ff88"
+      },
+      "backend-free": {
+        "command": [
+          "cargo",
+          "check",
+          "--release",
+          "--no-default-features",
+          "--lib"
+        ],
+        "exit_code": 0,
+        "seconds": 1.0359273749927524,
+        "log": "target/cleanup-audit/nested-backend-free.log",
+        "log_sha256": "efc625ec870fb0a451c51b55c364ffbb42c248832dda34648c50a399d8aac4cd"
+      },
+      "build-examples": {
+        "command": [
+          "cargo",
+          "build",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--examples"
+        ],
+        "exit_code": 0,
+        "seconds": 1.9532782909809612,
+        "log": "target/cleanup-audit/nested-build-examples.log",
+        "log_sha256": "c375e809f88feca22ed01e83d1b3f02dc558a133e396bf44ae0a1b5b9a909746"
+      },
+      "windows-dx12": {
+        "command": [
+          "cargo",
+          "check",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "dx12",
+          "--target",
+          "x86_64-pc-windows-gnu",
+          "--all-targets"
+        ],
+        "exit_code": 0,
+        "seconds": 3.21270495801582,
+        "log": "target/cleanup-audit/nested-windows-dx12.log",
+        "log_sha256": "e3f64486df559c443490ae9de604048d66aa73a8b49bc88bcbbd2e6acb9ab05b"
+      },
+      "windows-vulkan": {
+        "command": [
+          "cargo",
+          "check",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "vulkan",
+          "--target",
+          "x86_64-pc-windows-gnu",
+          "--all-targets"
+        ],
+        "exit_code": 0,
+        "seconds": 3.2301810000208206,
+        "log": "target/cleanup-audit/nested-windows-vulkan.log",
+        "log_sha256": "b5b7bef9b0577016c8a4c7eaca0495374fb34491243297a4dc1657b4b7151a9c"
+      },
+      "fmt-check": {
+        "command": [
+          "cargo",
+          "fmt",
+          "--check"
+        ],
+        "exit_code": 0,
+        "seconds": 0.6133245829842053,
+        "log": "target/cleanup-audit/nested-fmt-check.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "svg": {
+        "command": [
+          "target/release/examples/svg_fixture_render",
+          "target/cleanup-audit/stack-svg"
+        ],
+        "exit_code": 0,
+        "seconds": 6.600711999984924,
+        "log": "target/cleanup-audit/nested-svg.log",
+        "log_sha256": "5967a78f3943cd18a9d158d6b637be0c035c18956695785292c658da7c42079b"
+      },
+      "mesh-gradient": {
+        "command": [
+          "target/release/examples/mesh_gradient",
+          "target/cleanup-audit/nested-mesh-gradient.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5413606249785516,
+        "log": "target/cleanup-audit/nested-mesh-gradient.log",
+        "log_sha256": "576996f64de1de254071cc8f5eef740809103f9e5eb6f4ba138c3a548e42fae2"
+      },
+      "program-brush": {
+        "command": [
+          "target/release/examples/program_brush",
+          "target/cleanup-audit/nested-program-brush.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5060534589865711,
+        "log": "target/cleanup-audit/nested-program-brush.log",
+        "log_sha256": "aca8a7aee8d887eea961a8efc14ecbea96d2570ae410e5c5d83585db33733259"
+      },
+      "program-glass": {
+        "command": [
+          "target/release/examples/program_glass",
+          "target/cleanup-audit/nested-program-glass.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.4413511249877047,
+        "log": "target/cleanup-audit/nested-program-glass.log",
+        "log_sha256": "15ebf90807078585c2a216d8dbd75dbef8627ea96c9b8ec197ba642af895c16a"
+      },
+      "shader-pipeline": {
+        "command": [
+          "target/release/examples/shader_pipeline",
+          "target/cleanup-audit/nested-shader-pipeline.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.44733808300225064,
+        "log": "target/cleanup-audit/nested-shader-pipeline.log",
+        "log_sha256": "21dde7b460ce7f9763b1bb9c6eb3d9807e63e53703a303221e8d04f54e292ca3"
+      },
+      "shader-graph": {
+        "command": [
+          "target/release/examples/shader_graph",
+          "target/cleanup-audit/nested-shader-graph.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.45637241599615663,
+        "log": "target/cleanup-audit/nested-shader-graph.log",
+        "log_sha256": "c7f0c7069343241eb57f8e6a2a7ae86dee14a31b7d09dbc18c8711849373e01f"
+      },
+      "progressive-balanced": {
+        "command": [
+          "target/release/examples/progressive_blur",
+          "target/cleanup-audit/nested-progressive-balanced.png",
+          "balanced"
+        ],
+        "exit_code": 0,
+        "seconds": 0.46254470900748856,
+        "log": "target/cleanup-audit/nested-progressive-balanced.log",
+        "log_sha256": "704da98be2f34684c3a19101d3cddd74a50af24288a6a36d3243b780c94bab76"
+      },
+      "progressive-high": {
+        "command": [
+          "target/release/examples/progressive_blur",
+          "target/cleanup-audit/nested-progressive-high.png",
+          "high"
+        ],
+        "exit_code": 0,
+        "seconds": 0.06006087499554269,
+        "log": "target/cleanup-audit/nested-progressive-high.log",
+        "log_sha256": "0f731c508d094076285e244f655969a35432adcbce6ccc2beff9c39cc6a4be70"
+      },
+      "window": {
+        "command": [
+          "target/release/examples/native_present",
+          "metal",
+          "--smoke"
+        ],
+        "exit_code": 0,
+        "seconds": 0.8389287919853814,
+        "log": "target/cleanup-audit/nested-window.log",
+        "log_sha256": "6808fd2cc3b930d5cf064aa87357920100432d40fd0904fc9c38b574ef66ff23"
+      }
+    },
+    "temporary_measurement_cleanup_complete": true,
+    "svg": {
+      "fixtures": 1730,
+      "pngs": 1730,
+      "all_byte_identical": true,
+      "all_outputs_fresh": true,
+      "source_hashes_unchanged": true,
+      "source_hash_map_sha256": "76c855b05307f91d23afbf3bd888699aedca9c179c8c6a0af0dd16038d0353f8"
+    },
+    "examples": {
+      "mesh-gradient": {
+        "path": "target/cleanup-audit/nested-mesh-gradient.png",
+        "sha256": "b441ab07fa794d197930974308e74ccf02eb6790ea39c2ddfdda556c31afa91b",
+        "byte_identical": true,
+        "fresh": true
+      },
+      "program-brush": {
+        "path": "target/cleanup-audit/nested-program-brush.png",
+        "sha256": "e43f483170f77abeecfd10698aeddcd2b56c3cd6bd69f46a1b0522b5d332a5be",
+        "byte_identical": true,
+        "fresh": true
+      },
+      "program-glass": {
+        "path": "target/cleanup-audit/nested-program-glass.png",
+        "sha256": "90115ade795808c3b5b3b3aeb229ba98bbb8d33d2cc65fd02755bbcbbb9e341e",
+        "byte_identical": true,
+        "fresh": true
+      },
+      "shader-pipeline": {
+        "path": "target/cleanup-audit/nested-shader-pipeline.png",
+        "sha256": "b5518d0badb099847172803ea06892212d864ac4a023be365b19741042e161cb",
+        "byte_identical": true,
+        "fresh": true
+      },
+      "shader-graph": {
+        "path": "target/cleanup-audit/nested-shader-graph.png",
+        "sha256": "4a2ad67381fdad4f44ad88a324f16a092bdd8c7bf43adf36e3e7799730bc06d8",
+        "byte_identical": true,
+        "fresh": true
+      },
+      "progressive-balanced": {
+        "path": "target/cleanup-audit/nested-progressive-balanced.png",
+        "sha256": "79b56db9b658c240324aa6ea06a6e463795aa98c43ac010e402878c95d44d0cf",
+        "byte_identical": true,
+        "fresh": true
+      },
+      "progressive-high": {
+        "path": "target/cleanup-audit/nested-progressive-high.png",
+        "sha256": "5b100f5ce99634323890e2a49a0d4984ffe62082fa3dcabc67651999c46d1d7d",
+        "byte_identical": true,
+        "fresh": true
+      }
+    },
+    "window": {
+      "smoke_passed": true,
+      "frames": 8,
+      "physical_sizes": [
+        [
+          640,
+          360
+        ],
+        [
+          480,
+          270
+        ]
+      ],
+      "log_sha256": "6808fd2cc3b930d5cf064aa87357920100432d40fd0904fc9c38b574ef66ff23"
+    },
+    "final_executables": {
+      "svg": {
+        "path": "target/release/examples/svg_fixture_render",
+        "sha256": "aa1b58fbf3a69644483df2036b97a7750154cf52660d37f5983dbf07af962097",
+        "matches_before": false
+      },
+      "window": {
+        "path": "target/release/examples/native_present",
+        "sha256": "4d7c0b5cac35fd08a697dfe0cda717bbe37da3b04c6518b2fc71e84e0908931a",
+        "matches_before": false
+      }
+    },
+    "manifests": {
+      "target/release/build/tileink-693345b8f8240684/out/tileink_native_artifacts.json": {
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "entries": 0,
+        "same_as_phase55": true
+      },
+      "target/release/build/tileink-24048925a7656d71/out/tileink_native_artifacts.json": {
+        "sha256": "f10e91fb051e5a77a7a313fc37ace626bc8ea2d97175b9343f3e87856f37c840",
+        "entries": 40,
+        "same_as_phase55": true
+      },
+      "target/release/build/tileink-02c1122da65b8cf5/out/tileink_native_artifacts.json": {
+        "sha256": "f10e91fb051e5a77a7a313fc37ace626bc8ea2d97175b9343f3e87856f37c840",
+        "entries": 40,
+        "same_as_phase55": true
+      },
+      "target/x86_64-pc-windows-gnu/release/build/tileink-95d6824c51a05705/out/tileink_native_artifacts.json": {
+        "sha256": "59a559183b1d9dd3ada03a5b6b863cc4ef70523c900aebe0cd15f3f18b14d54f",
+        "entries": 84,
+        "same_as_phase55": true
+      },
+      "target/x86_64-pc-windows-gnu/release/build/tileink-24a97e89b99363c5/out/tileink_native_artifacts.json": {
+        "sha256": "29b092a9dc39bc2d3a697b51fe73c83dd29033c5a3462a1606d67c98f26a82ce",
+        "entries": 84,
+        "same_as_phase55": true
+      }
+    },
+    "toolchain": {
+      "source_tag": "v1.8.2502",
+      "source_commit": "b4711839eb9a87da7c3436d9b212e0492359fbbd",
+      "version": "libdxcompiler.dylib: 1.8(dev;1-b4711839); libdxil.dylib: 1.8",
+      "files": {
+        "target/toolchains/dxc-build-v1.8.2502/bin/dxc": "00db2a5e0f32d8a2714c5801a73ac7525d6f03d1ac319f7712fccd0458ed4a17",
+        "target/toolchains/dxc-build-v1.8.2502/lib/libdxcompiler.dylib": "47ab8a70f988293a979a157552322d55680ef2bd2f76394202a3e59f06f97df9",
+        "target/toolchains/dxc-build-v1.8.2502/lib/libdxil.dylib": "c0f3abf46cea2e0ad8ceeed0dd181dd9c71b3030d61349f27a6335e517bf0396"
+      },
+      "same_as_phase55": true
+    }
+  },
+  "clippy_warnings": {
+    "library": 1,
+    "library_tests": 8,
+    "new_warnings": 0,
+    "note": "Existing chunk iteration and single-Range-array style warnings remain."
+  },
+  "artifact_identity": {
+    "manifests": {
+      "target/release/build/tileink-693345b8f8240684/out/tileink_native_artifacts.json": {
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "entries": 0,
+        "same_as_phase55": true
+      },
+      "target/release/build/tileink-24048925a7656d71/out/tileink_native_artifacts.json": {
+        "sha256": "f10e91fb051e5a77a7a313fc37ace626bc8ea2d97175b9343f3e87856f37c840",
+        "entries": 40,
+        "same_as_phase55": true
+      },
+      "target/release/build/tileink-02c1122da65b8cf5/out/tileink_native_artifacts.json": {
+        "sha256": "f10e91fb051e5a77a7a313fc37ace626bc8ea2d97175b9343f3e87856f37c840",
+        "entries": 40,
+        "same_as_phase55": true
+      },
+      "target/x86_64-pc-windows-gnu/release/build/tileink-95d6824c51a05705/out/tileink_native_artifacts.json": {
+        "sha256": "59a559183b1d9dd3ada03a5b6b863cc4ef70523c900aebe0cd15f3f18b14d54f",
+        "entries": 84,
+        "same_as_phase55": true
+      },
+      "target/x86_64-pc-windows-gnu/release/build/tileink-24a97e89b99363c5/out/tileink_native_artifacts.json": {
+        "sha256": "29b092a9dc39bc2d3a697b51fe73c83dd29033c5a3462a1606d67c98f26a82ce",
+        "entries": 84,
+        "same_as_phase55": true
+      }
+    },
+    "toolchain": {
+      "source_tag": "v1.8.2502",
+      "source_commit": "b4711839eb9a87da7c3436d9b212e0492359fbbd",
+      "version": "libdxcompiler.dylib: 1.8(dev;1-b4711839); libdxil.dylib: 1.8",
+      "files": {
+        "target/toolchains/dxc-build-v1.8.2502/bin/dxc": "00db2a5e0f32d8a2714c5801a73ac7525d6f03d1ac319f7712fccd0458ed4a17",
+        "target/toolchains/dxc-build-v1.8.2502/lib/libdxcompiler.dylib": "47ab8a70f988293a979a157552322d55680ef2bd2f76394202a3e59f06f97df9",
+        "target/toolchains/dxc-build-v1.8.2502/lib/libdxil.dylib": "c0f3abf46cea2e0ad8ceeed0dd181dd9c71b3030d61349f27a6335e517bf0396"
+      },
+      "same_as_phase55": true
+    },
+    "all_unchanged_from_phase55": true
+  },
+  "performance": {
+    "baseline_commit": "b7584a568debde1797545523206efd0249df1838",
+    "recorded_at": "2026-10-12T00:45:36.661226+00:00",
+    "adapter": "Apple M5, registry 0000000100000575",
+    "api_validation": false,
+    "workload": {
+      "source": "examples/cleanup_nested.rs",
+      "sha256": "84840a4727d8dd237ed65164cca4cbd86b685d281088b624aa32f40e858ffb39",
+      "size": [
+        1280,
+        800
+      ],
+      "filtered_cards": 32,
+      "draws_per_card": 13,
+      "warmup_frames": 25,
+      "measured_frames": 75,
+      "initial_frames": 3,
+      "remove_frames": 36,
+      "add_frames": 36,
+      "description": "A retained chart dashboard repeatedly removes and reinstalls one nested tooltip filter inside the first card; all other card subtrees remain unchanged."
+    },
+    "executables": {
+      "before": {
+        "path": "target/cleanup-audit/nested-app-before",
+        "sha256": "fbcbb45b21ab5ca5c7bb99afd41c05e3a1f32aa948b16a6e4f849a8aade0fc1a"
+      },
+      "after": {
+        "path": "target/cleanup-audit/nested-app-after",
+        "sha256": "472951ad62d5e5bea29ca46946475ec2479419c940ca690227bdc64b2e758e76"
+      }
+    },
+    "observations": [
+      {
+        "observation": 0,
+        "mode": "comparison",
+        "pair": 0,
+        "label": "before",
+        "process_ms": 172.30029197526164,
+        "log": "target/cleanup-audit/nested-perf-comparison-00-before.log",
+        "log_sha256": "40741d5b86c1ebd8540a804c068a91fee0d9087ecd6f5d127e23203df9ca4e68",
+        "add_ms": 0.7996505,
+        "initial_ms": 14.876472333333332,
+        "measured_frames": 75,
+        "remove_ms": 0.7367349722222222,
+        "total_ms": 99.93929399999999,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 1,
+        "mode": "comparison",
+        "pair": 0,
+        "label": "after",
+        "process_ms": 170.238791994052,
+        "log": "target/cleanup-audit/nested-perf-comparison-00-after.log",
+        "log_sha256": "2097bd0d0366b33135d014d67be80c92089049c22e468eb388b90da192c78e6e",
+        "add_ms": 0.9148436944444445,
+        "initial_ms": 14.262889000000001,
+        "measured_frames": 75,
+        "remove_ms": 0.8960937222222223,
+        "total_ms": 107.982414,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 2,
+        "mode": "identical_current_control",
+        "pair": 0,
+        "label": "control_a",
+        "process_ms": 162.87033300613984,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-00-control_a.log",
+        "log_sha256": "59dde912da8be4ac7bd1fa574cc91331600499cfbb19055ac5ae7c6ccbc96303",
+        "add_ms": 0.7790024444444446,
+        "initial_ms": 14.727569333333333,
+        "measured_frames": 75,
+        "remove_ms": 0.7266631944444445,
+        "total_ms": 98.386671,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 3,
+        "mode": "identical_current_control",
+        "pair": 0,
+        "label": "control_b",
+        "process_ms": 177.88245901465416,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-00-control_b.log",
+        "log_sha256": "e065ac495150c5e9f3b4cb4e10aa2ba346effff6269c2805fa95e585a1a7ff58",
+        "add_ms": 1.023022,
+        "initial_ms": 15.248750000000001,
+        "measured_frames": 75,
+        "remove_ms": 0.8674328611111111,
+        "total_ms": 113.802625,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 4,
+        "mode": "identical_current_control",
+        "pair": 1,
+        "label": "control_b",
+        "process_ms": 156.87391598476097,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-01-control_b.log",
+        "log_sha256": "d1578fd72b88721904c73b33d548a277dd99625bcc9f8cb353cefc081f5cfba0",
+        "add_ms": 0.7678448333333334,
+        "initial_ms": 13.769569333333331,
+        "measured_frames": 75,
+        "remove_ms": 0.7195001666666667,
+        "total_ms": 94.853128,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 5,
+        "mode": "identical_current_control",
+        "pair": 1,
+        "label": "control_a",
+        "process_ms": 181.71158398035914,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-01-control_a.log",
+        "log_sha256": "1d634c95a7c49c9384899a3230d131f38c5878f3d5d815ad8ef5f74bfb1936ac",
+        "add_ms": 1.0407718888888888,
+        "initial_ms": 15.794500000000001,
+        "measured_frames": 75,
+        "remove_ms": 0.9893425555555555,
+        "total_ms": 120.46762,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 6,
+        "mode": "comparison",
+        "pair": 1,
+        "label": "after",
+        "process_ms": 182.7847909880802,
+        "log": "target/cleanup-audit/nested-perf-comparison-01-after.log",
+        "log_sha256": "dadf2644b1f26ddba33e5e28ee774b47a0e233d0b9e0433b6a367d13ee48b6b7",
+        "add_ms": 0.8629153888888889,
+        "initial_ms": 16.89461066666667,
+        "measured_frames": 75,
+        "remove_ms": 0.8620821944444443,
+        "total_ms": 112.783745,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 7,
+        "mode": "comparison",
+        "pair": 1,
+        "label": "before",
+        "process_ms": 162.6352499879431,
+        "log": "target/cleanup-audit/nested-perf-comparison-01-before.log",
+        "log_sha256": "2dce85ac3ae7154c440358a2965c9fa8fe77ef252f386c4dfb527d4a3e7d0c27",
+        "add_ms": 0.7866447222222221,
+        "initial_ms": 16.49134666666667,
+        "measured_frames": 75,
+        "remove_ms": 0.6972349722222222,
+        "total_ms": 102.893709,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 8,
+        "mode": "comparison",
+        "pair": 2,
+        "label": "before",
+        "process_ms": 154.95433399337344,
+        "log": "target/cleanup-audit/nested-perf-comparison-02-before.log",
+        "log_sha256": "25d95e93ceeffb59d31c96c51e3e5da918f1987075eeb50583e44c098f0c4ed8",
+        "add_ms": 0.7360543611111111,
+        "initial_ms": 13.623486333333332,
+        "measured_frames": 75,
+        "remove_ms": 0.6407834722222222,
+        "total_ms": 90.436621,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 9,
+        "mode": "comparison",
+        "pair": 2,
+        "label": "after",
+        "process_ms": 152.71300001768395,
+        "log": "target/cleanup-audit/nested-perf-comparison-02-after.log",
+        "log_sha256": "21feaff302a9bfc9e9e5b7f78a9aacf1e68676d271392df03dae316d89cbae98",
+        "add_ms": 0.7227141111111112,
+        "initial_ms": 13.344277333333332,
+        "measured_frames": 75,
+        "remove_ms": 0.6542234166666667,
+        "total_ms": 89.602583,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 10,
+        "mode": "identical_current_control",
+        "pair": 2,
+        "label": "control_a",
+        "process_ms": 151.02945899707265,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-02-control_a.log",
+        "log_sha256": "9161570c0048f4f2d6f3ea479edb387390e10d08110dc97dca7d473b0be56287",
+        "add_ms": 0.71838425,
+        "initial_ms": 13.549444333333334,
+        "measured_frames": 75,
+        "remove_ms": 0.6345289722222223,
+        "total_ms": 89.35320899999999,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 11,
+        "mode": "identical_current_control",
+        "pair": 2,
+        "label": "control_b",
+        "process_ms": 150.06341697880998,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-02-control_b.log",
+        "log_sha256": "f101f3f5c7d4bc8a1ae052b36c6a4c89935e46a659f6c34a09c6473310a668bf",
+        "add_ms": 0.7319676388888888,
+        "initial_ms": 13.351986333333334,
+        "measured_frames": 75,
+        "remove_ms": 0.6500394166666666,
+        "total_ms": 89.808213,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 12,
+        "mode": "identical_current_control",
+        "pair": 3,
+        "label": "control_b",
+        "process_ms": 149.23666600952856,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-03-control_b.log",
+        "log_sha256": "ebfcb3a44f9fb6e3f4d5fc926392f68527e90ebb4e60659ba9de2ae8003e72c6",
+        "add_ms": 0.7173240555555556,
+        "initial_ms": 13.474610666666669,
+        "measured_frames": 75,
+        "remove_ms": 0.6306955833333333,
+        "total_ms": 88.952539,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 13,
+        "mode": "identical_current_control",
+        "pair": 3,
+        "label": "control_a",
+        "process_ms": 165.83837498910725,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-03-control_a.log",
+        "log_sha256": "5ebc71d84ad57771e99bb4201fb1f3439ababa80c52d339d6399d9f6157e3b56",
+        "add_ms": 1.0260915000000002,
+        "initial_ms": 13.575319333333333,
+        "measured_frames": 75,
+        "remove_ms": 0.7679571666666666,
+        "total_ms": 105.31170999999999,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 14,
+        "mode": "comparison",
+        "pair": 3,
+        "label": "after",
+        "process_ms": 175.96533300820738,
+        "log": "target/cleanup-audit/nested-perf-comparison-03-after.log",
+        "log_sha256": "cd67deb1ccfea549f3ccbaf28daa28fff7d1267afd346058bd746af631e3c0e4",
+        "add_ms": 0.8754409166666666,
+        "initial_ms": 16.682513666666665,
+        "measured_frames": 75,
+        "remove_ms": 0.7571574444444445,
+        "total_ms": 108.82108199999999,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 15,
+        "mode": "comparison",
+        "pair": 3,
+        "label": "before",
+        "process_ms": 162.06308398977853,
+        "log": "target/cleanup-audit/nested-perf-comparison-03-before.log",
+        "log_sha256": "22fdf50c7436c83999b44d0638fdd7b959dfef9ebe560bbba652d4f192375da1",
+        "add_ms": 0.7485868333333333,
+        "initial_ms": 15.490152666666667,
+        "measured_frames": 75,
+        "remove_ms": 0.6565058611111111,
+        "total_ms": 97.05379500000001,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 16,
+        "mode": "comparison",
+        "pair": 4,
+        "label": "before",
+        "process_ms": 155.2459579834249,
+        "log": "target/cleanup-audit/nested-perf-comparison-04-before.log",
+        "log_sha256": "3dab414b6da95306f8bee61ef2794c27a30610ec7ca42e536d69bb2006adf4e0",
+        "add_ms": 0.7298333055555556,
+        "initial_ms": 13.330013666666666,
+        "measured_frames": 75,
+        "remove_ms": 0.6651596944444444,
+        "total_ms": 90.209789,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 17,
+        "mode": "comparison",
+        "pair": 4,
+        "label": "after",
+        "process_ms": 149.07004198175855,
+        "log": "target/cleanup-audit/nested-perf-comparison-04-after.log",
+        "log_sha256": "3562331ffd6c7ec29058e6bc50160aef1129ceacb0da650fcba521d911501435",
+        "add_ms": 0.7159259166666667,
+        "initial_ms": 13.417985999999999,
+        "measured_frames": 75,
+        "remove_ms": 0.6311863888888889,
+        "total_ms": 88.750001,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 18,
+        "mode": "identical_current_control",
+        "pair": 4,
+        "label": "control_a",
+        "process_ms": 149.96145898476243,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-04-control_a.log",
+        "log_sha256": "4722ba23b309a8ed6a54a4493a118d653640ba6292b27cf9f630638bd335458a",
+        "add_ms": 0.7269201666666666,
+        "initial_ms": 13.345666666666666,
+        "measured_frames": 75,
+        "remove_ms": 0.6436342777777777,
+        "total_ms": 89.37696,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 19,
+        "mode": "identical_current_control",
+        "pair": 4,
+        "label": "control_b",
+        "process_ms": 150.01345801283605,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-04-control_b.log",
+        "log_sha256": "56d34edde77b741dfdd73bbdc8a86981a49dbc7aafd2888108afc0f3f7cfb7f2",
+        "add_ms": 0.7166516111111112,
+        "initial_ms": 13.743930333333333,
+        "measured_frames": 75,
+        "remove_ms": 0.6282326666666667,
+        "total_ms": 89.647625,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 20,
+        "mode": "identical_current_control",
+        "pair": 5,
+        "label": "control_b",
+        "process_ms": 151.98858300573193,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-05-control_b.log",
+        "log_sha256": "f7b11fce34ebb2532b3366c6d302a9dbfd4a7f5b8b27d500d364a5960c71d18e",
+        "add_ms": 0.7180058888888888,
+        "initial_ms": 13.348861,
+        "measured_frames": 75,
+        "remove_ms": 0.6491840277777778,
+        "total_ms": 89.26542,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 21,
+        "mode": "identical_current_control",
+        "pair": 5,
+        "label": "control_a",
+        "process_ms": 151.81891701649874,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-05-control_a.log",
+        "log_sha256": "5b22f4ce6a49f8ccd8ec8e96a1abcfa75d98fd0e2446abeeb232593c720dc311",
+        "add_ms": 0.7246053611111112,
+        "initial_ms": 13.622916666666669,
+        "measured_frames": 75,
+        "remove_ms": 0.6474108611111112,
+        "total_ms": 90.261334,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 22,
+        "mode": "comparison",
+        "pair": 5,
+        "label": "after",
+        "process_ms": 156.18387499125674,
+        "log": "target/cleanup-audit/nested-perf-comparison-05-after.log",
+        "log_sha256": "65e34f7bd908f68238deacd665db35a6970077e41ccb895e510fcb33051e3d9c",
+        "add_ms": 0.7182385555555556,
+        "initial_ms": 13.405263666666665,
+        "measured_frames": 75,
+        "remove_ms": 0.63281375,
+        "total_ms": 88.853674,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 23,
+        "mode": "comparison",
+        "pair": 5,
+        "label": "before",
+        "process_ms": 156.1688750225585,
+        "log": "target/cleanup-audit/nested-perf-comparison-05-before.log",
+        "log_sha256": "ae6bcfa8d2402efaa4825de51f53894668ed32b288b08753a21630dce09b62d4",
+        "add_ms": 0.7212408611111111,
+        "initial_ms": 13.340694333333332,
+        "measured_frames": 75,
+        "remove_ms": 0.6435786388888888,
+        "total_ms": 89.15558499999999,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 24,
+        "mode": "comparison",
+        "pair": 6,
+        "label": "before",
+        "process_ms": 156.8012079806067,
+        "log": "target/cleanup-audit/nested-perf-comparison-06-before.log",
+        "log_sha256": "a0f4b2ffb8475beff99889a19cd9cf5901ebd013b9d38e71fbb96c02ea99f70f",
+        "add_ms": 0.7524015833333333,
+        "initial_ms": 13.617708666666667,
+        "measured_frames": 75,
+        "remove_ms": 0.6685474722222222,
+        "total_ms": 92.007292,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 25,
+        "mode": "comparison",
+        "pair": 6,
+        "label": "after",
+        "process_ms": 160.10912499041297,
+        "log": "target/cleanup-audit/nested-perf-comparison-06-after.log",
+        "log_sha256": "63622ae1825b5b59c3855d71be4b60f71aa2ef54dd978432387e676fbd079f58",
+        "add_ms": 0.7506632500000001,
+        "initial_ms": 14.580944333333335,
+        "measured_frames": 75,
+        "remove_ms": 0.6520567500000001,
+        "total_ms": 94.24075300000001,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 26,
+        "mode": "identical_current_control",
+        "pair": 6,
+        "label": "control_a",
+        "process_ms": 153.52608301327564,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-06-control_a.log",
+        "log_sha256": "7a922ecb95af28474bb7c3ab21e99ffebe5624868e5d357761743f4cf9360c9e",
+        "add_ms": 0.7099398333333333,
+        "initial_ms": 13.394819666666669,
+        "measured_frames": 75,
+        "remove_ms": 0.6302106111111111,
+        "total_ms": 88.42987500000001,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 27,
+        "mode": "identical_current_control",
+        "pair": 6,
+        "label": "control_b",
+        "process_ms": 152.0209589798469,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-06-control_b.log",
+        "log_sha256": "f0d3f28f66aca57ef0cc8331a454bfc238cfd395407f09e7b191dee52de696c8",
+        "add_ms": 0.7333993333333334,
+        "initial_ms": 13.340097,
+        "measured_frames": 75,
+        "remove_ms": 0.6726747222222222,
+        "total_ms": 90.638957,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 28,
+        "mode": "identical_current_control",
+        "pair": 7,
+        "label": "control_b",
+        "process_ms": 154.01749999728054,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-07-control_b.log",
+        "log_sha256": "fd7c9bff1ff8aa00b1909ab69fd67c357ea2c5c1423ae5f809265227f889564e",
+        "add_ms": 0.7220127777777778,
+        "initial_ms": 13.447333,
+        "measured_frames": 75,
+        "remove_ms": 0.6321064722222222,
+        "total_ms": 89.090292,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 29,
+        "mode": "identical_current_control",
+        "pair": 7,
+        "label": "control_a",
+        "process_ms": 152.63904101448134,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-07-control_a.log",
+        "log_sha256": "6163a7590b330c52b9f2255924924b0fe1d8236d9a08b34cb3ac80148d30fb55",
+        "add_ms": 0.7230671666666666,
+        "initial_ms": 13.293527666666668,
+        "measured_frames": 75,
+        "remove_ms": 0.6724085277777778,
+        "total_ms": 90.117708,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 30,
+        "mode": "comparison",
+        "pair": 7,
+        "label": "after",
+        "process_ms": 150.0450000166893,
+        "log": "target/cleanup-audit/nested-perf-comparison-07-after.log",
+        "log_sha256": "bfb4bf308677182ee87882dda32c973637285edf738f5e05c8267d0df5ef958b",
+        "add_ms": 0.7403751666666667,
+        "initial_ms": 13.333694666666666,
+        "measured_frames": 75,
+        "remove_ms": 0.6335055555555554,
+        "total_ms": 89.46079,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 31,
+        "mode": "comparison",
+        "pair": 7,
+        "label": "before",
+        "process_ms": 148.67733398568816,
+        "log": "target/cleanup-audit/nested-perf-comparison-07-before.log",
+        "log_sha256": "7619eb497e40f75638668f10cdad231f1a041ff6a0f5cbdd64184f1199db65f1",
+        "add_ms": 0.7388889722222223,
+        "initial_ms": 13.373416666666666,
+        "measured_frames": 75,
+        "remove_ms": 0.6423773055555556,
+        "total_ms": 89.845836,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 32,
+        "mode": "comparison",
+        "pair": 8,
+        "label": "before",
+        "process_ms": 150.83416699781083,
+        "log": "target/cleanup-audit/nested-perf-comparison-08-before.log",
+        "log_sha256": "594478fc39469781a1fbb5b06163609ace255e02d53c277472516a52045e59fc",
+        "add_ms": 0.7377592500000001,
+        "initial_ms": 13.411805666666666,
+        "measured_frames": 75,
+        "remove_ms": 0.63000925,
+        "total_ms": 89.475083,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 33,
+        "mode": "comparison",
+        "pair": 8,
+        "label": "after",
+        "process_ms": 151.63175002089702,
+        "log": "target/cleanup-audit/nested-perf-comparison-08-after.log",
+        "log_sha256": "7b33b53debfe61dc3608bc0501f79b1a7691e0da59335562ae9507767e786c0d",
+        "add_ms": 0.7256469999999999,
+        "initial_ms": 13.326930666666668,
+        "measured_frames": 75,
+        "remove_ms": 0.6432836388888888,
+        "total_ms": 89.262295,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 34,
+        "mode": "identical_current_control",
+        "pair": 8,
+        "label": "control_a",
+        "process_ms": 148.4364159987308,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-08-control_a.log",
+        "log_sha256": "8c7678c6819f7f91d51f5d0200769f682abc0a468957e9a7eb6c882938b38313",
+        "add_ms": 0.7325914722222223,
+        "initial_ms": 13.414208333333333,
+        "measured_frames": 75,
+        "remove_ms": 0.6345764166666666,
+        "total_ms": 89.460669,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 35,
+        "mode": "identical_current_control",
+        "pair": 8,
+        "label": "control_b",
+        "process_ms": 156.39487499720417,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-08-control_b.log",
+        "log_sha256": "babbc6a726e0880478769d741511ad5944ea6089daa73766c498f536b75e49af",
+        "add_ms": 0.7428111944444444,
+        "initial_ms": 13.457082999999999,
+        "measured_frames": 75,
+        "remove_ms": 0.6332001666666666,
+        "total_ms": 89.907658,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 36,
+        "mode": "identical_current_control",
+        "pair": 9,
+        "label": "control_b",
+        "process_ms": 154.32879197760485,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-09-control_b.log",
+        "log_sha256": "bfc5cdf7d7d7c17143b94466f99a483ee41275dbbdad016f0cff90f5f4133799",
+        "add_ms": 0.7239651388888888,
+        "initial_ms": 13.270221999999999,
+        "measured_frames": 75,
+        "remove_ms": 0.6657604166666666,
+        "total_ms": 89.840786,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 37,
+        "mode": "identical_current_control",
+        "pair": 9,
+        "label": "control_a",
+        "process_ms": 154.7326250001788,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-09-control_a.log",
+        "log_sha256": "e5f40dfd5172e596725d8d7d48898c8238c495780d89e3232f5f1d27c4c138d8",
+        "add_ms": 0.7196619444444444,
+        "initial_ms": 13.388055333333334,
+        "measured_frames": 75,
+        "remove_ms": 0.630566,
+        "total_ms": 88.772372,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 38,
+        "mode": "comparison",
+        "pair": 9,
+        "label": "after",
+        "process_ms": 157.41191600682214,
+        "log": "target/cleanup-audit/nested-perf-comparison-09-after.log",
+        "log_sha256": "e7f0efd29cc52f42ca6807abeb5524cf2078f15d5ffcadf33c92d0cbfbcca04b",
+        "add_ms": 0.7258460277777778,
+        "initial_ms": 13.884222333333334,
+        "measured_frames": 75,
+        "remove_ms": 0.6405625277777777,
+        "total_ms": 90.84337500000001,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 39,
+        "mode": "comparison",
+        "pair": 9,
+        "label": "before",
+        "process_ms": 154.92299999459647,
+        "log": "target/cleanup-audit/nested-perf-comparison-09-before.log",
+        "log_sha256": "769cbacacbc666e0498dacc7bdeeb4a8adf68a2bb36b2e69e6b0846a162347d7",
+        "add_ms": 0.7553171111111112,
+        "initial_ms": 13.306889333333332,
+        "measured_frames": 75,
+        "remove_ms": 0.6490613055555555,
+        "total_ms": 90.478291,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 40,
+        "mode": "comparison",
+        "pair": 10,
+        "label": "before",
+        "process_ms": 154.06770800473168,
+        "log": "target/cleanup-audit/nested-perf-comparison-10-before.log",
+        "log_sha256": "a4db148bc5a0a5f35d3af78a3fc57ee2ce7e8918e2a82000bd00bf6c1b5ff7b4",
+        "add_ms": 0.7350150000000001,
+        "initial_ms": 13.780888666666668,
+        "measured_frames": 75,
+        "remove_ms": 0.6404779999999999,
+        "total_ms": 90.86041399999999,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 41,
+        "mode": "comparison",
+        "pair": 10,
+        "label": "after",
+        "process_ms": 151.16545898490585,
+        "log": "target/cleanup-audit/nested-perf-comparison-10-after.log",
+        "log_sha256": "dd0db71baeda3504637a7580ca182031d1612fce721b2fcc4bd863ed86bd777f",
+        "add_ms": 0.7125451944444445,
+        "initial_ms": 13.408819666666668,
+        "measured_frames": 75,
+        "remove_ms": 0.6343935277777777,
+        "total_ms": 88.71625300000001,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 42,
+        "mode": "identical_current_control",
+        "pair": 10,
+        "label": "control_a",
+        "process_ms": 152.31549998861738,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-10-control_a.log",
+        "log_sha256": "428fa8fe680ded685dc42c9fa86b8d2fdd49cb5cf1e544f342f15a0489870d65",
+        "add_ms": 0.7325578611111112,
+        "initial_ms": 13.338833666666666,
+        "measured_frames": 75,
+        "remove_ms": 0.6594560833333332,
+        "total_ms": 90.129003,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 43,
+        "mode": "identical_current_control",
+        "pair": 10,
+        "label": "control_b",
+        "process_ms": 149.04024999123067,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-10-control_b.log",
+        "log_sha256": "f7f27c41fda251017fa1c1a9e63ac3ac2fc4add64410b7ee51999fa5d3c687d0",
+        "add_ms": 0.7187568055555555,
+        "initial_ms": 13.295985666666667,
+        "measured_frames": 75,
+        "remove_ms": 0.6320589999999999,
+        "total_ms": 88.517326,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 44,
+        "mode": "identical_current_control",
+        "pair": 11,
+        "label": "control_b",
+        "process_ms": 153.24062498984858,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-11-control_b.log",
+        "log_sha256": "7b7ea15d620820b847c2762251545f92d15306ec8144f5cde919c0d173f307f3",
+        "add_ms": 0.7524108611111111,
+        "initial_ms": 13.388597333333335,
+        "measured_frames": 75,
+        "remove_ms": 0.6497500277777779,
+        "total_ms": 90.643584,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 45,
+        "mode": "identical_current_control",
+        "pair": 11,
+        "label": "control_a",
+        "process_ms": 155.21062500192784,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-11-control_a.log",
+        "log_sha256": "1c9c0fccca31b82bcbf3f7791c963abcf06b4586ea2c38b0e398d5698a78e4cc",
+        "add_ms": 0.7135983055555556,
+        "initial_ms": 13.348569666666668,
+        "measured_frames": 75,
+        "remove_ms": 0.6252917222222223,
+        "total_ms": 88.24575,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 46,
+        "mode": "comparison",
+        "pair": 11,
+        "label": "after",
+        "process_ms": 156.716666999273,
+        "log": "target/cleanup-audit/nested-perf-comparison-11-after.log",
+        "log_sha256": "07ac04a7c75d62d80a1bbfc31d1f26c49d974c5ad9948321f9c151ca73c93292",
+        "add_ms": 0.7202627777777777,
+        "initial_ms": 13.409764000000001,
+        "measured_frames": 75,
+        "remove_ms": 0.6389144722222223,
+        "total_ms": 89.159673,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 47,
+        "mode": "comparison",
+        "pair": 11,
+        "label": "before",
+        "process_ms": 156.47758299019188,
+        "log": "target/cleanup-audit/nested-perf-comparison-11-before.log",
+        "log_sha256": "d77c1e4fa779acc568b208a3bcb9eecc15e8649aced3f6ab7080ec1ee991fb9d",
+        "add_ms": 0.75861575,
+        "initial_ms": 13.323374666666666,
+        "measured_frames": 75,
+        "remove_ms": 0.6392429166666668,
+        "total_ms": 90.293036,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 48,
+        "mode": "comparison",
+        "pair": 12,
+        "label": "before",
+        "process_ms": 151.7563339730259,
+        "log": "target/cleanup-audit/nested-perf-comparison-12-before.log",
+        "log_sha256": "2d5f344852968158fc8d9cdc3960ee303aa96a9d98a85090e30091b7147f5bd7",
+        "add_ms": 0.7154953055555555,
+        "initial_ms": 13.451097333333331,
+        "measured_frames": 75,
+        "remove_ms": 0.6294374166666666,
+        "total_ms": 88.77086999999999,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 49,
+        "mode": "comparison",
+        "pair": 12,
+        "label": "after",
+        "process_ms": 150.44929200666957,
+        "log": "target/cleanup-audit/nested-perf-comparison-12-after.log",
+        "log_sha256": "073d4a36662077776884b938c65cd3ff77b75dd2991abccc6b64a05968a4cb0c",
+        "add_ms": 0.7350693611111111,
+        "initial_ms": 13.533833,
+        "measured_frames": 75,
+        "remove_ms": 0.6305822222222223,
+        "total_ms": 89.764956,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 50,
+        "mode": "identical_current_control",
+        "pair": 12,
+        "label": "control_a",
+        "process_ms": 150.39533298113383,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-12-control_a.log",
+        "log_sha256": "a4bc1f97b97a0ecf3e973955e5bb38348d574e1ae0dd172451dad0fc246c28c4",
+        "add_ms": 0.7285729166666667,
+        "initial_ms": 13.284819333333333,
+        "measured_frames": 75,
+        "remove_ms": 0.6484201111111111,
+        "total_ms": 89.426207,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 51,
+        "mode": "identical_current_control",
+        "pair": 12,
+        "label": "control_b",
+        "process_ms": 156.2494579993654,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-12-control_b.log",
+        "log_sha256": "55a0e218132a96bf61918db8e457cf9499f410e5dfb4c126ceb03a4e276507a9",
+        "add_ms": 0.779309,
+        "initial_ms": 13.565944666666667,
+        "measured_frames": 75,
+        "remove_ms": 0.7267627222222222,
+        "total_ms": 94.916416,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 52,
+        "mode": "identical_current_control",
+        "pair": 13,
+        "label": "control_b",
+        "process_ms": 170.65187499974854,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-13-control_b.log",
+        "log_sha256": "80a3abead60c097a185b6f5d44816e9ce63b0787355eda7d2c4d9e899d3ea3de",
+        "add_ms": 0.7799108055555555,
+        "initial_ms": 15.03425,
+        "measured_frames": 75,
+        "remove_ms": 0.7380648611111111,
+        "total_ms": 99.749874,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 53,
+        "mode": "identical_current_control",
+        "pair": 13,
+        "label": "control_a",
+        "process_ms": 167.3024159972556,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-13-control_a.log",
+        "log_sha256": "7a302a4c15f9339837d7096a9b107316cc2d6b9c0ef132f0a68d095b7bcc01ee",
+        "add_ms": 0.8779780277777777,
+        "initial_ms": 14.697958666666665,
+        "measured_frames": 75,
+        "remove_ms": 0.8222222222222221,
+        "total_ms": 105.30108499999999,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 54,
+        "mode": "comparison",
+        "pair": 13,
+        "label": "after",
+        "process_ms": 195.0830410060007,
+        "log": "target/cleanup-audit/nested-perf-comparison-13-after.log",
+        "log_sha256": "5cad147b338e55a5bed28adeccdec000038f7f64b8681fca00dc094ba07d7741",
+        "add_ms": 1.1172244722222222,
+        "initial_ms": 19.879847,
+        "measured_frames": 75,
+        "remove_ms": 0.9128263888888889,
+        "total_ms": 132.721372,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 55,
+        "mode": "comparison",
+        "pair": 13,
+        "label": "before",
+        "process_ms": 207.8096250188537,
+        "log": "target/cleanup-audit/nested-perf-comparison-13-before.log",
+        "log_sha256": "4d53ead46b9022564b1359960f112ef23cbe6fd1dc5d750794810bf5840d284b",
+        "add_ms": 0.8224849722222223,
+        "initial_ms": 17.978694333333333,
+        "measured_frames": 75,
+        "remove_ms": 0.748214111111111,
+        "total_ms": 110.48125,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 56,
+        "mode": "comparison",
+        "pair": 14,
+        "label": "before",
+        "process_ms": 152.0334999950137,
+        "log": "target/cleanup-audit/nested-perf-comparison-14-before.log",
+        "log_sha256": "4028d9f863e4fdb9013401098c7b35cadd370c61f83f2eaa25c42c73367aeabc",
+        "add_ms": 0.7302200555555556,
+        "initial_ms": 13.420208333333333,
+        "measured_frames": 75,
+        "remove_ms": 0.6419746111111111,
+        "total_ms": 89.659633,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 57,
+        "mode": "comparison",
+        "pair": 14,
+        "label": "after",
+        "process_ms": 153.33025000290945,
+        "log": "target/cleanup-audit/nested-perf-comparison-14-after.log",
+        "log_sha256": "b58e9d0ffa6d33801b9f74b0278597efc4b6624dc6777b20fb65dd6d47b7b7b7",
+        "add_ms": 0.7250833055555554,
+        "initial_ms": 13.316958333333332,
+        "measured_frames": 75,
+        "remove_ms": 0.7064710833333333,
+        "total_ms": 91.48683299999999,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 58,
+        "mode": "identical_current_control",
+        "pair": 14,
+        "label": "control_a",
+        "process_ms": 147.6741659862455,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-14-control_a.log",
+        "log_sha256": "f80344f0c0baa5b42ec5a41061a0db6951b7ddfeac96ebf04b9931558c183cf7",
+        "add_ms": 0.7221319166666667,
+        "initial_ms": 13.382902999999999,
+        "measured_frames": 75,
+        "remove_ms": 0.6349524444444445,
+        "total_ms": 89.003746,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 59,
+        "mode": "identical_current_control",
+        "pair": 14,
+        "label": "control_b",
+        "process_ms": 150.65475000301376,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-14-control_b.log",
+        "log_sha256": "5e5de7f677a3033462c8f700b390a45c3dadc7dcae82ebf39760b70a616b0bef",
+        "add_ms": 0.7464954166666666,
+        "initial_ms": 13.271749666666665,
+        "measured_frames": 75,
+        "remove_ms": 0.6349710833333334,
+        "total_ms": 89.54804299999999,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 60,
+        "mode": "identical_current_control",
+        "pair": 15,
+        "label": "control_b",
+        "process_ms": 148.16037501441315,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-15-control_b.log",
+        "log_sha256": "9ffb65293de66e61be0f37c9d1d94edda4a2211a75b9dae7d18f0b376989ed44",
+        "add_ms": 0.7242478055555556,
+        "initial_ms": 13.532430333333332,
+        "measured_frames": 75,
+        "remove_ms": 0.6364885,
+        "total_ms": 89.583798,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 61,
+        "mode": "identical_current_control",
+        "pair": 15,
+        "label": "control_a",
+        "process_ms": 150.19108398701064,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-15-control_a.log",
+        "log_sha256": "342120a58f7349a5f6cfcbbcafd5d3a7828f5c4780583c12608141dead16a070",
+        "add_ms": 0.7694572500000001,
+        "initial_ms": 13.353056,
+        "measured_frames": 75,
+        "remove_ms": 0.6354306111111111,
+        "total_ms": 90.635131,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 62,
+        "mode": "comparison",
+        "pair": 15,
+        "label": "after",
+        "process_ms": 149.69358398229815,
+        "log": "target/cleanup-audit/nested-perf-comparison-15-after.log",
+        "log_sha256": "b54af523402f9377dae3f96fe022faee89ae4b382cf1381de628a4dea71a9cd5",
+        "add_ms": 0.7196608888888889,
+        "initial_ms": 13.448194666666666,
+        "measured_frames": 75,
+        "remove_ms": 0.63283675,
+        "total_ms": 89.034499,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 63,
+        "mode": "comparison",
+        "pair": 15,
+        "label": "before",
+        "process_ms": 155.9555830026511,
+        "log": "target/cleanup-audit/nested-perf-comparison-15-before.log",
+        "log_sha256": "31c2fbcd9c6b76680897074a952a54916f87330ad571d029198162ed8682e62d",
+        "add_ms": 0.7857869166666667,
+        "initial_ms": 13.283778,
+        "measured_frames": 75,
+        "remove_ms": 0.6453229444444444,
+        "total_ms": 91.371289,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 64,
+        "mode": "comparison",
+        "pair": 16,
+        "label": "before",
+        "process_ms": 151.15391701692715,
+        "log": "target/cleanup-audit/nested-perf-comparison-16-before.log",
+        "log_sha256": "ae74275e6223e1dcc7bb08331a0c27c3c1bd010362b62399cde7cf9b5281f9f1",
+        "add_ms": 0.7210046944444445,
+        "initial_ms": 13.350194333333334,
+        "measured_frames": 75,
+        "remove_ms": 0.6414884166666667,
+        "total_ms": 89.100335,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 65,
+        "mode": "comparison",
+        "pair": 16,
+        "label": "after",
+        "process_ms": 150.21008299663663,
+        "log": "target/cleanup-audit/nested-perf-comparison-16-after.log",
+        "log_sha256": "8c15df463143fc577dfbb24903a1b254ae430d286f5f2ac3b30a1aab625e18c3",
+        "add_ms": 0.7297200000000001,
+        "initial_ms": 13.377833333333333,
+        "measured_frames": 75,
+        "remove_ms": 0.6433669166666667,
+        "total_ms": 89.564629,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 66,
+        "mode": "identical_current_control",
+        "pair": 16,
+        "label": "control_a",
+        "process_ms": 148.87420798186213,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-16-control_a.log",
+        "log_sha256": "9329cbe5706940dde6f0b2343b8ad1cc395108fbf3802d2986e2a69e02078726",
+        "add_ms": 0.7213656944444443,
+        "initial_ms": 13.383680666666669,
+        "measured_frames": 75,
+        "remove_ms": 0.6532257499999999,
+        "total_ms": 89.636334,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 67,
+        "mode": "identical_current_control",
+        "pair": 16,
+        "label": "control_b",
+        "process_ms": 152.58308299235068,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-16-control_b.log",
+        "log_sha256": "ff1c908da27b49010155137eae788e53e994f8c5cd899bfa60198a4551dcc6ae",
+        "add_ms": 0.7474685277777777,
+        "initial_ms": 13.340013999999998,
+        "measured_frames": 75,
+        "remove_ms": 0.6405741944444444,
+        "total_ms": 89.98957999999999,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 68,
+        "mode": "identical_current_control",
+        "pair": 17,
+        "label": "control_b",
+        "process_ms": 153.17429200513288,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-17-control_b.log",
+        "log_sha256": "09f8e6dbd3687b5721d3f276d85d3b4138f42cbe8a3f547b66c3dae463f2c2ff",
+        "add_ms": 0.7308032222222222,
+        "initial_ms": 13.428402666666669,
+        "measured_frames": 75,
+        "remove_ms": 0.6560868888888889,
+        "total_ms": 90.213252,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 69,
+        "mode": "identical_current_control",
+        "pair": 17,
+        "label": "control_a",
+        "process_ms": 155.1997089991346,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-17-control_a.log",
+        "log_sha256": "594663a132e63a3495641813f5c4f209dd555c7c4352a29d5ca2b4a982af5554",
+        "add_ms": 0.7404385833333333,
+        "initial_ms": 13.927736000000001,
+        "measured_frames": 75,
+        "remove_ms": 0.6469514166666667,
+        "total_ms": 91.729248,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 70,
+        "mode": "comparison",
+        "pair": 17,
+        "label": "after",
+        "process_ms": 153.42220800812356,
+        "log": "target/cleanup-audit/nested-perf-comparison-17-after.log",
+        "log_sha256": "89496e67a59a773dfaf916c45afdc075ec10b5b0864921c9777f237c62b8299e",
+        "add_ms": 0.7741353888888889,
+        "initial_ms": 13.472625,
+        "measured_frames": 75,
+        "remove_ms": 0.6422417777777778,
+        "total_ms": 91.407453,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 71,
+        "mode": "comparison",
+        "pair": 17,
+        "label": "before",
+        "process_ms": 152.27550000417978,
+        "log": "target/cleanup-audit/nested-perf-comparison-17-before.log",
+        "log_sha256": "7750d3cef1b3852938be3a07808b948492935f24b665399d9b68edf7c9eaa52f",
+        "add_ms": 0.7625440277777779,
+        "initial_ms": 13.287263666666666,
+        "measured_frames": 75,
+        "remove_ms": 0.6347535,
+        "total_ms": 90.164502,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 72,
+        "mode": "comparison",
+        "pair": 18,
+        "label": "before",
+        "process_ms": 149.51716701034456,
+        "log": "target/cleanup-audit/nested-perf-comparison-18-before.log",
+        "log_sha256": "884eaa6e6c8720f78735cc1e1266df1ca08b37401ceb35eef3791d7f4a3a73e2",
+        "add_ms": 0.7265266666666667,
+        "initial_ms": 13.550722333333335,
+        "measured_frames": 75,
+        "remove_ms": 0.6363692222222223,
+        "total_ms": 89.716419,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 73,
+        "mode": "comparison",
+        "pair": 18,
+        "label": "after",
+        "process_ms": 156.1780420015566,
+        "log": "target/cleanup-audit/nested-perf-comparison-18-after.log",
+        "log_sha256": "f3e8cc9228be65cd15781a92f187f0fb4b4b15d2f689132947d3b28b0e58f678",
+        "add_ms": 0.7378645833333333,
+        "initial_ms": 13.330958666666668,
+        "measured_frames": 75,
+        "remove_ms": 0.6662593611111112,
+        "total_ms": 90.541338,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 74,
+        "mode": "identical_current_control",
+        "pair": 18,
+        "label": "control_a",
+        "process_ms": 149.6802080073394,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-18-control_a.log",
+        "log_sha256": "5367babe8288c5ad8607f2a9ad16ef049aeff3f481337c3ecd01d67f7f859c6b",
+        "add_ms": 0.7156492499999998,
+        "initial_ms": 13.3805,
+        "measured_frames": 75,
+        "remove_ms": 0.6318483333333335,
+        "total_ms": 88.65141299999999,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 75,
+        "mode": "identical_current_control",
+        "pair": 18,
+        "label": "control_b",
+        "process_ms": 154.11250002216548,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-18-control_b.log",
+        "log_sha256": "35bde7117ee370d39507ace5808815f404bc1f2b1d64fd22b4253cac8e3d514c",
+        "add_ms": 0.7515369722222223,
+        "initial_ms": 13.354305666666667,
+        "measured_frames": 75,
+        "remove_ms": 0.6349282777777778,
+        "total_ms": 89.975666,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 76,
+        "mode": "identical_current_control",
+        "pair": 19,
+        "label": "control_b",
+        "process_ms": 153.03862499422394,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-19-control_b.log",
+        "log_sha256": "511c39e3904c2630ec0c3ac71b192b25578aac946bac023014f7b9d4bbc3bb06",
+        "add_ms": 0.7548263333333334,
+        "initial_ms": 13.522944666666666,
+        "measured_frames": 75,
+        "remove_ms": 0.6308506388888888,
+        "total_ms": 90.453205,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 77,
+        "mode": "identical_current_control",
+        "pair": 19,
+        "label": "control_a",
+        "process_ms": 152.11374999489635,
+        "log": "target/cleanup-audit/nested-perf-identical_current_control-19-control_a.log",
+        "log_sha256": "5a8528b2fec853760f8c26c7ff4617c470bcea65cf80b6bde522a2a8dc465faf",
+        "add_ms": 0.7191019166666666,
+        "initial_ms": 13.460777666666667,
+        "measured_frames": 75,
+        "remove_ms": 0.6346956388888888,
+        "total_ms": 89.119045,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 78,
+        "mode": "comparison",
+        "pair": 19,
+        "label": "after",
+        "process_ms": 152.93812498566695,
+        "log": "target/cleanup-audit/nested-perf-comparison-19-after.log",
+        "log_sha256": "faf7ddba9fc243218dd714f116bc725661be50b6c7e0f0c9bdc7234bf662c3d1",
+        "add_ms": 0.7432963611111111,
+        "initial_ms": 13.378999666666667,
+        "measured_frames": 75,
+        "remove_ms": 0.667886611111111,
+        "total_ms": 90.93958599999999,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 79,
+        "mode": "comparison",
+        "pair": 19,
+        "label": "before",
+        "process_ms": 151.7113750160206,
+        "log": "target/cleanup-audit/nested-perf-comparison-19-before.log",
+        "log_sha256": "06c6d7e2513814d79e9f85fdf24f81bdad462a9c0e069afd4f97334c4dc53150",
+        "add_ms": 0.7227222222222222,
+        "initial_ms": 13.410361333333332,
+        "measured_frames": 75,
+        "remove_ms": 0.6354004444444445,
+        "total_ms": 89.12349999999999,
+        "warmup_frames": 25
+      }
+    ],
+    "application_pngs": {
+      "sha256": {
+        "frame-2.png": "1b72096bc77b5433260a567354ad1063351f49a2e47abb06dd1e47dde34d0eb2",
+        "frame-24.png": "1b72096bc77b5433260a567354ad1063351f49a2e47abb06dd1e47dde34d0eb2",
+        "frame-1.png": "150d96915944e4a2d80ed3b1bef9ab5d5eea686ec241e89462bef04170692b03",
+        "frame-0.png": "1b72096bc77b5433260a567354ad1063351f49a2e47abb06dd1e47dde34d0eb2"
+      },
+      "before_after_byte_exact": true
+    },
+    "order": "comparison and identical-current pairs interleaved; block and label order reverse on odd pairs",
+    "planned_pairs": 20,
+    "sampling_policy": "Fixed twenty comparison and twenty identical-current pairs; no outcome-dependent stopping.",
+    "summary": {
+      "comparison": {
+        "initial_ms": {
+          "medians": [
+            13.416007,
+            13.413875
+          ],
+          "median_delta_percent": -0.015891464576600622,
+          "paired_descriptive_bootstrap_95_percent": [
+            -1.355722448265051,
+            1.720508561404599
+          ]
+        },
+        "remove_ms": {
+          "medians": [
+            0.6421759583333333,
+            0.6433252777777778
+          ],
+          "median_delta_percent": 0.1789726677758896,
+          "paired_descriptive_bootstrap_95_percent": [
+            -1.2810222120456127,
+            3.879191215820099
+          ]
+        },
+        "add_ms": {
+          "medians": [
+            0.7383241111111112,
+            0.7323946805555557
+          ],
+          "median_delta_percent": -0.803093176333125,
+          "paired_descriptive_bootstrap_95_percent": [
+            -3.7159875443166235,
+            0.9382613949301621
+          ]
+        },
+        "total_ms": {
+          "medians": [
+            90.2514125,
+            90.15314699999999
+          ],
+          "median_delta_percent": -0.10887973636979353,
+          "paired_descriptive_bootstrap_95_percent": [
+            -1.174769901780237,
+            1.3097507826298704
+          ]
+        },
+        "process_ms": {
+          "medians": [
+            154.93866699398495,
+            153.3762290055165
+          ],
+          "median_delta_percent": -1.0084235386697227,
+          "paired_descriptive_bootstrap_95_percent": [
+            -2.0379842114015,
+            1.596276165802557
+          ]
+        }
+      },
+      "identical_current_control": {
+        "initial_ms": {
+          "medians": [
+            13.391437500000002,
+            13.437867833333335
+          ],
+          "median_delta_percent": 0.3467165741790845,
+          "paired_descriptive_bootstrap_95_percent": [
+            -0.9630742659766711,
+            1.0174411820986107
+          ]
+        },
+        "remove_ms": {
+          "medians": [
+            0.6452928472222221,
+            0.6448791111111112
+          ],
+          "median_delta_percent": -0.06411602311910958,
+          "paired_descriptive_bootstrap_95_percent": [
+            -2.6751160466138235,
+            2.8135805057923235
+          ]
+        },
+        "add_ms": {
+          "medians": [
+            0.7257627638888888,
+            0.738105263888889
+          ],
+          "median_delta_percent": 1.7006245861753477,
+          "paired_descriptive_bootstrap_95_percent": [
+            -0.9249958446902129,
+            3.837330151320284
+          ]
+        },
+        "total_ms": {
+          "medians": [
+            89.5485015,
+            89.94166200000001
+          ],
+          "median_delta_percent": 0.43904754788108846,
+          "paired_descriptive_bootstrap_95_percent": [
+            -0.6976515599058875,
+            1.2158700713494675
+          ]
+        },
+        "process_ms": {
+          "medians": [
+            152.21462499175686,
+            153.1064584996784
+          ],
+          "median_delta_percent": 0.5859052689384026,
+          "paired_descriptive_bootstrap_95_percent": [
+            -1.1855840390719297,
+            2.00989994455929
+          ]
+        }
+      }
+    },
+    "bootstrap": {
+      "resamples": 10000,
+      "seed": 56,
+      "method": "Paired resampling of process pairs; ratio of medians; percentile interval at sorted indices 249 and 9749 of 10000. The same indices are used across metrics within each mode."
+    }
+  },
+  "performance_interpretation": "For this retained dashboard, removal medians change 0.642176 to 0.643325 ms (+0.179%), descriptive paired bootstrap interval [-1.281%, +3.879%]. Addition changes 0.738324 to 0.732395 ms (-0.803%), interval [-3.716%, +0.938%]. The 75-frame total changes 90.251413 to 90.153147 ms (-0.109%), interval [-1.175%, +1.310%]. Identical-current total medians vary +0.439%, interval [-0.698%, +1.216%]. No overall timing change or regression is resolved; smaller changes within these intervals remain possible. Mixed resize previously panicked; this measurement covers the valid local-edit workload.",
+  "application_pixel_validation": {
+    "sha256": {
+      "frame-2.png": "1b72096bc77b5433260a567354ad1063351f49a2e47abb06dd1e47dde34d0eb2",
+      "frame-24.png": "1b72096bc77b5433260a567354ad1063351f49a2e47abb06dd1e47dde34d0eb2",
+      "frame-1.png": "150d96915944e4a2d80ed3b1bef9ab5d5eea686ec241e89462bef04170692b03",
+      "frame-0.png": "1b72096bc77b5433260a567354ad1063351f49a2e47abb06dd1e47dde34d0eb2"
+    },
+    "before_after_byte_exact": true,
+    "metal_api_validation": true,
+    "separate_correctness_runs": true
+  },
+  "measurement_accounting": {
+    "process_observations": 80,
+    "measured_render_frames": 6000,
+    "warmup_render_frames": 2000,
+    "comparison_pairs": 20,
+    "interleaved_identical_current_control_pairs": 20,
+    "fixed_sampling_before_results": true,
+    "png_readback_and_transactions_excluded_from_render_timer": true,
+    "render_timer_includes_submission_wait": true,
+    "timing_validation_enabled": false,
+    "order": "comparison and identical-current pairs interleaved; block and label order reverse on odd pairs",
+    "bootstrap_resamples": 10000,
+    "bootstrap_seed": 56
+  },
+  "gpu_selection_scope": "Unit tests, retained dashboard and presentation explicitly select Apple M5 registry 0000000100000575. SVG and image CLIs use the default Metal adapter; this is the sole available GPU.",
+  "platform_limits": [
+    "Windows DX12/Vulkan release all-target compilation and actual DXC/reflection checks pass; Windows GPU drivers were not executed.",
+    "Vulkan cache driver construction, Win32 geometry/shutdown and actual ShaderTools language server remain pending.",
+    "Bilingual website Markdown changed; website build unavailable because node_modules is absent."
+  ],
+  "temporary_measurement_cleanup_complete": true,
+  "temporary_source_removed": "examples/cleanup_nested.rs",
+  "temporary_artifacts_removed": [
+    "target/cleanup-audit/nested-svg-before",
+    "target/cleanup-audit/nested-window-before",
+    "target/cleanup-audit/nested-app-before",
+    "target/cleanup-audit/nested-app-after",
+    "target/release/examples/cleanup_nested-63b7c8b4c9b3f4fc",
+    "target/release/examples/cleanup_nested.d",
+    "target/release/examples/cleanup_nested",
+    "target/release/examples/cleanup_nested-63b7c8b4c9b3f4fc.d"
+  ]
+}

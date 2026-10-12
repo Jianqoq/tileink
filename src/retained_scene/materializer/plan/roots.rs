@@ -27,7 +27,10 @@ impl PersistentSceneMaterializer {
         scene: &RetainedScene,
         changes: &SceneChangeSet,
     ) -> Option<RetainedNodeId> {
-        if !changes.topology_changed || !changes.removed_nodes.is_empty() {
+        // Root insertion queries current output bounds in the spatial index. Resize deliberately
+        // defers that index; compile the new structure without consuming its previous extent.
+        if changes.surface_changed || !changes.topology_changed || !changes.removed_nodes.is_empty()
+        {
             return None;
         }
         let mut layers = changes.changed_nodes.iter().filter(|id| {

@@ -89,6 +89,9 @@ mod batch_classification;
 #[path = "tests/command_topology.rs"]
 mod command_topology;
 
+#[path = "tests/nested_changes.rs"]
+mod nested_changes;
+
 #[path = "tests/fragment_membership.rs"]
 mod fragment_membership;
 
