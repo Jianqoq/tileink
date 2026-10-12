@@ -3129,9 +3129,55 @@ Bilingual architecture guides document ownership and direct fragment compilation
 All 65 benchmark JSON/gzip files parse, npm declarations match package.json,
 and all 1004 current implementation files have one audit owner and are read.
 
+## Phase 58: verify hierarchy publication and implementation entry points
+
+Three CPU tests compare the patched plan with compilation of the final command
+tree after repeated subtree exchanges, exchanges between mask branches, and
+simultaneous ancestor/child moves. They verify draw order, clip/surface scopes,
+per-draw batch membership and scalar leaf classifications over 72 transactions.
+Three Metal tests make 30 byte-exact comparisons with fresh renderers, including
+full invalidation, and independently check composited colors. The suspected
+membership loss does not reproduce: offscreen replacement rebuilds draw metadata
+from the complete plan, while each fragment publishes its current leaves.
+
+The caller review also confirms why structural compilation remains necessary.
+Flat command reuse requires an actual unscoped root batch or compatible adjacent
+plain runs with unchanged layer commands. It keeps authoritative command locations
+and releases retired ownership. A structural edit can change an offscreen
+ancestor's execution shape; overlapping hierarchy candidates can also rebuild
+one another. Compiling the final command tree in these cases is current rendering
+semantics, not a compatibility implementation to remove.
+
+The [compressed entry audit](audits/cleanup-phase58-reachability-2026-10-12.json.gz)
+records hashes and evidence for all 1006 current implementation files. Release
+compiler dependency records account for 689 Rust files; the remaining Rust source
+is explicitly compiled with `rustc -O` by the process-protocol test. Native artifact
+recipes contain 253 shader sources byte-for-byte; Rust dependency records account
+for the other 21 example/test shaders. All 274 shader files have an entry proof.
+The remaining files have script, website, configuration or fixture entry points.
+In particular, the external-CSS SVG fixture imports `green.css`; it must remain.
+The two ruleset JSON files are administration templates, not automatically loaded
+Cargo/CI modules or proof that a remote ruleset has been applied. File reachability
+does not claim execution of every function, conditional branch or platform driver.
+
+Focused release tests pass six cases; broader retained tests pass 224. The complete
+single-thread release run passes 1211 tests in 44 binaries, with zero failures and
+zero ignored tests. This includes the previously failing DXC/header and turbulence
+checks resolved in Phase 48. Formatting, release clippy, backend-free compilation,
+example builds and Windows DX12/Vulkan all-targets type checks pass. Clippy retains
+the existing one library/eight library-test warnings, with no new warning.
+All 1730 fresh SVG PNGs and seven example images remain byte-exact; the presentation
+smoke completes eight frames across both physical sizes.
+
+Only test modules and audit documentation change. The other 1002 existing
+implementation files, including renderer and shader code, match the Phase 57
+revision. Its measured application behavior therefore remains applicable; no new
+performance gain is claimed. All implementation files have been read and have one
+audit owner. Local hierarchy/caller and file/module entry tracing is complete;
+the external runtime checks below remain open.
+
 ## Remaining audit work
 
-- All current implementation files are fully read. The progressive/glass shader, SVG lowering, filter distance, text coordinate, retained layer descriptor, typed offscreen, recording geometry, coarse stack, native creation/resource policy and retained plan ownership cleanup are implemented. Metal GPU correctness and portable native-policy regressions pass; DX12 resource runtime still needs Windows verification. Full-plan membership length, root ranges, adjacent-run insertion, root command-scope ownership, plan publication, flat command synchronization, same-ID revision identity and complete nested removal scope now have direct semantic coverage. Command-list ownership now has bounded-storage, snapshot and recycled-pixel regressions. Finish remaining hierarchy/caller and Cargo/module reachability proofs. Clip geometry replacement inside/outside filters and fragment/resize combinations have fresh-renderer and analytic GPU coverage; continue tracing wider retained metadata patching rules. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
 - Execute the HLSL editor test against the actual ShaderTools language server; local protocol regressions pass, but the server is unavailable locally.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

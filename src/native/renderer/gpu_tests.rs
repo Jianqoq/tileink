@@ -5,6 +5,7 @@ mod command_storage;
 mod command_topology;
 mod fragment_membership;
 mod fragment_resize;
+mod hierarchy_fragments;
 mod incremental;
 mod insertion_order;
 mod layer_updates;

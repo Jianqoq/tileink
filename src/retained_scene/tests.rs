@@ -98,6 +98,9 @@ mod command_storage;
 #[path = "tests/fragment_membership.rs"]
 mod fragment_membership;
 
+#[path = "tests/hierarchy_fragments.rs"]
+mod hierarchy_fragments;
+
 #[path = "tests/root_layer_classification.rs"]
 mod root_layer_classification;
 
