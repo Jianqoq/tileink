@@ -3,6 +3,7 @@ use super::*;
 mod clip_geometry;
 mod command_storage;
 mod command_topology;
+mod early_occlusion;
 mod fragment_membership;
 mod fragment_resize;
 mod hierarchy_fragments;

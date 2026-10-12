@@ -88,7 +88,7 @@ impl ActiveBatches {
 
     fn collect_tiles(&mut self, bins: &TileDrawBins, tiles: &[u32], ids: &[u32]) {
         let mut mark = |draw| self.mark(ids[draw as usize]);
-        if bins.page_arena_valid {
+        if bins.spatial_index_valid {
             for &draw in tiles
                 .iter()
                 .flat_map(|&tile| &bins.tile_refs[tile as usize])

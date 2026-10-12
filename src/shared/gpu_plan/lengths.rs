@@ -90,6 +90,7 @@ impl GpuBufferLengths {
         incremental: bool,
         mut overrides: GpuLengthOverrides,
     ) -> Self {
+        bins.update_occlusion(canvas, plan);
         let painter_keys = canvas
             .retained_painter()
             .map(|painter| painter.keys.as_slice());

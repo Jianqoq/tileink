@@ -6,22 +6,32 @@ pub(super) fn interpret_rectangles(
     context: &crate::NativeContext,
     canvas: &crate::Canvas,
 ) -> Result<Vec<u8>> {
+    let particles = (0..canvas.draw_records.len())
+        .map(|draw| [9, 0, 0, 0, 0, draw as u32])
+        .collect::<Vec<_>>();
+    interpret_particles(context, canvas, &particles)
+}
+
+pub(super) fn interpret_particles(
+    context: &crate::NativeContext,
+    canvas: &crate::Canvas,
+    particles: &[[u32; 6]],
+) -> Result<Vec<u8>> {
     use crate::native::runtime::compute::SamplerFilter;
     use crate::shared::{fine_config::FineConfig, gpu_constants::NATIVE_TEXTURE_TABLE_CAPACITY};
     let (width, height) = canvas.physical_size();
     let tiles_width = width.div_ceil(16);
     let tiles_height = height.div_ceil(16);
     let tiles = tiles_width * tiles_height;
-    let per_tile = canvas.draw_records.len() as u32 + 1;
+    let per_tile = particles.len() as u32 + 1;
     let kind_base = tiles * 6 * (1 + per_tile);
     let mut coarse = vec![0u32; (kind_base + tiles) as usize];
     for tile in 0..tiles as usize {
         coarse[tile * 6 + 1] = tile as u32 * per_tile;
         coarse[tile * 6 + 2] = (tile as u32 + 1) * per_tile;
-        for draw in 0..canvas.draw_records.len() {
+        for (draw, particle) in particles.iter().enumerate() {
             let at = tiles as usize * 6 + (tile * per_tile as usize + draw) * 6;
-            coarse[at] = 9;
-            coarse[at + 5] = draw as u32;
+            coarse[at..at + 6].copy_from_slice(particle);
         }
     }
     let mut paint = canvas.sdf_blob.clone();
@@ -68,8 +78,8 @@ pub(super) fn interpret_rectangles(
     let image = batch.texture_rgba8([1, 1], vec![0; 4])?;
     let images = batch.texture_table(&vec![image; NATIVE_TEXTURE_TABLE_CAPACITY as usize])?;
     let sampler = batch.sampler(SamplerFilter::Nearest);
-    // SAFETY: every tile owns a complete bounded stream of SDF draws plus END;
-    // the full Canvas paint records and transforms stay paired, with no stacks.
+    // SAFETY: every tile owns the caller's complete bounded test stream plus END.
+    // Paint/transform records remain paired; callers use only the inline stack capacities.
     unsafe {
         batch.dispatch(
             "fine_tile_main",

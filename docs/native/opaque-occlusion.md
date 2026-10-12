@@ -2,8 +2,12 @@
 
 This is raster work elimination within one coarse draw batch. The last full-tile
 opaque source-over color makes earlier particles irrelevant to the final pixel.
-Coarse still builds the complete stream and glyph destinations. The fine stage
-starts at the last proven opaque particle; uploads, binning and allocation costs remain.
+The fine stage starts at the last proven opaque particle while preserving its
+physical allocation and glyph destinations. The subsequent
+[early-occlusion optimization](early-occlusion.md) also removes conservatively
+covered references before coarse count/emission; the fine proof remains a fallback
+for draws that do not qualify for the earlier CPU proof. Measurements below describe
+the original fine-stage change only.
 
 ## Semantics and ownership
 

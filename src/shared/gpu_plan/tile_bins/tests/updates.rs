@@ -17,6 +17,8 @@ fn incremental_tile_pages_rewrite_only_old_and_new_bounds_tiles() {
     let mut bins = TileDrawBins::default();
     let mut cursors = Vec::new();
     build_tile_draw_bins_into(&initial, &plan, &mut bins, &mut cursors);
+    // Delta locality is a property of the established page arena; the initial upload is flat.
+    bins.materialize_pages();
     let _ = bins.take_dirty();
     let unaffected_page = bins.records[2].start;
     let unaffected_words = bins.draw_indices[unaffected_page as usize * TILE_DRAW_PAGE_WORDS
@@ -160,7 +162,7 @@ fn dense_retained_spatial_change_stays_flat_only_while_geometry_keeps_moving() {
         GpuLengthOverrides::default(),
     );
 
-    assert!(!bins.page_arena_valid);
+    assert!(!bins.spatial_index_valid);
     assert_eq!(lengths.tile_draw_index_count, 4);
     assert!(bins.take_dirty().0);
     assert_eq!(
@@ -204,7 +206,7 @@ fn dense_retained_spatial_change_stays_flat_only_while_geometry_keeps_moving() {
         true,
         GpuLengthOverrides::default(),
     );
-    assert!(!bins.page_arena_valid);
+    assert!(!bins.spatial_index_valid);
     assert_eq!(second_lengths.tile_draw_index_count, 4);
     assert!(bins.take_dirty().0);
 
@@ -220,7 +222,100 @@ fn dense_retained_spatial_change_stays_flat_only_while_geometry_keeps_moving() {
         true,
         GpuLengthOverrides::default(),
     );
-    assert!(bins.page_arena_valid);
+    assert!(bins.spatial_index_valid);
+}
+
+#[test]
+fn sustained_sparse_motion_amortizes_page_materialization_before_local_deltas() {
+    let mut canvas = Canvas::new(320, 320, 1.0);
+    for _ in 0..64 {
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, 320.0, 320.0),
+            crate::Radius::ZERO,
+            Color::from_rgba8(20, 40, 80, 120),
+        );
+    }
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
+        Color::from_rgba8(80, 40, 20, 120),
+    );
+    let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+    let mut bins = TileDrawBins::default();
+    build_tile_draw_bins_into(&canvas, &plan, &mut bins, &mut Vec::new());
+    let _ = bins.take_dirty();
+    let mut promoted = false;
+    let mut local_delta = false;
+    for step in 0..16 {
+        let x = if step % 2 == 0 { 16 } else { 0 };
+        canvas.draw_records[64].pixel_bounds.x0 = x;
+        canvas.draw_records[64].pixel_bounds.x1 = x + 16;
+        assert!(bins.update_changed(
+            &canvas.draw_records,
+            &plan.draw_order,
+            None,
+            (20, 20),
+            std::slice::from_ref(&(64..65))
+        ));
+        let (full, records, pages) = bins.take_dirty();
+        assert_eq!(
+            bins.tile_draws(x as usize / 16),
+            (0..65).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            bins.tile_draws(1 - x as usize / 16),
+            (0..64).collect::<Vec<_>>()
+        );
+        if step == 0 {
+            assert_eq!(bins.index_format, IndexFormat::Flat);
+        }
+        if promoted {
+            assert!(!full);
+            assert_eq!(records, [0, 1]);
+            assert_eq!(pages.len(), 2);
+            local_delta = true;
+            break;
+        }
+        promoted = bins.index_format == IndexFormat::Pages;
+        assert!(full);
+    }
+    assert!(
+        local_delta,
+        "sustained sparse edits never established their delta arena"
+    );
+}
+
+#[test]
+fn transient_density_excludes_inactive_retained_draw_slots() {
+    let mut canvas = Canvas::new(64, 64, 1.0);
+    for _ in 0..10 {
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, 64.0, 64.0),
+            crate::Radius::ZERO,
+            Color::BLACK,
+        );
+    }
+    let mut keys = vec![PainterKey::inactive(); 10];
+    keys[0] = PainterKey {
+        path: std::rc::Rc::from([0]),
+        local: 0,
+    };
+    let mut bins = TileDrawBins::default();
+    bins.reset_transient(
+        &canvas.draw_records,
+        &[0],
+        Some(&keys),
+        (4, 4),
+        &mut Vec::new(),
+        true,
+    );
+    canvas.draw_records[0].pixel_bounds.x0 += 16;
+    canvas.draw_records[0].pixel_bounds.x1 += 16;
+    assert!(bins.spatial_change_is_dense(
+        &canvas.draw_records,
+        (4, 4),
+        std::slice::from_ref(&(0..1))
+    ));
 }
 
 #[test]
@@ -275,5 +370,5 @@ fn dirty_draw_with_stable_bounds_and_rank_does_not_rewrite_tile_pages() {
     assert!(dirty_records.is_empty());
     assert!(dirty_pages.is_empty());
     assert_eq!(bins.upload_index_count(), compact_indices);
-    assert!(bins.upload_indices().len() < bins.draw_indices.len());
+    assert_eq!(bins.upload_indices(), bins.draw_indices);
 }

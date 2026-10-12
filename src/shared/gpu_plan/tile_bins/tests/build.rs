@@ -87,16 +87,11 @@ fn fused_lengths_reuse_the_same_tile_draw_bins() {
     );
 
     assert_eq!(lengths.tile_draw_index_count, bins.upload_index_count());
-    assert!(bins.upload_indices().len() < bins.draw_indices.len());
-    assert_eq!(
-        lengths.tile_draw_chunk_count,
-        bins.records
-            .iter()
-            .map(|record| record.end as usize)
-            .map(|count| count.div_ceil(COARSE_CHUNK_SIZE as usize))
-            .sum::<usize>()
-    );
-    assert_eq!(bins.records[0].end, COARSE_CHUNK_SIZE + 1);
+    assert_eq!(bins.upload_indices(), bins.draw_indices);
+    // Complete flat capacity stays resident across later opacity changes.
+    assert_eq!(lengths.tile_draw_chunk_count, 3);
+    // All but the final opaque draw are removed before the coarse upload.
+    assert_eq!(bins.upload_records()[0].end, 1);
     assert_eq!(bins.records[1].end, 1);
 }
 

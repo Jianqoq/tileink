@@ -23,8 +23,20 @@ mod active_batches;
 pub(crate) use active_batches::ActiveBatches;
 
 mod build;
+mod occlusion;
 mod pages;
+mod transient;
 mod update;
+
+/// One GPU arena, stored flat for full uploads or as pages for spatial deltas.
+/// `FlatPrefix` retains complete indices and edits only each tile's visible suffix.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum IndexFormat {
+    #[default]
+    Flat,
+    Pages,
+    FlatPrefix,
+}
 
 /// Per-tile draw references for native coarse binning.
 ///
@@ -34,7 +46,7 @@ mod update;
 #[derive(Clone, Debug, Default)]
 pub(crate) struct TileDrawBins {
     pub(crate) records: Vec<TileDrawRecord>,
-    /// Fixed-size pages: next-page word followed by 256 painter-ordered draw IDs.
+    /// Flat full-upload IDs, or pages with a next-page word and 256 painter-ordered IDs.
     pub(crate) draw_indices: Vec<u32>,
     tile_pages: Vec<Vec<u32>>,
     tile_refs: Vec<Vec<u32>>,
@@ -48,16 +60,24 @@ pub(crate) struct TileDrawBins {
     dirty_records: Vec<usize>,
     dirty_pages: Vec<u32>,
     full_upload: bool,
-    flat_full_upload: bool,
-    full_upload_records: Vec<TileDrawRecord>,
-    full_upload_indices: Vec<u32>,
-    page_arena_valid: bool,
+    index_format: IndexFormat,
+    /// Extra flat rebuild work accumulated toward the one-time cost of establishing pages.
+    flat_rebuild_work: usize,
+    /// Complete CPU reverse membership, independent of the current GPU arena format.
+    spatial_index_valid: bool,
     visited_draws: GenerationMarks,
     membership_changed: DenseIndexSet,
     affected_tiles: DenseIndexSet,
+    occlusion: occlusion::Occlusion,
+    visible_refs: Vec<u32>,
+    /// Transient GPU bins may omit covered draws; region queries still need their source bounds.
+    transient_occlusion: bool,
 }
 
 impl TileDrawBins {
+    pub(super) fn update_occlusion(&mut self, canvas: &Canvas, plan: &ExecPlan) {
+        self.occlusion.update(canvas, plan);
+    }
     #[cfg(test)]
     fn tile_draws(&self, tile: usize) -> Vec<u32> {
         let mut draws = Vec::new();
@@ -92,9 +112,9 @@ impl TileDrawBins {
         }
     }
 
-    /// Returns conservative painter-ordered candidates for a pixel region. Queries within the
-    /// indexed domain avoid scanning the scene draw table. Persistent and transient bins share
-    /// the same page/flat query path; exterior queries preserve all possible filter sources.
+    /// Returns conservative painter-ordered source candidates for a pixel region. Persistent
+    /// bins query complete tile membership; culled transient bins recover original draw bounds.
+    /// Exterior queries preserve all possible filter sources.
     pub(crate) fn draws_in_bounds(
         &self,
         bounds: Bounds,
@@ -129,19 +149,52 @@ impl TileDrawBins {
             y1: bounds.y1,
         }
         .tile_bbox(self.tiles_size.0, self.tiles_size.1);
+        if self.transient_occlusion {
+            // A localized filter can use a different tile origin. Re-prove visibility there,
+            // rather than treating the viewport's covered source draws as absent geometry.
+            let intersects = |draw: u32| {
+                let source = self.draw_bboxes[draw as usize];
+                source.x0 < bbox.x1
+                    && bbox.x0 < source.x1
+                    && source.y0 < bbox.y1
+                    && bbox.y0 < source.y1
+            };
+            if let Some(keys) = painter_keys {
+                let mut draws = keys
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(draw, key)| {
+                        (key.path[0] != u128::MAX && intersects(draw as u32)).then_some(draw as u32)
+                    })
+                    .collect::<Vec<_>>();
+                draws.sort_unstable_by(|a, b| keys[*a as usize].cmp(&keys[*b as usize]));
+                return draws;
+            }
+            return draw_order
+                .iter()
+                .copied()
+                .filter(|&draw| intersects(draw))
+                .collect();
+        }
         let mut candidates = HashSet::new();
         for_tile_in_bbox(bbox, self.tiles_size.0, |tile| {
-            self.for_each_tile_draw(tile, |draw| {
-                candidates.insert(draw);
-            });
+            if self.spatial_index_valid {
+                candidates.extend(self.tile_refs[tile].iter().copied());
+            } else {
+                self.for_each_tile_draw(tile, |draw| {
+                    candidates.insert(draw);
+                });
+            }
         });
         if candidates.is_empty() {
             return Vec::new();
         }
         // Persistent bins own complete ranks; transient retained bins use their current owner.
         // Immediate transient bins carry no ranks and use the supplied compiled draw sequence.
-        let ranks =
-            painter_keys.or_else(|| self.page_arena_valid.then_some(self.draw_ranks.as_slice()));
+        let ranks = painter_keys.or_else(|| {
+            self.spatial_index_valid
+                .then_some(self.draw_ranks.as_slice())
+        });
         if let Some(ranks) = ranks {
             let mut draws = candidates.into_iter().collect::<Vec<_>>();
             draws.sort_unstable_by(|a, b| ranks[*a as usize].cmp(&ranks[*b as usize]));

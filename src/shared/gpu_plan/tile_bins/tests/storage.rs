@@ -119,7 +119,7 @@ fn retained_surface_resize_uses_dense_bins_then_restores_incremental_index() {
         GpuLengthOverrides::default(),
     );
 
-    assert!(!bins.page_arena_valid);
+    assert!(!bins.spatial_index_valid);
     assert_eq!(bins.tile_draws(0), [0]);
     assert_eq!(bins.tile_draws(1), [1]);
 
@@ -137,7 +137,7 @@ fn retained_surface_resize_uses_dense_bins_then_restores_incremental_index() {
         GpuLengthOverrides::default(),
     );
 
-    assert!(bins.page_arena_valid);
+    assert!(bins.spatial_index_valid);
     assert_eq!(bins.tile_draws(0), [0]);
     assert_eq!(bins.tile_draws(1), [1]);
 }
@@ -154,6 +154,7 @@ fn transient_bins_preserve_persistent_tile_allocations_for_recovery() {
     let mut bins = TileDrawBins::default();
     let mut cursors = Vec::new();
     build_tile_draw_bins_into(&canvas, &plan, &mut bins, &mut cursors);
+    bins.materialize_pages();
     let pages = bins
         .tile_pages
         .iter()
@@ -180,7 +181,7 @@ fn transient_bins_preserve_persistent_tile_allocations_for_recovery() {
         refs
     );
     build_tile_draw_bins_into(&canvas, &plan, &mut bins, &mut cursors);
-    assert!(bins.page_arena_valid);
+    assert!(bins.spatial_index_valid);
     assert_eq!(
         bins.tile_pages
             .iter()
@@ -222,6 +223,7 @@ fn tile_page_arena_compacts_after_fragmentation_exceeds_threshold() {
     let mut bins = TileDrawBins::default();
     let mut cursors = Vec::new();
     build_tile_draw_bins_into(&initial, &plan, &mut bins, &mut cursors);
+    bins.materialize_pages();
     let _ = bins.take_dirty();
 
     assert!(bins.update_changed(

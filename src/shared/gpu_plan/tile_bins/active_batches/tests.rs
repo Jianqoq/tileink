@@ -125,7 +125,7 @@ fn active_batches_preserve_exact_sets_for_flat_and_paged_bins() {
                 false,
             );
         }
-        assert_eq!(bins.page_arena_valid, !flat);
+        assert_eq!(bins.spatial_index_valid, !flat);
         let mut overlap = DamageTiles::new(size);
         for bounds in [
             Bounds::new(16, 0, 32, 16),

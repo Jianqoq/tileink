@@ -45,6 +45,43 @@ fn background() -> Canvas {
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn native_early_occlusion_partial_clip_matches_independent_fine_pixels() -> Result<()> {
+    let context = context()?;
+    let mut renderer = NativeRenderer::with_context(&context, 129, 113)?;
+    let full = Rect::new(0.0, 0.0, 129.0, 113.0);
+    for radius in [0.0, 41.0] {
+        for inset in [0.0, 4.375] {
+            let mut canvas = Canvas::new(129, 113, 1.0);
+            canvas.push_rect(full, Radius::ZERO, Color::BLACK);
+            canvas.push_clip_sdf_rect_layer(full.inset(inset), Radius::all(radius));
+            for i in 0..128 {
+                canvas.push_rect(
+                    full,
+                    Radius::ZERO,
+                    Color::from_rgba8((i * 17) as u8, (i * 29) as u8, (i * 3) as u8, 120),
+                );
+            }
+            canvas.push_rect(full, Radius::ZERO, Color::from_rgb8(23, 47, 93));
+            canvas.pop_layer();
+            let mut particles = vec![[9, 0, 0, 0, 0, 0], [12, 0, 0, 0, 0, 1]];
+            particles
+                .extend((2..canvas.draw_records.len()).map(|draw| [9, 0, 0, 0, 0, draw as u32]));
+            particles.push([4, 0, 0, 0, 0, 0]);
+            let expected = super::rect_pixels::interpret_particles(&context, &canvas, &particles)?;
+            let actual = renderer.render_to_image(&canvas)?.readback()?;
+            assert_eq!(
+                bytemuck::cast_slice::<u32, u8>(&actual.pixels),
+                expected,
+                "radius={radius}, inset={inset}"
+            );
+        }
+    }
+    context.check_validation()?;
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn native_opaque_occlusion_matches_independent_fine_only_pixels() -> Result<()> {
     let context = context()?;
     let mut renderer = NativeRenderer::with_context(&context, 129, 113)?;

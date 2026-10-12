@@ -18,12 +18,7 @@ impl TileDrawBins {
         // Compare changed draw/tile memberships with the work of rebuilding all bins.
         // A fixed fraction of viewport tiles classified local UI motion as dense, repeatedly
         // discarding the persistent index and causing a rebuild/upload spike as motion settled.
-        let dense_tile_threshold = self
-            .records
-            .iter()
-            .map(|record| u64::from(record.end))
-            .sum::<u64>()
-            .max(1);
+        let mut dense_tile_threshold = None;
         let mut affected_tile_work = 0u64;
         let mut previous_end = 0usize;
         for range in changed {
@@ -32,9 +27,25 @@ impl TileDrawBins {
             for (draw, record) in draw_records.iter().enumerate().take(end).skip(start) {
                 let bbox = record.tile_bbox(tiles_size.0, tiles_size.1);
                 if bbox != self.draw_bboxes[draw] {
+                    // Paint-only edits need no density decision. Count complete CPU membership
+                    // lazily so culled GPU counts cannot force a rebuild or add a viewport scan.
+                    let threshold = *dense_tile_threshold.get_or_insert_with(|| {
+                        if self.spatial_index_valid {
+                            self.tile_refs
+                                .iter()
+                                .map(|refs| refs.len() as u64)
+                                .sum::<u64>()
+                        } else {
+                            self.draw_bboxes
+                                .iter()
+                                .map(|bbox| u64::from(bbox.tile_count()))
+                                .sum::<u64>()
+                        }
+                        .max(1)
+                    });
                     affected_tile_work +=
                         u64::from(bbox.tile_count() + self.draw_bboxes[draw].tile_count());
-                    if affected_tile_work >= dense_tile_threshold {
+                    if affected_tile_work >= threshold {
                         return true;
                     }
                 }
@@ -53,7 +64,7 @@ impl TileDrawBins {
         tiles_size: (u32, u32),
         changed: &[std::ops::Range<usize>],
     ) -> bool {
-        if !self.page_arena_valid || self.tiles_size != tiles_size {
+        if !self.spatial_index_valid || self.tiles_size != tiles_size {
             return false;
         }
         if painter_keys.is_none()
@@ -88,7 +99,16 @@ impl TileDrawBins {
         self.membership_changed.begin(working_len);
         let tile_count = tiles_size.0 as usize * tiles_size.1 as usize;
         self.affected_tiles.begin(tile_count);
-        for draw in changed.iter().flat_map(std::clone::Clone::clone) {
+        for &bbox in &self.occlusion.dirty_tiles {
+            for_tile_in_bbox(bbox, tiles_size.0, |tile| {
+                self.affected_tiles.insert(tile);
+            });
+        }
+        for draw in changed
+            .iter()
+            .flat_map(std::clone::Clone::clone)
+            .chain((0..self.occlusion.changed.len()).map(|index| self.occlusion.changed.get(index)))
+        {
             if draw >= working_len {
                 continue;
             }
@@ -127,9 +147,30 @@ impl TileDrawBins {
                 for_tile_in_bbox(self.draw_bboxes[draw], tiles_size.0, |tile| {
                     self.affected_tiles.insert(tile);
                 });
+            } else if !self.occlusion.changed.is_empty() && self.occlusion.changed.contains(draw) {
+                for_tile_in_bbox(old_bbox, tiles_size.0, |tile| {
+                    self.affected_tiles.insert(tile);
+                });
             }
         }
-        let page_membership_changed = !self.affected_tiles.is_empty();
+        if self.index_format == IndexFormat::FlatPrefix
+            && self.occlusion.single_batch
+            && self.membership_changed.is_empty()
+        {
+            for index in 0..self.affected_tiles.len() {
+                let tile = self.affected_tiles.get(index);
+                self.refresh_flat_prefix(tile);
+                self.dirty_records.push(tile);
+            }
+            self.draw_bboxes.truncate(new_len);
+            self.draw_ranks.truncate(new_len);
+            self.draw_ptcl_capacities.truncate(new_len);
+            self.occlusion.clear_changes(new_len);
+            return true;
+        }
+        if self.index_format == IndexFormat::FlatPrefix {
+            self.index_format = IndexFormat::Flat;
+        }
         let membership_changed = &self.membership_changed;
         for index in 0..self.affected_tiles.len() {
             let tile = self.affected_tiles.get(index);
@@ -147,26 +188,38 @@ impl TileDrawBins {
                 self.tile_refs[tile].push(draw as u32);
             });
         }
-        for index in 0..self.affected_tiles.len() {
-            let tile = self.affected_tiles.get(index);
-            self.tile_refs[tile].sort_unstable_by(|a, b| {
-                self.draw_ranks[*a as usize].cmp(&self.draw_ranks[*b as usize])
-            });
-            self.rewrite_tile(tile);
+        if !self.membership_changed.is_empty() {
+            for index in 0..self.affected_tiles.len() {
+                let tile = self.affected_tiles.get(index);
+                self.tile_refs[tile].sort_unstable_by(|a, b| {
+                    self.draw_ranks[*a as usize].cmp(&self.draw_ranks[*b as usize])
+                });
+            }
+        }
+        if !self.affected_tiles.is_empty() {
+            if self.index_format == IndexFormat::Pages {
+                for index in 0..self.affected_tiles.len() {
+                    self.rewrite_tile(self.affected_tiles.get(index));
+                }
+                self.maybe_compact_pages();
+            } else if self.prefer_flat_update() {
+                self.index_format = if self.occlusion.single_batch {
+                    IndexFormat::FlatPrefix
+                } else {
+                    IndexFormat::Flat
+                };
+                self.build_flat_full_upload();
+                self.full_upload = true;
+            } else {
+                // Full uploads have no speculative page copy. Build the delta arena once,
+                // after CPU membership and painter order reflect this mutation.
+                self.materialize_pages();
+            }
         }
         self.draw_bboxes.truncate(new_len);
         self.draw_ranks.truncate(new_len);
         self.draw_ptcl_capacities.truncate(new_len);
-        if page_membership_changed && self.flat_full_upload {
-            // The GPU currently contains the compact flat representation from the preceding
-            // full upload. Keep it for content-only updates; switch once tile membership really
-            // changes, uploading the already-maintained persistent page arena exactly once.
-            self.flat_full_upload = false;
-            self.full_upload_records.clear();
-            self.full_upload_indices.clear();
-            self.full_upload = true;
-        }
-        self.maybe_compact_pages();
+        self.occlusion.clear_changes(new_len);
         true
     }
 }
