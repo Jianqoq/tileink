@@ -16,8 +16,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: rustup component add rustfmt
+      - run: rustup component add rustfmt clippy
       - run: cargo fmt --all --check
+      # No renderer consumes the internal execution paths in this profile.
+      - run: cargo clippy --release --lib --no-default-features -- -A dead_code -A unused_imports -D clippy::unnecessary_wraps
   clippy:
     strategy:
       fail-fast: false

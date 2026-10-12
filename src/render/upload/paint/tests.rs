@@ -112,16 +112,13 @@ fn switching_through_immediate_upload_rebuilds_retained_storage() {
 }
 
 fn resource_brush(key: ImageKey) -> Brush {
-    Brush::Pattern(
-        PatternBrush::new_resource(
-            ImageResourceId::renderer(key),
-            [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-            Extend::Pad,
-            PatternSampling::Nearest,
-            255,
-        )
-        .unwrap(),
-    )
+    Brush::Pattern(PatternBrush::new_resource(
+        ImageResourceId::renderer(key),
+        [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+        Extend::Pad,
+        PatternSampling::Nearest,
+        255,
+    ))
 }
 
 fn resources(key: ImageKey) -> ImageResourceStore {

@@ -40,16 +40,13 @@ fn draw_uses_resource_brush_only_for_resource_patterns() {
     ));
 
     let key = ImageKey::new(0x1234_5678);
-    let resource = Brush::Pattern(
-        PatternBrush::new_resource(
-            ImageResourceId::renderer(key),
-            [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-            Extend::Pad,
-            PatternSampling::Nearest,
-            255,
-        )
-        .unwrap(),
-    );
+    let resource = Brush::Pattern(PatternBrush::new_resource(
+        ImageResourceId::renderer(key),
+        [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+        Extend::Pad,
+        PatternSampling::Nearest,
+        255,
+    ));
     let (resource_offset, resource_len) = push_encoded_brush(&mut blob, &resource);
     assert!(GpuBrushUpload::draw_uses_resource_brush(
         &draw_with_brush(resource_offset, resource_len),
@@ -60,16 +57,13 @@ fn draw_uses_resource_brush_only_for_resource_patterns() {
 #[test]
 fn patch_scene_brush_blob_clears_missing_resource_placement() {
     let key = ImageKey::new(0x1234_5678);
-    let resource = Brush::Pattern(
-        PatternBrush::new_resource(
-            ImageResourceId::renderer(key),
-            [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-            Extend::Pad,
-            PatternSampling::Nearest,
-            255,
-        )
-        .unwrap(),
-    );
+    let resource = Brush::Pattern(PatternBrush::new_resource(
+        ImageResourceId::renderer(key),
+        [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+        Extend::Pad,
+        PatternSampling::Nearest,
+        255,
+    ));
     let mut blob = Vec::new();
     let (offset, len) = push_encoded_brush(&mut blob, &resource);
     let draw = draw_with_brush(offset, len);

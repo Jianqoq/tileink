@@ -23,7 +23,7 @@ fn empty_frame_completes_and_signals_without_readback() -> Result<()> {
     frame.command.commit();
     frame.wait()?;
     assert_eq!(event.signaledValue(), 1);
-    assert!(frame.readback()?.is_empty());
+    assert!(frame.readback().is_empty());
     metal.assert_valid()
 }
 
@@ -107,7 +107,7 @@ fn compute_runs_preserve_texture_dependencies() -> Result<()> {
                 frame.command.commit();
                 frame.wait()?;
                 assert_eq!(
-                    frame.readback()?,
+                    frame.readback(),
                     vec![
                         [0, 0, 0, 127 + count].repeat(bytes / 4),
                         [1, 2, 3, 255].repeat(bytes / 4),
@@ -174,7 +174,7 @@ fn independent_compute_writes_preserve_both_outputs() -> Result<()> {
     frame.command.commit();
     frame.wait()?;
     assert_eq!(
-        frame.readback()?,
+        frame.readback(),
         vec![
             [3, 7, 11, 255].repeat(17 * 15),
             [13, 17, 19, 255].repeat(17 * 15),

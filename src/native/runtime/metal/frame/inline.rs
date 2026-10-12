@@ -111,7 +111,7 @@ mod tests {
             drop(batch);
             frame.command.commit();
             frame.wait()?;
-            assert_eq!(frame.readback()?, vec![[3, 7, 11, 173].repeat(51)]);
+            assert_eq!(frame.readback(), vec![[3, 7, 11, 173].repeat(51)]);
         }
         metal.assert_valid()
     }

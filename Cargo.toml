@@ -71,6 +71,9 @@ dx12 = ["dep:serde_json", "dep:sha2", "dep:windows", "windows/Win32_Graphics_Dxg
 vulkan = ["dep:serde_json", "dep:sha2", "dep:ash"]
 metal = ["dep:serde_json", "dep:sha2", "dep:objc2", "dep:objc2-metal", "dep:objc2-foundation", "dep:dispatch2", "dep:block2"]
 
+[lints.clippy]
+unnecessary_wraps = "warn"
+
 [dev-dependencies]
 tempfile = "3.23"
 env_logger = { version = "0.11", default-features = false }

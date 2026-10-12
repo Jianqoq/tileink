@@ -151,9 +151,10 @@ impl Metal {
         if !self.is_complete(ticket)? {
             return Err("Metal command did not complete".into());
         }
-        self.pending
+        Ok(self
+            .pending
             .take_completed(ticket, ticket.serial())?
-            .readback()
+            .readback())
     }
     pub fn unconfirmed(&self) -> bool {
         self.failed

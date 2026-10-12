@@ -1,0 +1,3 @@
+# Check exported functions too: an infallible operation should expose an
+# infallible return type rather than retain a redundant Result or Option.
+avoid-breaking-exported-api = false

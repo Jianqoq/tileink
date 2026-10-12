@@ -46,6 +46,10 @@ impl Window {
         }
         Ok(this)
     }
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "shared window API is fallible on Win32"
+    )]
     pub fn inner_size(&self) -> Result<Size> {
         let s = self.view.convertSizeToBacking(self.view.bounds().size);
         Ok(Size {
@@ -53,6 +57,10 @@ impl Window {
             height: s.height.round() as u32,
         })
     }
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "shared window API is fallible on Win32"
+    )]
     pub fn request_inner_size(&self, s: Size) -> Result {
         let scale = self.window.backingScaleFactor();
         self.window

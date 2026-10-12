@@ -49,16 +49,13 @@ fn retained_resource_brush_survives_transform_then_sdf_arena_growth()
     image_canvas.push_rect(
         Rect::new(0.0, 0.0, 20.0, 20.0),
         Radius::ZERO,
-        Brush::Pattern(
-            PatternBrush::new_resource(
-                crate::shared::image_resource::ImageResourceId::renderer(key),
-                [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-                Extend::Pad,
-                PatternSampling::Nearest,
-                255,
-            )
-            .unwrap(),
-        ),
+        Brush::Pattern(PatternBrush::new_resource(
+            crate::shared::image_resource::ImageResourceId::renderer(key),
+            [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            Extend::Pad,
+            PatternSampling::Nearest,
+            255,
+        )),
     );
     let geometry = |sdf| {
         let mut canvas = Canvas::new(64, 64, 1.0);

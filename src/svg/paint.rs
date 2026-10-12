@@ -253,7 +253,7 @@ impl SvgBuilder {
         let Some(image_key) = canvas.register_scene_image(tile_scene) else {
             return Err(SvgError::unsupported("empty pattern image"));
         };
-        let Some(pattern) = PatternBrush::new_resource(
+        let pattern = PatternBrush::new_resource(
             ImageResourceId::scene(image_key),
             affine_to_array(
                 Affine::scale_non_uniform(
@@ -266,9 +266,7 @@ impl SvgBuilder {
             Extend::Repeat,
             PatternSampling::Nearest,
             opacity_to_u8(opacity),
-        ) else {
-            return Err(SvgError::unsupported("empty pattern image"));
-        };
+        );
         Ok(Brush::Pattern(pattern))
     }
 }

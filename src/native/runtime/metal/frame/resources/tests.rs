@@ -24,7 +24,7 @@ fn uploads_after_host_resources_preserve_array_layers_and_readback_lifetimes() -
     frame.command.commit();
     frame.wait()?;
     assert_eq!(
-        frame.readback()?,
+        frame.readback(),
         vec![
             bytemuck::cast_slice(&host).to_vec(),
             pixels,

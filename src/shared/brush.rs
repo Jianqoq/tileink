@@ -532,25 +532,23 @@ pub(crate) fn estimate_sweep_ramp_size(
 }
 
 impl PatternBrush {
-    /// Creates a pattern brush with a caller-provided world-to-image transform.
-    ///
-    /// The transform maps canvas coordinates to image pixel coordinates. Images
-    /// are rejected when either dimension is zero because sampled resources
-    /// require at least one valid texel.
+    /// Creates a resource descriptor with a caller-provided sampling transform.
+    /// Image dimensions are validated when registering/uploading the resource;
+    /// constructing a descriptor from its identity is infallible.
     pub(crate) fn new_resource(
         id: ImageResourceId,
         transform: [f32; 6],
         extend: Extend,
         sampling: PatternSampling,
         opacity: u8,
-    ) -> Option<Self> {
-        Some(Self {
+    ) -> Self {
+        Self {
             image: PatternImage::Resource(id),
             transform,
             extend,
             sampling,
             opacity,
-        })
+        }
     }
 
     /// Creates a renderer-resource pattern brush that maps the image exactly into `rect`.
@@ -566,7 +564,7 @@ impl PatternBrush {
         }
         let sx = 1.0 / rect.width() as f32;
         let sy = 1.0 / rect.height() as f32;
-        Self::new_resource(
+        Some(Self::new_resource(
             id,
             [
                 sx,
@@ -579,7 +577,7 @@ impl PatternBrush {
             extend,
             sampling,
             opacity,
-        )
+        ))
     }
 
     /// Creates a renderer-resource pattern brush that maps image pixels 1:1 to canvas
@@ -598,13 +596,13 @@ impl PatternBrush {
         }
         let sx = 1.0 / width as f32;
         let sy = 1.0 / height as f32;
-        Self::new_resource(
+        Some(Self::new_resource(
             ImageResourceId::renderer(key),
             [sx, 0.0, 0.0, sy, -origin[0] * sx, -origin[1] * sy],
             extend,
             sampling,
             opacity,
-        )
+        ))
     }
 
     #[cfg(test)]

@@ -63,6 +63,9 @@ fn definitions() -> &'static BTreeMap<String, u32> {
     CONSTANTS.get_or_init(|| read_hlsl("constants.hlsli").expect("read shared HLSL constants"))
 }
 
+// Only native shader recipes query individual constants. Backend-free builds
+// still generate the complete host definitions without this unused accessor.
+#[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
 pub fn get(name: &str) -> u32 {
     *definitions()
         .get(name)

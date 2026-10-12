@@ -54,7 +54,7 @@ impl SvgBuilder {
         let Some(image_key) = canvas.register_scene_image(source) else {
             return Ok(());
         };
-        let Some(pattern) = PatternBrush::new_resource(
+        let pattern = PatternBrush::new_resource(
             ImageResourceId::scene(image_key),
             affine_to_array(
                 Affine::scale_non_uniform(
@@ -65,9 +65,7 @@ impl SvgBuilder {
             Extend::Pad,
             image_sampling(image.rendering_mode()),
             255,
-        ) else {
-            return Ok(());
-        };
+        );
         let brush = Brush::Pattern(pattern);
         canvas.push_path(
             rect_path(Rect::new(
@@ -175,7 +173,7 @@ impl SvgBuilder {
         let Some(image_key) = canvas.register_scene_image(filter_canvas) else {
             return Err(SvgError::unsupported("empty feImage"));
         };
-        let Some(pattern) = PatternBrush::new_resource(
+        let pattern = PatternBrush::new_resource(
             ImageResourceId::scene(image_key),
             affine_to_array(
                 Affine::scale_non_uniform(1.0 / f64::from(width), 1.0 / f64::from(height))
@@ -187,9 +185,7 @@ impl SvgBuilder {
             Extend::Pad,
             PatternSampling::Nearest,
             255,
-        ) else {
-            return Err(SvgError::unsupported("empty feImage"));
-        };
+        );
         Ok(Brush::Pattern(pattern))
     }
 }

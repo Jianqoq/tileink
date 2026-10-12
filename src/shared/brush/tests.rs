@@ -179,16 +179,13 @@ fn valid_resource_descriptors_preserve_scope_sampling_extend_and_opacity() {
         for extend in [Extend::Pad, Extend::Repeat, Extend::Reflect] {
             for sampling in [PatternSampling::Nearest, PatternSampling::Bilinear] {
                 for opacity in [0, 127, 255] {
-                    let brush = Brush::Pattern(
-                        PatternBrush::new_resource(
-                            id,
-                            [2.0, 0.0, 0.0, 3.0, 4.0, 5.0],
-                            extend,
-                            sampling,
-                            opacity,
-                        )
-                        .unwrap(),
-                    );
+                    let brush = Brush::Pattern(PatternBrush::new_resource(
+                        id,
+                        [2.0, 0.0, 0.0, 3.0, 4.0, 5.0],
+                        extend,
+                        sampling,
+                        opacity,
+                    ));
                     let mut words = Vec::new();
                     let (offset, len) = push_encoded_brush(&mut words, &brush);
                     let decoded = decode_encoded_brush(&words, offset, len).unwrap();
@@ -271,26 +268,20 @@ fn encoded_brush_blob_round_trips_variable_payload_brushes() {
     let scene_key = ImageKey::new(0x2234_5678_9abc_def0);
     let brushes = [
         Brush::Solid(peniko::Color::from_rgba8(64, 128, 255, 128)),
-        Brush::Pattern(
-            PatternBrush::new_resource(
-                ImageResourceId::renderer(renderer_key),
-                [2.0, 0.0, 0.0, 3.0, 5.0, 7.0],
-                Extend::Reflect,
-                PatternSampling::Bilinear,
-                200,
-            )
-            .unwrap(),
-        ),
-        Brush::Pattern(
-            PatternBrush::new_resource(
-                ImageResourceId::scene(scene_key),
-                [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-                Extend::Repeat,
-                PatternSampling::Nearest,
-                255,
-            )
-            .unwrap(),
-        ),
+        Brush::Pattern(PatternBrush::new_resource(
+            ImageResourceId::renderer(renderer_key),
+            [2.0, 0.0, 0.0, 3.0, 5.0, 7.0],
+            Extend::Reflect,
+            PatternSampling::Bilinear,
+            200,
+        )),
+        Brush::Pattern(PatternBrush::new_resource(
+            ImageResourceId::scene(scene_key),
+            [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            Extend::Repeat,
+            PatternSampling::Nearest,
+            255,
+        )),
     ];
     let mut blob = Vec::new();
     let ranges = brushes

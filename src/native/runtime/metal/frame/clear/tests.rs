@@ -134,7 +134,7 @@ fn attachment_clear_preserves_all_channel_bytes_and_partial_dispatch_pixels() ->
     drop(batch);
     frame.command.commit();
     frame.wait()?;
-    assert_eq!(frame.readback()?, expected);
+    assert_eq!(frame.readback(), expected);
     metal.assert_valid()
 }
 
@@ -192,7 +192,7 @@ fn attachment_clear_observes_gpu_written_uniform() -> Result<()> {
     drop(batch);
     frame.command.commit();
     frame.wait()?;
-    assert_eq!(frame.readback()?, [color.repeat(323)]);
+    assert_eq!(frame.readback(), [color.repeat(323)]);
     metal.assert_valid()
 }
 

@@ -8,6 +8,8 @@ use encoding::Encoding;
 mod ordering_tests;
 mod pass;
 mod readback;
+#[cfg(test)]
+mod readback_tests;
 mod render;
 mod resources;
 use super::{Metal, Object, Result, memory, pipeline};
@@ -182,7 +184,7 @@ impl Frame {
             .wait(&self.command, std::time::Duration::from_secs(30))?;
         Ok(())
     }
-    pub fn readback(self) -> Result<Vec<Vec<u8>>> {
+    pub fn readback(self) -> Vec<Vec<u8>> {
         self.outputs.iter().map(readback::Output::read).collect()
     }
 }
