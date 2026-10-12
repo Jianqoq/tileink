@@ -47,8 +47,15 @@ cmake -S target/toolchains/dxc-src-v1.8.2502 -B target/toolchains/dxc-v1.8.2502 
   -DHLSL_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_TESTS=OFF -DSPIRV_BUILD_TESTS=OFF -DLLVM_ENABLE_ZLIB=OFF
 cmake --build target/toolchains/dxc-v1.8.2502 --target dxc dxcompiler dxildll --parallel 6
 export TILEINK_NATIVE_DXC_PATH="$PWD/target/toolchains/dxc-v1.8.2502/bin/dxc"
+export TILEINK_TEST_POWERSHELL=/absolute/path/to/pwsh
 TILEINK_TEST_GPU="$TILEINK_NATIVE_GPU" scripts/mac/run_tests.sh -- --include-ignored
 ```
+
+Running every ignored test also requires a real [PowerShell installation](https://learn.microsoft.com/powershell/scripting/install/install-powershell-on-macos).
+Set `TILEINK_TEST_POWERSHELL` to its absolute executable path. The PowerShell runner
+regressions execute the shipped scripts and a native child process; they are
+ignored on non-Windows hosts unless explicitly selected. Windows CI runs them
+with Windows PowerShell automatically.
 
 The Clang diagnostic option permits this fixed DXC version's old standard-library
 trait declarations with recent Apple SDKs. Compiler discovery hashes the macOS

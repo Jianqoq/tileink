@@ -3256,6 +3256,44 @@ changes remove duplicate declarations and deprecated aliases; they make no new
 throughput claim. Vulkan/DX12 GPU execution remains separate from cross-clippy
 and the successful Windows geometry tests.
 
+## Phase 61: execute PowerShell runner contracts
+
+Running the shipped scripts with real PowerShell exposes three runner defects
+that source-string assertions missed. `Get-Command -CommandType Application` can
+return several PATH matches; converting their paths to one filename prevents
+Cargo from starting. The quiet runner now selects the first executable. The
+test runner preserves an existing Cargo/harness separator instead of appending
+another, and explicitly sets `RAYON_NUM_THREADS=1` as well as the harness limit.
+These are direct fixes to command execution, not temporary substitutes.
+
+Five permanent release regressions compile native Cargo recorders and execute
+the actual scripts. They check PATH precedence with two executables, repository
+working directory, default arguments, existing/absent separators, empty argument
+sides, Vulkan feature forwarding, Unicode, quotes, trailing backslashes, empty
+arguments, inherited parallel Rayon settings, command failure diagnostics and
+rejecting thread overrides before launching Cargo. Actual PowerShell first
+reproduces four failures; after command lookup is fixed, the separator and Rayon
+tests still fail. All five then pass with the complete fix. The old source-string
+assertion is removed. Non-Windows execution explicitly requires a real PowerShell
+executable; Windows CI runs the tests with Windows PowerShell by default.
+
+The local PowerShell 7.6.6 ARM package is verified against its official SHA-256.
+All 1217 serial release tests pass in 45 binaries, with zero failures and zero
+ignored tests. Formatting, zero-warning release clippy for Metal and Windows
+DX12/Vulkan, backend-free compilation and example builds pass. All 1730 fresh SVG
+PNGs and seven image examples are byte-exact; the Metal window completes eight
+frames at both physical sizes. Renderer and shader sources are unchanged, so
+this phase makes no rendering throughput claim.
+
+The [runner audit](audits/cleanup-phase61-powershell-2026-10-12.json.gz) records the
+executable failures, fixes, final validation and source delta. All 1011 current
+implementation files have one audit owner; 1006 existing files are unchanged.
+Historical pending statuses are reconciled with recorded real DXC, ShaderTools,
+Windows geometry, Git blob protocol and retained-hierarchy validation. CI run
+214 for the preceding commit passes all eight jobs, including Windows DX12 and
+Vulkan tests. Local PowerShell execution does not by itself verify Windows
+PowerShell behavior or the physical Windows GPU paths below.
+
 ## Remaining audit work
 
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.

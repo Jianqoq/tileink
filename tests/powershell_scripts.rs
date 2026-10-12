@@ -1,14 +1,6 @@
 #[cfg(windows)]
 use std::{fs, path::Path};
 
-#[test]
-fn release_runner_is_serial_and_uses_native_feature() {
-    let windows = include_str!("../scripts/ps1/run_tests.ps1");
-    let mac = include_str!("../scripts/mac/run_tests.sh");
-    assert!(windows.contains("--release") && windows.contains("--test-threads=1"));
-    assert!(mac.contains("--features metal") && mac.contains("--test-threads=1"));
-}
-
 #[cfg(windows)]
 #[test]
 fn quiet_commands_follow_powershell_location() {

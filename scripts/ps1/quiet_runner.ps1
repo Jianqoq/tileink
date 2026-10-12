@@ -93,7 +93,10 @@ function Invoke-QuietCommand {
 
     Add-QuietLog -LogPath $LogPath -Text "`n===== $Label =====`n"
     try {
-        $command = Get-Command -Name $FilePath -CommandType Application -ErrorAction Stop
+        # Application lookup can return every PATH match. Launch the first one,
+        # rather than converting several executable paths into one invalid name.
+        $command = Get-Command -Name $FilePath -CommandType Application -ErrorAction Stop |
+            Select-Object -First 1
         $start = [System.Diagnostics.ProcessStartInfo]::new()
         $start.FileName = $command.Source
         # Push-Location does not change the native process directory. Propagate it
