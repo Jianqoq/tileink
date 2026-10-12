@@ -76,17 +76,17 @@ float4 sample_level(uint index, float2 p, float4 metadata) {
 float4 shallow_blur(float2 p, float sigma, float4 metadata) {
     float weights[7];
     float total = 0;
-    [unroll] for (int i = 0; i < 7; ++i) {
-        float d = float(i - 3);
-        weights[i] = exp(-0.5 * d * d / (sigma * sigma));
-        total += weights[i];
+    [unroll] for (int weight_index = 0; weight_index < 7; ++weight_index) {
+        float d = float(weight_index - 3);
+        weights[weight_index] = exp(-0.5 * d * d / (sigma * sigma));
+        total += weights[weight_index];
     }
     float offsets[4], combined[4];
-    for (int i = 0; i < 4; ++i) {
-        int first = i * 2;
+    for (int pair_index = 0; pair_index < 4; ++pair_index) {
+        int first = pair_index * 2;
         float second = first + 1 < 7 ? weights[first + 1] : 0;
-        combined[i] = weights[first] + second;
-        offsets[i] = float(first - 3) + (combined[i] > 0 ? second / combined[i] : 0);
+        combined[pair_index] = weights[first] + second;
+        offsets[pair_index] = float(first - 3) + (combined[pair_index] > 0 ? second / combined[pair_index] : 0);
     }
     float4 color = 0;
     for (int y = 0; y < 4; ++y)

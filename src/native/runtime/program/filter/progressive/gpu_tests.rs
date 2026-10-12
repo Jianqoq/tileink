@@ -126,7 +126,7 @@ fn progressive_gpu_preserves_premultiplication_and_handles_tiny_odd_images() -> 
                 if sigma == 0.0 {
                     assert_eq!(output, input);
                 }
-                for p in output.chunks_exact(4) {
+                for p in output.as_chunks::<4>().0 {
                     assert_eq!(p[0], p[3]);
                     assert_eq!(&p[1..3], &[0, 0]);
                 }

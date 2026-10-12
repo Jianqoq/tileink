@@ -118,8 +118,10 @@ fn decode_image(size: (u32, u32), mut outputs: Vec<Vec<u8>>) -> Result<Image, Na
         height: size.1,
         // Preserve already-premultiplied bytes; Image::from_rgba8 would multiply alpha again.
         pixels: bytes
-            .chunks_exact(4)
-            .map(|pixel| u32::from_le_bytes(pixel.try_into().unwrap()))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|&pixel| u32::from_le_bytes(pixel))
             .collect(),
     })
 }

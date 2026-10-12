@@ -53,8 +53,10 @@ fn scan_count_matches_cpu_clipped_tile_counts_and_keeps_guards() -> Result<()> {
             let outputs = device.readback_batch(&ticket)?;
             for output in &outputs {
                 let words: Vec<u32> = output
-                    .chunks_exact(4)
-                    .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|&b| u32::from_le_bytes(b))
                     .collect();
                 assert!(
                     words[..7]
@@ -64,8 +66,10 @@ fn scan_count_matches_cpu_clipped_tile_counts_and_keeps_guards() -> Result<()> {
                 );
             }
             let total: u32 = outputs[1][28..284]
-                .chunks_exact(4)
-                .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|&b| u32::from_le_bytes(b))
                 .sum();
             assert_eq!(
                 total,

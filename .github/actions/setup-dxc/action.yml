@@ -1,0 +1,9 @@
+name: Install pinned DXC
+description: Verify and install the native DXC release required by CI builds.
+runs:
+  using: composite
+  steps:
+    - run: python -m unittest discover -s tests -p dxc_installer_test.py
+      shell: bash
+    - run: python "${{ github.action_path }}/install.py"
+      shell: bash

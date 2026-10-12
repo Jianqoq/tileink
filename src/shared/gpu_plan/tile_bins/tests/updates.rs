@@ -241,7 +241,11 @@ fn local_motion_does_not_trigger_whole_scene_bin_rebuild() {
     build_tile_draw_bins_into(&canvas, &plan, &mut bins, &mut Vec::new());
     canvas.draw_records[1].pixel_bounds.x0 += 16;
     canvas.draw_records[1].pixel_bounds.x1 += 16;
-    assert!(!bins.spatial_change_is_dense(&canvas.draw_records, (20, 20), &[1..2]));
+    assert!(!bins.spatial_change_is_dense(
+        &canvas.draw_records,
+        (20, 20),
+        std::slice::from_ref(&(1..2))
+    ));
 }
 
 #[test]

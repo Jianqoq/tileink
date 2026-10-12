@@ -6,6 +6,8 @@ on:
     branches: [main]
 permissions:
   contents: read
+env:
+  RAYON_NUM_THREADS: "1"
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -20,6 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-dxc
       - run: rustup component add clippy
       - run: cargo clippy --release --all-targets --no-default-features --features vulkan -- -D warnings
   tests:
@@ -33,5 +36,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-dxc
+        if: runner.os != 'macOS'
       - run: cargo test --release --no-default-features --features ${{ matrix.feature }} -- --test-threads=1
+      - run: cargo test --release --no-default-features --features ${{ matrix.feature }} --test native_shader_compiler -- --test-threads=1 --include-ignored
+        if: runner.os != 'macOS'
       - run: cargo build --release --no-default-features --features ${{ matrix.feature }} --examples

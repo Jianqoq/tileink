@@ -9,7 +9,7 @@ pub(super) fn emission_scene(
 ) -> CountScene {
     let mut scene = count_scene(draws, linked, stack);
     scene.reserve_streams(capacity, 3);
-    for draw in scene.draws.chunks_exact_mut(31) {
+    for draw in scene.draws.as_chunks_mut::<31>().0 {
         draw[6] = u32::MAX;
     }
     let mut stream = Vec::new();
@@ -56,7 +56,7 @@ pub(super) fn emission_scene(
 pub(super) fn paint_scene(mode: u32, bins: bool) -> CountScene {
     let mut scene = count_scene(1, false, 0);
     scene.reserve_streams(8, if mode == 16 { 2 } else { 8 });
-    for draw in scene.draws.chunks_exact_mut(31) {
+    for draw in scene.draws.as_chunks_mut::<31>().0 {
         draw[6] = u32::MAX;
     }
     scene.draws[6] = 0;
@@ -199,7 +199,7 @@ pub(super) fn emission_grid_scene(mode: u32) -> CountScene {
         .map(|n| if *n == 0 { 0 } else { n + 1 })
         .sum::<u32>();
     scene.reserve_streams(capacity + 3, 0);
-    for draw in scene.draws.chunks_exact_mut(31) {
+    for draw in scene.draws.as_chunks_mut::<31>().0 {
         draw[6] = u32::MAX;
     }
     let selected: Vec<usize> = if mode == 1 {

@@ -3176,8 +3176,47 @@ performance gain is claimed. All implementation files have been read and have on
 audit owner. Local hierarchy/caller and file/module entry tracing is complete;
 the external runtime checks below remain open.
 
+## Phase 59: provision real CI compilers and verify the HLSL editor
+
+The actual CI run for `961fbd4e` failed on Linux tests, Windows tests and Linux
+clippy before executing tests: no DXC compiler had been installed. The shared CI
+action now downloads the explicitly selected official v1.8.2502 package, verifies
+its SHA-256, extracts it and successfully probes the compiler before publishing
+its absolute path. Unsupported hosts, download errors, checksum failures and
+failed probes propagate; an existing compiler cannot hide these failures. Six
+provisioning regressions cover both supported packages and these failure paths.
+Linux and Windows also run the actual DXC conformance tests, including all 84
+entry points and 108 standalone headers for both DXIL and SPIR-V. CI limits Rayon
+and the Rust test harness to one thread.
+
+Official ShaderTools source at `3cb3e76a8a5a35daf6f8e6fa5c32da7facf7175a` is
+built unmodified for ARM macOS with the verified official .NET 6.0.428 SDK. The
+real editor test initially reports HLSL0047 in `progressive.hlsl`: two loops reuse
+the control variable name `i`. Distinct weight/pair indices resolve the warning.
+All 157 HLSL/header files now complete the required nonempty-diagnostics then
+explicit-empty-diagnostics round trip against that server. The existing editor
+test is the permanent regression; a silent server cannot satisfy it.
+
+Fixed-size array chunks replace redundant slice-to-array conversions in readback
+and tests. The readback length remains validated before decoding. A one-range
+test argument uses an explicit slice reference. Release clippy now passes with
+zero warnings, including all targets. All 1211 release tests pass in 44 binaries
+with zero ignored tests; focused readback, progressive blur and real DXC tests
+pass. Backend-free compilation, example builds and Windows DX12/Vulkan all-targets
+type checks pass. All 1730 fresh SVG PNGs and seven example images are byte-exact;
+the presentation smoke completes eight frames. Progressive Metal, DXIL and SPIR-V
+compiled binaries are byte-exact after the index rename. No throughput gain is
+claimed for these tooling and lint changes.
+
+The [CI/editor audit](audits/cleanup-phase59-ci-editor-2026-10-12.json.gz) records
+the original CI failures, pinned downloads, actual editor build, validation hashes
+and the source delta against Phase 58. All 1009 implementation files have one
+audit owner; the other 999 existing implementation files are unchanged. The CI
+repair addresses the missing build prerequisite directly; it does not skip a
+shader check or substitute a compiler. A subsequent real CI run is required to
+verify execution on Linux and Windows. Local cross-compilation is not that proof.
+
 ## Remaining audit work
 
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
-- Execute the HLSL editor test against the actual ShaderTools language server; local protocol regressions pass, but the server is unavailable locally.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.
