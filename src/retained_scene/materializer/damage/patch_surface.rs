@@ -27,7 +27,7 @@ impl PersistentSceneMaterializer {
                 let old = frame.node_state(id)?;
                 let node = &scene.nodes[&id];
                 let new = crate::canvas::RetainedNodeState {
-                    revision: NodeGeneration::new(node.generation),
+                    revision: NodeRevision::new(node.instance, node.generation),
                     ..old
                 };
                 (old != new).then_some(RetainedNodePatch {
@@ -101,7 +101,7 @@ impl PersistentSceneMaterializer {
             let Some(&index) = frame.node_index.get(id) else {
                 continue;
             };
-            nodes[index].revision = NodeGeneration::new(metadata.generation);
+            nodes[index].revision = NodeRevision::new(metadata.instance, metadata.generation);
         }
     }
 }

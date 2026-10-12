@@ -60,6 +60,15 @@ Opacity／Blend 包含离屏子层时，在该子树合成完成后应用到整�
 普通 leaf 插入只复用其实际绘制位置相邻的执行 batch，不能跨越 clip、filter 等执行边界。
 Group 在查找相邻命令时展开；空 layer 的 content 和 mask 分支各自保留独立 batch。
 
+RetainedNodeId 标识可重复使用的逻辑位置，每次重新插入都会创建新的 instance。
+内部 NodeRevision 同时包含 instance 与 generation，命令、damage frame 和 surface 缓存使用同一修订身份。
+因此同 ID 节点重新从 generation 0 开始时，仍会刷新其像素和离屏缓存。
+同 ID 的 Scene／Group 替换直接删除旧命令或插入新命令；journal 过期后的元数据重建也会记录旧实例退役。
+
+根范围复用要求旧 plan 只有一个不带 layer stack 的 batch，且当前 Scene chunk 是普通绘制。
+没有背景依赖并不代表执行结构可以复用：Scene 自己也可以包含 clip 或 filter。
+跨离屏边界的普通内容按实际相邻 batch 更新，layer 内的移动同时同步权威命令顺序。
+
 根级 fragment 按实际 command scope 索引，Group 内的根级 layer 同样保留所有权。
 纯离屏图层重排先验证完整的操作排列，再同步命令位置与 fragment 范围；随后删除仍共享其他子树的 draw 存储。
 同事务的参数、类型或依赖 surface 的描述变化需要编译当前结构。

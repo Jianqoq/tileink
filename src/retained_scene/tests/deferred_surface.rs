@@ -50,7 +50,7 @@ fn resize_with_layer_updates_defers_full_frame_and_spatial_rebuild() {
     assert_eq!(resized.logical_size, (96, 64));
     assert_eq!(
         resized.node_state(clip).unwrap().revision,
-        NodeGeneration::new(scene.nodes[&clip].generation),
+        NodeRevision::new(scene.nodes[&clip].instance, scene.nodes[&clip].generation),
         "resize frames must publish current revisions for retained surface cache keys"
     );
     assert!(materializer.surface_metadata_stale);

@@ -9,6 +9,7 @@ mod damage;
 mod draw_order;
 mod helpers;
 mod lifecycle;
+mod metadata;
 mod plan;
 mod scoped_damage;
 mod spatial_tiles;
@@ -247,7 +248,7 @@ pub(crate) struct PersistentSceneMaterializer {
     pub(crate) surface_dependent_plans: HashSet<RetainedNodeId>,
     painter_bases: HashMap<RetainedNodeId, Rc<[u128]>>,
     painter_parents: HashMap<RetainedNodeId, RetainedParent>,
-    flat_plan_has_draws: bool,
+    plan_has_batches: bool,
     node_bounds: HashMap<RetainedNodeId, Bounds>,
     pub(crate) raw_node_bounds: HashMap<RetainedNodeId, Bounds>,
     /// Conservative fixed domains for bounded translations. Keeping these out of every tile's

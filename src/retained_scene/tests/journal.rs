@@ -135,6 +135,9 @@ fn long_content_delta_chain_compacts_into_state_pages() {
     assert!(frame.delta.as_ref().unwrap().previous.is_none());
     assert_eq!(
         frame.node_revision(RetainedNodeId::for_owner(82_001)),
-        Some(NodeGeneration::new(1))
+        Some(NodeRevision::new(
+            scene.nodes[&RetainedNodeId::for_owner(82_001)].instance,
+            1
+        ))
     );
 }

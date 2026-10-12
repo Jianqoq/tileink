@@ -11,6 +11,16 @@ fn revision_change_dirties_union_of_old_and_new_tiles() {
 }
 
 #[test]
+fn a_new_instance_with_the_same_generation_dirties_its_unchanged_bounds() {
+    let old = frame(&[(2, 0, Bounds::new(16, 0, 32, 16))]);
+    let mut new = old.clone();
+    Rc::make_mut(&mut new.nodes)[0].revision = NodeRevision::new(2, 0);
+    let mut damage = DamageTiles::new(new.physical_size);
+    diff_frames(&old, &new, &mut damage, &mut RetainedDamage::default());
+    assert_eq!(damage.list(), &[1]);
+}
+
+#[test]
 fn removal_delta_is_resolved_before_the_same_id_is_reinserted() {
     let mut removed = frame(&[(2, 0, Bounds::new(16, 0, 32, 16))]);
     let old = removed.nodes[0];
@@ -49,7 +59,7 @@ fn overlay_only_insertion_participates_in_fallback_damage() {
     let mut current = frame(&[]);
     let inserted = RetainedNodeState {
         id: RetainedNodeId::for_owner(2),
-        revision: NodeGeneration::new(0),
+        revision: NodeRevision::new(1, 0),
         bounds: Bounds::new(32, 0, 48, 16),
         kind: RetainedNodeKind::Scene,
     };
@@ -85,7 +95,7 @@ fn overlay_only_insertion_participates_in_fallback_damage() {
 fn compacted_state_equal_to_the_rebuilt_base_adds_no_damage() {
     let mut previous = frame(&[(2, 0, Bounds::new(16, 0, 32, 16))]);
     let logical = RetainedNodeState {
-        revision: NodeGeneration::new(1),
+        revision: NodeRevision::new(1, 1),
         ..previous.nodes[0]
     };
     previous.state_pages = std::rc::Rc::new(
@@ -111,7 +121,7 @@ fn retained_layer_revision_change_dirties_its_bounds() {
     let mut previous = frame(&[(2, 0, Bounds::new(16, 0, 32, 16))]);
     Rc::make_mut(&mut previous.nodes)[0].kind = RetainedNodeKind::Layer;
     let mut current = previous.clone();
-    Rc::make_mut(&mut current.nodes)[0].revision = NodeGeneration::new(1);
+    Rc::make_mut(&mut current.nodes)[0].revision = NodeRevision::new(1, 1);
     let mut damage = DamageTiles::new(current.physical_size);
 
     diff_frames(

@@ -34,7 +34,7 @@ fn id(node: u64, slot: u32) -> RetainedSurfaceId {
 
 fn meta(kind: RetainedSurfaceKind) -> RetainedSurfaceMeta {
     RetainedSurfaceMeta {
-        revision: NodeGeneration::new(1),
+        revision: NodeRevision::new(1, 1),
         kind,
         size: (16, 16),
         origin: (0, 0),

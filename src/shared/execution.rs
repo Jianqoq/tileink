@@ -16,7 +16,7 @@ use std::{collections::HashMap, ops::Range, rc::Rc};
 use peniko::BlendMode;
 
 use crate::{
-    NodeGeneration, PersistentLayerKey, RetainedNodeId,
+    NodeRevision, PersistentLayerKey, RetainedNodeId,
     canvas::RetainedSurfaceId,
     shared::layer::{Layer, mask::Mask},
 };
@@ -53,7 +53,7 @@ pub(crate) enum Command {
     Draw(usize),
     MaterializedRetainedScene {
         id: RetainedNodeId,
-        revision: NodeGeneration,
+        revision: NodeRevision,
         children: CommandListId,
     },
     Layer {

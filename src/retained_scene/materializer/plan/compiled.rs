@@ -30,7 +30,7 @@ impl PersistentSceneMaterializer {
             }
         }
         self.empty_branch_batches.clear();
-        self.flat_plan_has_draws = exec_ops_have_batches(&plan.ops);
+        self.plan_has_batches = exec_ops_have_batches(&plan.ops);
     }
 
     /// Install actual per-draw membership and replace each affected leaf's classification.

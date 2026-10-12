@@ -27,19 +27,21 @@ impl RetainedNodeId {
     }
 }
 
-/// Internal generation attached to persistent materialized commands and surfaces.
+/// Instance identity and local generation form one materialized revision.
+/// A reused node ID may restart its generation; damage and surface caches must
+/// still distinguish that new instance from the retired node's content.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub(crate) struct NodeGeneration(u64);
-
-impl NodeGeneration {
-    pub const fn new(value: u64) -> Self {
-        Self(value)
-    }
+pub(crate) struct NodeRevision {
+    instance: u64,
+    generation: u64,
 }
 
-impl From<u64> for NodeGeneration {
-    fn from(value: u64) -> Self {
-        Self(value)
+impl NodeRevision {
+    pub const fn new(instance: u64, generation: u64) -> Self {
+        Self {
+            instance,
+            generation,
+        }
     }
 }
 
@@ -47,11 +49,11 @@ impl From<u64> for NodeGeneration {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct PersistentLayerKey {
     pub(crate) id: RetainedNodeId,
-    pub(crate) revision: NodeGeneration,
+    pub(crate) revision: NodeRevision,
 }
 
 impl PersistentLayerKey {
-    pub const fn new(id: RetainedNodeId, revision: NodeGeneration) -> Self {
+    pub const fn new(id: RetainedNodeId, revision: NodeRevision) -> Self {
         Self { id, revision }
     }
 }
@@ -77,7 +79,7 @@ pub(crate) enum RetainedNodeKind {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct RetainedNodeState {
     pub(crate) id: RetainedNodeId,
-    pub(crate) revision: NodeGeneration,
+    pub(crate) revision: NodeRevision,
     pub(crate) bounds: Bounds,
     pub(crate) kind: RetainedNodeKind,
 }

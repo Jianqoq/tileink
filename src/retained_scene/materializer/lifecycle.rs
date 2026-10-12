@@ -39,7 +39,7 @@ impl PersistentSceneMaterializer {
             surface_dependent_plans: HashSet::default(),
             painter_bases: HashMap::default(),
             painter_parents: HashMap::default(),
-            flat_plan_has_draws: false,
+            plan_has_batches: false,
             node_bounds: HashMap::default(),
             raw_node_bounds: HashMap::default(),
             bounded_node_bounds: HashMap::default(),
@@ -197,19 +197,11 @@ impl PersistentSceneMaterializer {
             || !changes.changed_nodes.is_empty()
             || !changes.removed_nodes.is_empty();
         let previous_frame = Rc::make_mut(&mut self.canvas).persistent_frame.clone();
+        let root_flat_batch = self.flat_root_batch();
         let mut delta_eligible =
             !changes.topology_changed && !surface_changed && self.dependency_free;
-        let topology_delta_eligible = changes.topology_changed
-            && self.dependency_free
-            && previous_frame.as_ref().is_some_and(|frame| {
-                changes.changed_nodes.iter().all(|id| {
-                    matches!(
-                        scene.nodes.get(id).map(|node| &node.kind),
-                        Some(NodeKind::Group)
-                    ) || frame.node_state(*id).is_none()
-                })
-            });
         let root_reorder_candidate = changes.topology_changed
+            && root_flat_batch.is_some()
             && changes.removed_nodes.is_empty()
             && previous_frame.as_ref().is_some_and(|frame| {
                 changes.changed_nodes.iter().all(|id| {
@@ -237,17 +229,7 @@ impl PersistentSceneMaterializer {
         let mut stable_batch_candidate = !changes.topology_changed;
         let mut reorder_damage = Vec::new();
         let mut plain_topology_damage = Vec::new();
-        let root_painter_update = changes.topology_changed
-            && self.dependency_free
-            && changes.changed_nodes.iter().all(|id| {
-                scene.nodes.get(id).is_none_or(|node| match node.kind {
-                    NodeKind::Group => node.content.is_empty(),
-                    NodeKind::Scene { .. } => true,
-                    NodeKind::Layer(_) => false,
-                })
-            });
-
-        let flat_plan_had_draws = self.flat_plan_has_draws;
+        let plan_had_batches = self.plan_has_batches;
         let removed_plain_leaves = changes.removed_nodes.iter().all(|id| {
             self.chunks
                 .get(id)
@@ -388,6 +370,32 @@ impl PersistentSceneMaterializer {
             self.resize_surface_chunks(scene, &mut surface_resized_painter_nodes);
         }
         self.dependency_free = self.layer_nodes.is_empty() && self.nonlocal_dependencies.is_empty();
+        // Select flat reuse only after current chunks have supplied their real structure.
+        let flat_root_changes = changes.topology_changed
+            && root_flat_batch.is_some()
+            && self.dependency_free
+            && changes.changed_nodes.iter().all(|id| {
+                scene.nodes.get(id).is_none_or(|node| match node.kind {
+                    NodeKind::Group => true,
+                    NodeKind::Scene { .. } => self.chunks[id].plain_fragment,
+                    NodeKind::Layer(_) => false,
+                })
+            });
+        let topology_delta_eligible = flat_root_changes
+            && previous_frame.as_ref().is_some_and(|frame| {
+                changes.changed_nodes.iter().all(|id| {
+                    matches!(
+                        scene.nodes.get(id).map(|node| &node.kind),
+                        Some(NodeKind::Group)
+                    ) || frame.node_state(*id).is_none()
+                })
+            });
+        let root_painter_update = flat_root_changes
+            && changes.changed_nodes.iter().all(|id| {
+                scene.nodes.get(id).is_none_or(|node| {
+                    !matches!(node.kind, NodeKind::Group) || node.content.is_empty()
+                })
+            });
         if scoped_dependencies_changed
             || (!self.nonlocal_dependencies.is_empty()
                 && changes
@@ -619,8 +627,8 @@ impl PersistentSceneMaterializer {
                     let parent = node.parent.expect("retained scene leaf has parent");
                     self.painter_bases.insert(id, base);
                     self.painter_parents.insert(id, parent);
-                    if self.dependency_free {
-                        self.node_batches.entry(id).or_insert(0);
+                    if let Some(batch) = root_flat_batch {
+                        self.node_batches.entry(id).or_insert(batch);
                     }
                 }
                 self.update_painter_metadata_with_additional(
@@ -663,7 +671,7 @@ impl PersistentSceneMaterializer {
                 // classification leaves the plan dirty, or a patch/compaction branch above
                 // has already handled it. Avoid repeating both node and chunk hash lookups.
                 let stable_batches_remain = stable_batch_candidate && !plan_dirty;
-                if stable_batches_remain && flat_plan_had_draws && self.flat_plan_has_draws {
+                if stable_batches_remain && plan_had_batches && self.plan_has_batches {
                     // Content-only updates with stable physical allocations cannot change painter
                     // paths or BatchIds. The old path rewrote and compared every changed draw,
                     // making an all-node revision pay a second O(changes) metadata walk after the
@@ -683,15 +691,15 @@ impl PersistentSceneMaterializer {
             && !nested_offscreen_plan_patched
             && !nested_offscreen_hierarchy_patched
             && !root_offscreen_reorder_patched
-            && flat_plan_had_draws
-            && self.flat_plan_has_draws
+            && plan_had_batches
+            && self.plan_has_batches
             && !compacted;
         if topology_delta_plan_reused {
             commands_dirty = false;
             plan_dirty = false;
         }
         let flat_topology_plan_reused =
-            (plain_topology_candidate || root_painter_update) && flat_plan_had_draws && !compacted;
+            (plain_topology_candidate || root_painter_update) && plan_had_batches && !compacted;
         if flat_topology_plan_reused {
             commands_dirty = false;
             plan_dirty = false;
@@ -708,14 +716,8 @@ impl PersistentSceneMaterializer {
                 }
             }
         }
-        if (topology_delta_plan_reused || flat_topology_plan_reused)
-            && !self.sync_flat_topology_commands(scene, &changes)
-        {
-            // Candidate detection is intentionally conservative, but an unexpected layer/group
-            // shape must still take the authoritative full path instead of leaving stale command
-            // locations behind.
-            commands_dirty = true;
-            plan_dirty = true;
+        if topology_delta_plan_reused || flat_topology_plan_reused {
+            self.sync_flat_topology_commands(scene, &changes);
         }
         let root_reorder_eligible = root_reorder_candidate && chunks_rebuilt == 0 && !compacted;
         if root_reorder_eligible {
@@ -902,7 +904,7 @@ impl PersistentSceneMaterializer {
         self.resource_refs.clear();
         self.painter_bases.clear();
         self.painter_parents.clear();
-        self.flat_plan_has_draws = false;
+        self.plan_has_batches = false;
         self.node_bounds.clear();
         self.raw_node_bounds.clear();
         self.bounded_node_bounds.clear();
@@ -950,93 +952,6 @@ impl PersistentSceneMaterializer {
             .copied()
             .map(|id| (id, Self::scene_node_metadata(scene, id)))
             .collect();
-    }
-
-    pub(crate) fn reconcile_scene_metadata(&self, scene: &RetainedScene) -> SceneChangeSet {
-        let mut changes = SceneChangeSet {
-            invalidate_all: true,
-            surface_changed: self.canvas.logical_width != scene.width
-                || self.canvas.logical_height != scene.height
-                || self.canvas.scale_factor().to_bits() != scene.scale.to_bits(),
-            ..Default::default()
-        };
-        changes.removed_nodes.extend(
-            self.node_metadata
-                .keys()
-                .filter(|id| !scene.nodes.contains_key(id))
-                .copied(),
-        );
-        if !changes.removed_nodes.is_empty() {
-            changes.topology_changed = true;
-            changes.hierarchy_changed = true;
-        }
-        for &id in scene.nodes.keys() {
-            let current = Self::scene_node_metadata(scene, id);
-            let Some(previous) = self.node_metadata.get(&id).copied() else {
-                changes.changed_nodes.insert(id);
-                changes.topology_changed = true;
-                changes.hierarchy_changed = true;
-                continue;
-            };
-            if current == previous {
-                continue;
-            }
-            changes.changed_nodes.insert(id);
-            if current.instance != previous.instance
-                || current.parent != previous.parent
-                || current.order_key != previous.order_key
-                || current.kind != previous.kind
-            {
-                changes.topology_changed = true;
-                changes.hierarchy_changed = true;
-            } else if current.kind == NodeKindTag::Layer
-                && current.generation != previous.generation
-            {
-                changes.changed_layers.insert(id);
-                changes.topology_changed = true;
-            }
-            if current.instance != previous.instance && current.kind == NodeKindTag::Layer {
-                changes.changed_layers.insert(id);
-            }
-        }
-        changes
-    }
-
-    pub(crate) fn sync_node_metadata(&mut self, scene: &RetainedScene, changes: &SceneChangeSet) {
-        for id in &changes.removed_nodes {
-            self.node_metadata.remove(id);
-        }
-        for &id in &changes.changed_nodes {
-            if scene.nodes.contains_key(&id) {
-                self.node_metadata
-                    .insert(id, Self::scene_node_metadata(scene, id));
-            }
-        }
-    }
-
-    pub(crate) fn scene_node_metadata(
-        scene: &RetainedScene,
-        id: RetainedNodeId,
-    ) -> MaterializedNodeMetadata {
-        let node = &scene.nodes[&id];
-        let order_key = node.parent.map(|parent| {
-            scene.nodes[&parent.node]
-                .children(parent)
-                .expect("validated retained branch")
-                .key_of(id)
-                .expect("retained child has an order key")
-        });
-        MaterializedNodeMetadata {
-            instance: node.instance,
-            generation: node.generation,
-            parent: node.parent,
-            order_key,
-            kind: match &node.kind {
-                NodeKind::Group => NodeKindTag::Group,
-                NodeKind::Scene { .. } => NodeKindTag::Scene,
-                NodeKind::Layer(_) => NodeKindTag::Layer,
-            },
-        }
     }
 }
 

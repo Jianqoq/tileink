@@ -10,7 +10,7 @@ use crate::render::{
     retained::RetainedRenderState,
     retained_surfaces::{RetainedSurfaceKind, SurfaceAllocation},
 };
-use crate::retained_scene::{NodeGeneration, RetainedNodeId};
+use crate::retained_scene::{NodeRevision, RetainedNodeId};
 use crate::shared::{
     bounds::Bounds,
     execution::{ExecOp, ExecPlan, OffscreenLayer},
@@ -140,7 +140,7 @@ impl Adapter {
     }
     pub(crate) fn cached_ids(&mut self, revision: u64) -> (u32, u32) {
         let meta = crate::render::retained_surfaces::RetainedSurfaceMeta {
-            revision: NodeGeneration::new(revision),
+            revision: NodeRevision::new(1, revision),
             kind: self.kind,
             size: (32, 32),
             origin: (4, 8),
@@ -308,7 +308,7 @@ pub(crate) fn id() -> RetainedSurfaceId {
 pub(crate) fn frame(revision: u64) -> RetainedFrame {
     let node = RetainedNodeState {
         id: id().node,
-        revision: NodeGeneration::new(revision),
+        revision: NodeRevision::new(1, revision),
         bounds: Bounds::canvas(32, 32),
         kind: RetainedNodeKind::Scene,
     };

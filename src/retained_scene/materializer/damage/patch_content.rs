@@ -46,7 +46,7 @@ impl PersistentSceneMaterializer {
                 )
             };
             let new = crate::canvas::RetainedNodeState {
-                revision: NodeGeneration::new(node.generation),
+                revision: NodeRevision::new(node.instance, node.generation),
                 // Position-only patches in scenes with layers still need the new influenced
                 // bounds. Keeping `old.bounds` forced later frames to rebuild the full retained
                 // frame/spatial index and missed the moved node's new backdrop dependencies.

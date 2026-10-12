@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{NodeGeneration, RetainedNodeId, canvas::RetainedSurfaceId, shared::bounds::Bounds};
+use crate::{NodeRevision, RetainedNodeId, canvas::RetainedSurfaceId, shared::bounds::Bounds};
 
 /// Allocation accounting for the retained-surface budget.
 ///
@@ -21,7 +21,7 @@ pub(crate) enum RetainedSurfaceKind {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct RetainedSurfaceMeta {
-    pub(crate) revision: NodeGeneration,
+    pub(crate) revision: NodeRevision,
     pub(crate) kind: RetainedSurfaceKind,
     pub(crate) size: (u32, u32),
     pub(crate) origin: (i32, i32),

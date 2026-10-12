@@ -57,7 +57,7 @@ impl PersistentSceneMaterializer {
                 old,
                 new: Some(crate::canvas::RetainedNodeState {
                     id,
-                    revision: NodeGeneration::new(node.generation),
+                    revision: NodeRevision::new(node.instance, node.generation),
                     bounds,
                     kind,
                 }),

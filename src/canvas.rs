@@ -73,7 +73,7 @@ pub use retained::RetainedNodeId;
 pub(crate) mod damage_history;
 
 pub(crate) use retained::{
-    NodeGeneration, PersistentLayerKey, RetainedDamage, RetainedFrame, RetainedFrameDelta,
+    NodeRevision, PersistentLayerKey, RetainedDamage, RetainedFrame, RetainedFrameDelta,
     RetainedNodeKind, RetainedNodePatch, RetainedNodeState, RetainedSurfaceId,
 };
 

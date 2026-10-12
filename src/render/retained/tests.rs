@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    NodeGeneration, RetainedNodeId,
+    NodeRevision, RetainedNodeId,
     canvas::{RetainedNodeKind, RetainedNodeState},
     render::incremental::FullRedrawReason,
 };
@@ -20,7 +20,7 @@ fn state() -> RetainedRenderState<Allocation> {
 fn frame(revision: u64, bounds: Bounds) -> RetainedFrame {
     let node = RetainedNodeState {
         id: RetainedNodeId::for_owner(2),
-        revision: NodeGeneration::new(revision),
+        revision: NodeRevision::new(1, revision),
         bounds,
         kind: RetainedNodeKind::Scene,
     };
@@ -163,7 +163,7 @@ fn surface_id() -> RetainedSurfaceId {
 
 fn surface_meta() -> RetainedSurfaceMeta {
     RetainedSurfaceMeta {
-        revision: NodeGeneration::new(1),
+        revision: NodeRevision::new(1, 1),
         kind: RetainedSurfaceKind::Filter,
         size: (16, 16),
         origin: (4, 8),
@@ -178,7 +178,11 @@ fn every_surface_metadata_component_participates_in_cache_identity() {
     let meta = surface_meta();
     let alternatives = [
         RetainedSurfaceMeta {
-            revision: NodeGeneration::new(2),
+            revision: NodeRevision::new(2, 1),
+            ..meta
+        },
+        RetainedSurfaceMeta {
+            revision: NodeRevision::new(1, 2),
             ..meta
         },
         RetainedSurfaceMeta {

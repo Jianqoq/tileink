@@ -45,7 +45,7 @@ impl RetainedFrame {
         })
     }
 
-    pub(crate) fn node_revision(&self, id: RetainedNodeId) -> Option<NodeGeneration> {
+    pub(crate) fn node_revision(&self, id: RetainedNodeId) -> Option<NodeRevision> {
         self.node_state(id).map(|node| node.revision)
     }
 }

@@ -58,7 +58,7 @@ impl PersistentSceneMaterializer {
                     .commands
                     .push(Command::MaterializedRetainedScene {
                         id,
-                        revision: NodeGeneration::new(node.generation),
+                        revision: NodeRevision::new(node.instance, node.generation),
                         children: fragment.start,
                     });
                 self.scene_command_locations.insert(
@@ -84,7 +84,7 @@ impl PersistentSceneMaterializer {
                     .push(Command::MaskLayer {
                         retained: Some(PersistentLayerKey::new(
                             id,
-                            NodeGeneration::new(node.generation),
+                            NodeRevision::new(node.instance, node.generation),
                         )),
                         layer: mask.clone(),
                         content,
@@ -120,7 +120,7 @@ impl PersistentSceneMaterializer {
                     .push(Command::Layer {
                         retained: Some(PersistentLayerKey::new(
                             id,
-                            NodeGeneration::new(node.generation),
+                            NodeRevision::new(node.instance, node.generation),
                         )),
                         layer: layer.remap_draw(draw_base),
                         children,
@@ -179,7 +179,7 @@ impl PersistentSceneMaterializer {
         Rc::make_mut(&mut self.canvas).command_lists[old.parent_list].commands[old.command_index] =
             Command::MaterializedRetainedScene {
                 id,
-                revision: NodeGeneration::new(scene.nodes[&id].generation),
+                revision: NodeRevision::new(scene.nodes[&id].instance, scene.nodes[&id].generation),
                 children: fragment.start,
             };
         self.scene_command_locations.insert(
@@ -223,7 +223,7 @@ impl PersistentSceneMaterializer {
         let old = Rc::make_mut(&mut self.canvas).command_lists[location.parent_list].commands
             [location.command_index]
             .clone();
-        let generation = NodeGeneration::new(scene.nodes[&id].generation);
+        let revision = NodeRevision::new(scene.nodes[&id].instance, scene.nodes[&id].generation);
         let command = match &scene.nodes[&id].kind {
             NodeKind::Layer(RetainedLayerDescriptor::Mask(mask)) => {
                 let (content, mask_commands) = match old.clone() {
@@ -232,7 +232,7 @@ impl PersistentSceneMaterializer {
                     _ => unreachable!("retained layer location must reference a layer command"),
                 };
                 Command::MaskLayer {
-                    retained: Some(PersistentLayerKey::new(id, generation)),
+                    retained: Some(PersistentLayerKey::new(id, revision)),
                     layer: mask.clone(),
                     content,
                     mask: mask_commands,
@@ -251,7 +251,7 @@ impl PersistentSceneMaterializer {
                     unreachable!("non-mask retained layer chunk has one layer command")
                 };
                 Command::Layer {
-                    retained: Some(PersistentLayerKey::new(id, generation)),
+                    retained: Some(PersistentLayerKey::new(id, revision)),
                     layer: layer.remap_draw(draw_base),
                     children,
                 }

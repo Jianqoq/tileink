@@ -17,7 +17,7 @@ pub const TILE_SCALE: f32 = 1.0 / TILE_SIZE as f32;
 pub const BLOCK_SIZE: u32 = 16 * 16;
 
 pub use canvas::{Canvas, DrawId, RetainedNodeId};
-pub(crate) use canvas::{NodeGeneration, PersistentLayerKey};
+pub(crate) use canvas::{NodeRevision, PersistentLayerKey};
 pub use cosmic_text::{
     Align as TextAlign, Attrs as TextAttrs, CacheKeyFlags as TextCacheKeyFlags,
     Family as TextFamily, FontSystem as TextFontSystem, Stretch as TextStretch, Style as TextStyle,

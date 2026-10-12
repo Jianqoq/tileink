@@ -36,6 +36,18 @@ only an execution batch adjacent to its actual painter position; it cannot cross
 boundaries. Neighbour lookup flattens groups, and empty layer content and mask branches retain
 independent batches.
 
+A RetainedNodeId identifies a reusable logical slot; reinsertion creates a new instance.
+Internal NodeRevision combines instance and generation in commands, damage frames and
+surface-cache metadata. Restarting generation at zero therefore still refreshes the new
+instance's pixels and cached surfaces. Scene/Group replacement under the same ID directly
+retires or inserts its command. Metadata reconciliation after a journal gap records the
+previous instance's retirement too.
+
+Root-wide reuse requires an old plan with one unscoped batch and current plain Scene chunks.
+An absence of backdrop dependencies does not establish this structure: a Scene can contain
+its own clips or filters. Plain content crossing an offscreen boundary uses its actual
+adjacent batch, and moves inside layers also synchronize authoritative command order.
+
 Root fragments follow actual command scope, including root-level layers inside groups.
 Pure offscreen reordering validates the complete operation permutation before synchronizing
 command locations and fragment ranges; later removal still shares unrelated subtree draw

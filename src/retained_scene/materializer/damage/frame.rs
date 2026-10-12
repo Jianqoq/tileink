@@ -90,7 +90,7 @@ impl PersistentSceneMaterializer {
                 NodeKind::Scene { .. } => {
                     nodes.push(crate::canvas::RetainedNodeState {
                         id,
-                        revision: NodeGeneration::new(node.generation),
+                        revision: NodeRevision::new(node.instance, node.generation),
                         bounds: leaf_bounds[&id],
                         kind: RetainedNodeKind::Scene,
                     });
@@ -120,7 +120,7 @@ impl PersistentSceneMaterializer {
                         .union(subtree_leaf_bounds[&id]);
                     nodes.push(crate::canvas::RetainedNodeState {
                         id,
-                        revision: NodeGeneration::new(node.generation),
+                        revision: NodeRevision::new(node.instance, node.generation),
                         bounds,
                         kind: RetainedNodeKind::Layer,
                     });

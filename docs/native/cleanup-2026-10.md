@@ -2913,9 +2913,76 @@ Bilingual architecture guides document the command-scope and update contracts.
 All 60 benchmark JSON/gzip files parse, npm root declarations match package.json,
 and all 993 current implementation files have one audit owner and are fully read.
 
+## Phase 55: retain command ownership and complete revision identity
+
+Same-ID Scene/Group replacement left retired commands behind or compiled the
+whole root to insert a new leaf. Root reuse also treated an absence of backdrop
+dependencies as proof of flat execution. Scenes with internal filters and plain
+leaves crossing offscreen boundaries could consequently retain the wrong batch,
+command order or pixels. Six initial CPU/GPU regressions fail on pristine phase
+54 production; extending boundary coverage produces eleven failures. An 18-case
+Group/Scene/Layer replacement matrix covers normal journal updates and actual
+256-version journal expiry, with failures recorded before the repair.
+
+Flat root reuse now requires the actual old unscoped single batch and current
+plain chunks. Scoped movement uses actual adjacent batch membership. Command
+synchronization retires old Scene instances even when their ID is already live
+again, and directly inserts commands for former Groups. Proven missing-location,
+container and kind retry substitutes are removed. Journal-gap reconciliation
+records old instance retirement too, releasing its chunks and resources. Metadata
+publication lives in its own module.
+
+Review after the initial repair found another real defect: a reinserted node
+restarted generation at zero, which equaled the retired node's revision. CPU
+revision and GPU cached-filter regressions fail before the corresponding fix.
+Internal NodeRevision now combines instance and generation in all command,
+frame-delta, deferred-resize and surface-cache producers. The generation-only
+type and unused scalar conversion are deleted. This repairs cache and damage
+identity at its source; it is not a temporary invalidation workaround.
+
+Fifteen new permanent tests include ten CPU and five Metal tests, with ten fresh
+renderer comparisons and independent analytic pixels. The existing surface
+metadata identity test also covers equal generations with different instances.
+Focused release runs pass 14 command, 21 incremental, 23 surface and 201 retained
+tests. Full single-thread release tests, including ignored GPU tests, pass 1174
+cases with zero failures or ignored. Formatting, release clippy, backend-free
+compilation, all examples and Windows DX12/Vulkan all-target checks pass. Existing
+one library/eight library-test clippy warnings remain. All five native manifests
+and actual DXC compiler/validator identities match phase 54.
+
+All 1730 freshly written SVG PNGs and seven image examples match baseline bytes;
+SVG source hashes are unchanged. Presentation completes eight frames at 640×360
+and 480×270. Four dashboard before/after PNGs also match exactly. The dashboard
+renders 32 chart cards at 1280×800, repeatedly replacing an empty Group placeholder
+with Scene content, removing it and restoring the placeholder. Transactions and
+PNG readback stay outside the render timer, which includes submission completion.
+Each process warms up 25 frames and measures 75 frames with API validation off.
+
+The [application report](benchmarks/cleanup-phase55-metal-2026-10-12.json) retains
+all 200 observations from 50 before/after pairs interleaved with 50 identical-code
+control pairs. Block and label order reverse on odd pairs. The initial ten-pair
+total estimate was +2.081%, interval [-14.313%, +9.401%], with a +1.718% control
+estimate. Those observations and their summary remain in the report; wider
+sampling uses the same frozen executables and workload.
+
+Across all 50 pairs, show-frame medians change 0.462208 to 0.448948 ms (-2.869%),
+descriptive paired bootstrap interval [-5.419%, -0.090%]. The 75-frame total changes
+21.697481 to 21.157747 ms (-2.488%), interval [-6.243%, +2.044%]. Identical-current
+total medians vary +1.459%, interval [-1.783%, +4.887%]. No overall timing change or
+regression is resolved; smaller changes remain possible. The show-phase interval
+is only narrowly below zero and control variation is wider, so these results do
+not establish a universal speedup.
+
+The temporary workload and eight copied/compiled artifacts are removed. Bilingual
+architecture guides document instance identity, command retirement and execution
+shape selection. All 61 benchmark JSON/gzip files parse, npm root declarations
+match package.json, and all 997 current implementation files have one audit owner
+and are fully read. Windows GPU runtime checks remain pending. Nested mixed-removal
+eligibility is the next producer contract to test.
+
 ## Remaining audit work
 
-- All current implementation files are fully read. The progressive/glass shader, SVG lowering, filter distance, text coordinate, retained layer descriptor, typed offscreen, recording geometry, coarse stack, native creation/resource policy and retained plan ownership cleanup are implemented. Metal GPU correctness and portable native-policy regressions pass; DX12 resource runtime still needs Windows verification. Full-plan membership length, root ranges, adjacent-run insertion, root command-scope ownership and plan publication now have direct semantic coverage. Prove remaining flat command synchronization substitutes and nested offscreen eligibility/caller contracts before removing them. Clip geometry replacement inside/outside filters has fresh-renderer and analytic GPU coverage; continue tracing the wider retained metadata patching rules. Continue checking current Cargo/module reachability for retired code after the orphan example removal. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
+- All current implementation files are fully read. The progressive/glass shader, SVG lowering, filter distance, text coordinate, retained layer descriptor, typed offscreen, recording geometry, coarse stack, native creation/resource policy and retained plan ownership cleanup are implemented. Metal GPU correctness and portable native-policy regressions pass; DX12 resource runtime still needs Windows verification. Full-plan membership length, root ranges, adjacent-run insertion, root command-scope ownership, plan publication, flat command synchronization and same-ID revision identity now have direct semantic coverage. Prove nested offscreen eligibility/caller contracts, including removal mixed with changes outside the selected ancestor. Clip geometry replacement inside/outside filters has fresh-renderer and analytic GPU coverage; continue tracing wider retained metadata patching rules. Continue checking current Cargo/module reachability for retired code after the orphan example removal. Necessary SVG paint/font behavior, degenerate geometry semantics and GPU ownership/bounds validation must remain correct; a keyword match alone does not establish an obsolete implementation.
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
 - Execute the HLSL editor test against the actual ShaderTools language server; local protocol regressions pass, but the server is unavailable locally.
 - Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.

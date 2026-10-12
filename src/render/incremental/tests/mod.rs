@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    NodeGeneration, RetainedNodeId,
+    NodeRevision, RetainedNodeId,
     canvas::{RetainedFrameDelta, RetainedNodeKind, RetainedNodePatch, RetainedNodeState},
 };
 
@@ -9,7 +9,7 @@ fn frame(nodes: &[(u64, u64, Bounds)]) -> RetainedFrame {
         .iter()
         .map(|(id, revision, bounds)| RetainedNodeState {
             id: RetainedNodeId::for_owner(*id),
-            revision: NodeGeneration::new(*revision),
+            revision: NodeRevision::new(1, *revision),
             bounds: *bounds,
             kind: RetainedNodeKind::Scene,
         })
