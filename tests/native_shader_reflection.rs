@@ -27,8 +27,10 @@ fn actual_spirv_rejects_wrong_entry_layout_binding_stride_and_workgroup() {
     for decoration in [6, 33] {
         let mut words: Vec<u32> = artifact
             .bytes
-            .chunks_exact(4)
-            .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|b| u32::from_le_bytes(*b))
             .collect();
         let mut index = 5;
         while index < words.len() {
@@ -100,8 +102,10 @@ fn actual_spirv_texture_dimension_array_sample_type_and_binding_are_checked() {
     for (operand, wrong_value) in [(3, 2), (5, 1), (6, 1), (7, 2), (8, 4)] {
         let mut words: Vec<_> = artifact
             .bytes
-            .chunks_exact(4)
-            .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|b| u32::from_le_bytes(*b))
             .collect();
         let mut index = 5;
         while index < words.len() && words[index] & 65535 != 25 {
@@ -184,8 +188,10 @@ fn storage_texture_reflection_rejects_wrong_format_dimension_and_access() {
     for (operand, value) in [(3, 2), (5, 1), (6, 1), (7, 1), (8, 1)] {
         let mut words: Vec<u32> = artifact
             .bytes
-            .chunks_exact(4)
-            .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|b| u32::from_le_bytes(*b))
             .collect();
         let mut index = 5;
         while index < words.len() && !(words[index] & 65535 == 25 && words[index + 7] == 2) {
@@ -210,8 +216,10 @@ fn array_texture_reflection_rejects_nonarray_and_wrong_access() {
     for (operand, value) in [(3, 2), (5, 0), (6, 1), (7, 2), (8, 4)] {
         let mut words: Vec<u32> = artifact
             .bytes
-            .chunks_exact(4)
-            .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|b| u32::from_le_bytes(*b))
             .collect();
         let mut index = 5;
         while index < words.len() && !(words[index] & 65535 == 25 && words[index + 7] == 1) {

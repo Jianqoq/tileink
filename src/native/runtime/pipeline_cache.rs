@@ -1,10 +1,7 @@
 //! Opaque driver pipeline data is distinct from portable DXIL/SPIR-V artifacts.
 //! Driver/API/device identity and the shader+layout contract are part of its key.
-#[allow(dead_code)] // Reuse the build cache's framing/locking; this consumer validates driver blobs.
-#[path = "../../../build/native/cache.rs"]
-mod storage;
+use super::shader_cache::{CacheKey, ShaderCache};
 use std::{io, path::PathBuf};
-use storage::{CacheKey, ShaderCache};
 
 pub fn load_or_create_for_layout(
     identity: &[u8],
@@ -19,6 +16,6 @@ pub fn load_or_create_for_layout(
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/native-pipelines")
         });
     let key = CacheKey::new(&[layout, identity, shader_key.as_bytes()]);
-    let result = ShaderCache::new(root).get_or_compile_validated(&key, accept, create)?;
+    let result = ShaderCache::new(root).get_or_compile(&key, accept, create)?;
     Ok(result.hit)
 }

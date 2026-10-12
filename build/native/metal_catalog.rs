@@ -124,7 +124,7 @@ pub fn generate(
         }
         let recipe = serde_json::json!({"schema":1,"language":"msl","target":"macos-metallib","target_triple":env::var("TARGET").unwrap(),"family":family,"flags":metal::FLAGS,"toolchain":compiler.identity,"sources":graph.files,"abi_sha256":metal::digest(&interface.cache_bytes()),"metal_grid_buffer":30});
         let key = CacheKey::new(&[&serde_json::to_vec(&recipe)?, graph.expanded.as_bytes()]);
-        let artifact = cache.get_or_compile_validated(
+        let artifact = cache.get_or_compile(
             &key,
             |bytes| Ok(metal::validate_container(bytes).is_ok()),
             || compiler.compile(&graph.expanded, &out.join("metal-work").join(key.hex())),

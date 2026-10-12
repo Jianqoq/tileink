@@ -127,9 +127,11 @@ pub fn generate() -> io::Result<()> {
                     let recipe_bytes = serde_json::to_vec(&recipe)?;
                     let key = CacheKey::new(&[&recipe_bytes, graph.expanded.as_bytes()]);
                     let work = out.join("native-work").join(key.hex());
-                    let artifact = cache.get_or_compile(&key, || {
-                        compiler.compile(&graph.expanded, &flags, &work, target)
-                    })?;
+                    let artifact = cache.get_or_compile(
+                        &key,
+                        |_| Ok(true),
+                        || compiler.compile(&graph.expanded, &flags, &work, target),
+                    )?;
                     dxc::validate_container(target, &artifact.bytes)?;
                     if target == "spirv" {
                         spirv::validate(&artifact.bytes, entry, &description)?;

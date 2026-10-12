@@ -3,8 +3,6 @@
 #[allow(dead_code)]
 #[path = "../../../../build/native/abi.rs"]
 mod abi;
-#[path = "../../../../build/native/cache.rs"]
-mod cache;
 #[allow(dead_code)]
 #[path = "../../../../build/native/dxc.rs"]
 mod compiler;
@@ -16,7 +14,7 @@ mod dxil_reflection;
 mod spirv;
 #[path = "../../../../build/native/toolchain.rs"]
 mod toolchain;
-use super::{NativeSource, Result};
+use super::{NativeSource, Result, cache};
 use std::{
     env,
     path::{Path, PathBuf},
@@ -71,7 +69,7 @@ pub(crate) fn compile(source: &NativeSource, target: &str) -> Result<Compiled> {
             )
         }
     };
-    let artifact = cache::ShaderCache::new(root).get_or_compile_validated(
+    let artifact = cache::ShaderCache::new(root).get_or_compile(
         &key,
         |bytes| {
             // A verified portable artifact has the exact source/toolchain/ABI

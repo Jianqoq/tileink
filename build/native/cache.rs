@@ -51,15 +51,8 @@ impl ShaderCache {
         Self { root }
     }
 
+    /// The caller explicitly accepts cached bytes under the same publication lock.
     pub fn get_or_compile(
-        &self,
-        key: &CacheKey,
-        compile: impl FnOnce() -> io::Result<Vec<u8>>,
-    ) -> io::Result<CachedShader> {
-        self.get_or_compile_validated(key, |_| Ok(true), compile)
-    }
-
-    pub fn get_or_compile_validated(
         &self,
         key: &CacheKey,
         accept: impl FnOnce(&[u8]) -> io::Result<bool>,

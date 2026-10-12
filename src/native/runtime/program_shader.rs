@@ -9,6 +9,8 @@ pub(crate) mod pipeline;
 #[cfg(test)]
 mod tests;
 use super::Result;
+#[cfg(any(feature = "dx12", feature = "vulkan"))]
+use super::shader_cache as cache;
 pub(crate) use brush_invocation::{Output, record as record_brush};
 pub(crate) use brushes::{BrushImages, brushes_for_filter, prepare_brushes};
 pub(crate) use pipeline::record as record_pipeline;

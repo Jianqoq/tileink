@@ -26,6 +26,32 @@ fn pass(bindings: &[(u32, ShaderBindingKind, usize)]) -> ShaderPass {
     }
 }
 const F: ShaderTextureFormat = ShaderTextureFormat::Rgba16Float;
+
+#[test]
+fn immutable_pipeline_snapshots_keep_identity_and_updates_never_reuse_it() {
+    let mut identities = std::collections::HashSet::new();
+    for _ in 0..1024 {
+        let pipeline = ShaderPipeline::new(
+            vec![
+                ShaderResource::Output,
+                ShaderResource::Buffer(Rc::from([1])),
+            ],
+            vec![pass(&[(
+                1,
+                ShaderBindingKind::WriteTexture(ShaderTextureFormat::Rgba8Unorm),
+                0,
+            )])],
+        )
+        .unwrap();
+        assert_eq!(pipeline.clone().identity, pipeline.identity);
+        assert!(identities.insert(pipeline.identity));
+        let updated = pipeline
+            .with_resource(1, ShaderResource::Buffer(Rc::from([2])))
+            .unwrap();
+        assert!(identities.insert(updated.identity));
+    }
+}
+
 #[test]
 fn indexed_inputs_validate_and_output_growth_is_independent_of_read_radius() {
     let make = |inputs: Vec<_>| {

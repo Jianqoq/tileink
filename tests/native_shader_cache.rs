@@ -23,10 +23,10 @@ fn a_second_cache_instance_reuses_compiled_bytes_without_invoking_compiler() {
         Ok(b"compiled shader".to_vec())
     };
     let first = ShaderCache::new(root.clone())
-        .get_or_compile(&key, compile)
+        .get_or_compile(&key, |_| Ok(true), compile)
         .unwrap();
     let second = ShaderCache::new(root.clone())
-        .get_or_compile(&key, compile)
+        .get_or_compile(&key, |_| Ok(true), compile)
         .unwrap();
     assert_eq!(calls.get(), 1);
     assert!(!first.hit);
@@ -62,7 +62,9 @@ fn corrupt_or_truncated_entries_recompile_instead_of_returning_bad_shader() {
     let root = directory("corrupt");
     let cache = ShaderCache::new(root.clone());
     let key = CacheKey::new(&[b"shader"]);
-    cache.get_or_compile(&key, || Ok(vec![1, 2, 3])).unwrap();
+    cache
+        .get_or_compile(&key, |_| Ok(true), || Ok(vec![1, 2, 3]))
+        .unwrap();
     let path = root.join(format!("{}.shader", key.hex()));
     let original = fs::read(&path).unwrap();
     for data in [vec![], original[..original.len() - 1].to_vec(), {
@@ -71,7 +73,9 @@ fn corrupt_or_truncated_entries_recompile_instead_of_returning_bad_shader() {
         wrong
     }] {
         fs::write(&path, data).unwrap();
-        let result = cache.get_or_compile(&key, || Ok(vec![4, 5, 6])).unwrap();
+        let result = cache
+            .get_or_compile(&key, |_| Ok(true), || Ok(vec![4, 5, 6]))
+            .unwrap();
         assert!(!result.hit);
         assert_eq!(result.bytes, [4, 5, 6]);
     }
@@ -85,11 +89,21 @@ fn failed_or_empty_compilation_is_never_cached() {
     let key = CacheKey::new(&[b"broken"]);
     assert!(
         cache
-            .get_or_compile(&key, || Err(io::Error::other("compiler failed")))
+            .get_or_compile(
+                &key,
+                |_| Ok(true),
+                || Err(io::Error::other("compiler failed"))
+            )
             .is_err()
     );
-    assert!(cache.get_or_compile(&key, || Ok(vec![])).is_err());
-    let result = cache.get_or_compile(&key, || Ok(vec![7])).unwrap();
+    assert!(
+        cache
+            .get_or_compile(&key, |_| Ok(true), || Ok(vec![]))
+            .is_err()
+    );
+    let result = cache
+        .get_or_compile(&key, |_| Ok(true), || Ok(vec![7]))
+        .unwrap();
     assert!(!result.hit);
     fs::remove_dir_all(root).unwrap();
 }
@@ -111,10 +125,14 @@ fn concurrent_builds_compile_one_artifact_and_observe_complete_bytes() {
             std::thread::spawn(move || {
                 barrier.wait();
                 ShaderCache::new(root)
-                    .get_or_compile(&CacheKey::new(&[b"shared"]), || {
-                        calls.fetch_add(1, Ordering::SeqCst);
-                        Ok(vec![42; 4096])
-                    })
+                    .get_or_compile(
+                        &CacheKey::new(&[b"shared"]),
+                        |_| Ok(true),
+                        || {
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            Ok(vec![42; 4096])
+                        },
+                    )
                     .unwrap()
                     .bytes
             })
@@ -132,14 +150,16 @@ fn target_rejection_rebuilds_the_entry_under_the_same_lock() {
     let root = directory("target-validation");
     let cache = ShaderCache::new(root.clone());
     let key = CacheKey::new(&[b"target-compatible"]);
-    cache.get_or_compile(&key, || Ok(vec![1])).unwrap();
+    cache
+        .get_or_compile(&key, |_| Ok(true), || Ok(vec![1]))
+        .unwrap();
     let rebuilt = cache
-        .get_or_compile_validated(&key, |bytes| Ok(bytes == [2]), || Ok(vec![2]))
+        .get_or_compile(&key, |bytes| Ok(bytes == [2]), || Ok(vec![2]))
         .unwrap();
     assert!(!rebuilt.hit);
     assert!(
         cache
-            .get_or_compile_validated(
+            .get_or_compile(
                 &key,
                 |bytes| Ok(bytes == [2]),
                 || panic!("compiler called on valid cache")
@@ -151,19 +171,46 @@ fn target_rejection_rebuilds_the_entry_under_the_same_lock() {
 }
 
 #[test]
+fn acceptance_errors_preserve_the_entry_without_invoking_compilation() {
+    let root = directory("acceptance-error");
+    let cache = ShaderCache::new(root.clone());
+    let key = CacheKey::new(&[b"validated-artifact"]);
+    cache
+        .get_or_compile(&key, |_| Ok(true), || Ok(vec![1, 2, 3]))
+        .unwrap();
+    let path = root.join(format!("{}.shader", key.hex()));
+    let before = fs::read(&path).unwrap();
+    let error = cache
+        .get_or_compile(
+            &key,
+            |_| Err(io::Error::other("validation failed")),
+            || panic!("validation errors must not invoke compilation"),
+        )
+        .err()
+        .unwrap();
+    assert_eq!(error.to_string(), "validation failed");
+    assert_eq!(fs::read(path).unwrap(), before);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn cross_process_cache_worker() {
     let Some(root) = std::env::var_os("TILEINK_CACHE_TEST_WORKER") else {
         return;
     };
     let root = PathBuf::from(root);
     ShaderCache::new(root.clone())
-        .get_or_compile(&CacheKey::new(&[b"processes"]), || {
-            fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(root.join("compiled-once"))?;
-            Ok(vec![9; 8192])
-        })
+        .get_or_compile(
+            &CacheKey::new(&[b"processes"]),
+            |_| Ok(true),
+            || {
+                fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(root.join("compiled-once"))?;
+                Ok(vec![9; 8192])
+            },
+        )
         .unwrap();
 }
 

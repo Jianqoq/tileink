@@ -4,6 +4,9 @@
 mod gpu_constants;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 use tileink::ShaderBindingKind;
+#[allow(dead_code)] // The standalone DXC test crate omits the driver cache-hit consumer.
+#[path = "../build/native/cache.rs"]
+mod cache;
 struct NativeSource {
     entry: std::rc::Rc<str>,
     interface_bindings: std::rc::Rc<[tileink::ShaderBinding]>,

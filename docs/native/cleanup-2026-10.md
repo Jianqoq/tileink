@@ -3216,7 +3216,47 @@ repair addresses the missing build prerequisite directly; it does not skip a
 shader check or substitute a compiler. A subsequent real CI run is required to
 verify execution on Linux and Windows. Local cross-compilation is not that proof.
 
+## Phase 60: lint supported runtimes and share one cache implementation
+
+Real CI run 213 confirms that the pinned installer, Linux shader conformance,
+Windows DX12 tests/conformance and macOS tests succeed. The Windows job executes
+all three Win32 geometry regressions successfully. Its clippy job exposes a
+separate configuration error: Linux has portable SPIR-V build support but no
+native execution adapter, so the native renderer's consumers are absent. The
+zero-warning clippy matrix now checks Windows DX12, Windows Vulkan and macOS Metal.
+Linux compilation/conformance tests remain, and Windows Vulkan tests are added.
+No production dead-code allowance is added to hide the unsupported-host warnings.
+
+Rust 1.99 deprecates `fetch_update`; shader snapshot and compute-batch identity
+allocation now call its `try_update` implementation directly with the same
+orderings and checked increment. A semantic regression verifies stable clone
+identities and unique identities for newly constructed and updated pipelines.
+
+Supported-platform linting also exposes duplicate inclusion of the shader cache.
+The runtime now loads it once for both user DXC artifacts and driver pipeline
+data. One explicit cache acceptance operation replaces the forwarding wrapper;
+all build, runtime and test callers state their acceptance policy. Existing cache
+keys, framing, locks and error behavior remain. A regression verifies that an
+acceptance error preserves the existing entry and never invokes compilation.
+Vulkan SPIR-V decoding and reflection tests use typed four-byte chunks. These are
+durable module/API cleanups; no shader generation, retry or compatibility path is
+introduced.
+
+Final Rust 1.99 validation passes all 1213 release tests in 44 binaries with zero
+failures and zero ignored tests. Release clippy passes with `-D warnings` for Metal
+and Windows DX12/Vulkan all-targets configurations. The focused pipeline suite
+passes 14 tests; cache/compiler suites pass 29. Formatting, backend-free
+compilation and all example builds pass. All 1730 fresh SVG PNGs and seven image
+examples remain byte-exact, and presentation completes eight frames at both
+physical sizes. All native artifact manifests match Phase 59 byte-for-byte.
+The [runtime CI audit](audits/cleanup-phase60-runtime-ci-2026-10-12.json.gz) records
+the real failures, final logs, source delta and limits. All 1009 implementation
+files remain reviewed with one owner; 992 source files are unchanged. These
+changes remove duplicate declarations and deprecated aliases; they make no new
+throughput claim. Vulkan/DX12 GPU execution remains separate from cross-clippy
+and the successful Windows geometry tests.
+
 ## Remaining audit work
 
 - Validate Vulkan cache construction with an actual driver; controlled native-call tests and Windows type checks do not replace GPU execution.
-- Execute the three Win32 geometry regressions and DX12/Vulkan shutdown smoke on Windows; the current Rust type checks do not verify those runtime paths.
+- Execute DX12/Vulkan shutdown smoke on Windows; successful geometry tests and compilation do not verify those GPU runtime paths.

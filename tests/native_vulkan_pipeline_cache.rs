@@ -4,6 +4,9 @@
 mod driver;
 #[path = "../src/native/runtime/pipeline_cache.rs"]
 mod pipeline_cache;
+#[allow(dead_code)] // This standalone driver-cache crate consumes hit status, not shader bytes.
+#[path = "../build/native/cache.rs"]
+mod shader_cache;
 #[path = "../src/native/runtime/vulkan/compute_pipeline/cache.rs"]
 mod vulkan_cache;
 

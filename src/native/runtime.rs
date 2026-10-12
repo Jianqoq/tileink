@@ -18,6 +18,9 @@ mod pipeline_cache;
 mod probe_cases;
 mod program;
 pub(crate) mod program_shader;
+#[cfg(any(feature = "dx12", feature = "vulkan"))]
+#[path = "../../build/native/cache.rs"]
+mod shader_cache;
 mod submissions;
 pub(super) mod texture;
 #[cfg(feature = "vulkan")]

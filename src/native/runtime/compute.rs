@@ -87,7 +87,7 @@ impl ComputeBatch {
 
     pub fn new() -> Self {
         let owner = NEXT_BATCH
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
             .expect("native batch identity exhausted");
         Self {
             synchronization: None,

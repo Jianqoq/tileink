@@ -67,12 +67,14 @@ fn metal_includes_and_target_identity_invalidate_the_common_cache() {
     );
     let cache = cache::ShaderCache::new(root.path().join("cache"));
     cache
-        .get_or_compile(&initial, || {
-            Ok(b"corrupt-but-correctly-framed-library".to_vec())
-        })
+        .get_or_compile(
+            &initial,
+            |_| Ok(true),
+            || Ok(b"corrupt-but-correctly-framed-library".to_vec()),
+        )
         .unwrap();
     let rebuilt = cache
-        .get_or_compile_validated(
+        .get_or_compile(
             &initial,
             |bytes| Ok(compiler::validate_container(bytes).is_ok()),
             || Ok(b"MTLB0123456789012345".to_vec()),

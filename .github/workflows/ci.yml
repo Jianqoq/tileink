@@ -19,12 +19,20 @@ jobs:
       - run: rustup component add rustfmt
       - run: cargo fmt --all --check
   clippy:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, feature: dx12 }
+          - { os: windows-latest, feature: vulkan }
+          - { os: macos-latest, feature: metal }
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-dxc
+        if: runner.os != 'macOS'
       - run: rustup component add clippy
-      - run: cargo clippy --release --all-targets --no-default-features --features vulkan -- -D warnings
+      - run: cargo clippy --release --all-targets --no-default-features --features ${{ matrix.feature }} -- -D warnings
   tests:
     strategy:
       fail-fast: false
@@ -32,6 +40,7 @@ jobs:
         include:
           - { os: ubuntu-latest, feature: vulkan }
           - { os: windows-latest, feature: dx12 }
+          - { os: windows-latest, feature: vulkan }
           - { os: macos-latest, feature: metal }
     runs-on: ${{ matrix.os }}
     steps:
