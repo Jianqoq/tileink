@@ -19,8 +19,8 @@ mod prelude {
     pub(crate) use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
     pub(crate) use crate::{
-        Canvas, FillRule, Filter, Mask, NodeRevision, PersistentLayerKey, Region, RetainedNodeId,
-        Sdf,
+        Canvas, CanvasSurface, FillRule, Filter, Mask, NodeRevision, PersistentLayerKey, Region,
+        RetainedNodeId, Sdf,
         canvas::{
             PainterKey, PainterMetadata, RetainedFrameDelta, RetainedNodeKind, RetainedNodePatch,
             SceneBufferChanges,

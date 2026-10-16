@@ -39,6 +39,7 @@ pub(crate) enum Mutation {
         height: u32,
         scale: f32,
     },
+    SetSurface(CanvasSurface),
     InvalidateRect(Rect),
     InvalidateAll,
 }
@@ -67,7 +68,7 @@ pub(crate) enum UndoMutation {
         parent_key: u128,
         nodes: Vec<(RetainedNodeId, SceneNode)>,
     },
-    Resize((u32, u32, f32)),
+    Resize(CanvasSurface),
 }
 
 pub struct RetainedSceneTransaction<'a> {
@@ -225,6 +226,12 @@ impl RetainedSceneTransaction<'_> {
             height,
             scale,
         });
+        self
+    }
+
+    /// Replaces the viewport without rounding a native surface through logical integers.
+    pub fn set_surface(&mut self, surface: CanvasSurface) -> &mut Self {
+        self.mutations.push(Mutation::SetSurface(surface));
         self
     }
 

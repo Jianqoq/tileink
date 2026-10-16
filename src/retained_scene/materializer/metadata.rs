@@ -5,9 +5,7 @@ impl PersistentSceneMaterializer {
     pub(crate) fn reconcile_scene_metadata(&self, scene: &RetainedScene) -> SceneChangeSet {
         let mut changes = SceneChangeSet {
             invalidate_all: true,
-            surface_changed: self.canvas.logical_width != scene.width
-                || self.canvas.logical_height != scene.height
-                || self.canvas.scale_factor().to_bits() != scene.scale.to_bits(),
+            surface_changed: self.canvas.surface() != scene.surface,
             ..Default::default()
         };
         changes.removed_nodes.extend(

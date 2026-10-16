@@ -85,7 +85,7 @@ impl Canvas {
         tree: &usvg::Tree,
         options: SvgOptions,
     ) -> Result<(), SvgError> {
-        let mut svg_scene = Self::new(self.logical_width, self.logical_height, self.scale_factor);
+        let mut svg_scene = Self::with_surface(self.surface());
         SvgBuilder::new(options).push_tree(&mut svg_scene, tree)?;
         self.append(&svg_scene, (0.0, 0.0));
         Ok(())
@@ -135,21 +135,11 @@ impl SvgBuilder {
                 group.filters(),
                 group_transform,
                 content_transform,
-                canvas.logical_width,
-                canvas.logical_height,
             )?
         };
         let mask_layer = group
             .mask()
-            .map(|mask| {
-                self.svg_mask_layer(
-                    canvas.logical_width,
-                    canvas.logical_height,
-                    canvas.scale_factor,
-                    mask,
-                    group_transform,
-                )
-            })
+            .map(|mask| self.svg_mask_layer(canvas.surface(), mask, group_transform))
             .transpose()?;
 
         let mut pushed_layers = 0;

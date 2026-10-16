@@ -41,8 +41,6 @@ pub(super) fn svg_filter_layers(
     filters: &[std::sync::Arc<usvg::filter::Filter>],
     region_transform: Affine,
     content_transform: Affine,
-    width: u32,
-    height: u32,
 ) -> Result<Vec<SvgFilterLayer>, SvgError> {
     filters
         .iter()
@@ -53,8 +51,6 @@ pub(super) fn svg_filter_layers(
                 filter.as_ref(),
                 region_transform,
                 content_transform,
-                width,
-                height,
             )
             .transpose()
         })
@@ -67,12 +63,11 @@ fn svg_filter_layer(
     filter: &usvg::filter::Filter,
     region_transform: Affine,
     content_transform: Affine,
-    width: u32,
-    height: u32,
 ) -> Result<Option<SvgFilterLayer>, SvgError> {
+    let (width, height) = canvas.logical_size();
     let filter_rect = nonzero_rect_to_kurbo(filter.rect());
     let filter_bounds = transform_rect_to_bounds(filter_rect, region_transform)
-        .intersect(Bounds::canvas(width, height));
+        .intersect(Bounds::canvas(width.ceil() as u32, height.ceil() as u32));
     let mut graph = SvgFilterGraphBuilder::new(
         builder,
         canvas,

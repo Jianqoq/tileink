@@ -6,10 +6,11 @@
 SdfSample rounded_box_sdf_sample(float px, float py, float hx, float hy, float radius) {
     float2 q = float2(abs(px) - hx + radius, abs(py) - hy + radius);
     float2 outside = max(q, float2(0.0,0.0));
-    float distance = min(max(q.x, q.y), 0.0) + length(outside) - radius;
+    float outside_length = sdf_length(outside);
+    float distance = min(max(q.x, q.y), 0.0) + outside_length - radius;
     float2 signs = float2(((px >= 0.0) ? (1.0) : (-1.0)), ((py >= 0.0) ? (1.0) : (-1.0)));
-    if (dot(outside, outside) > 0.000000000001) {
-        return make_sdf_sample(distance, normalize(outside) * signs);
+    if (outside_length > 0.0) {
+        return make_sdf_sample(distance, outside / outside_length * signs);
     }
     if (q.x > q.y) {
         return make_sdf_sample(distance, float2(signs.x, 0.0));
@@ -27,7 +28,7 @@ SdfSample circle_sdf_sample(float x, float y, float cx, float cy, float radius) 
     float dx = x - cx;
     float dy = y - cy;
     float2 delta = float2(dx, dy);
-    return make_sdf_sample(length(delta) - radius, normalized_or(delta, float2(1.0, 0.0)));
+    return make_sdf_sample(sdf_length(delta) - radius, normalized_or(delta, float2(1.0, 0.0)));
 }
 
 SdfSample rect_sdf_sample(float x, float y, float x0_raw, float y0_raw, float x1_raw, float y1_raw, float top_left, float top_right, float bottom_left, float bottom_right) {

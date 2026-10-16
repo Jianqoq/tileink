@@ -84,17 +84,9 @@ fn blur_and_dilation_track_transformed_source_domains() {
 fn filter_regions_keep_affine_rectangle_bounds() {
     let transform = Affine::new([1.0, 0.25, -0.5, 1.0, 3.0, -4.0]);
     with_filter("<feFlood/>", transform, |graph, filter| {
-        let layer = svg_filter_layer(
-            graph.builder,
-            graph.canvas,
-            filter,
-            transform,
-            transform,
-            100,
-            80,
-        )
-        .unwrap()
-        .unwrap();
+        let layer = svg_filter_layer(graph.builder, graph.canvas, filter, transform, transform)
+            .unwrap()
+            .unwrap();
         let Region::Rect { rect, radius } = layer.region else {
             panic!("rectangular filter region");
         };

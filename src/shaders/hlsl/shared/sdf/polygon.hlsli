@@ -9,12 +9,20 @@ SdfSample distance_to_segment_sdf_sample(float px, float py, float ax, float ay,
     float dy = by - ay;
     float len2 = dx * dx + dy * dy;
     float2 nearest = float2(ax, ay);
-    if (len2 > 0.000001) {
+    if (len2 >= 1.175494351e-38 && isfinite(len2)) {
         float t = clamp(((px - ax) * dx + (py - ay) * dy) / len2, 0.0, 1.0);
         nearest = float2(ax + dx * t, ay + dy * t);
+    } else {
+        float axis = max(abs(dx), abs(dy));
+        if (axis > 0.0) {
+            float2 scaled = float2(dx, dy) / axis;
+            float2 projection = scaled / dot(scaled, scaled);
+            float t = clamp(dot(float2(px - ax, py - ay), projection) / axis, 0.0, 1.0);
+            nearest = float2(ax + dx * t, ay + dy * t);
+        }
     }
     float2 delta = float2(px, py) - nearest;
-    return make_sdf_sample(length(delta), normalized_or(delta, fallback_normal));
+    return make_sdf_sample(sdf_length(delta), normalized_or(delta, fallback_normal));
 }
 
 float cross_2d(float2 a, float2 b) {
@@ -29,7 +37,16 @@ SdfSample triangle_sdf_sample(float x, float y, float ax, float ay, float bx, fl
     float2 ab = b - a;
     float2 bc = c - b;
     float2 ca = a - c;
-    float orientation = ((cross_2d(ab, c - a) >= 0.0) ? (1.0) : (-1.0));
+    float2 test_b = b - a, test_c = c - a, test_p = p - a;
+    float area = cross_2d(test_b, test_c);
+    if (area == 0.0 || !isfinite(area)) {
+        float2 span = max(max(a, b), c) - min(min(a, b), c);
+        if (span.x > 0.0 && span.y > 0.0) {
+            test_b /= span; test_c /= span; test_p /= span;
+            area = cross_2d(test_b, test_c);
+        }
+    }
+    float orientation = area >= 0.0 ? 1.0 : -1.0;
     SdfSample sdf_sample = nearer_sdf_sample(
         distance_to_segment_sdf_sample(
             x,
@@ -57,10 +74,11 @@ SdfSample triangle_sdf_sample(float x, float y, float ax, float ay, float bx, fl
             ax,
             ay,
             normalized_or(float2(ca.y, -ca.x) * orientation, float2(1.0, 0.0))));
-    float side_ab = cross_2d(ab, p - a) * orientation;
-    float side_bc = cross_2d(bc, p - b) * orientation;
-    float side_ca = cross_2d(ca, p - c) * orientation;
-    if (side_ab >= 0.0 && side_bc >= 0.0 && side_ca >= 0.0) {
+    float side_ab = cross_2d(test_b, test_p) * orientation;
+    float side_bc = cross_2d(test_c - test_b, test_p - test_b) * orientation;
+    float side_ca = cross_2d(-test_c, test_p - test_c) * orientation;
+    if (area != 0.0 && all(p >= min(min(a, b), c)) && all(p <= max(max(a, b), c))
+        && side_ab >= 0.0 && side_bc >= 0.0 && side_ca >= 0.0) {
         sdf_sample = make_sdf_sample(-sdf_sample.distance, -sdf_sample.normal);
     }
     return make_sdf_sample(sdf_sample.distance - max(corner_radius, 0.0), sdf_sample.normal);
@@ -94,8 +112,9 @@ SdfSample callout_sdf_sample(float x, float y, float x0_raw, float y0_raw, float
         tail_radius,
         0.0,
         min(max(half_width * 0.499, 0.0), max(tail_length * 0.499, 0.0)));
-    float source_half_width = max(half_width - radius, 0.0001);
-    float source_length = max(tail_length - radius, 0.0001);
+    // Radius was bounded by both source dimensions; no minimum logical size is required.
+    float source_half_width = half_width - radius;
+    float source_length = tail_length - radius;
     float2 a = float2(x0 + center - source_half_width, y0);
     float2 b = float2(x0 + center + source_half_width, y0);
     float2 c = float2(x0 + center, y0 - source_length);
@@ -149,7 +168,7 @@ SdfSample star_sdf_sample(float x, float y, float center_x, float center_y, floa
     float2 sample_point = float2(
         cosine * relative.x + sine * relative.y,
         -sine * relative.x + cosine * relative.y);
-    SdfSample nearest = make_sdf_sample(1.0e20, float2(1.0, 0.0));
+    SdfSample nearest = empty_sdf_sample();
     bool inside = false;
     float2 previous = star_vertex(9u, outer_radius, inner_radius);
     for (uint index = 0u; index < 10u; index = index + 1u) {
@@ -166,9 +185,9 @@ SdfSample star_sdf_sample(float x, float y, float center_x, float center_y, floa
                 current.y,
                 normalized_or(float2(edge.y, -edge.x), float2(1.0, 0.0))));
         if ((previous.y > sample_point.y) != (current.y > sample_point.y)) {
-            float crossing_x = previous.x
-                + (sample_point.y - previous.y) * (current.x - previous.x)
-                    / (current.y - previous.y);
+            // Straddling makes this a bounded ratio; multiplying first overflowed large stars.
+            float fraction = (sample_point.y - previous.y) / (current.y - previous.y);
+            precise float crossing_x = previous.x + fraction * (current.x - previous.x);
             if (sample_point.x < crossing_x) {
                 inside = !inside;
             }

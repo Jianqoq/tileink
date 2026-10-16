@@ -55,7 +55,7 @@ fn surface_resize_reuses_chunks_and_refreshes_path_tile_bounds() {
         6
     );
     let canvas = materializer.canvas();
-    assert_eq!(canvas.logical_size(), (96, 32));
+    assert_eq!(canvas.logical_size(), (96.0, 32.0));
     let changes = canvas.buffer_changes.as_ref().unwrap();
     assert_eq!(changes.chunks_rebuilt, 0);
     assert!(!changes.full_scene_sync);

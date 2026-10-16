@@ -6,9 +6,6 @@ use super::{
 };
 use crate::shared::bounds::Bounds;
 
-const ARC_EPSILON: f32 = 1.0e-6;
-const ARC_FULL_SWEEP_EPSILON: f32 = 1.0e-4;
-
 /// Circular stroked arc SDF.
 ///
 /// Angles are radians in device coordinates, using `atan2(y - cy, x - cx)`.
@@ -51,11 +48,12 @@ impl Rc {
     }
 
     pub(crate) fn is_empty(self) -> bool {
-        self.radius <= 0.0 || self.width <= 0.0 || self.sweep_angle.abs() <= ARC_EPSILON
+        // Positive sweeps and radii can be magnified. Only an actual zero sweep is empty.
+        self.radius <= 0.0 || self.width <= 0.0 || self.sweep_angle == 0.0
     }
 
     pub(crate) fn is_full_sweep(self) -> bool {
-        self.sweep_angle.abs() >= std::f32::consts::TAU - ARC_FULL_SWEEP_EPSILON
+        self.sweep_angle.abs() >= std::f32::consts::TAU
     }
 
     pub(crate) fn bounds(self) -> Bounds {
@@ -140,9 +138,9 @@ impl Rc {
         }
 
         if self.sweep_angle >= 0.0 {
-            normalize_angle(angle - self.start_angle) <= self.sweep_angle + ARC_EPSILON
+            normalize_angle(angle - self.start_angle) <= self.sweep_angle
         } else {
-            normalize_angle(self.start_angle - angle) <= -self.sweep_angle + ARC_EPSILON
+            normalize_angle(self.start_angle - angle) <= -self.sweep_angle
         }
     }
 }
@@ -172,6 +170,23 @@ fn normalize_angle(angle: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn positive_sweeps_are_preserved_and_near_full_sweeps_keep_their_gap() {
+        for sweep in [
+            1.0e-20,
+            1.0e-10,
+            1.0e-6,
+            1.0,
+            std::f32::consts::TAU - 0.00005,
+        ] {
+            for direction in [-1.0, 1.0] {
+                let arc = Rc::new(Point::ZERO, 1.0, 0.0, direction * sweep, 1.0, LineCap::Butt);
+                assert!(!arc.is_empty());
+                assert!(!arc.is_full_sweep());
+            }
+        }
+    }
 
     #[test]
     fn arc_bounds_include_endpoints_quadrants_and_stroke_width() {

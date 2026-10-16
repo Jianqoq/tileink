@@ -29,7 +29,7 @@ impl Canvas {
         clip: Rect,
         brush: impl Into<Brush>,
     ) -> Option<DrawId> {
-        let clip = logical_rect_pixel_bounds(clip, self.scale_factor)?;
+        let clip = logical_rect_pixel_bounds(clip, self.scale_factor())?;
         self.push_text_layout_inner(layout, origin, Some(clip), brush.into())
     }
 
@@ -44,7 +44,7 @@ impl Canvas {
             return None;
         }
 
-        let layout_bounds = layout_bounds_at_scaled_origin(layout, origin, self.scale_factor);
+        let layout_bounds = layout_bounds_at_scaled_origin(layout, origin, self.scale_factor());
         if layout_bounds.is_empty() {
             return None;
         }
@@ -65,7 +65,7 @@ impl Canvas {
         self.text_glyphs.extend(scene_glyphs_at_scaled_origin(
             layout,
             origin,
-            self.scale_factor,
+            self.scale_factor(),
         ));
         let glyph_count = self.text_glyphs.len() as u32 - glyph_start;
         if glyph_count == 0 {

@@ -1,6 +1,8 @@
 //! Opt-in pixel fitting for small UI glyphs, after their complete scale is known.
 use peniko::kurbo::{Affine, BezPath, PathEl, Point, Stroke, Vec2};
 
+mod primitives;
+
 /// Physical pixel grid for vector glyphs whose final origin is on a device-pixel boundary.
 ///
 /// The scale includes the surface DPI and any uniform ancestor scale. Pixel fitting changes
@@ -32,21 +34,39 @@ impl PixelGrid {
         stroke: &Stroke,
         transform: Affine,
     ) -> (BezPath, Stroke) {
-        let Some(scale) = uniform_axis_scale(transform) else {
+        let Some((fitted, phase)) = self.fitted_stroke(stroke, transform) else {
             return (path.clone(), stroke.clone());
         };
+        (self.fit(path, transform, phase), fitted)
+    }
+
+    fn fitted_stroke(self, stroke: &Stroke, transform: Affine) -> Option<(Stroke, f64)> {
+        let (width, phase) = self.fitted_width(stroke.width, transform)?;
+        let mut fitted = stroke.clone();
+        fitted.width = width;
+        Some((fitted, phase))
+    }
+
+    /// Fits width alone for curved/SDF primitives whose center geometry must remain untouched.
+    #[must_use]
+    pub fn stroke_width(self, width: f64, transform: Affine) -> f64 {
+        self.fitted_width(width, transform)
+            .map_or(width, |(width, _)| width)
+    }
+
+    fn fitted_width(self, width: f64, transform: Affine) -> Option<(f64, f64)> {
+        let scale = uniform_axis_scale(transform)?;
         let device_scale = scale * self.scale;
-        let physical_width = stroke.width * device_scale;
+        let physical_width = width * device_scale;
         if !physical_width.is_finite() || physical_width <= 0.0 || !device_scale.is_finite() {
-            return (path.clone(), stroke.clone());
+            return None;
         }
         let pixels = physical_width.round().max(1.0);
-        let mut fitted = stroke.clone();
-        fitted.width = pixels / device_scale;
-        if !fitted.width.is_finite() {
-            return (path.clone(), stroke.clone());
+        let width = pixels / device_scale;
+        if !width.is_finite() {
+            return None;
         }
-        (self.fit(path, transform, (pixels % 2.0) * 0.5), fitted)
+        Some((width, (pixels % 2.0) * 0.5))
     }
 
     fn fit(self, path: &BezPath, transform: Affine, phase: f64) -> BezPath {
@@ -71,8 +91,11 @@ impl PixelGrid {
                     } else {
                         Some(index)
                     };
-                    if let (Some(a), Some(b)) = (current, end) {
-                        fit_edge(&elements, &mut shifts, a, b, phase);
+                    if let (Some(a), Some(b)) = (current, end)
+                        && let (Some(start), Some(end)) =
+                            (endpoint(elements[a]), endpoint(elements[b]))
+                    {
+                        fit_edge(start, end, &mut shifts, a, b, phase);
                     }
                 }
                 _ => {}
@@ -132,10 +155,7 @@ const fn endpoint(element: PathEl) -> Option<Point> {
     }
 }
 
-fn fit_edge(elements: &[PathEl], shifts: &mut [Vec2], a: usize, b: usize, phase: f64) {
-    let (Some(start), Some(end)) = (endpoint(elements[a]), endpoint(elements[b])) else {
-        return;
-    };
+fn fit_edge(start: Point, end: Point, shifts: &mut [Vec2], a: usize, b: usize, phase: f64) {
     let snap = |v: f64| (v - phase).round() + phase - v;
     if (start.x - end.x).abs() <= 1e-7 {
         let dx = snap(start.x);

@@ -16,6 +16,8 @@ mod cases;
 mod equivalence;
 #[path = "sdf/oracle.rs"]
 mod oracle;
+#[path = "sdf/scales.rs"]
+mod scales;
 
 #[derive(Clone, Copy, Debug)]
 struct Request {
@@ -138,6 +140,54 @@ fn assert_close(actual: u32, expected: u32, label: impl std::fmt::Debug) {
         actual.abs_diff(expected) <= 1,
         "{label:?}: actual {actual}, expected {expected}"
     );
+}
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn native_triangle_edge_coverage_is_invariant_under_tiny_and_large_coordinate_scales() -> Result<()>
+{
+    let context = context()?;
+    for size in [
+        1.0e-20_f32,
+        1.0e-10,
+        1.0e-6,
+        1.0e-4,
+        1.0e-3,
+        1.0,
+        1.0e10,
+        1.0e20,
+    ] {
+        let triangle = SdfTriangle::new(
+            Point::new(0.0, 0.0),
+            Point::new(f64::from(size), 0.0),
+            Point::new(0.0, f64::from(size)),
+            0.0,
+        );
+        let inverse = GpuAffine::from_logical(
+            Affine::scale_non_uniform(f64::from(size), f64::from(size) * 2.0),
+            1.0,
+        );
+        let requests = [
+            Request {
+                record: 0,
+                point: [0.5, -0.025],
+                inverse,
+            },
+            Request {
+                record: 0,
+                point: [0.25, 0.05],
+                inverse,
+            },
+        ];
+        let actual = sample(&context, &[encode_sdf(Sdf::Triangle(triangle))], &requests)?;
+        // The nearest boundary is the horizontal edge. Its signed distances are 0.05s/-0.1s;
+        // the transformed unit normal has length 2s, independent of the authored scale.
+        for (value, coverage) in actual.into_iter().zip([0.475_f32, 0.55]) {
+            assert_close(value, (coverage * 255.0).round() as u32, size);
+        }
+    }
+    context.check_validation()?;
+    Ok(())
 }
 
 #[test]

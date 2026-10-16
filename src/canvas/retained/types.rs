@@ -131,7 +131,7 @@ pub(crate) struct RetainedFrameDelta {
 #[derive(Clone, Debug)]
 pub(crate) struct RetainedFrame {
     pub(crate) root: RetainedNodeId,
-    pub(crate) logical_size: (u32, u32),
+    pub(crate) logical_size: (f64, f64),
     pub(crate) physical_size: (u32, u32),
     pub(crate) scale_bits: u32,
     pub(crate) nodes: Rc<[RetainedNodeState]>,

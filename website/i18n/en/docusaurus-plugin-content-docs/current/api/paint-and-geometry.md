@@ -23,6 +23,8 @@ title: Paint, geometry, and filters
 
 Rectangle, circle, arc, line and callout shadows all use `ShadowOptions` for their offset, falloff distance and intensity.
 
+Analytic geometry uses actual zero values rather than fixed logical-pixel cutoffs: zero-length butt lines and zero sweeps are empty, while positive short strokes, dash gaps and corner radii retain their geometry. Only sweeps reaching `TAU` form a full circle; near-full arcs retain their gap. Callout tails have no minimum logical size, and rounded paths keep their curves before magnification. CPU, Metal and HLSL follow these same rules.
+
 `Region::rect` and `Region::path` define filter/mask sampling regions. `Filter` covers blur, color transforms, shadows, convolution, morphology, displacement, turbulence, lighting, composite/blend, primitive graphs, and `RectLiquidGlass`; related public parameter types are re-exported from the crate root. `BlurSampling::downsampled(factor)` selects the reduced-resolution blur path; factors below one are normalized internally when evaluated.
 
 `ShaderKernel::new` and `ShaderPipeline::new` expose native resource bindings, writable buffers, floating-point textures and explicit multipass/multiresolution dispatch. Use `with_resource` for snapshot updates and `with_input_radius` for a bounded aggregate read footprint. See the shader pipeline section in [Images and brushes](../guides/images-and-brushes.md#multipass-native-shaderpipeline).

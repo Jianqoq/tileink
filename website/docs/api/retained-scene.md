@@ -23,6 +23,7 @@ RetainedParent::mask(node)
 | 方法 | 说明 |
 |---|---|
 | `RetainedScene::new(width, height, scale, root_id)` | 创建 root group |
+| `RetainedScene::with_surface(surface, root_id)` / `surface()` | 使用或读取精确的 `CanvasSurface`；空物理尺寸被拒绝 |
 | `version()` | 当前 commit version |
 | `root()` | root ID |
 | `logical_size()` / `physical_size()` | scene extent |
@@ -49,6 +50,7 @@ Group 和 Layer 可以拥有 Content 子节点；`insert_scene` 创建的 Canvas
 | `move_before(id, sibling)` | 同 parent reorder |
 | `remove_subtree(id)` | 删除 node 和 descendants |
 | `resize(width, height, scale)` | 更新 surface；scale 必须与 live child Canvas 相容 |
+| `set_surface(surface)` | 原子更新已校验的 viewport，保留小数逻辑尺寸与精确物理尺寸；scale 必须与 live child Canvas 相容 |
 | `invalidate_rect(rect)` | raster-only damage |
 | `invalidate_all()` | full raster damage，不强制重建未变 scene data |
 | `commit()` | 原子验证、应用并返回新 `SceneVersion` |

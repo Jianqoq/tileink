@@ -49,9 +49,9 @@ impl PersistentSceneMaterializer {
         let canvas = Rc::make_mut(&mut self.canvas);
         canvas.persistent_frame = Some(crate::canvas::RetainedFrame {
             root: scene.root,
-            logical_size: (scene.width, scene.height),
+            logical_size: scene.logical_size(),
             physical_size: canvas.physical_size(),
-            scale_bits: scene.scale.to_bits(),
+            scale_bits: scene.surface.scale_factor().to_bits(),
             nodes: nodes.into(),
             node_index: Rc::new(node_index),
             state_pages: Rc::new(HashMap::default()),

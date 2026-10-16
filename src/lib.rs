@@ -8,6 +8,7 @@
     )
 )]
 mod canvas;
+mod canvas_surface;
 #[path = "../build/hex.rs"]
 mod hex;
 mod pixel_grid;
@@ -29,6 +30,7 @@ pub const BLOCK_SIZE: u32 = 16 * 16;
 
 pub use canvas::{Canvas, DrawId, RetainedNodeId};
 pub(crate) use canvas::{NodeRevision, PersistentLayerKey};
+pub use canvas_surface::{CanvasSurface, InvalidCanvasSurface};
 pub use cosmic_text::{
     Align as TextAlign, Attrs as TextAttrs, CacheKeyFlags as TextCacheKeyFlags,
     Family as TextFamily, FontSystem as TextFontSystem, Stretch as TextStretch, Style as TextStyle,

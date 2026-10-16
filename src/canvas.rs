@@ -21,6 +21,7 @@ use peniko::{
     },
 };
 
+use crate::CanvasSurface;
 use crate::shared::{
     affine::GpuAffine,
     bounds::{Bounds, PixelBounds},
@@ -98,9 +99,7 @@ pub struct Canvas {
     pub(crate) path_cnt: u32,
     pub(crate) backdrop_pool_capacity: u32,
     pub(crate) tile_cnt: u32,
-    pub(crate) logical_width: u32,
-    pub(crate) logical_height: u32,
-    pub(crate) scale_factor: f32,
+    pub(crate) surface: CanvasSurface,
     draw_generation: u32,
     pub(crate) persistent_root: Option<RetainedNodeId>,
     pub(crate) invalidated_bounds: Vec<Bounds>,
@@ -197,20 +196,6 @@ struct PathPushOptions {
     brush: Brush,
     emit_draw_command: bool,
     tag: DrawTag,
-}
-
-fn valid_scale_factor(scale_factor: f32) -> f32 {
-    assert!(
-        scale_factor.is_finite() && scale_factor > 0.0,
-        "canvas scale factor must be finite and positive"
-    );
-    scale_factor
-}
-
-fn scaled_canvas_extent(value: u32, scale: f32) -> u32 {
-    (f64::from(value) * f64::from(scale))
-        .ceil()
-        .clamp(0.0, f64::from(u32::MAX)) as u32
 }
 
 fn scale_brush_transform(transform: [f32; 6], scale: f32) -> [f32; 6] {

@@ -26,11 +26,11 @@ impl Radius {
     }
 
     pub(crate) fn is_zero(self) -> bool {
-        const EPS: f32 = 1e-6;
-        self.top_left <= EPS
-            && self.top_right <= EPS
-            && self.bottom_left <= EPS
-            && self.bottom_right <= EPS
+        // Path conversion must preserve positive corners even before a magnifying transform.
+        self.top_left == 0.0
+            && self.top_right == 0.0
+            && self.bottom_left == 0.0
+            && self.bottom_right == 0.0
     }
 
     fn offset_corners(

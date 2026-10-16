@@ -1,12 +1,6 @@
 use super::model::*;
 use super::prelude::*;
 
-pub(super) fn validate_size(width: u32, height: u32, scale: f32) -> Result<(), RetainedSceneError> {
-    (width > 0 && height > 0 && scale.is_finite() && scale > 0.0)
-        .then_some(())
-        .ok_or(RetainedSceneError::InvalidSize)
-}
-
 pub(super) fn validate_transform(transform: Affine) -> Result<(), RetainedSceneError> {
     let coefficients = transform.as_coeffs();
     (coefficients.iter().all(|value| value.is_finite())

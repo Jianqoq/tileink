@@ -66,7 +66,7 @@ fn reset_for_surface_retargets_canvas_without_discarding_storage_capacity() {
 
     canvas.reset_for_surface(80, 48, 2.0);
 
-    assert_eq!(canvas.logical_size(), (80, 48));
+    assert_eq!(canvas.logical_size(), (80.0, 48.0));
     assert_eq!(canvas.physical_size(), (160, 96));
     assert_eq!(canvas.scale_factor(), 2.0);
     assert_eq!(canvas.draw_count(), 0);
@@ -93,7 +93,7 @@ fn reset_for_surface_rejects_invalid_scale_without_mutating_canvas() {
     }));
 
     assert!(result.is_err());
-    assert_eq!(canvas.logical_size(), (64, 64));
+    assert_eq!(canvas.logical_size(), (64.0, 64.0));
     assert_eq!(canvas.scale_factor(), 1.0);
     assert_eq!(canvas.draw_solid_color(draw), Some(rgb(255, 0, 0)));
 }

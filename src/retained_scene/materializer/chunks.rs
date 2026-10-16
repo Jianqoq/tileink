@@ -18,15 +18,12 @@ impl PersistentSceneMaterializer {
     ) {
         let Self { chunks, arenas, .. } = self;
         for (&id, chunk) in chunks.iter_mut() {
-            if chunk.canvas.logical_size() == (scene.width, scene.height) {
+            if chunk.canvas.surface() == scene.surface {
                 continue;
             }
             let old_backdrops = chunk.canvas.backdrop_pool_capacity as usize;
             let old_segments = chunk.canvas.tile_cnt as usize;
-            chunk
-                .canvas
-                .edit()
-                .resize_surface(scene.width, scene.height);
+            chunk.canvas.edit().resize_surface(scene.surface);
             let new_backdrops = chunk.canvas.backdrop_pool_capacity as usize;
             let new_segments = chunk.canvas.tile_cnt as usize;
             if old_backdrops != 0 || new_backdrops != 0 {

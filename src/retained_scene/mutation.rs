@@ -3,6 +3,7 @@ use super::model::*;
 use super::scene::RetainedScene;
 use super::transaction::{Mutation, UndoMutation};
 use super::validation::*;
+use crate::CanvasSurface;
 
 impl RetainedScene {
     #[allow(
@@ -24,7 +25,7 @@ impl RetainedScene {
                 if self.nodes.contains_key(&id) {
                     return Err(RetainedSceneError::DuplicateNode(id));
                 }
-                validate_kind(&kind, self.scale)?;
+                validate_kind(&kind, self.surface.scale_factor())?;
                 let insertion = self.insert_child(parent, before, id)?;
                 record_rebalanced_siblings(&insertion, changes);
                 let instance = self.next_node_instance;
@@ -50,7 +51,7 @@ impl RetainedScene {
                 })
             }
             Mutation::ReplaceScene { id, canvas } => {
-                validate_canvas(&canvas, self.scale)?;
+                validate_canvas(&canvas, self.surface.scale_factor())?;
                 let node = self
                     .nodes
                     .get_mut(&id)
@@ -237,7 +238,15 @@ impl RetainedScene {
                 height,
                 scale,
             } => {
-                validate_size(width, height, scale)?;
+                let surface = CanvasSurface::from_logical((width, height), scale)
+                    .map_err(|_| RetainedSceneError::InvalidSize)?;
+                self.apply_with_undo(Mutation::SetSurface(surface), changes)
+            }
+            Mutation::SetSurface(surface) => {
+                if surface.is_empty() {
+                    return Err(RetainedSceneError::InvalidSize);
+                }
+                let scale = surface.scale_factor();
                 if self.nodes.values().any(|node| match &node.kind {
                     NodeKind::Scene { canvas, .. } => {
                         (canvas.scale_factor() - scale).abs() > f32::EPSILON
@@ -246,15 +255,11 @@ impl RetainedScene {
                 }) {
                     return Err(RetainedSceneError::ScaleMismatch);
                 }
-                if (self.width, self.height, self.scale.to_bits())
-                    == (width, height, scale.to_bits())
-                {
+                if self.surface == surface {
                     Ok(UndoMutation::None)
                 } else {
-                    let old = (self.width, self.height, self.scale);
-                    self.width = width;
-                    self.height = height;
-                    self.scale = scale;
+                    let old = self.surface;
+                    self.surface = surface;
                     changes.surface_changed = true;
                     changes.invalidate_all = true;
                     Ok(UndoMutation::Resize(old))

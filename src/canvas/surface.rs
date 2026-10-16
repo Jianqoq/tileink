@@ -4,9 +4,24 @@ use super::*;
 mod tests;
 
 impl Canvas {
+    /// Creates an empty canvas for an authored logical surface.
+    ///
+    /// # Panics
+    /// Panics if the scale is nonpositive/nonfinite or the resulting surface extent is unrepresentable.
     #[must_use]
+    #[allow(
+        clippy::expect_used,
+        reason = "The infallible authored constructor requires a representable canvas surface"
+    )]
     pub fn new(logical_width: u32, logical_height: u32, scale_factor: f32) -> Self {
-        let scale = valid_scale_factor(scale_factor);
+        Self::with_surface(
+            CanvasSurface::from_logical((logical_width, logical_height), scale_factor)
+                .expect("valid canvas surface"),
+        )
+    }
+
+    #[must_use]
+    pub fn with_surface(surface: CanvasSurface) -> Self {
         Self {
             lines: Vec::new(),
             path_records: Vec::new(),
@@ -23,9 +38,7 @@ impl Canvas {
             path_cnt: 0,
             backdrop_pool_capacity: 0,
             tile_cnt: 0,
-            logical_width,
-            logical_height,
-            scale_factor: scale,
+            surface,
             draw_generation: 0,
             persistent_root: None,
             invalidated_bounds: Vec::new(),
@@ -41,38 +54,38 @@ impl Canvas {
     }
 
     /// Creates the internal materialized target owned by one persistent scene.
-    pub(crate) fn new_persistent(
-        logical_width: u32,
-        logical_height: u32,
-        scale_factor: f32,
-        root_id: RetainedNodeId,
-    ) -> Self {
-        let mut canvas = Self::new(logical_width, logical_height, scale_factor);
+    pub(crate) fn new_persistent(surface: CanvasSurface, root_id: RetainedNodeId) -> Self {
+        let mut canvas = Self::with_surface(surface);
         canvas.persistent_root = Some(root_id);
         canvas
     }
     #[must_use]
     pub const fn scale_factor(&self) -> f32 {
-        self.scale_factor
+        self.surface.scale_factor()
     }
 
     #[must_use]
-    pub fn physical_size(&self) -> (u32, u32) {
+    pub const fn physical_size(&self) -> (u32, u32) {
         (self.physical_width(), self.physical_height())
     }
 
     #[must_use]
-    pub const fn logical_size(&self) -> (u32, u32) {
-        (self.logical_width, self.logical_height)
+    pub const fn logical_size(&self) -> (f64, f64) {
+        self.surface.logical_size()
+    }
+
+    #[must_use]
+    pub const fn surface(&self) -> CanvasSurface {
+        self.surface
     }
 
     /// Changes only the viewport extent and rebuilds path allocations clipped to that viewport.
     /// Geometry, commands, brushes, images, and text remain valid when scale is unchanged.
-    pub(crate) fn resize_surface(&mut self, logical_width: u32, logical_height: u32) {
-        if (self.logical_width, self.logical_height) == (logical_width, logical_height) {
+    pub(crate) fn resize_surface(&mut self, surface: CanvasSurface) {
+        if self.surface == surface {
             return;
         }
-        self.set_surface_extent(logical_width, logical_height);
+        self.set_surface_extent(surface);
         self.backdrop_pool_capacity = 0;
         self.tile_cnt = 0;
         self.append_path_backdrops_for_paths(
@@ -83,9 +96,8 @@ impl Canvas {
         );
     }
 
-    pub(crate) const fn set_surface_extent(&mut self, logical_width: u32, logical_height: u32) {
-        self.logical_width = logical_width;
-        self.logical_height = logical_height;
+    pub(crate) const fn set_surface_extent(&mut self, surface: CanvasSurface) {
+        self.surface = surface;
     }
 
     /// Installs a retained node transform without rewriting local geometry or paint blobs.
@@ -98,7 +110,7 @@ impl Canvas {
         reason = "Retained scene validation guarantees installed transforms are invertible"
     )]
     pub(crate) fn set_retained_transform(&mut self, logical_transform: Affine) {
-        let transform = GpuAffine::from_logical(logical_transform, self.scale_factor);
+        let transform = GpuAffine::from_logical(logical_transform, self.scale_factor());
         let inverse = transform
             .inverse()
             .expect("validated retained transforms are invertible");
@@ -165,21 +177,21 @@ impl Canvas {
     }
 
     #[must_use]
-    pub fn physical_width(&self) -> u32 {
-        scaled_canvas_extent(self.logical_width, self.scale_factor)
+    pub const fn physical_width(&self) -> u32 {
+        self.surface.physical_size().0
     }
 
     #[must_use]
-    pub fn physical_height(&self) -> u32 {
-        scaled_canvas_extent(self.logical_height, self.scale_factor)
+    pub const fn physical_height(&self) -> u32 {
+        self.surface.physical_size().1
     }
 
     pub(super) fn scale_f64(&self) -> f64 {
-        f64::from(self.scale_factor)
+        f64::from(self.scale_factor())
     }
 
     pub(super) const fn scale_f32(&self) -> f32 {
-        self.scale_factor
+        self.scale_factor()
     }
 
     pub(super) fn device_transform(&self) -> Affine {

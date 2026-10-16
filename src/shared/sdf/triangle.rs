@@ -2,8 +2,6 @@ use peniko::kurbo::Point;
 
 use crate::shared::bounds::Bounds;
 
-const AREA_EPSILON: f64 = 1.0e-9;
-
 /// Filled triangle with a uniform rounded-corner radius.
 ///
 /// `corner_radius` is a Minkowski expansion of the three line segments. A zero radius preserves
@@ -21,7 +19,8 @@ impl Triangle {
     #[must_use]
     ///
     /// # Panics
-    /// Panics for nonfinite/collinear points or a nonfinite/negative corner radius.
+    /// Panics for nonfinite/collinear points, an area outside the finite `f64` range,
+    /// or a nonfinite/negative corner radius.
     pub fn new(a: Point, b: Point, c: Point, corner_radius: f32) -> Self {
         let triangle = Self {
             a,
@@ -31,7 +30,7 @@ impl Triangle {
         };
         assert!(
             !triangle.is_empty(),
-            "SDF triangle points must be finite and non-collinear, and corner radius must be finite and non-negative"
+            "SDF triangle points and area must be finite and non-collinear, and corner radius must be finite and non-negative"
         );
         triangle
     }
@@ -40,10 +39,14 @@ impl Triangle {
         let finite = [self.a.x, self.a.y, self.b.x, self.b.y, self.c.x, self.c.y]
             .into_iter()
             .all(f64::is_finite);
+        let area = self.signed_double_area();
+        // Positive subpixel triangles remain geometry. An absolute area threshold made valid
+        // tiny gfx_ui elements panic before either hit testing or GPU encoding could run.
         !finite
             || !self.corner_radius.is_finite()
             || self.corner_radius < 0.0
-            || self.signed_double_area().abs() <= AREA_EPSILON
+            || !area.is_finite()
+            || area == 0.0
     }
 
     pub(crate) fn bounds(self) -> Bounds {
@@ -76,6 +79,21 @@ impl Triangle {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn positive_triangles_remain_geometry_across_layout_scales() {
+        for size in [1.0e-20, 1.0e-10, 1.0e-6, 1.0, 1.0e20] {
+            for clockwise in [false, true] {
+                let [b, c] = if clockwise {
+                    [Point::new(size, 0.0), Point::new(0.0, size)]
+                } else {
+                    [Point::new(0.0, size), Point::new(size, 0.0)]
+                };
+                let triangle = Triangle::new(Point::ZERO, b, c, 0.0);
+                assert!(!triangle.is_empty());
+            }
+        }
+    }
 
     #[test]
     fn rounded_bounds_expand_all_three_vertices() {

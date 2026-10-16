@@ -6,7 +6,7 @@ use super::{
     },
 };
 use crate::{
-    Brush, Canvas, FillRule, Radius, Region,
+    Brush, Canvas, CanvasSurface, FillRule, Radius, Region,
     shared::layer::mask::{Mask as LayerMask, MaskKind},
 };
 use peniko::{
@@ -24,17 +24,14 @@ enum ClipPathLowering {
 impl SvgBuilder {
     pub(super) fn svg_mask_layer(
         &self,
-        width: u32,
-        height: u32,
-        scale_factor: f32,
+        surface: CanvasSurface,
         mask: &usvg::Mask,
         transform: Affine,
     ) -> Result<(Canvas, LayerMask), SvgError> {
-        let mut mask_scene = Canvas::new(width, height, scale_factor);
+        let mut mask_scene = Canvas::with_surface(surface);
         let builder = self.with_base_transform(transform);
         if let Some(parent) = mask.mask() {
-            let (parent_scene, parent_mask) =
-                self.svg_mask_layer(width, height, scale_factor, parent, transform)?;
+            let (parent_scene, parent_mask) = self.svg_mask_layer(surface, parent, transform)?;
             mask_scene.push_mask_layer(parent_scene, parent_mask);
             builder.push_group(&mut mask_scene, mask.root())?;
             mask_scene.pop_layer();
@@ -74,11 +71,7 @@ impl SvgBuilder {
 
         match Self::clip_path_lowering(clip) {
             ClipPathLowering::Empty => canvas.push_mask_layer(
-                Canvas::new(
-                    canvas.logical_width,
-                    canvas.logical_height,
-                    canvas.scale_factor,
-                ),
+                Canvas::with_surface(canvas.surface()),
                 LayerMask {
                     region: Region::rect(Rect::ZERO, Radius::ZERO),
                     kind: MaskKind::Alpha,
@@ -91,13 +84,8 @@ impl SvgBuilder {
                 self.options.tolerance,
             ),
             ClipPathLowering::Mask => {
-                let (mask_scene, mask) = self.svg_clip_path_mask_layer(
-                    canvas.logical_width,
-                    canvas.logical_height,
-                    canvas.scale_factor,
-                    clip,
-                    reference_transform,
-                )?;
+                let (mask_scene, mask) =
+                    self.svg_clip_path_mask_layer(canvas.surface(), clip, reference_transform)?;
                 canvas.push_mask_layer(mask_scene, mask);
             }
         }
@@ -106,13 +94,12 @@ impl SvgBuilder {
 
     fn svg_clip_path_mask_layer(
         &self,
-        width: u32,
-        height: u32,
-        scale_factor: f32,
+        surface: CanvasSurface,
         clip: &usvg::ClipPath,
         reference_transform: Affine,
     ) -> Result<(Canvas, LayerMask), SvgError> {
-        let mut mask_scene = Canvas::new(width, height, scale_factor);
+        let mut mask_scene = Canvas::with_surface(surface);
+        let (width, height) = surface.logical_size();
         self.push_clip_path_mask_group(
             &mut mask_scene,
             clip.root(),
@@ -123,10 +110,7 @@ impl SvgBuilder {
             LayerMask {
                 // Complex clipPath lowering must not crop group contents before filters run.
                 // The alpha mask applies the actual clip shape after isolated content rendering.
-                region: Region::rect(
-                    Rect::new(0.0, 0.0, f64::from(width), f64::from(height)),
-                    Radius::ZERO,
-                ),
+                region: Region::rect(Rect::new(0.0, 0.0, width, height), Radius::ZERO),
                 kind: MaskKind::Alpha,
             },
         ))

@@ -1,7 +1,6 @@
 use super::model::*;
 use super::prelude::*;
 use super::transaction::{Mutation, RetainedSceneTransaction, UndoMutation};
-use super::validation::validate_size;
 
 pub(crate) const JOURNAL_CAPACITY: usize = 256;
 static NEXT_SCENE_ID: AtomicU64 = AtomicU64::new(1);
@@ -14,9 +13,7 @@ pub(crate) struct JournalEntry {
 
 pub struct RetainedScene {
     pub(crate) id: u64,
-    pub(crate) width: u32,
-    pub(crate) height: u32,
-    pub(crate) scale: f32,
+    pub(crate) surface: CanvasSurface,
     pub(crate) root: RetainedNodeId,
     pub(crate) version: SceneVersion,
     pub(crate) nodes: HashMap<RetainedNodeId, SceneNode>,
@@ -34,14 +31,27 @@ impl RetainedScene {
         scale: f32,
         root: RetainedNodeId,
     ) -> Result<Self, RetainedSceneError> {
-        validate_size(width, height, scale)?;
+        let surface = CanvasSurface::from_logical((width, height), scale)
+            .map_err(|_| RetainedSceneError::InvalidSize)?;
+        Self::with_surface(surface, root)
+    }
+
+    /// Creates a retained scene with an exact native or authored viewport.
+    ///
+    /// # Errors
+    /// Returns an error when the surface is empty.
+    pub fn with_surface(
+        surface: CanvasSurface,
+        root: RetainedNodeId,
+    ) -> Result<Self, RetainedSceneError> {
+        if surface.is_empty() {
+            return Err(RetainedSceneError::InvalidSize);
+        }
         let mut nodes = HashMap::default();
         nodes.insert(root, SceneNode::group(None, 1));
         Ok(Self {
             id: NEXT_SCENE_ID.fetch_add(1, Ordering::Relaxed),
-            width,
-            height,
-            scale,
+            surface,
             root,
             version: SceneVersion::INITIAL,
             nodes,
@@ -61,21 +71,23 @@ impl RetainedScene {
     }
 
     #[must_use]
-    pub const fn logical_size(&self) -> (u32, u32) {
-        (self.width, self.height)
+    pub const fn logical_size(&self) -> (f64, f64) {
+        self.surface.logical_size()
     }
 
     #[must_use]
-    pub fn physical_size(&self) -> (u32, u32) {
-        (
-            (f64::from(self.width) * f64::from(self.scale)).ceil() as u32,
-            (f64::from(self.height) * f64::from(self.scale)).ceil() as u32,
-        )
+    pub const fn surface(&self) -> CanvasSurface {
+        self.surface
+    }
+
+    #[must_use]
+    pub const fn physical_size(&self) -> (u32, u32) {
+        self.surface.physical_size()
     }
 
     #[must_use]
     pub const fn scale_factor(&self) -> f32 {
-        self.scale
+        self.surface.scale_factor()
     }
 
     pub(crate) const fn id(&self) -> u64 {
@@ -179,8 +191,8 @@ impl RetainedScene {
                 self.nodes.extend(nodes);
                 self.insert_child_at(parent, parent_key, root);
             }
-            UndoMutation::Resize((width, height, scale)) => {
-                (self.width, self.height, self.scale) = (width, height, scale);
+            UndoMutation::Resize(surface) => {
+                self.surface = surface;
             }
         }
     }

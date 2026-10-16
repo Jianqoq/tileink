@@ -54,7 +54,7 @@ impl Canvas {
             "cannot append a canvas with unclosed layers"
         );
         assert!(
-            (self.scale_factor - other.scale_factor).abs() <= f32::EPSILON,
+            (self.scale_factor() - other.scale_factor()).abs() <= f32::EPSILON,
             "cannot append canvases with different scale factors"
         );
     }
@@ -76,7 +76,7 @@ impl Canvas {
     }
 
     fn append_transformed_prepared(&mut self, other: &Self, transform: Affine) {
-        let transform = GpuAffine::from_logical(transform, self.scale_factor);
+        let transform = GpuAffine::from_logical(transform, self.scale_factor());
         let command_offset =
             if [transform.a, transform.b, transform.c, transform.d] == [1.0, 0.0, 0.0, 1.0] {
                 SceneOffset::new(Point::new(f64::from(transform.e), f64::from(transform.f)))

@@ -156,7 +156,10 @@ fn undo_log_restores_values_order_removals_and_surface_after_late_failure() {
 
     assert_eq!(result, Err(RetainedSceneError::InvalidParentBranch(root)));
     assert_eq!(scene.version(), version);
-    assert_eq!((scene.width, scene.height, scene.scale), (64, 64, 1.0));
+    assert_eq!(
+        scene.surface,
+        crate::CanvasSurface::from_logical((64, 64), 1.0).unwrap()
+    );
     assert!(scene.nodes.contains_key(&b));
     assert!(!scene.nodes.contains_key(&invalid));
     assert_eq!(

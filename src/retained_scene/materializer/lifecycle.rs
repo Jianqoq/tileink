@@ -4,12 +4,7 @@ use crate::shared::execution::ROOT_COMMAND_LIST_ID;
 
 impl PersistentSceneMaterializer {
     pub(crate) fn new(scene: &RetainedScene) -> Self {
-        let canvas = Rc::new(Canvas::new_persistent(
-            scene.width,
-            scene.height,
-            scene.scale,
-            scene.root,
-        ));
+        let canvas = Rc::new(Canvas::new_persistent(scene.surface, scene.root));
         let mut materializer = Self {
             scene_id: scene.id,
             version: SceneVersion::INITIAL,
@@ -102,7 +97,9 @@ impl PersistentSceneMaterializer {
         let compactions_before = self.arena_compactions();
         let immutable_remaps_before = self.immutable_remap_compactions();
         let surface_changed = changes.surface_changed;
-        if surface_changed && self.canvas.scale_factor().to_bits() != scene.scale.to_bits() {
+        if surface_changed
+            && self.canvas.scale_factor().to_bits() != scene.surface.scale_factor().to_bits()
+        {
             self.rebuild_all(scene);
             Rc::make_mut(&mut self.canvas)
                 .buffer_changes
@@ -114,7 +111,7 @@ impl PersistentSceneMaterializer {
         let rebuild_surface_metadata_after_update =
             !surface_changed && self.surface_metadata_stale && changes.topology_changed;
         if surface_changed {
-            Rc::make_mut(&mut self.canvas).set_surface_extent(scene.width, scene.height);
+            Rc::make_mut(&mut self.canvas).set_surface_extent(scene.surface);
         } else if self.surface_metadata_stale {
             // Continuous resize already redraws the full target. Rebuild its exact baseline once,
             // immediately before the first later incremental mutation needs it. The scene already
@@ -892,12 +889,7 @@ impl PersistentSceneMaterializer {
     }
 
     pub(crate) fn rebuild_all(&mut self, scene: &RetainedScene) {
-        let canvas = Rc::new(Canvas::new_persistent(
-            scene.width,
-            scene.height,
-            scene.scale,
-            scene.root,
-        ));
+        let canvas = Rc::new(Canvas::new_persistent(scene.surface, scene.root));
         self.rebuild_all_with_canvas(scene, canvas);
     }
 

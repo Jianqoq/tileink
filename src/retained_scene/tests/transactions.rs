@@ -50,7 +50,7 @@ fn insert_before_rejects_invalid_siblings_even_when_the_branch_is_empty() {
             );
             assert_eq!(scene.version(), version);
             assert_eq!(scene.nodes.len(), nodes);
-            assert_eq!(scene.logical_size(), (64, 64));
+            assert_eq!(scene.logical_size(), (64.0, 64.0));
             assert!(!scene.nodes.contains_key(&child));
             assert!(
                 scene

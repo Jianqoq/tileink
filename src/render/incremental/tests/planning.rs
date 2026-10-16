@@ -139,7 +139,7 @@ fn stale_history_preserves_scene_damage_for_output_strategy() {
 fn surface_change_forces_full_redraw() {
     let old = frame(&[(2, 0, Bounds::new(0, 0, 16, 16))]);
     let mut resized = old.clone();
-    resized.logical_size = (144, 64);
+    resized.logical_size = (144.0, 64.0);
     resized.physical_size = (144, 64);
     let mut state = IncrementalState {
         previous: Some(old),

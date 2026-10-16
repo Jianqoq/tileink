@@ -2,7 +2,7 @@
 //! the native encoder and shader instruction order.
 use super::*;
 
-fn coverage(shape: Sdf, request: Request) -> u32 {
+pub(super) fn coverage(shape: Sdf, request: Request) -> u32 {
     let a = request.inverse;
     let [px, py] = request.point.map(f64::from);
     let x = f64::from(a.a) * px + f64::from(a.c) * py + f64::from(a.e);

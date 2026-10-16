@@ -5,7 +5,7 @@ impl PreparedScene<'_> {
     pub(crate) fn plan_handle(&self) -> Rc<ExecPlan> {
         std::rc::Rc::clone(&self.plan.plan)
     }
-    pub(crate) fn size(&self) -> (u32, u32) {
+    pub(crate) const fn size(&self) -> (u32, u32) {
         self.canvas.physical_size()
     }
     pub(crate) fn record(

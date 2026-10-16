@@ -9,6 +9,11 @@ Create identity with `RetainedNodeId::new(owner, slot)` or `for_owner(owner)`. S
 
 `RetainedScene::new`, `version`, `root`, `logical_size`, `physical_size`, `scale_factor`, and `transaction` form the scene API.
 
+For native viewports, use `RetainedScene::with_surface(CanvasSurface::from_physical(size, scale)?, root)`.
+`surface()` returns the exact record and transaction `set_surface(surface)` changes it atomically,
+including fractional logical dimensions. An empty physical extent is rejected; scale must remain
+compatible with live child canvases. `logical_size()` returns `(f64, f64)`.
+
 Transaction methods chain and mutate only on `commit()`:
 
 Groups and layers can own content children. A Canvas leaf created by `insert_scene` has no retained child branches and cannot be a parent. Only mask layers can own mask children. `before: Some(id)` must identify an existing sibling in the same branch, including when that branch is empty; `None` appends. `move_before(id, id)` is a no-op only for an existing node. Invalid-branch errors identify the requested parent.

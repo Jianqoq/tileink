@@ -315,7 +315,7 @@ pub(crate) fn frame(revision: u64) -> RetainedFrame {
     };
     RetainedFrame {
         root: RetainedNodeId::for_owner(1),
-        logical_size: (32, 32),
+        logical_size: (32.0, 32.0),
         physical_size: (32, 32),
         scale_bits: 1.0f32.to_bits(),
         nodes: vec![node].into(),

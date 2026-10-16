@@ -71,9 +71,9 @@ impl PersistentSceneMaterializer {
             frame.delta = Some(Rc::new(delta));
         }
         let physical_size = self.canvas.physical_size();
-        frame.logical_size = (scene.width, scene.height);
+        frame.logical_size = scene.logical_size();
         frame.physical_size = physical_size;
-        frame.scale_bits = scene.scale.to_bits();
+        frame.scale_bits = scene.surface.scale_factor().to_bits();
         frame.version = scene.version.get();
         let canvas = Rc::make_mut(&mut self.canvas);
         frame

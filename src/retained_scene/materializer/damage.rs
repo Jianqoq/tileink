@@ -95,7 +95,7 @@ impl PersistentSceneMaterializer {
         else {
             return None;
         };
-        let scale = f64::from(scene.scale);
+        let scale = f64::from(scene.surface.scale_factor());
         Some(
             Bounds::new(
                 (rect.x0 * scale).floor() as i32,

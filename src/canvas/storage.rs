@@ -6,17 +6,28 @@ impl Canvas {
     /// Vector capacities are retained, making this the preferred frame boundary for immediate
     /// renderers whose viewport can change. No recorded geometry survives the call, so changing
     /// the scale factor cannot leave mixed-scale records behind.
+    ///
+    /// # Panics
+    /// Panics if the scale is nonpositive/nonfinite or the resulting surface extent is unrepresentable.
     pub fn reset_for_surface(
         &mut self,
         logical_width: u32,
         logical_height: u32,
         scale_factor: f32,
     ) {
-        let scale_factor = valid_scale_factor(scale_factor);
+        #[allow(
+            clippy::expect_used,
+            reason = "The authored reset requires a representable canvas surface before mutation"
+        )]
+        let surface = CanvasSurface::from_logical((logical_width, logical_height), scale_factor)
+            .expect("valid canvas surface");
+        self.reset_to_surface(surface);
+    }
+
+    /// Clears drawing while retaining allocations and the exact validated viewport.
+    pub fn reset_to_surface(&mut self, surface: CanvasSurface) {
         self.reset();
-        self.logical_width = logical_width;
-        self.logical_height = logical_height;
-        self.scale_factor = scale_factor;
+        self.set_surface_extent(surface);
     }
 
     pub fn reset(&mut self) {
@@ -108,11 +119,11 @@ impl Canvas {
         })
     }
 
-    pub(crate) fn width_in_tiles(&self) -> u32 {
+    pub(crate) const fn width_in_tiles(&self) -> u32 {
         self.physical_width().div_ceil(crate::TILE_SIZE)
     }
 
-    pub(crate) fn height_in_tiles(&self) -> u32 {
+    pub(crate) const fn height_in_tiles(&self) -> u32 {
         self.physical_height().div_ceil(crate::TILE_SIZE)
     }
 

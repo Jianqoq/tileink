@@ -31,7 +31,7 @@ fn resize_with_root_filter_insertion_avoids_the_deferred_spatial_index() {
         .commit()
         .unwrap();
     assert!(update_materializer(&mut state, &scene));
-    assert_eq!(state.canvas.logical_size(), (64, 32));
+    assert_eq!(state.canvas.logical_size(), (64.0, 32.0));
     assert!(state.surface_metadata_stale);
     scene
         .transaction()
@@ -87,7 +87,7 @@ fn resize_with_layer_updates_defers_full_frame_and_spatial_rebuild() {
     let resized = materializer.canvas.persistent_frame.as_ref().unwrap();
     assert!(Rc::ptr_eq(&resized.nodes, &base_nodes));
     assert!(resized.invalidate_all);
-    assert_eq!(resized.logical_size, (96, 64));
+    assert_eq!(resized.logical_size, (96.0, 64.0));
     assert_eq!(
         resized.node_state(clip).unwrap().revision,
         NodeRevision::new(scene.nodes[&clip].instance, scene.nodes[&clip].generation),
@@ -163,7 +163,7 @@ fn resize_with_hierarchy_changes_defers_full_frame_and_spatial_rebuild() {
         "a full redraw must defer hierarchy metadata that damage tracking does not consume"
     );
     assert!(resized.invalidate_all);
-    assert_eq!(resized.logical_size, (96, 64));
+    assert_eq!(resized.logical_size, (96.0, 64.0));
     assert!(materializer.surface_metadata_stale);
 
     scene
@@ -221,7 +221,7 @@ fn structural_edit_after_resize_rebuilds_deferred_surface_metadata() {
     let frame = materializer.canvas.persistent_frame.as_ref().unwrap();
     assert!(frame.node_state(existing).is_some());
     assert!(frame.node_state(inserted).is_some());
-    assert_eq!(frame.logical_size, (96, 64));
+    assert_eq!(frame.logical_size, (96.0, 64.0));
     assert_eq!(
         materializer.spatial_tiles_size,
         (

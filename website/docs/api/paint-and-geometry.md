@@ -71,6 +71,8 @@ title: Paint、Geometry 与 Filter
 
 Circle/Rect/stroke/shadow structs 同时公开字段，适合 struct literal；详细字段运行 `cargo doc --open` 查看。
 
+解析图元按实际零值判空：零长 butt 线、零角度圆弧为空，正的短线、虚线间隔和圆角不再被固定的逻辑像素阈值删除。圆弧只有达到 `TAU` 才视为整圆；接近整圆时保留缺口。Callout 尾部没有最小逻辑尺寸，放大前的圆角路径仍保留曲线。CPU、Metal 与 HLSL 使用相同的几何规则。
+
 矩形、圆形、圆弧、线和 callout 阴影统一使用 `ShadowOptions`，分别设置偏移、衰减距离和强度。
 
 ## Region 与 Mask

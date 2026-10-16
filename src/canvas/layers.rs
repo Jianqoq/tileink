@@ -83,7 +83,7 @@ impl Canvas {
     /// rectangles instead of depending on a CPU-flattened path approximation. Returns `false`
     /// for a non-invertible transform without mutating the canvas.
     pub fn push_clip_sdf_layer_transformed(&mut self, sdf: Sdf, transform: Affine) -> bool {
-        let transform = GpuAffine::from_logical(transform, self.scale_factor);
+        let transform = GpuAffine::from_logical(transform, self.scale_factor());
         let Some(inverse_transform) = transform.inverse() else {
             return false;
         };
@@ -171,7 +171,7 @@ impl Canvas {
     )]
     pub fn push_mask_layer(&mut self, mask_scene: Self, mask: Mask) {
         assert!(
-            (self.scale_factor - mask_scene.scale_factor).abs() <= f32::EPSILON,
+            (self.scale_factor() - mask_scene.scale_factor()).abs() <= f32::EPSILON,
             "cannot use a mask canvas with a different scale factor"
         );
         let mask_commands = self.append_scene_as_command_list(&mask_scene);

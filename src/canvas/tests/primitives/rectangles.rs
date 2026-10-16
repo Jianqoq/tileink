@@ -1,6 +1,24 @@
 use super::*;
 
 #[test]
+fn positive_subpixel_corner_radii_remain_curves_in_the_path_representation() {
+    for radius in [1.0e-20_f32, 1.0e-10, 1.0e-6, 1.0] {
+        let r = f64::from(radius);
+        let path = Canvas::rounded_rect_path(
+            Rect::new(0.0, 0.0, r * 4.0, r * 4.0),
+            Radius::all(radius),
+            r * 0.01,
+        );
+        assert!(
+            path.elements()
+                .iter()
+                .any(|element| matches!(element, peniko::kurbo::PathEl::CurveTo(..))),
+            "radius {radius}"
+        );
+    }
+}
+
+#[test]
 fn push_rect_records_sdf_rect_without_path_storage() {
     let mut canvas = test_scene();
     canvas.push_rect(

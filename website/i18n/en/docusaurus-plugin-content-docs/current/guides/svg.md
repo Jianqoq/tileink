@@ -18,3 +18,9 @@ and nonuniform scaling preserve exact geometry. Pattern tiles, embedded images, 
 buffers retain their independent coordinate systems. Keep `pixel_grid: None` for illustrations,
 plots, and exact SVG reference rendering. This opt-in addresses blurry UI glyph coverage without
 changing general SVG semantics.
+
+Manually recorded primitives share the same fitter. `PixelGrid::fill_polygon([Point; N], transform)`
+fits a closed polygon, `stroke_line([Point; 2], &Stroke, transform)` fits line endpoints and stroke
+width, and `stroke_width` fits only the width of curved/SDF primitives. Fixed vertices use stack
+storage without creating and reconstructing a path; transform and edge semantics match
+`fill_path` / `stroke_path`.

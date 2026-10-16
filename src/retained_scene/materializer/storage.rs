@@ -3,7 +3,7 @@ use super::*;
 
 impl PersistentSceneMaterializer {
     pub(crate) fn encode_node(scene: &RetainedScene, node: &SceneNode) -> Canvas {
-        let mut canvas = Canvas::new(scene.width, scene.height, scene.scale);
+        let mut canvas = Canvas::with_surface(scene.surface);
         Self::encode_node_into(scene, node, &mut canvas);
         canvas
     }
@@ -12,7 +12,7 @@ impl PersistentSceneMaterializer {
         // Re-encoding discards the old records. Resize after clearing them so a responsive
         // scene revision does not rebuild backdrop/segment allocations that are thrown away.
         canvas.reset();
-        canvas.set_surface_extent(scene.width, scene.height);
+        canvas.set_surface_extent(scene.surface);
         match &node.kind {
             NodeKind::Scene {
                 canvas: child,
@@ -66,10 +66,7 @@ impl PersistentSceneMaterializer {
                         sample_region,
                     } => canvas.push_backdrop_layer(filter.clone(), sample_region.clone()),
                     RetainedLayerDescriptor::Mask(mask) => {
-                        canvas.push_mask_layer(
-                            Canvas::new(scene.width, scene.height, scene.scale),
-                            mask.clone(),
-                        );
+                        canvas.push_mask_layer(Canvas::with_surface(scene.surface), mask.clone());
                     }
                 }
                 canvas.pop_layer();

@@ -8,6 +8,8 @@ title: Canvas API
 ## Lifetime and composition
 
 - `new(width, height, scale_factor)` creates a logical scene.
+- `CanvasSurface::from_physical((width, height), scale)?` preserves native backing pixels and fractional logical points. For example, 13×7 pixels at 2× DPR remains exactly 13×7 pixels and reports a 6.5×3.5 logical viewport. `Canvas::with_surface(surface)` and `reset_to_surface(surface)` consume this validated record; `surface()` returns it. Do not reconstruct backing pixels through rounded logical integers.
+- `CanvasSurface::from_logical` preserves authored integer logical dimensions and rounds its backing allocation outward. Both surface constructors reject invalid scales and unrepresentable extents. The infallible `Canvas::new` and `reset_for_surface` panic for those programming errors; reset validates before mutation. `logical_size()` returns `(f64, f64)`.
 - `scale_factor`, `logical_size`, `physical_size`, `physical_width`, and `physical_height` query extent.
 - `is_closed_for_append` verifies that every layer was popped; `reset` clears reusable storage, while `reset_for_surface` validates a finite positive scale and then retargets the logical extent and scale without discarding vector capacity. Validation failure leaves the Canvas unchanged.
 - `append(other, position)` translates a child; `append_transformed(other, Affine)` supports full affine placement. Pure translations use the single-pass merge when the child has no nested scale, rotation, or skew. Otherwise Tileink composes the affine directly into destination records so the child transform cannot scale or rotate the parent translation, without allocating a temporary Canvas or copying the scene twice.
@@ -28,6 +30,10 @@ Path and analytic clips use `push_clip_layer`, `push_clip_sdf_rect_layer`, `push
 - Kurbo paths: `push_arc`, `push_stroke`, `push_path`.
 
 Most methods accept `impl Into<Brush>`; potentially empty or invalid analytic geometry returns `Option<DrawId>`.
+`SdfTriangle::new` requires finite vertices, a finite nonzero `f64` area, and a finite nonnegative
+corner radius. A positive area is not discarded by a fixed epsilon. Metal/HLSL scale short-edge
+distance and normal arithmetic when squared values overflow or underflow, and derive antialiasing
+coverage from the actual transformed gradient length.
 `push_checkerboard` records one base rectangle and one alternating-cell `Sdf::Checkerboard`, so
 its draw count remains two regardless of area or cell count.
 

@@ -3,8 +3,6 @@ use peniko::kurbo::Point;
 use super::shadow::{ShadowOptions, shadow_bounds};
 use crate::shared::bounds::Bounds;
 
-const LINE_EPSILON: f32 = 1.0e-6;
-
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum LineCap {
@@ -47,10 +45,9 @@ impl Line {
     }
 
     pub(crate) fn is_empty(self) -> bool {
-        self.width <= 0.0
-            || (self.cap == LineCap::Butt
-                && (self.end.x as f32 - self.start.x as f32).abs() <= LINE_EPSILON
-                && (self.end.y as f32 - self.start.y as f32).abs() <= LINE_EPSILON)
+        // A point has no butt-capped area. Every positive segment retains its transformed AA
+        // geometry; an absolute logical-pixel epsilon erased magnified short strokes.
+        self.width <= 0.0 || (self.cap == LineCap::Butt && self.start == self.end)
     }
 
     pub(crate) fn bounds(self) -> Bounds {
@@ -58,10 +55,10 @@ impl Line {
             return Bounds::new(0, 0, 0, 0);
         }
 
-        let half = self.width * 0.5;
+        let half = f64::from(self.width) * 0.5;
         if let Some((ux, uy)) = self.unit_axis() {
-            let (mut x0, mut y0) = (self.start.x as f32, self.start.y as f32);
-            let (mut x1, mut y1) = (self.end.x as f32, self.end.y as f32);
+            let (mut x0, mut y0) = (self.start.x, self.start.y);
+            let (mut x1, mut y1) = (self.end.x, self.end.y);
             if self.cap == LineCap::Square {
                 x0 -= ux * half;
                 y0 -= uy * half;
@@ -76,10 +73,10 @@ impl Line {
             )
         } else {
             Bounds::new(
-                (self.start.x as f32 - half).floor() as i32,
-                (self.start.y as f32 - half).floor() as i32,
-                (self.start.x as f32 + half).ceil() as i32,
-                (self.start.y as f32 + half).ceil() as i32,
+                (self.start.x - half).floor() as i32,
+                (self.start.y - half).floor() as i32,
+                (self.start.x + half).ceil() as i32,
+                (self.start.y + half).ceil() as i32,
             )
         }
     }
@@ -96,11 +93,11 @@ impl Line {
         self.cap as u32 as f32
     }
 
-    fn unit_axis(self) -> Option<(f32, f32)> {
-        let dx = self.end.x as f32 - self.start.x as f32;
-        let dy = self.end.y as f32 - self.start.y as f32;
+    fn unit_axis(self) -> Option<(f64, f64)> {
+        let dx = self.end.x - self.start.x;
+        let dy = self.end.y - self.start.y;
         let len = dx.hypot(dy);
-        if len <= LINE_EPSILON {
+        if len == 0.0 {
             None
         } else {
             Some((dx / len, dy / len))
@@ -154,7 +151,7 @@ impl DashLine {
         let Some(len) = self.line_len() else {
             return false;
         };
-        self.gap_length > LINE_EPSILON && !self.has_visible_dash(len)
+        self.gap_length > 0.0 && !self.has_visible_dash(len)
     }
 
     pub(crate) fn bounds(self) -> Bounds {
@@ -170,26 +167,20 @@ impl DashLine {
         self
     }
 
-    fn line_len(self) -> Option<f32> {
-        let dx = self.line.end.x as f32 - self.line.start.x as f32;
-        let dy = self.line.end.y as f32 - self.line.start.y as f32;
+    fn line_len(self) -> Option<f64> {
+        let dx = self.line.end.x - self.line.start.x;
+        let dy = self.line.end.y - self.line.start.y;
         let len = dx.hypot(dy);
-        (len > LINE_EPSILON).then_some(len)
+        (len > 0.0).then_some(len)
     }
 
-    fn cycle(self) -> f32 {
-        self.dash_length + self.gap_length
-    }
-
-    fn normalized_dash_offset(self, cycle: f32) -> f32 {
-        self.dash_offset.rem_euclid(cycle)
-    }
-
-    fn has_visible_dash(self, len: f32) -> bool {
-        let cycle = self.cycle();
-        let offset = self.normalized_dash_offset(cycle);
-        let first_ix = ((offset - self.dash_length) / cycle).floor() as i32 + 1;
-        (first_ix as f32 * cycle - offset) < len
+    fn has_visible_dash(self, len: f64) -> bool {
+        // Test the current dash or the next start directly. Widening keeps finite f32 dash/gap
+        // sums finite, and an exact positive gap must not turn into a continuous short line.
+        let dash = f64::from(self.dash_length);
+        let cycle = dash + f64::from(self.gap_length);
+        let offset = f64::from(self.dash_offset).rem_euclid(cycle);
+        offset < dash || cycle - offset < len
     }
 }
 
@@ -214,6 +205,28 @@ impl LineShadow {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn short_lines_and_dash_gaps_keep_their_authored_geometry() {
+        for length in [1.0e-20, 1.0e-10, 1.0e-6, 1.0, 1.0e20] {
+            let line = Line::new(Point::ZERO, Point::new(length, 0.0), 1.0, LineCap::Butt);
+            assert!(!line.is_empty(), "length {length}");
+            assert!(line.bounds().width() > 0);
+            let dash = DashLine::with_offset(
+                Point::ZERO,
+                Point::new(length * 0.25, 0.0),
+                1.0,
+                LineCap::Butt,
+                length as f32,
+                length as f32,
+                length as f32,
+            );
+            assert!(
+                dash.is_empty(),
+                "a short line entirely within a nonzero gap is empty"
+            );
+        }
+    }
 
     #[test]
     fn butt_bounds_include_stroke_width_without_cap_extension() {

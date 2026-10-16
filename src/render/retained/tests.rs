@@ -27,7 +27,7 @@ fn frame(revision: u64, bounds: Bounds) -> RetainedFrame {
     };
     RetainedFrame {
         root: RetainedNodeId::for_owner(1),
-        logical_size: (128, 64),
+        logical_size: (128.0, 64.0),
         physical_size: (128, 64),
         scale_bits: 1.0f32.to_bits(),
         nodes: vec![node].into(),

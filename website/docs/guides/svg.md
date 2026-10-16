@@ -27,3 +27,8 @@ SVG 会转换成 Tileink 的 path、brush、image、text/layer/filter 语义，�
 为物理像素且至少一个像素；曲线和斜线保留抗锯齿。旋转、倾斜和非等比缩放保持原始几何。
 Pattern tile、嵌入图像和 filter image buffer 保留各自的坐标系统。插画、数据图和 SVG
 参考渲染应保持默认的 `pixel_grid: None`。这是 UI 图标模糊覆盖的根因修复，不改变通用 SVG 语义。
+
+手写图元也可使用同一拟合算法：`PixelGrid::fill_polygon([Point; N], transform)` 对齐闭合
+多边形，`stroke_line([Point; 2], &Stroke, transform)` 对齐线段及描边宽度，`stroke_width`
+只拟合曲线或 SDF 图元的宽度。固定顶点在栈上处理，无需创建路径再拆回顶点；变换和边缘语义与
+`fill_path` / `stroke_path` 一致。
