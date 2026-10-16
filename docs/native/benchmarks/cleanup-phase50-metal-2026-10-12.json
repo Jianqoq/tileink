@@ -1,0 +1,3382 @@
+{
+  "baseline_commit": "179ad02e93e2115bdcb149bd91be26e470bec3f9",
+  "gpu": "Apple M5",
+  "registry_id": "0000000100000575",
+  "scope": "Typed recording geometry dependencies, remove dummy effect draws and duplicate SDF clip geometry, move owned command translation into its own module. No public API or shader kernel changes.",
+  "tests": {
+    "passed": 1132,
+    "failed": 0,
+    "ignored": 0
+  },
+  "clippy_warnings": {
+    "library": 1,
+    "library_test_including_duplicates": 8,
+    "unchanged": true
+  },
+  "validation": {
+    "commands": {
+      "fmt": {
+        "command": [
+          "cargo",
+          "fmt"
+        ],
+        "exit_code": 0,
+        "seconds": 0.6502345000044443,
+        "log": "target/cleanup-audit/commands-fmt.log"
+      },
+      "focused-clips": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--lib",
+          "sdf_clip_geometry_updates_match",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 15.155105749989161,
+        "log": "target/cleanup-audit/commands-focused-clips.log"
+      },
+      "focused-layers": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--lib",
+          "layer",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 13.64685945797828,
+        "log": "target/cleanup-audit/commands-focused-layers.log"
+      },
+      "release-all": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets",
+          "--no-fail-fast",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 71.94313666698872,
+        "log": "target/cleanup-audit/commands-release-all.log"
+      },
+      "clippy": {
+        "command": [
+          "cargo",
+          "clippy",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets"
+        ],
+        "exit_code": 0,
+        "seconds": 21.556365124997683,
+        "log": "target/cleanup-audit/commands-clippy.log"
+      },
+      "backend-free": {
+        "command": [
+          "cargo",
+          "check",
+          "--release",
+          "--no-default-features",
+          "--lib"
+        ],
+        "exit_code": 0,
+        "seconds": 1.1030832499964163,
+        "log": "target/cleanup-audit/commands-backend-free.log"
+      },
+      "build-after": {
+        "command": [
+          "cargo",
+          "build",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--examples"
+        ],
+        "exit_code": 0,
+        "seconds": 2.2993070000084117,
+        "log": "target/cleanup-audit/commands-build-after.log"
+      },
+      "windows-dx12": {
+        "command": [
+          "cargo",
+          "check",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "dx12",
+          "--target",
+          "x86_64-pc-windows-gnu",
+          "--all-targets"
+        ],
+        "exit_code": 0,
+        "seconds": 5.023642417014344,
+        "log": "target/cleanup-audit/commands-windows-dx12.log"
+      },
+      "windows-vulkan": {
+        "command": [
+          "cargo",
+          "check",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "vulkan",
+          "--target",
+          "x86_64-pc-windows-gnu",
+          "--all-targets"
+        ],
+        "exit_code": 0,
+        "seconds": 4.470332791999681,
+        "log": "target/cleanup-audit/commands-windows-vulkan.log"
+      },
+      "fmt-check": {
+        "command": [
+          "cargo",
+          "fmt",
+          "--check"
+        ],
+        "exit_code": 0,
+        "seconds": 0.6726247909828089,
+        "log": "target/cleanup-audit/commands-fmt-check.log"
+      },
+      "svg": {
+        "command": [
+          "target/cleanup-audit/commands-svg-after",
+          "target/cleanup-audit/commands-svg"
+        ],
+        "exit_code": 0,
+        "seconds": 5.793378875008784,
+        "log": "target/cleanup-audit/commands-svg.log"
+      },
+      "mesh-gradient": {
+        "command": [
+          "target/release/examples/mesh_gradient",
+          "target/cleanup-audit/commands-mesh-gradient.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.48663420899538323,
+        "log": "target/cleanup-audit/commands-mesh-gradient.log"
+      },
+      "program-brush": {
+        "command": [
+          "target/release/examples/program_brush",
+          "target/cleanup-audit/commands-program-brush.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5425818329968024,
+        "log": "target/cleanup-audit/commands-program-brush.log"
+      },
+      "program-glass": {
+        "command": [
+          "target/release/examples/program_glass",
+          "target/cleanup-audit/commands-program-glass.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.449693208996905,
+        "log": "target/cleanup-audit/commands-program-glass.log"
+      },
+      "shader-pipeline": {
+        "command": [
+          "target/release/examples/shader_pipeline",
+          "target/cleanup-audit/commands-shader-pipeline.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.4355627080076374,
+        "log": "target/cleanup-audit/commands-shader-pipeline.log"
+      },
+      "shader-graph": {
+        "command": [
+          "target/release/examples/shader_graph",
+          "target/cleanup-audit/commands-shader-graph.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.48972699997830205,
+        "log": "target/cleanup-audit/commands-shader-graph.log"
+      },
+      "progressive-balanced": {
+        "command": [
+          "target/release/examples/progressive_blur",
+          "target/cleanup-audit/commands-progressive-balanced.png",
+          "balanced"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5195140419818927,
+        "log": "target/cleanup-audit/commands-progressive-balanced.log"
+      },
+      "progressive-high": {
+        "command": [
+          "target/release/examples/progressive_blur",
+          "target/cleanup-audit/commands-progressive-high.png",
+          "high"
+        ],
+        "exit_code": 0,
+        "seconds": 0.06406616701860912,
+        "log": "target/cleanup-audit/commands-progressive-high.log"
+      },
+      "window": {
+        "command": [
+          "target/cleanup-audit/commands-window-after",
+          "metal",
+          "--smoke"
+        ],
+        "exit_code": 0,
+        "seconds": 0.7571484579821117,
+        "log": "target/cleanup-audit/commands-window.log"
+      },
+      "app": {
+        "command": [
+          "target/cleanup-audit/commands-app-after",
+          "target/cleanup-audit/commands-app-current"
+        ],
+        "exit_code": 0,
+        "seconds": 1.4440941250068136,
+        "log": "target/cleanup-audit/commands-app.log"
+      }
+    },
+    "render": {
+      "svg": {
+        "exact_pngs": 1730,
+        "sources_unchanged": true
+      },
+      "mesh-gradient": {
+        "sha256": "b441ab07fa794d197930974308e74ccf02eb6790ea39c2ddfdda556c31afa91b",
+        "exact_baseline": true
+      },
+      "program-brush": {
+        "sha256": "e43f483170f77abeecfd10698aeddcd2b56c3cd6bd69f46a1b0522b5d332a5be",
+        "exact_baseline": true
+      },
+      "program-glass": {
+        "sha256": "90115ade795808c3b5b3b3aeb229ba98bbb8d33d2cc65fd02755bbcbbb9e341e",
+        "exact_baseline": true
+      },
+      "shader-pipeline": {
+        "sha256": "b5518d0badb099847172803ea06892212d864ac4a023be365b19741042e161cb",
+        "exact_baseline": true
+      },
+      "shader-graph": {
+        "sha256": "4a2ad67381fdad4f44ad88a324f16a092bdd8c7bf43adf36e3e7799730bc06d8",
+        "exact_baseline": true
+      },
+      "progressive-balanced": {
+        "sha256": "79b56db9b658c240324aa6ea06a6e463795aa98c43ac010e402878c95d44d0cf",
+        "exact_baseline": true
+      },
+      "progressive-high": {
+        "sha256": "5b100f5ce99634323890e2a49a0d4984ffe62082fa3dcabc67651999c46d1d7d",
+        "exact_baseline": true
+      },
+      "window": {
+        "frames": 8,
+        "sizes": [
+          [
+            640,
+            360
+          ],
+          [
+            480,
+            270
+          ]
+        ]
+      },
+      "app": {
+        "frames": 48,
+        "exact_pngs": 9,
+        "hashes": {
+          "retained-1-0.png": "62fa1d1589cbc717fd9fcd2fba95cae51a7f98f733f8c78b328ab34b0283a6f9",
+          "immediate-2.png": "c8afcdd2a639a9e1f50d499dc3b8937f31fd86699bd2ab5318688d6b66dfc050",
+          "retained-1-7.png": "980fb5e88a33f93fd3c5b61797b2604c8aef531fab207af0da114e18ac38fd27",
+          "immediate-1.png": "004b5c31c77431aa4eea4edebe0bd6a569d9f43ce9aacb276e547bfacc393895",
+          "immediate-0.png": "79314290afb8d3a0885bb90259c0aec3e2d58676489cc13db4a7c01293867b87",
+          "retained-0-0.png": "27b8ffa1628dea068e1b2268ac7b15d4b2b8e92862382a6d1387af5040472d6c",
+          "retained-2-0.png": "b15f9f5030adc6ed50841cd9e9f4315ed2072066b39be4817133cef503b4ea5a",
+          "retained-0-7.png": "7748854041579bfecb6294fb4ce847eeae424f5042ed65a29d3cc9436136c41a",
+          "retained-2-7.png": "f523529d314cac89750aeb3cf73b88e8c09fe01b25b4a6b4712fdfc991360330"
+        }
+      }
+    },
+    "tests": {
+      "passed": 1132,
+      "failed": 0,
+      "ignored": 0
+    },
+    "original_three_failures": {
+      "resolution_commit": "69b38dcf1131ea8bce2d32e59fc21087e6b49e93",
+      "recheck_log": "target/cleanup-audit/failures-current-recheck.log",
+      "tests": {
+        "passed": 10,
+        "failed": 0,
+        "ignored": 0
+      }
+    },
+    "windows_cross_manifests": {
+      "spirv": {
+        "manifest": "target/x86_64-pc-windows-gnu/release/build/tileink-95d6824c51a05705/out/tileink_native_artifacts.json",
+        "sha256": "09e8da8017b50f49211d738c715cd71f8734934c58bc86004fa76da2eeaae6b2",
+        "entries": 84,
+        "entry_names": [
+          "coarse_emit_chunk_particle_counts",
+          "coarse_emit_chunk_tile_kinds",
+          "coarse_tile_counts_from_emit_chunks",
+          "coarse_emit_chunks",
+          "coarse_emit",
+          "coarse_emit_bins",
+          "coarse_count",
+          "coarse_count_bins",
+          "coarse_emit_apply_chunk_offsets",
+          "coarse_emit_chunk_counts",
+          "coarse_emit_chunk_particle_offsets",
+          "coarse_emit_fill_refs",
+          "coarse_emit_prefix_chunks",
+          "coarse_emit_chunk_offsets",
+          "coarse_apply_chunk_offsets",
+          "coarse_chunk_offsets",
+          "coarse_prefix_chunks",
+          "filter_clear_region",
+          "filter_color_matrix_region",
+          "filter_color_region",
+          "filter_copy_region",
+          "filter_drop_shadow_mask_region",
+          "filter_offset_region",
+          "filter_source_alpha_region",
+          "filter_source_over_region",
+          "filter_svg_mask_coverage_region",
+          "filter_tile_region",
+          "filter_apply_region_mask",
+          "filter_blend_region",
+          "filter_composite_inputs_region",
+          "filter_morphology_axis_region",
+          "filter_displacement_map_region",
+          "filter_component_transfer_region",
+          "filter_convolve_matrix_region",
+          "filter_downsample_region",
+          "filter_upsample_region",
+          "filter_blur_region",
+          "progressive_blur_reduce",
+          "progressive_blur_resolve",
+          "filter_lighting_region",
+          "filter_composite_direct_region",
+          "filter_composite_rect_direct_region",
+          "filter_rect_mask_region",
+          "filter_upsample_rect_composite_region",
+          "filter_path_mask_region",
+          "filter_turbulence_region",
+          "filter_composite_surface_direct_region",
+          "filter_layer_mask_region",
+          "filter_composite_blend_stack_region",
+          "filter_composite_stack_region",
+          "filter_composite_surface_stack_region",
+          "filter_liquid_glass_rect_composite_region",
+          "filter_liquid_glass_region",
+          "filter_composite_drop_shadow_region",
+          "filter_flood_region",
+          "sdf_coverage_words",
+          "filter_blur_shared_region",
+          "gradient_words",
+          "pattern_words",
+          "fine_tile_main",
+          "text_words",
+          "brush_words",
+          "texture_flip",
+          "texture_layer",
+          "texture_table_words",
+          "sampler_words",
+          "blend_math_words",
+          "fill_coverage_words",
+          "geometry_math_words",
+          "pixel_math_words",
+          "clear_words",
+          "copy_words",
+          "layout_words",
+          "sample_words",
+          "range_scatter",
+          "cumsum_apply_chunk_offsets",
+          "cumsum_chunk_offsets",
+          "cumsum_prefix_chunks",
+          "scan_prefix_chunks",
+          "scan_chunk_offsets",
+          "scan_apply_chunk_offsets",
+          "scan_clear",
+          "scan_count",
+          "scan_emit"
+        ],
+        "artifact_hashes": {
+          "coarse_emit_chunk_particle_counts": "e8a682900d09dd50f4bd8045eb26374bfdf129b7e00de1877ceae32ecae1ce0a",
+          "coarse_emit_chunk_tile_kinds": "d0c17e7a7413ca383f62bc6b92ff19c50f848e62afcfcbe838a73aa285298041",
+          "coarse_tile_counts_from_emit_chunks": "97334fd637f7a830ee3453b8cb06755350194abada6e8b537a0a9e283d639fa9",
+          "coarse_emit_chunks": "3ed013d7899553d3f0bfb92e263b54f00f0343768f6c370866a6363c99053fc0",
+          "coarse_emit": "3200c8e20d7bf3e6674ca84e8aa40e4985e9cc0dd2917f095244707b74a4847e",
+          "coarse_emit_bins": "3c388e47c90c363cda782d83ee2694e2c8a4eea9cc39276833f7567ffca2e3fd",
+          "coarse_count": "ae0345810cd97b3227f7b114e1e34668dd30cbb527a21e663bd303a26036d15a",
+          "coarse_count_bins": "1ee5f8bb46bb5622502ade74412cb3f75f94672a665cbbf87f94ffa2ba5bfb8f",
+          "coarse_emit_apply_chunk_offsets": "95c111b2377f49af7dccfff659847e16c6670e80e32c60ac82a997446354c742",
+          "coarse_emit_chunk_counts": "c6828d8aa3441217bf3df5a746097a3ccf94e8c1f02ee918c53965848d852353",
+          "coarse_emit_chunk_particle_offsets": "99fc6e8b060956f5a127c9826ee3898293cd1ebb32d8141c68e1665315c11fbe",
+          "coarse_emit_fill_refs": "d4ec7a6a3ea97a506b76e76e73ddc71ae95f20bbb30282ee2ca1e005d8499e09",
+          "coarse_emit_prefix_chunks": "0cca33257ed7283775515c2a8187f955cecceb221d78d9165fba71f59759bf8c",
+          "coarse_emit_chunk_offsets": "a707f7062b7ea6a589582d4f7f7d1e55d0a1811f7ed796eb7570f8feebe98302",
+          "coarse_apply_chunk_offsets": "ea45fc48eb363f50c24280688b7da92881e954f85baf09d3a2360f23a8d54584",
+          "coarse_chunk_offsets": "6ecad16d46f37f0b9f849116e5f715aadc462be7b1093e533652e12b3ada758d",
+          "coarse_prefix_chunks": "cc0906415cdf9f04a1a3a78c41766cf05ca0f829f6978a0be3d0bd5f08267417",
+          "filter_clear_region": "a810140a814c8f3b567fd0cf5ed0b7b1bb7a001485d9609a5847ca1729917caf",
+          "filter_color_matrix_region": "e646071f1a3e840b6e783c91e24c9dc4565100ab27b6f526f95d9062f7f8f68d",
+          "filter_color_region": "5f28e26202c805813a72f0c3b21ce9b9a63aa5fecb9c6f6e0b4737fed4013e95",
+          "filter_copy_region": "4106c9c79ce937b535981ff348931f48199648d8b77847a6160724a619a4653f",
+          "filter_drop_shadow_mask_region": "b7349ac062397636a66e61b88db1cf61a645eb1284ca0e1b359052c29aa8d6ae",
+          "filter_offset_region": "993861c5ae4b9d898561843df476c6a6d27ab5955f20e72efcf52ca90ccf94f3",
+          "filter_source_alpha_region": "8a2d474c7c963f42027888859a30dbc11dbf81e2b781e4309381dcd6f5d7584d",
+          "filter_source_over_region": "19b221c0f88126955ce0bfd36f025f4807cd1d64da5352e73d0f090820804c5f",
+          "filter_svg_mask_coverage_region": "99c76d74564a4ee609c8936a4f4717ebd1dfdf69c36c6cf95c7987733edbd67b",
+          "filter_tile_region": "3ccfe53a6bd4f30ba1629dd4e900a8b2a276cc827f214b8cd98bc400377b1e34",
+          "filter_apply_region_mask": "f0d54b275731dd251dba4b5090cc1811e3f324d9286929ebc77ea836df068526",
+          "filter_blend_region": "1b0539847e17765084bcd799a4b653d38686d358cf872950d8bc4b1cda950a2c",
+          "filter_composite_inputs_region": "095665d27b3c748f223498adbc7b67f82e33f60c15af87c803ad533ef847478b",
+          "filter_morphology_axis_region": "9c12ec5128056602357a4961f852a66eca76760dd0c3cf9cc10df296209fecef",
+          "filter_displacement_map_region": "f905c420c0bcc995954731820f01c184602558f2d052c03d7249d806d9d0cce7",
+          "filter_component_transfer_region": "4c2c2b5f46a2cb5d4c0a6556a8a7f4498ce5d923a88b3c92fec15d6a46fa6b11",
+          "filter_convolve_matrix_region": "42004dd5d03523b65efac3bf3f86397549092daa83a95d1a9be9837f043164c3",
+          "filter_downsample_region": "e9e78267a092b304a1829eee21d43b75ea7c21ca8c4c87f0401e06698347cda9",
+          "filter_upsample_region": "f807e5f3a8bd4e0c18a52020e70040061a162273e188b9b6a366c8c244c15d4e",
+          "filter_blur_region": "74ec3e750b29e2c7a32ac10171ae0e06dc701e8ad4f8ae9e751383061ba41c9b",
+          "progressive_blur_reduce": "189e90afb94dd9e3bf6bd36056611cacc8e61489636db460f53b1988657c566a",
+          "progressive_blur_resolve": "8121699cf6c4fd6abae897b086699e8e5fc0e0dc3542ce09005c8a48f7588cb7",
+          "filter_lighting_region": "42d8c3bc6440d9b9fc42b4561d585086eb777aa514e2a1be0a6d8254341dd997",
+          "filter_composite_direct_region": "5ce0b80f6f22ec1ad69876f534432355e8d835d68a6ea823b2f17b9d716124d0",
+          "filter_composite_rect_direct_region": "a7e6d8f99ffa14bc4e89b37af3d26c4e8760899cfa8c84993346ba16664fd7fe",
+          "filter_rect_mask_region": "9668693c47e25b6d9a10a7a00e91e9ccc8164ff2b7e0d9de4dbe2df7853d55c7",
+          "filter_upsample_rect_composite_region": "330c7846f342561f111be9dadb329fe4f6dc6af43b3aa9a4ee3cc8fb18373d3f",
+          "filter_path_mask_region": "c14b01c05ab749ebac8b5ec76912c50d04b4e90be4470623436be6896498c5ef",
+          "filter_turbulence_region": "8ceae454a4b16f9e7a7008b5afdaeddeba665976fc8fafa2db90705b898612d1",
+          "filter_composite_surface_direct_region": "96e3fb0f8385fb4b6d5dc36b29fbea43f231d037aed07b76484ee48edbaf929d",
+          "filter_layer_mask_region": "118cd0acb93e0ed332295578d8f1fca09452eb3f294c79755468beb0a3348621",
+          "filter_composite_blend_stack_region": "98847870f9147423c2efbd6a8bd17dd52f3a153630b4e8f71de06bda471e26eb",
+          "filter_composite_stack_region": "8059b8b6907dbb79e7e45d311cb47e9b23c26c7b2b377071c9d3a2f153a67877",
+          "filter_composite_surface_stack_region": "39d1030265a2d49d6003a0ac2b79717667c4c3b47f10e9658f012697a3022d11",
+          "filter_liquid_glass_rect_composite_region": "57c92ed4737d552cef2c0c507a54970a722ca6b32618084c162b711029ff87d4",
+          "filter_liquid_glass_region": "0c64be9f7ae4cd28899ef5a3ee3638239b9b01a53325f57921d03fd3c33c4b62",
+          "filter_composite_drop_shadow_region": "3414689bbb66707003c7fbbb70efee3c74bae9e0656b9dfc6a1ce8f8848c72ea",
+          "filter_flood_region": "3929bc31f8aff282144826951535629960aaca53c0d8f31681b5098a6b77c370",
+          "sdf_coverage_words": "a7704e3ce5cafef105cfceff75cca08a53bcd0a86748ca4593efa5d633936463",
+          "filter_blur_shared_region": "ee088d3ad547b60c43104c07feb5ebf6edd8fcdf8b2f2dc45a9368c31bf23ffc",
+          "gradient_words": "de4674c32f81c9d8dd29f91b14f18d07263d4b8a749670c05cbe7123374bf073",
+          "pattern_words": "ba14933e74a22935229ed217ac4ce2939aa97218912d596d012b8e53f8a8afaf",
+          "fine_tile_main": "baab8ce77d693f6e76727987970d745753e738f0b2621474d2e92268e43bce2f",
+          "text_words": "d1026ab738edba210d05ade9ea538e509ff21be1b2b8093a25a4118e8d0b6b91",
+          "brush_words": "417cf1be491c6415a9e6fb5fc70b8ff639e7f90c28f9d390ca97a16e3fc97123",
+          "texture_flip": "37fa0e6b7a10fbb785a1a0266507ad24e8418cc5865d3f22a952955ef69a3f09",
+          "texture_layer": "a4f08d857d9c10ad308fd7ea76c100fa83f7baf8f88b110e8b285e1a1215c541",
+          "texture_table_words": "24f2be987626a3ff4cce8c77f582e6fc87e1b58f6df29e5d13926b58a51ea580",
+          "sampler_words": "a0a789410cbbfe4512dc354e93c81b5dbf8929e67dcb383e95b13a134e6feb94",
+          "blend_math_words": "8eedd1a5d5ecfbc4183199f6e43ac511ed02570eaa7f4de376272f20f9afc391",
+          "fill_coverage_words": "9e4ae54bfb1b2d090dffc386a8fe94baff44010f7d071e9cb857f2c16111ea43",
+          "geometry_math_words": "bff0140c7162cca38555a125397bbc4aa2cd15b6474386cc294118f99fd42dac",
+          "pixel_math_words": "fedc42b4ed61ab1946af0f1ee51d2ef66ed53b87bb6c29e5c2abe73a6e4d187d",
+          "clear_words": "c8a3c8d704ae1efb3405677d3cb327fd11cf6a7b401ae656fbf57f5492cf2e11",
+          "copy_words": "a5d3578080ac3d39aebc98130083e6e27de5f499fffcfbbdd73e2ee2adca08ca",
+          "layout_words": "7625bdce8f57f1671879d656ea222b579d6852942e20e5bd3a3bc27383f88094",
+          "sample_words": "388ca5a999bb81d79f97470ded7a905a5862e8bffbffa4448d1bf77b6f26a5c7",
+          "range_scatter": "8430569876dbc882b9f26cc19f261640c04ac53f55d7ea08725c913959b826f0",
+          "cumsum_apply_chunk_offsets": "b263171b64ba329e51dc802a7d6984d72cb9996305a9e019dc54a3a894ecc226",
+          "cumsum_chunk_offsets": "5843532454c1b48f6c1ad31b2e28dac025364cc245881383faab2059b63d4994",
+          "cumsum_prefix_chunks": "c4401c4176c4fa6057765b20cdf946d27094fe40ab770f3c5c8ce4fbef0034fd",
+          "scan_prefix_chunks": "d750bc4d459496557c5b76554d166bc916167124feea6dfe9559cdb5fd15af01",
+          "scan_chunk_offsets": "b8853485a3fb7096fecaff276e138863f652aadfe7b4ccfbae0758b456b518db",
+          "scan_apply_chunk_offsets": "7cff88cbc03e1c1d1f874acb08fb1188f962a8d5f2825ad445778cce7390dcc9",
+          "scan_clear": "ff5709d46395f84f5e7474b760417ea0419d15e5c63d059f9035ad1e686e46bd",
+          "scan_count": "524696cc505eea11e8fc92380634ff511a2e2d7ee62b1efe287326a31b787abe",
+          "scan_emit": "d3188ec9300bd8a899bc48c78e789a4860085d5330143f2c22518591b0e5bb05"
+        },
+        "resource_abi_validation": "actual DXC output validated by build/native.rs"
+      },
+      "dxil": {
+        "manifest": "target/x86_64-pc-windows-gnu/release/build/tileink-24a97e89b99363c5/out/tileink_native_artifacts.json",
+        "sha256": "6fc27d44103042faa4be80aba6d6088069ff6af3077b8c0f60635ea1a9ade5bd",
+        "entries": 84,
+        "entry_names": [
+          "coarse_emit_chunk_particle_counts",
+          "coarse_emit_chunk_tile_kinds",
+          "coarse_tile_counts_from_emit_chunks",
+          "coarse_emit_chunks",
+          "coarse_emit",
+          "coarse_emit_bins",
+          "coarse_count",
+          "coarse_count_bins",
+          "coarse_emit_apply_chunk_offsets",
+          "coarse_emit_chunk_counts",
+          "coarse_emit_chunk_particle_offsets",
+          "coarse_emit_fill_refs",
+          "coarse_emit_prefix_chunks",
+          "coarse_emit_chunk_offsets",
+          "coarse_apply_chunk_offsets",
+          "coarse_chunk_offsets",
+          "coarse_prefix_chunks",
+          "filter_clear_region",
+          "filter_color_matrix_region",
+          "filter_color_region",
+          "filter_copy_region",
+          "filter_drop_shadow_mask_region",
+          "filter_offset_region",
+          "filter_source_alpha_region",
+          "filter_source_over_region",
+          "filter_svg_mask_coverage_region",
+          "filter_tile_region",
+          "filter_apply_region_mask",
+          "filter_blend_region",
+          "filter_composite_inputs_region",
+          "filter_morphology_axis_region",
+          "filter_displacement_map_region",
+          "filter_component_transfer_region",
+          "filter_convolve_matrix_region",
+          "filter_downsample_region",
+          "filter_upsample_region",
+          "filter_blur_region",
+          "progressive_blur_reduce",
+          "progressive_blur_resolve",
+          "filter_lighting_region",
+          "filter_composite_direct_region",
+          "filter_composite_rect_direct_region",
+          "filter_rect_mask_region",
+          "filter_upsample_rect_composite_region",
+          "filter_path_mask_region",
+          "filter_turbulence_region",
+          "filter_composite_surface_direct_region",
+          "filter_layer_mask_region",
+          "filter_composite_blend_stack_region",
+          "filter_composite_stack_region",
+          "filter_composite_surface_stack_region",
+          "filter_liquid_glass_rect_composite_region",
+          "filter_liquid_glass_region",
+          "filter_composite_drop_shadow_region",
+          "filter_flood_region",
+          "sdf_coverage_words",
+          "filter_blur_shared_region",
+          "gradient_words",
+          "pattern_words",
+          "fine_tile_main",
+          "text_words",
+          "brush_words",
+          "texture_flip",
+          "texture_layer",
+          "texture_table_words",
+          "sampler_words",
+          "blend_math_words",
+          "fill_coverage_words",
+          "geometry_math_words",
+          "pixel_math_words",
+          "clear_words",
+          "copy_words",
+          "layout_words",
+          "sample_words",
+          "range_scatter",
+          "cumsum_apply_chunk_offsets",
+          "cumsum_chunk_offsets",
+          "cumsum_prefix_chunks",
+          "scan_prefix_chunks",
+          "scan_chunk_offsets",
+          "scan_apply_chunk_offsets",
+          "scan_clear",
+          "scan_count",
+          "scan_emit"
+        ],
+        "artifact_hashes": {
+          "coarse_emit_chunk_particle_counts": "02280c4cd2e95414522bb9e08adacfe4b91ec55b48fed1d4b809e31f3dedf2f9",
+          "coarse_emit_chunk_tile_kinds": "ef455fafa9b207274dc43755b9bb74c1e00ee67a9863ede870377ff611abda92",
+          "coarse_tile_counts_from_emit_chunks": "e29bc5854da08e0b09523b61180e6eb1747d5f8a3c5686ddefba37098b1f1bf6",
+          "coarse_emit_chunks": "ac79b9aa72be2287fddce4d18f37b5cea95d973ad537b0c28aa99fecef5a0bf9",
+          "coarse_emit": "edcbcb295876dfb80a7fc1d68f1b6d0e581017a6afb5972f7f16f2ddd54c30d3",
+          "coarse_emit_bins": "ed99df506d76594a98fa1b4824f9391c9cec06112e825b9b545be0a81bb58b2e",
+          "coarse_count": "78ad21849eeda8ff6de7c0943854225f4ea295ecc284cb12113326594bfce6b5",
+          "coarse_count_bins": "5498d8b256144b440eabf7457f8900e9c8ce8255cf6178e91cbdc2b336717e0f",
+          "coarse_emit_apply_chunk_offsets": "dbf0196d32f65e148b2af7c7a6ede54a8d45ffb5e2f5fb0686cbb2f1cbcaa9b7",
+          "coarse_emit_chunk_counts": "f4850495f0808dabd091a6e2e3f9a7619f978e139f3df6cb08339f06d19174c8",
+          "coarse_emit_chunk_particle_offsets": "a76db579e043f6230c33352b732e6dc353475dca015c32c95dda45bb476467ed",
+          "coarse_emit_fill_refs": "320909e3855c4c7db8d92f200f541e4d068e3ed633a0928c9246ac796c50ece9",
+          "coarse_emit_prefix_chunks": "f825aa2fa24d0b1b4679a63c90678d487d76baa1421003bc18ec872a8b232379",
+          "coarse_emit_chunk_offsets": "16de6ae78e9bda98774c8e35c606b287a4c138cc35995a39b553caf61dae8c30",
+          "coarse_apply_chunk_offsets": "e3206e5e067b55a5cf8b513db6851c5205dfe2c96d614d2a0d63a408578fb73b",
+          "coarse_chunk_offsets": "5b8d177df8c0bdd01fa739d85212e60404528e8cb02b0f6b97ab76e69d220d62",
+          "coarse_prefix_chunks": "92d7a16060b7977cb5907371315c5835d4f293e560472d4dc64ca30a57a8ae75",
+          "filter_clear_region": "38bd3160f742d793599a88f8b00e81dc24f1b016de0bacaa7b66360ed7c456c0",
+          "filter_color_matrix_region": "cb2ef45eca9411beb78d6703ad31ede3d0e3af45628bfc59f4c202fca971e0d5",
+          "filter_color_region": "9580d289b8d8b78168c8af53e7cd44954e5927cda83be3f726d7426257dfc429",
+          "filter_copy_region": "f34886d6de8a5484109f1d658ea29a06373a620e129bb17fea9d3a5044f41570",
+          "filter_drop_shadow_mask_region": "f49a97f2d16518bae3c2175b30d4e20e051b57b6dc27571e604ff6b16b4f722e",
+          "filter_offset_region": "fb8cad8609841f40f3e4afe96f418e1d5e2fc2ad48943f8c5a840c158ef93fa0",
+          "filter_source_alpha_region": "cc454340f41bff1f7429880f2ebfa0c612465ffd6bd7c48150e4476f699f27f1",
+          "filter_source_over_region": "4ce0d3fbe2a99fc373423581e40dcd0ce1db2354064fd6fea15a6568355fa28f",
+          "filter_svg_mask_coverage_region": "e3f4f92108a22b79f248e8bc2ade934d5460db2b9c91f28f7edf03c15e4802a1",
+          "filter_tile_region": "622f5aeb6d475c0fb1843b1c367641bc4466e933209791a463488de2d3ca0bb5",
+          "filter_apply_region_mask": "de8921f7e673d0ed48428a8c15b1aabc8136be1a29060f2e20ac044242a5ab2b",
+          "filter_blend_region": "d9e877cec2aa442e50547619d9f5914b053b80eb10bb5673d00bef698dc91bc8",
+          "filter_composite_inputs_region": "8a67da4ed651ae3adc65b830c61ac57e63214d730750d5bb56a54add491c29c6",
+          "filter_morphology_axis_region": "d83dcf12dae38b05a4b95ecf79ded67803e66d826f3af3e51c0e42ceb024e1b4",
+          "filter_displacement_map_region": "97f52496d21cf95896323018b319c10626d4a145be211f068eea88fbe355ba74",
+          "filter_component_transfer_region": "7128852ed6e2148ec452cf42310458007cc24ef9cc1a9ac1ad6da74fb49edb84",
+          "filter_convolve_matrix_region": "a9e34c3df9e528b6f5ce2fb622b6b0f2a76dac94a80cd8ac2708c74edea76624",
+          "filter_downsample_region": "3124dc359b267813c2be14fd0b95be4db4172f0a48ad9b8c6b220cdbd786500c",
+          "filter_upsample_region": "ff062a76ce1645e6eef24fc1b7880cfa668a99121329dfeec21fda1bc7972118",
+          "filter_blur_region": "6ecaa796382e3abf46d4c0e6ad63f19ecc853ed992d26fd503d9b45be9713b6a",
+          "progressive_blur_reduce": "da1d084d4e62cb769e53f4be110af4ef21307dcd609374af1398092dab2c563c",
+          "progressive_blur_resolve": "f2a84f8e876acf6e0a1b371c3dbc2ae38d377d101f0a88c857ce8f5ebec43812",
+          "filter_lighting_region": "9413b5dcd3c76c9124eecd2524f3da20dee31cc168694c638bb123bad1aa1022",
+          "filter_composite_direct_region": "acb7b1f40a122cca46fb35d283b18a5bc6232d0453525896b13c58e45b2f67a9",
+          "filter_composite_rect_direct_region": "e7849e4b2690f381fd7dd99380596a01d2d9064c80f7b42a9e678a7f480c8c24",
+          "filter_rect_mask_region": "b7e92c7e9c441661a8daf500dfdfa7a085ce0d0c7d1a20e9ece0294309f4d805",
+          "filter_upsample_rect_composite_region": "9a1b10fd0d7cdc1f86cd7ef732ea253bb143417a7e8c7614f70a687d1845ef25",
+          "filter_path_mask_region": "a27a05439b4b42e431466e470972799f1d15e27b41c952b288a12d7b2a74bc74",
+          "filter_turbulence_region": "238982947535c23e23889a841a5bf12ee311e3476691d33fef3238497d3db943",
+          "filter_composite_surface_direct_region": "0b27ed1d4884d0f4df3e3d2ee64256c1479389488e13d65f44dc1caa2ed3221f",
+          "filter_layer_mask_region": "22774dccf83817d2db20d79ddb35d87108a6ea436d5cc03bfdd5e3046e97e452",
+          "filter_composite_blend_stack_region": "8907fdcbc549dd07365bdd82091f92b1ad07f7fdafd370d1914cc5e1d4d6d1db",
+          "filter_composite_stack_region": "9855292c63334ec2957dbb6d7284cb1e7571ac3976b450b2a5f26363e44c25e5",
+          "filter_composite_surface_stack_region": "af60abb55042accb79ceb70ac0d68f926ec0a73783033d75b8c1775b319a258d",
+          "filter_liquid_glass_rect_composite_region": "bf4070806fbcd444eb36ad949b0da958220ef6ad711329cd40ddf712334c1f9d",
+          "filter_liquid_glass_region": "8e5e7a256a3bf4c6125add50baeee013ee683b3d86c0bf77c150c3cabf19c46b",
+          "filter_composite_drop_shadow_region": "e0c318b8764b68eef8616cff974da92b2b5e3d3331fa06e1c312a402d72779c9",
+          "filter_flood_region": "b766b66249b35c1c1700a1feebb79256a56d1b5d3e99dc9d666d70e71904a8c9",
+          "sdf_coverage_words": "7b1ea300cce59cd0cab24898a657b5f32a38aa4fc24575321899af0d279d352b",
+          "filter_blur_shared_region": "c03639aa442e7e70c95278a8cc97e48f81c2129fb56831afedfcfd7b70f10b6e",
+          "gradient_words": "75360b673cfffd4876a3c57f175990eb5533ab57500b37c22ab162982030574c",
+          "pattern_words": "98f7990e72b921736549451221a51d73ec300c3630cfe81d6b118410be2e213b",
+          "fine_tile_main": "c335641bf23d8b436d113efafd4891eb826d8a7b9bb294531fe33787211c15b0",
+          "text_words": "8136b727d7d3eef701408d95d0a51d1b83ebdf1deeccbe4a8e71c51034cd2d47",
+          "brush_words": "660d6133b8c23e0dc895709f22d90a207f5c9bace0edf2d7929f03431585467a",
+          "texture_flip": "246ecaf5a08bb5c9060f83e802f5902d89d4c09e80dfafe96c96e4160210897b",
+          "texture_layer": "789346fcc5d2bf60f62e23990a832eab2aeea51c10bbdfb06c85a50744d75b4f",
+          "texture_table_words": "dc2509789f5b7b0eaff703efa782a276eef3b8f85c2b551dc31a155d8a1c6638",
+          "sampler_words": "c115594af8cf8cc0c8e1ea6d31761c16e1f2036af5d0ae636e363ea0a9e35911",
+          "blend_math_words": "3a3ad29c8e1ee52ecadf30739cbd6d671be4618da972cc16a5863b7b0b217edc",
+          "fill_coverage_words": "3b16167a6e482c564f219c89707a12c54f15513a24e7ff212fe0133e4a2c5011",
+          "geometry_math_words": "3448156a37f998d6590216debed8134de3f5386fa4a1b2b682cf46ad73a05a25",
+          "pixel_math_words": "3af13772cb06afb03dd4accc2aede1fd13fea1e6a714ff19fbe4ff2d34f4d108",
+          "clear_words": "32b487b8f6cfd22c18c59b7a08500b249c241537fbd8c2efc3b6826ff4664749",
+          "copy_words": "591645b1f7bae3b6d042fe1f37f3f568fe3681da11cfaec941091539049994d9",
+          "layout_words": "e7cc4300ca4fa49ac7fab33d4360c8d1b878cbd5eb4ce901b51ce749bb0ee1c5",
+          "sample_words": "0d9229d3342ccfb8e3a1c8fe5ef020f998d2356e7eae978fae35cb79e5946b3a",
+          "range_scatter": "2910800af7a06ff8094b1379231a4353532f4689859e37ba36a33c84eaf184b6",
+          "cumsum_apply_chunk_offsets": "289f73e29c655b37b04f635634ff828b225d721622d3e0065c603a869b7d43eb",
+          "cumsum_chunk_offsets": "537f57f25eb12549daa6dd72145702d4a19570c5062dffd8257902cc8cfed908",
+          "cumsum_prefix_chunks": "4417bd7f36a0ae93808494171d5eebbcc2f3c18fb45debeeb8c0b2bc073ffcd6",
+          "scan_prefix_chunks": "b3eed9661c4fd896441b9c083a1fa250c789c0d72c71b69ae4f727d9f1165eb5",
+          "scan_chunk_offsets": "ffb9f1b5461cb39696617c0270d71adc5b76d9b94b91d88870e66481d5085ce9",
+          "scan_apply_chunk_offsets": "790517633f40197e375aec4366906d6d6a1c52fa508015c81abedde9f00b7fbb",
+          "scan_clear": "92801ec344c11f3f9512c588013ac23c1a2e66c9034dcfad23c79ba07c9acd62",
+          "scan_count": "b1e5acf2c5f0a26b341430da9d92b2122af53b010ad23e750a24893fecc89e88",
+          "scan_emit": "15a3096178431dc575a3428b46d290c29c36a660bb17bdaa6cc0b20555a29a33"
+        },
+        "resource_abi_validation": "actual DXC output validated by build/native.rs"
+      }
+    },
+    "final_executables": {
+      "svg": {
+        "path": "target/release/examples/svg_fixture_render",
+        "sha256": "3af897f7530862b356fd001cc175bcbef5d6946af06c9ab473e2e7f48bf70e3f",
+        "matches_timed_after": true
+      },
+      "window": {
+        "path": "target/release/examples/native_present",
+        "sha256": "c8926ddc8ac4222bbdb883616731405e1c4aa793a3b627cd3d9ee01b53067fd4",
+        "matches_timed_after": true
+      },
+      "app": {
+        "path": "target/release/examples/cleanup_recorded_layers",
+        "sha256": "3c52e82564aa41b6829f8584685a4049e2a18438f30bf013b7b2ea88a47db726",
+        "matches_timed_after": true
+      }
+    }
+  },
+  "timing": {
+    "method": "Whole-process wall time, sequential pinned Metal GPU, API validation disabled. Two warmups per label; ten alternating pairs per comparison. Before/after and identical-current controls interleaved by pair. Verify every image/frame after stopping the timer. Bootstrap intervals are descriptive.",
+    "observations": [
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": true,
+        "pair": 0,
+        "milliseconds": 5464.834374986822,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": true,
+        "pair": 0,
+        "milliseconds": 4270.306999998866,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "warmup": true,
+        "pair": 0,
+        "milliseconds": 4335.12708399212,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "warmup": true,
+        "pair": 0,
+        "milliseconds": 4299.254792014835,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": true,
+        "pair": 1,
+        "milliseconds": 4316.8524999928195,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": true,
+        "pair": 1,
+        "milliseconds": 4298.453416995471,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "warmup": true,
+        "pair": 1,
+        "milliseconds": 4364.63983298745,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "warmup": true,
+        "pair": 1,
+        "milliseconds": 4236.42583299079,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": false,
+        "pair": 0,
+        "milliseconds": 4305.051167000784,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": false,
+        "pair": 0,
+        "milliseconds": 4261.009582987754,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 0,
+        "milliseconds": 4303.715459012892,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 0,
+        "milliseconds": 4244.203665992245,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 1,
+        "milliseconds": 4269.400750024943,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 1,
+        "milliseconds": 4303.798334003659,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": false,
+        "pair": 1,
+        "milliseconds": 4446.898207999766,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": false,
+        "pair": 1,
+        "milliseconds": 4221.938832983142,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": false,
+        "pair": 2,
+        "milliseconds": 4276.768874988193,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": false,
+        "pair": 2,
+        "milliseconds": 4230.093999998644,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 2,
+        "milliseconds": 4241.72170800739,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 2,
+        "milliseconds": 4346.210082992911,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 3,
+        "milliseconds": 4277.669792005327,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 3,
+        "milliseconds": 4251.959457993507,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": false,
+        "pair": 3,
+        "milliseconds": 4242.12599999737,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": false,
+        "pair": 3,
+        "milliseconds": 4266.386292001698,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": false,
+        "pair": 4,
+        "milliseconds": 4356.778415996814,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": false,
+        "pair": 4,
+        "milliseconds": 4322.726082988083,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 4,
+        "milliseconds": 4420.5827089899685,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 4,
+        "milliseconds": 4253.538125019986,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 5,
+        "milliseconds": 4232.481666986132,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 5,
+        "milliseconds": 4335.602125007426,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": false,
+        "pair": 5,
+        "milliseconds": 4267.261750006583,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": false,
+        "pair": 5,
+        "milliseconds": 4224.2288749839645,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": false,
+        "pair": 6,
+        "milliseconds": 4244.836375000887,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": false,
+        "pair": 6,
+        "milliseconds": 4280.180249974364,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 6,
+        "milliseconds": 4256.193166016601,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 6,
+        "milliseconds": 4248.524208000163,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 7,
+        "milliseconds": 4281.269334023818,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 7,
+        "milliseconds": 4324.64620799874,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": false,
+        "pair": 7,
+        "milliseconds": 4230.932459002361,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": false,
+        "pair": 7,
+        "milliseconds": 4235.0366250029765,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": false,
+        "pair": 8,
+        "milliseconds": 4252.206125005614,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": false,
+        "pair": 8,
+        "milliseconds": 4225.503124995157,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 8,
+        "milliseconds": 4250.100666016806,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 8,
+        "milliseconds": 4215.10579099413,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 9,
+        "milliseconds": 4279.305999982171,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 9,
+        "milliseconds": 4233.453041990288,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": false,
+        "pair": 9,
+        "milliseconds": 4252.2430419921875,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": false,
+        "pair": 9,
+        "milliseconds": 4266.643665992888,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "warmup": true,
+        "pair": 0,
+        "milliseconds": 700.136500003282,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "warmup": true,
+        "pair": 0,
+        "milliseconds": 741.3052500050981,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "warmup": true,
+        "pair": 0,
+        "milliseconds": 767.2967499820516,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "warmup": true,
+        "pair": 0,
+        "milliseconds": 766.5584999776911,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "warmup": true,
+        "pair": 1,
+        "milliseconds": 721.8781670089811,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "warmup": true,
+        "pair": 1,
+        "milliseconds": 740.7780410139821,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "warmup": true,
+        "pair": 1,
+        "milliseconds": 764.0951249923091,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "warmup": true,
+        "pair": 1,
+        "milliseconds": 712.9247499979101,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "warmup": false,
+        "pair": 0,
+        "milliseconds": 755.1512079953682,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "warmup": false,
+        "pair": 0,
+        "milliseconds": 754.6493329864461,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 0,
+        "milliseconds": 731.8730000115465,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 0,
+        "milliseconds": 730.4842089943122,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 1,
+        "milliseconds": 731.5810000000056,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 1,
+        "milliseconds": 782.6485830009915,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "warmup": false,
+        "pair": 1,
+        "milliseconds": 736.9323339953553,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "warmup": false,
+        "pair": 1,
+        "milliseconds": 686.8113329983316,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "warmup": false,
+        "pair": 2,
+        "milliseconds": 735.9275839990005,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "warmup": false,
+        "pair": 2,
+        "milliseconds": 754.3798330007121,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 2,
+        "milliseconds": 738.5117909871042,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 2,
+        "milliseconds": 744.9714579852298,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 3,
+        "milliseconds": 768.166709021898,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 3,
+        "milliseconds": 752.0162500150036,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "warmup": false,
+        "pair": 3,
+        "milliseconds": 732.3906669917051,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "warmup": false,
+        "pair": 3,
+        "milliseconds": 744.1594999982044,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "warmup": false,
+        "pair": 4,
+        "milliseconds": 738.914791989373,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "warmup": false,
+        "pair": 4,
+        "milliseconds": 740.5647919804323,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 4,
+        "milliseconds": 677.3089159978554,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 4,
+        "milliseconds": 762.3141660005786,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 5,
+        "milliseconds": 776.340957992943,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 5,
+        "milliseconds": 740.5778749962337,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "warmup": false,
+        "pair": 5,
+        "milliseconds": 736.8932079989463,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "warmup": false,
+        "pair": 5,
+        "milliseconds": 740.3969159931876,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "warmup": false,
+        "pair": 6,
+        "milliseconds": 720.2167499926873,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "warmup": false,
+        "pair": 6,
+        "milliseconds": 747.2393749922048,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 6,
+        "milliseconds": 746.8039160012268,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 6,
+        "milliseconds": 661.671292007668,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 7,
+        "milliseconds": 785.2838750113733,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 7,
+        "milliseconds": 755.4917499946896,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "warmup": false,
+        "pair": 7,
+        "milliseconds": 756.5919999906328,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "warmup": false,
+        "pair": 7,
+        "milliseconds": 748.7428339954931,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "warmup": false,
+        "pair": 8,
+        "milliseconds": 748.3711670211051,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "warmup": false,
+        "pair": 8,
+        "milliseconds": 752.6928749866784,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 8,
+        "milliseconds": 743.0701249977574,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 8,
+        "milliseconds": 734.6039169933647,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 9,
+        "milliseconds": 731.9636669999454,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 9,
+        "milliseconds": 748.2863749901298,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "warmup": false,
+        "pair": 9,
+        "milliseconds": 775.8152919996064,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "warmup": false,
+        "pair": 9,
+        "milliseconds": 758.8393329933751,
+        "verified": {
+          "exact_pngs": 9,
+          "frames": 48
+        },
+        "output_tail": "48 frames, 48 immediate cards via three append routes, 48 retained effects updated each frame\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": true,
+        "pair": 0,
+        "milliseconds": 1261.5141250134911,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": true,
+        "pair": 0,
+        "milliseconds": 236.48941598366946,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "warmup": true,
+        "pair": 0,
+        "milliseconds": 241.64854199625552,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "warmup": true,
+        "pair": 0,
+        "milliseconds": 236.70050001237541,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": true,
+        "pair": 1,
+        "milliseconds": 238.490666000871,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": true,
+        "pair": 1,
+        "milliseconds": 232.82799997832626,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "warmup": true,
+        "pair": 1,
+        "milliseconds": 239.31883298791945,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "warmup": true,
+        "pair": 1,
+        "milliseconds": 236.37670802418143,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": false,
+        "pair": 0,
+        "milliseconds": 235.61554198386148,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": false,
+        "pair": 0,
+        "milliseconds": 233.83654200006276,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 0,
+        "milliseconds": 232.75275001651607,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 0,
+        "milliseconds": 237.9159590054769,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 1,
+        "milliseconds": 235.7456669851672,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 1,
+        "milliseconds": 237.86979098804295,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": false,
+        "pair": 1,
+        "milliseconds": 236.04550000163727,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": false,
+        "pair": 1,
+        "milliseconds": 234.19200000353158,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": false,
+        "pair": 2,
+        "milliseconds": 233.47116701188497,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": false,
+        "pair": 2,
+        "milliseconds": 237.7715419861488,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 2,
+        "milliseconds": 238.2295419811271,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 2,
+        "milliseconds": 233.26350000570528,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 3,
+        "milliseconds": 235.72583301574923,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 3,
+        "milliseconds": 234.66479100170545,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": false,
+        "pair": 3,
+        "milliseconds": 230.59179200208746,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": false,
+        "pair": 3,
+        "milliseconds": 232.7339579933323,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": false,
+        "pair": 4,
+        "milliseconds": 232.26520902244374,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": false,
+        "pair": 4,
+        "milliseconds": 230.53962498670444,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 4,
+        "milliseconds": 232.90620901389048,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 4,
+        "milliseconds": 232.35866700997576,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 5,
+        "milliseconds": 235.25066699949093,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 5,
+        "milliseconds": 234.31858301046304,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": false,
+        "pair": 5,
+        "milliseconds": 234.76429100264795,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": false,
+        "pair": 5,
+        "milliseconds": 241.83545898995362,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": false,
+        "pair": 6,
+        "milliseconds": 233.158540999284,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": false,
+        "pair": 6,
+        "milliseconds": 235.78595800790936,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 6,
+        "milliseconds": 237.23533400334418,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 6,
+        "milliseconds": 239.11358299665153,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 7,
+        "milliseconds": 236.19804199552163,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 7,
+        "milliseconds": 234.86358299851418,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": false,
+        "pair": 7,
+        "milliseconds": 236.97954101953655,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": false,
+        "pair": 7,
+        "milliseconds": 241.03595901397057,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": false,
+        "pair": 8,
+        "milliseconds": 232.7941250114236,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": false,
+        "pair": 8,
+        "milliseconds": 237.62724999687634,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 8,
+        "milliseconds": 239.85270797857083,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 8,
+        "milliseconds": 233.31612499896437,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "warmup": false,
+        "pair": 9,
+        "milliseconds": 235.61370800598525,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "warmup": false,
+        "pair": 9,
+        "milliseconds": 236.85083302552812,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": false,
+        "pair": 9,
+        "milliseconds": 232.50391701003537,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": false,
+        "pair": 9,
+        "milliseconds": 230.23408398148604,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      }
+    ],
+    "summary": {
+      "svg": {
+        "before_after": {
+          "first_median_ms": 4259.296208503656,
+          "second_median_ms": 4256.626312489971,
+          "median_change_percent": -0.06268397131796721,
+          "first_p95_ms": 4356.778415996814,
+          "second_p95_ms": 4446.898207999766,
+          "paired_median_change_percent": -0.4530772025725993,
+          "paired_median_descriptive_bootstrap_95_percent": [
+            -0.8255005284623418,
+            0.8326322112585549
+          ]
+        },
+        "identical_current": {
+          "first_median_ms": 4279.954312514747,
+          "second_median_ms": 4261.469437522464,
+          "median_change_percent": -0.43189421294128616,
+          "first_p95_ms": 4420.5827089899685,
+          "second_p95_ms": 4346.210082992911,
+          "paired_median_change_percent": -0.8113135705448471,
+          "paired_median_descriptive_bootstrap_95_percent": [
+            -1.6907365726885393,
+            0.6046702529932446
+          ]
+        }
+      },
+      "app": {
+        "before_after": {
+          "first_median_ms": 742.278207995696,
+          "second_median_ms": 749.9661249894416,
+          "median_change_percent": 1.0357190755343026,
+          "first_p95_ms": 758.8393329933751,
+          "second_p95_ms": 775.8152919996064,
+          "paired_median_change_percent": 0.8128972804471224,
+          "paired_median_descriptive_bootstrap_95_percent": [
+            -0.12495989473829683,
+            2.9945540713623653
+          ]
+        },
+        "identical_current": {
+          "first_median_ms": 744.9370204994921,
+          "second_median_ms": 739.7876874892972,
+          "median_change_percent": -0.6912440741288606,
+          "first_p95_ms": 782.6485830009915,
+          "second_p95_ms": 785.2838750113733,
+          "paired_median_change_percent": 0.3424642892876084,
+          "paired_median_descriptive_bootstrap_95_percent": [
+            -3.8321624495345654,
+            3.943408384921887
+          ]
+        }
+      },
+      "window": {
+        "before_after": {
+          "first_median_ms": 233.3148540055845,
+          "second_median_ms": 235.27512450527865,
+          "median_change_percent": 0.8401824684712178,
+          "first_p95_ms": 241.83545898995362,
+          "second_p95_ms": 237.7715419861488,
+          "paired_median_change_percent": 0.024253843089577787,
+          "paired_median_descriptive_bootstrap_95_percent": [
+            -1.2189767269911833,
+            1.4139051641676836
+          ]
+        },
+        "identical_current": {
+          "first_median_ms": 235.85720801202115,
+          "second_median_ms": 235.66977051086724,
+          "median_change_percent": -0.0794707538233741,
+          "first_p95_ms": 239.85270797857083,
+          "second_p95_ms": 239.11358299665153,
+          "paired_median_change_percent": 0.08134685973782974,
+          "paired_median_descriptive_bootstrap_95_percent": [
+            -1.3034421023937315,
+            0.6219380823834997
+          ]
+        }
+      }
+    },
+    "svg_sources_unchanged": true
+  },
+  "executables": {
+    "svg": {
+      "before": {
+        "path": "target/cleanup-audit/commands-svg-before",
+        "sha256": "22335b72d1edd16e33e43d16e0e053b8ea2e07b4531ee5e73bbeeab71c19606a"
+      },
+      "after": {
+        "path": "target/cleanup-audit/commands-svg-after",
+        "sha256": "3af897f7530862b356fd001cc175bcbef5d6946af06c9ab473e2e7f48bf70e3f"
+      }
+    },
+    "app": {
+      "before": {
+        "path": "target/cleanup-audit/commands-app-before",
+        "sha256": "9b00e1459a2aa6b60755637b6773a9f3cbef988c7bc915051d2a00691e9a353d"
+      },
+      "after": {
+        "path": "target/cleanup-audit/commands-app-after",
+        "sha256": "3c52e82564aa41b6829f8584685a4049e2a18438f30bf013b7b2ea88a47db726"
+      }
+    },
+    "window": {
+      "before": {
+        "path": "target/cleanup-audit/commands-window-before",
+        "sha256": "d654ad8ff9652dfc9c34f04f86f2917b67dd8d8a35e49af32b37c8c0a5d07ade"
+      },
+      "after": {
+        "path": "target/cleanup-audit/commands-window-after",
+        "sha256": "c8926ddc8ac4222bbdb883616731405e1c4aa793a3b627cd3d9ee01b53067fd4"
+      }
+    }
+  },
+  "verification_totals": {
+    "svg_png_hashes": 83040,
+    "app_png_hashes": 432,
+    "app_frames": 2304,
+    "window_frames": 384
+  },
+  "workload": {
+    "app": "1280x720; 48 immediate cards via three append routes and genuine path/SDF clips, plus 48 retained filter/backdrop updates every frame; three phases, 48 frames and nine saved images per process. Every frame read back.",
+    "svg": "All 1730 native SVG fixtures, single Rayon worker.",
+    "window": "Eight present frames and resize from 640x360 to 480x270."
+  },
+  "toolchain": {
+    "source_tag": "v1.8.2502",
+    "source_commit": "b4711839eb9a87da7c3436d9b212e0492359fbbd",
+    "version": "libdxcompiler.dylib: 1.8(dev;1-b4711839); libdxil.dylib: 1.8",
+    "files": {
+      "target/toolchains/dxc-build-v1.8.2502/bin/dxc": "00db2a5e0f32d8a2714c5801a73ac7525d6f03d1ac319f7712fccd0458ed4a17",
+      "target/toolchains/dxc-build-v1.8.2502/lib/libdxcompiler.dylib": "47ab8a70f988293a979a157552322d55680ef2bd2f76394202a3e59f06f97df9",
+      "target/toolchains/dxc-build-v1.8.2502/lib/libdxil.dylib": "c0f3abf46cea2e0ad8ceeed0dd181dd9c71b3030d61349f27a6335e517bf0396"
+    }
+  },
+  "manifests": {
+    "metal_and_backend_free": {
+      "unchanged": true,
+      "sha256": {
+        "target/release/build/tileink-693345b8f8240684/out/tileink_native_artifacts.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "target/release/build/tileink-24048925a7656d71/out/tileink_native_artifacts.json": "a9498b48fd779f43cd2b47503c87fd31e0bbd1c0fb9c0ed0d080a8e24cdf2d2b",
+        "target/release/build/tileink-02c1122da65b8cf5/out/tileink_native_artifacts.json": "a9498b48fd779f43cd2b47503c87fd31e0bbd1c0fb9c0ed0d080a8e24cdf2d2b"
+      }
+    },
+    "windows_cross_compilation": {
+      "spirv": {
+        "manifest": "target/x86_64-pc-windows-gnu/release/build/tileink-95d6824c51a05705/out/tileink_native_artifacts.json",
+        "sha256": "09e8da8017b50f49211d738c715cd71f8734934c58bc86004fa76da2eeaae6b2",
+        "entries": 84,
+        "entry_names": [
+          "coarse_emit_chunk_particle_counts",
+          "coarse_emit_chunk_tile_kinds",
+          "coarse_tile_counts_from_emit_chunks",
+          "coarse_emit_chunks",
+          "coarse_emit",
+          "coarse_emit_bins",
+          "coarse_count",
+          "coarse_count_bins",
+          "coarse_emit_apply_chunk_offsets",
+          "coarse_emit_chunk_counts",
+          "coarse_emit_chunk_particle_offsets",
+          "coarse_emit_fill_refs",
+          "coarse_emit_prefix_chunks",
+          "coarse_emit_chunk_offsets",
+          "coarse_apply_chunk_offsets",
+          "coarse_chunk_offsets",
+          "coarse_prefix_chunks",
+          "filter_clear_region",
+          "filter_color_matrix_region",
+          "filter_color_region",
+          "filter_copy_region",
+          "filter_drop_shadow_mask_region",
+          "filter_offset_region",
+          "filter_source_alpha_region",
+          "filter_source_over_region",
+          "filter_svg_mask_coverage_region",
+          "filter_tile_region",
+          "filter_apply_region_mask",
+          "filter_blend_region",
+          "filter_composite_inputs_region",
+          "filter_morphology_axis_region",
+          "filter_displacement_map_region",
+          "filter_component_transfer_region",
+          "filter_convolve_matrix_region",
+          "filter_downsample_region",
+          "filter_upsample_region",
+          "filter_blur_region",
+          "progressive_blur_reduce",
+          "progressive_blur_resolve",
+          "filter_lighting_region",
+          "filter_composite_direct_region",
+          "filter_composite_rect_direct_region",
+          "filter_rect_mask_region",
+          "filter_upsample_rect_composite_region",
+          "filter_path_mask_region",
+          "filter_turbulence_region",
+          "filter_composite_surface_direct_region",
+          "filter_layer_mask_region",
+          "filter_composite_blend_stack_region",
+          "filter_composite_stack_region",
+          "filter_composite_surface_stack_region",
+          "filter_liquid_glass_rect_composite_region",
+          "filter_liquid_glass_region",
+          "filter_composite_drop_shadow_region",
+          "filter_flood_region",
+          "sdf_coverage_words",
+          "filter_blur_shared_region",
+          "gradient_words",
+          "pattern_words",
+          "fine_tile_main",
+          "text_words",
+          "brush_words",
+          "texture_flip",
+          "texture_layer",
+          "texture_table_words",
+          "sampler_words",
+          "blend_math_words",
+          "fill_coverage_words",
+          "geometry_math_words",
+          "pixel_math_words",
+          "clear_words",
+          "copy_words",
+          "layout_words",
+          "sample_words",
+          "range_scatter",
+          "cumsum_apply_chunk_offsets",
+          "cumsum_chunk_offsets",
+          "cumsum_prefix_chunks",
+          "scan_prefix_chunks",
+          "scan_chunk_offsets",
+          "scan_apply_chunk_offsets",
+          "scan_clear",
+          "scan_count",
+          "scan_emit"
+        ],
+        "artifact_hashes": {
+          "coarse_emit_chunk_particle_counts": "e8a682900d09dd50f4bd8045eb26374bfdf129b7e00de1877ceae32ecae1ce0a",
+          "coarse_emit_chunk_tile_kinds": "d0c17e7a7413ca383f62bc6b92ff19c50f848e62afcfcbe838a73aa285298041",
+          "coarse_tile_counts_from_emit_chunks": "97334fd637f7a830ee3453b8cb06755350194abada6e8b537a0a9e283d639fa9",
+          "coarse_emit_chunks": "3ed013d7899553d3f0bfb92e263b54f00f0343768f6c370866a6363c99053fc0",
+          "coarse_emit": "3200c8e20d7bf3e6674ca84e8aa40e4985e9cc0dd2917f095244707b74a4847e",
+          "coarse_emit_bins": "3c388e47c90c363cda782d83ee2694e2c8a4eea9cc39276833f7567ffca2e3fd",
+          "coarse_count": "ae0345810cd97b3227f7b114e1e34668dd30cbb527a21e663bd303a26036d15a",
+          "coarse_count_bins": "1ee5f8bb46bb5622502ade74412cb3f75f94672a665cbbf87f94ffa2ba5bfb8f",
+          "coarse_emit_apply_chunk_offsets": "95c111b2377f49af7dccfff659847e16c6670e80e32c60ac82a997446354c742",
+          "coarse_emit_chunk_counts": "c6828d8aa3441217bf3df5a746097a3ccf94e8c1f02ee918c53965848d852353",
+          "coarse_emit_chunk_particle_offsets": "99fc6e8b060956f5a127c9826ee3898293cd1ebb32d8141c68e1665315c11fbe",
+          "coarse_emit_fill_refs": "d4ec7a6a3ea97a506b76e76e73ddc71ae95f20bbb30282ee2ca1e005d8499e09",
+          "coarse_emit_prefix_chunks": "0cca33257ed7283775515c2a8187f955cecceb221d78d9165fba71f59759bf8c",
+          "coarse_emit_chunk_offsets": "a707f7062b7ea6a589582d4f7f7d1e55d0a1811f7ed796eb7570f8feebe98302",
+          "coarse_apply_chunk_offsets": "ea45fc48eb363f50c24280688b7da92881e954f85baf09d3a2360f23a8d54584",
+          "coarse_chunk_offsets": "6ecad16d46f37f0b9f849116e5f715aadc462be7b1093e533652e12b3ada758d",
+          "coarse_prefix_chunks": "cc0906415cdf9f04a1a3a78c41766cf05ca0f829f6978a0be3d0bd5f08267417",
+          "filter_clear_region": "a810140a814c8f3b567fd0cf5ed0b7b1bb7a001485d9609a5847ca1729917caf",
+          "filter_color_matrix_region": "e646071f1a3e840b6e783c91e24c9dc4565100ab27b6f526f95d9062f7f8f68d",
+          "filter_color_region": "5f28e26202c805813a72f0c3b21ce9b9a63aa5fecb9c6f6e0b4737fed4013e95",
+          "filter_copy_region": "4106c9c79ce937b535981ff348931f48199648d8b77847a6160724a619a4653f",
+          "filter_drop_shadow_mask_region": "b7349ac062397636a66e61b88db1cf61a645eb1284ca0e1b359052c29aa8d6ae",
+          "filter_offset_region": "993861c5ae4b9d898561843df476c6a6d27ab5955f20e72efcf52ca90ccf94f3",
+          "filter_source_alpha_region": "8a2d474c7c963f42027888859a30dbc11dbf81e2b781e4309381dcd6f5d7584d",
+          "filter_source_over_region": "19b221c0f88126955ce0bfd36f025f4807cd1d64da5352e73d0f090820804c5f",
+          "filter_svg_mask_coverage_region": "99c76d74564a4ee609c8936a4f4717ebd1dfdf69c36c6cf95c7987733edbd67b",
+          "filter_tile_region": "3ccfe53a6bd4f30ba1629dd4e900a8b2a276cc827f214b8cd98bc400377b1e34",
+          "filter_apply_region_mask": "f0d54b275731dd251dba4b5090cc1811e3f324d9286929ebc77ea836df068526",
+          "filter_blend_region": "1b0539847e17765084bcd799a4b653d38686d358cf872950d8bc4b1cda950a2c",
+          "filter_composite_inputs_region": "095665d27b3c748f223498adbc7b67f82e33f60c15af87c803ad533ef847478b",
+          "filter_morphology_axis_region": "9c12ec5128056602357a4961f852a66eca76760dd0c3cf9cc10df296209fecef",
+          "filter_displacement_map_region": "f905c420c0bcc995954731820f01c184602558f2d052c03d7249d806d9d0cce7",
+          "filter_component_transfer_region": "4c2c2b5f46a2cb5d4c0a6556a8a7f4498ce5d923a88b3c92fec15d6a46fa6b11",
+          "filter_convolve_matrix_region": "42004dd5d03523b65efac3bf3f86397549092daa83a95d1a9be9837f043164c3",
+          "filter_downsample_region": "e9e78267a092b304a1829eee21d43b75ea7c21ca8c4c87f0401e06698347cda9",
+          "filter_upsample_region": "f807e5f3a8bd4e0c18a52020e70040061a162273e188b9b6a366c8c244c15d4e",
+          "filter_blur_region": "74ec3e750b29e2c7a32ac10171ae0e06dc701e8ad4f8ae9e751383061ba41c9b",
+          "progressive_blur_reduce": "189e90afb94dd9e3bf6bd36056611cacc8e61489636db460f53b1988657c566a",
+          "progressive_blur_resolve": "8121699cf6c4fd6abae897b086699e8e5fc0e0dc3542ce09005c8a48f7588cb7",
+          "filter_lighting_region": "42d8c3bc6440d9b9fc42b4561d585086eb777aa514e2a1be0a6d8254341dd997",
+          "filter_composite_direct_region": "5ce0b80f6f22ec1ad69876f534432355e8d835d68a6ea823b2f17b9d716124d0",
+          "filter_composite_rect_direct_region": "a7e6d8f99ffa14bc4e89b37af3d26c4e8760899cfa8c84993346ba16664fd7fe",
+          "filter_rect_mask_region": "9668693c47e25b6d9a10a7a00e91e9ccc8164ff2b7e0d9de4dbe2df7853d55c7",
+          "filter_upsample_rect_composite_region": "330c7846f342561f111be9dadb329fe4f6dc6af43b3aa9a4ee3cc8fb18373d3f",
+          "filter_path_mask_region": "c14b01c05ab749ebac8b5ec76912c50d04b4e90be4470623436be6896498c5ef",
+          "filter_turbulence_region": "8ceae454a4b16f9e7a7008b5afdaeddeba665976fc8fafa2db90705b898612d1",
+          "filter_composite_surface_direct_region": "96e3fb0f8385fb4b6d5dc36b29fbea43f231d037aed07b76484ee48edbaf929d",
+          "filter_layer_mask_region": "118cd0acb93e0ed332295578d8f1fca09452eb3f294c79755468beb0a3348621",
+          "filter_composite_blend_stack_region": "98847870f9147423c2efbd6a8bd17dd52f3a153630b4e8f71de06bda471e26eb",
+          "filter_composite_stack_region": "8059b8b6907dbb79e7e45d311cb47e9b23c26c7b2b377071c9d3a2f153a67877",
+          "filter_composite_surface_stack_region": "39d1030265a2d49d6003a0ac2b79717667c4c3b47f10e9658f012697a3022d11",
+          "filter_liquid_glass_rect_composite_region": "57c92ed4737d552cef2c0c507a54970a722ca6b32618084c162b711029ff87d4",
+          "filter_liquid_glass_region": "0c64be9f7ae4cd28899ef5a3ee3638239b9b01a53325f57921d03fd3c33c4b62",
+          "filter_composite_drop_shadow_region": "3414689bbb66707003c7fbbb70efee3c74bae9e0656b9dfc6a1ce8f8848c72ea",
+          "filter_flood_region": "3929bc31f8aff282144826951535629960aaca53c0d8f31681b5098a6b77c370",
+          "sdf_coverage_words": "a7704e3ce5cafef105cfceff75cca08a53bcd0a86748ca4593efa5d633936463",
+          "filter_blur_shared_region": "ee088d3ad547b60c43104c07feb5ebf6edd8fcdf8b2f2dc45a9368c31bf23ffc",
+          "gradient_words": "de4674c32f81c9d8dd29f91b14f18d07263d4b8a749670c05cbe7123374bf073",
+          "pattern_words": "ba14933e74a22935229ed217ac4ce2939aa97218912d596d012b8e53f8a8afaf",
+          "fine_tile_main": "baab8ce77d693f6e76727987970d745753e738f0b2621474d2e92268e43bce2f",
+          "text_words": "d1026ab738edba210d05ade9ea538e509ff21be1b2b8093a25a4118e8d0b6b91",
+          "brush_words": "417cf1be491c6415a9e6fb5fc70b8ff639e7f90c28f9d390ca97a16e3fc97123",
+          "texture_flip": "37fa0e6b7a10fbb785a1a0266507ad24e8418cc5865d3f22a952955ef69a3f09",
+          "texture_layer": "a4f08d857d9c10ad308fd7ea76c100fa83f7baf8f88b110e8b285e1a1215c541",
+          "texture_table_words": "24f2be987626a3ff4cce8c77f582e6fc87e1b58f6df29e5d13926b58a51ea580",
+          "sampler_words": "a0a789410cbbfe4512dc354e93c81b5dbf8929e67dcb383e95b13a134e6feb94",
+          "blend_math_words": "8eedd1a5d5ecfbc4183199f6e43ac511ed02570eaa7f4de376272f20f9afc391",
+          "fill_coverage_words": "9e4ae54bfb1b2d090dffc386a8fe94baff44010f7d071e9cb857f2c16111ea43",
+          "geometry_math_words": "bff0140c7162cca38555a125397bbc4aa2cd15b6474386cc294118f99fd42dac",
+          "pixel_math_words": "fedc42b4ed61ab1946af0f1ee51d2ef66ed53b87bb6c29e5c2abe73a6e4d187d",
+          "clear_words": "c8a3c8d704ae1efb3405677d3cb327fd11cf6a7b401ae656fbf57f5492cf2e11",
+          "copy_words": "a5d3578080ac3d39aebc98130083e6e27de5f499fffcfbbdd73e2ee2adca08ca",
+          "layout_words": "7625bdce8f57f1671879d656ea222b579d6852942e20e5bd3a3bc27383f88094",
+          "sample_words": "388ca5a999bb81d79f97470ded7a905a5862e8bffbffa4448d1bf77b6f26a5c7",
+          "range_scatter": "8430569876dbc882b9f26cc19f261640c04ac53f55d7ea08725c913959b826f0",
+          "cumsum_apply_chunk_offsets": "b263171b64ba329e51dc802a7d6984d72cb9996305a9e019dc54a3a894ecc226",
+          "cumsum_chunk_offsets": "5843532454c1b48f6c1ad31b2e28dac025364cc245881383faab2059b63d4994",
+          "cumsum_prefix_chunks": "c4401c4176c4fa6057765b20cdf946d27094fe40ab770f3c5c8ce4fbef0034fd",
+          "scan_prefix_chunks": "d750bc4d459496557c5b76554d166bc916167124feea6dfe9559cdb5fd15af01",
+          "scan_chunk_offsets": "b8853485a3fb7096fecaff276e138863f652aadfe7b4ccfbae0758b456b518db",
+          "scan_apply_chunk_offsets": "7cff88cbc03e1c1d1f874acb08fb1188f962a8d5f2825ad445778cce7390dcc9",
+          "scan_clear": "ff5709d46395f84f5e7474b760417ea0419d15e5c63d059f9035ad1e686e46bd",
+          "scan_count": "524696cc505eea11e8fc92380634ff511a2e2d7ee62b1efe287326a31b787abe",
+          "scan_emit": "d3188ec9300bd8a899bc48c78e789a4860085d5330143f2c22518591b0e5bb05"
+        },
+        "resource_abi_validation": "actual DXC output validated by build/native.rs"
+      },
+      "dxil": {
+        "manifest": "target/x86_64-pc-windows-gnu/release/build/tileink-24a97e89b99363c5/out/tileink_native_artifacts.json",
+        "sha256": "6fc27d44103042faa4be80aba6d6088069ff6af3077b8c0f60635ea1a9ade5bd",
+        "entries": 84,
+        "entry_names": [
+          "coarse_emit_chunk_particle_counts",
+          "coarse_emit_chunk_tile_kinds",
+          "coarse_tile_counts_from_emit_chunks",
+          "coarse_emit_chunks",
+          "coarse_emit",
+          "coarse_emit_bins",
+          "coarse_count",
+          "coarse_count_bins",
+          "coarse_emit_apply_chunk_offsets",
+          "coarse_emit_chunk_counts",
+          "coarse_emit_chunk_particle_offsets",
+          "coarse_emit_fill_refs",
+          "coarse_emit_prefix_chunks",
+          "coarse_emit_chunk_offsets",
+          "coarse_apply_chunk_offsets",
+          "coarse_chunk_offsets",
+          "coarse_prefix_chunks",
+          "filter_clear_region",
+          "filter_color_matrix_region",
+          "filter_color_region",
+          "filter_copy_region",
+          "filter_drop_shadow_mask_region",
+          "filter_offset_region",
+          "filter_source_alpha_region",
+          "filter_source_over_region",
+          "filter_svg_mask_coverage_region",
+          "filter_tile_region",
+          "filter_apply_region_mask",
+          "filter_blend_region",
+          "filter_composite_inputs_region",
+          "filter_morphology_axis_region",
+          "filter_displacement_map_region",
+          "filter_component_transfer_region",
+          "filter_convolve_matrix_region",
+          "filter_downsample_region",
+          "filter_upsample_region",
+          "filter_blur_region",
+          "progressive_blur_reduce",
+          "progressive_blur_resolve",
+          "filter_lighting_region",
+          "filter_composite_direct_region",
+          "filter_composite_rect_direct_region",
+          "filter_rect_mask_region",
+          "filter_upsample_rect_composite_region",
+          "filter_path_mask_region",
+          "filter_turbulence_region",
+          "filter_composite_surface_direct_region",
+          "filter_layer_mask_region",
+          "filter_composite_blend_stack_region",
+          "filter_composite_stack_region",
+          "filter_composite_surface_stack_region",
+          "filter_liquid_glass_rect_composite_region",
+          "filter_liquid_glass_region",
+          "filter_composite_drop_shadow_region",
+          "filter_flood_region",
+          "sdf_coverage_words",
+          "filter_blur_shared_region",
+          "gradient_words",
+          "pattern_words",
+          "fine_tile_main",
+          "text_words",
+          "brush_words",
+          "texture_flip",
+          "texture_layer",
+          "texture_table_words",
+          "sampler_words",
+          "blend_math_words",
+          "fill_coverage_words",
+          "geometry_math_words",
+          "pixel_math_words",
+          "clear_words",
+          "copy_words",
+          "layout_words",
+          "sample_words",
+          "range_scatter",
+          "cumsum_apply_chunk_offsets",
+          "cumsum_chunk_offsets",
+          "cumsum_prefix_chunks",
+          "scan_prefix_chunks",
+          "scan_chunk_offsets",
+          "scan_apply_chunk_offsets",
+          "scan_clear",
+          "scan_count",
+          "scan_emit"
+        ],
+        "artifact_hashes": {
+          "coarse_emit_chunk_particle_counts": "02280c4cd2e95414522bb9e08adacfe4b91ec55b48fed1d4b809e31f3dedf2f9",
+          "coarse_emit_chunk_tile_kinds": "ef455fafa9b207274dc43755b9bb74c1e00ee67a9863ede870377ff611abda92",
+          "coarse_tile_counts_from_emit_chunks": "e29bc5854da08e0b09523b61180e6eb1747d5f8a3c5686ddefba37098b1f1bf6",
+          "coarse_emit_chunks": "ac79b9aa72be2287fddce4d18f37b5cea95d973ad537b0c28aa99fecef5a0bf9",
+          "coarse_emit": "edcbcb295876dfb80a7fc1d68f1b6d0e581017a6afb5972f7f16f2ddd54c30d3",
+          "coarse_emit_bins": "ed99df506d76594a98fa1b4824f9391c9cec06112e825b9b545be0a81bb58b2e",
+          "coarse_count": "78ad21849eeda8ff6de7c0943854225f4ea295ecc284cb12113326594bfce6b5",
+          "coarse_count_bins": "5498d8b256144b440eabf7457f8900e9c8ce8255cf6178e91cbdc2b336717e0f",
+          "coarse_emit_apply_chunk_offsets": "dbf0196d32f65e148b2af7c7a6ede54a8d45ffb5e2f5fb0686cbb2f1cbcaa9b7",
+          "coarse_emit_chunk_counts": "f4850495f0808dabd091a6e2e3f9a7619f978e139f3df6cb08339f06d19174c8",
+          "coarse_emit_chunk_particle_offsets": "a76db579e043f6230c33352b732e6dc353475dca015c32c95dda45bb476467ed",
+          "coarse_emit_fill_refs": "320909e3855c4c7db8d92f200f541e4d068e3ed633a0928c9246ac796c50ece9",
+          "coarse_emit_prefix_chunks": "f825aa2fa24d0b1b4679a63c90678d487d76baa1421003bc18ec872a8b232379",
+          "coarse_emit_chunk_offsets": "16de6ae78e9bda98774c8e35c606b287a4c138cc35995a39b553caf61dae8c30",
+          "coarse_apply_chunk_offsets": "e3206e5e067b55a5cf8b513db6851c5205dfe2c96d614d2a0d63a408578fb73b",
+          "coarse_chunk_offsets": "5b8d177df8c0bdd01fa739d85212e60404528e8cb02b0f6b97ab76e69d220d62",
+          "coarse_prefix_chunks": "92d7a16060b7977cb5907371315c5835d4f293e560472d4dc64ca30a57a8ae75",
+          "filter_clear_region": "38bd3160f742d793599a88f8b00e81dc24f1b016de0bacaa7b66360ed7c456c0",
+          "filter_color_matrix_region": "cb2ef45eca9411beb78d6703ad31ede3d0e3af45628bfc59f4c202fca971e0d5",
+          "filter_color_region": "9580d289b8d8b78168c8af53e7cd44954e5927cda83be3f726d7426257dfc429",
+          "filter_copy_region": "f34886d6de8a5484109f1d658ea29a06373a620e129bb17fea9d3a5044f41570",
+          "filter_drop_shadow_mask_region": "f49a97f2d16518bae3c2175b30d4e20e051b57b6dc27571e604ff6b16b4f722e",
+          "filter_offset_region": "fb8cad8609841f40f3e4afe96f418e1d5e2fc2ad48943f8c5a840c158ef93fa0",
+          "filter_source_alpha_region": "cc454340f41bff1f7429880f2ebfa0c612465ffd6bd7c48150e4476f699f27f1",
+          "filter_source_over_region": "4ce0d3fbe2a99fc373423581e40dcd0ce1db2354064fd6fea15a6568355fa28f",
+          "filter_svg_mask_coverage_region": "e3f4f92108a22b79f248e8bc2ade934d5460db2b9c91f28f7edf03c15e4802a1",
+          "filter_tile_region": "622f5aeb6d475c0fb1843b1c367641bc4466e933209791a463488de2d3ca0bb5",
+          "filter_apply_region_mask": "de8921f7e673d0ed48428a8c15b1aabc8136be1a29060f2e20ac044242a5ab2b",
+          "filter_blend_region": "d9e877cec2aa442e50547619d9f5914b053b80eb10bb5673d00bef698dc91bc8",
+          "filter_composite_inputs_region": "8a67da4ed651ae3adc65b830c61ac57e63214d730750d5bb56a54add491c29c6",
+          "filter_morphology_axis_region": "d83dcf12dae38b05a4b95ecf79ded67803e66d826f3af3e51c0e42ceb024e1b4",
+          "filter_displacement_map_region": "97f52496d21cf95896323018b319c10626d4a145be211f068eea88fbe355ba74",
+          "filter_component_transfer_region": "7128852ed6e2148ec452cf42310458007cc24ef9cc1a9ac1ad6da74fb49edb84",
+          "filter_convolve_matrix_region": "a9e34c3df9e528b6f5ce2fb622b6b0f2a76dac94a80cd8ac2708c74edea76624",
+          "filter_downsample_region": "3124dc359b267813c2be14fd0b95be4db4172f0a48ad9b8c6b220cdbd786500c",
+          "filter_upsample_region": "ff062a76ce1645e6eef24fc1b7880cfa668a99121329dfeec21fda1bc7972118",
+          "filter_blur_region": "6ecaa796382e3abf46d4c0e6ad63f19ecc853ed992d26fd503d9b45be9713b6a",
+          "progressive_blur_reduce": "da1d084d4e62cb769e53f4be110af4ef21307dcd609374af1398092dab2c563c",
+          "progressive_blur_resolve": "f2a84f8e876acf6e0a1b371c3dbc2ae38d377d101f0a88c857ce8f5ebec43812",
+          "filter_lighting_region": "9413b5dcd3c76c9124eecd2524f3da20dee31cc168694c638bb123bad1aa1022",
+          "filter_composite_direct_region": "acb7b1f40a122cca46fb35d283b18a5bc6232d0453525896b13c58e45b2f67a9",
+          "filter_composite_rect_direct_region": "e7849e4b2690f381fd7dd99380596a01d2d9064c80f7b42a9e678a7f480c8c24",
+          "filter_rect_mask_region": "b7e92c7e9c441661a8daf500dfdfa7a085ce0d0c7d1a20e9ece0294309f4d805",
+          "filter_upsample_rect_composite_region": "9a1b10fd0d7cdc1f86cd7ef732ea253bb143417a7e8c7614f70a687d1845ef25",
+          "filter_path_mask_region": "a27a05439b4b42e431466e470972799f1d15e27b41c952b288a12d7b2a74bc74",
+          "filter_turbulence_region": "238982947535c23e23889a841a5bf12ee311e3476691d33fef3238497d3db943",
+          "filter_composite_surface_direct_region": "0b27ed1d4884d0f4df3e3d2ee64256c1479389488e13d65f44dc1caa2ed3221f",
+          "filter_layer_mask_region": "22774dccf83817d2db20d79ddb35d87108a6ea436d5cc03bfdd5e3046e97e452",
+          "filter_composite_blend_stack_region": "8907fdcbc549dd07365bdd82091f92b1ad07f7fdafd370d1914cc5e1d4d6d1db",
+          "filter_composite_stack_region": "9855292c63334ec2957dbb6d7284cb1e7571ac3976b450b2a5f26363e44c25e5",
+          "filter_composite_surface_stack_region": "af60abb55042accb79ceb70ac0d68f926ec0a73783033d75b8c1775b319a258d",
+          "filter_liquid_glass_rect_composite_region": "bf4070806fbcd444eb36ad949b0da958220ef6ad711329cd40ddf712334c1f9d",
+          "filter_liquid_glass_region": "8e5e7a256a3bf4c6125add50baeee013ee683b3d86c0bf77c150c3cabf19c46b",
+          "filter_composite_drop_shadow_region": "e0c318b8764b68eef8616cff974da92b2b5e3d3331fa06e1c312a402d72779c9",
+          "filter_flood_region": "b766b66249b35c1c1700a1feebb79256a56d1b5d3e99dc9d666d70e71904a8c9",
+          "sdf_coverage_words": "7b1ea300cce59cd0cab24898a657b5f32a38aa4fc24575321899af0d279d352b",
+          "filter_blur_shared_region": "c03639aa442e7e70c95278a8cc97e48f81c2129fb56831afedfcfd7b70f10b6e",
+          "gradient_words": "75360b673cfffd4876a3c57f175990eb5533ab57500b37c22ab162982030574c",
+          "pattern_words": "98f7990e72b921736549451221a51d73ec300c3630cfe81d6b118410be2e213b",
+          "fine_tile_main": "c335641bf23d8b436d113efafd4891eb826d8a7b9bb294531fe33787211c15b0",
+          "text_words": "8136b727d7d3eef701408d95d0a51d1b83ebdf1deeccbe4a8e71c51034cd2d47",
+          "brush_words": "660d6133b8c23e0dc895709f22d90a207f5c9bace0edf2d7929f03431585467a",
+          "texture_flip": "246ecaf5a08bb5c9060f83e802f5902d89d4c09e80dfafe96c96e4160210897b",
+          "texture_layer": "789346fcc5d2bf60f62e23990a832eab2aeea51c10bbdfb06c85a50744d75b4f",
+          "texture_table_words": "dc2509789f5b7b0eaff703efa782a276eef3b8f85c2b551dc31a155d8a1c6638",
+          "sampler_words": "c115594af8cf8cc0c8e1ea6d31761c16e1f2036af5d0ae636e363ea0a9e35911",
+          "blend_math_words": "3a3ad29c8e1ee52ecadf30739cbd6d671be4618da972cc16a5863b7b0b217edc",
+          "fill_coverage_words": "3b16167a6e482c564f219c89707a12c54f15513a24e7ff212fe0133e4a2c5011",
+          "geometry_math_words": "3448156a37f998d6590216debed8134de3f5386fa4a1b2b682cf46ad73a05a25",
+          "pixel_math_words": "3af13772cb06afb03dd4accc2aede1fd13fea1e6a714ff19fbe4ff2d34f4d108",
+          "clear_words": "32b487b8f6cfd22c18c59b7a08500b249c241537fbd8c2efc3b6826ff4664749",
+          "copy_words": "591645b1f7bae3b6d042fe1f37f3f568fe3681da11cfaec941091539049994d9",
+          "layout_words": "e7cc4300ca4fa49ac7fab33d4360c8d1b878cbd5eb4ce901b51ce749bb0ee1c5",
+          "sample_words": "0d9229d3342ccfb8e3a1c8fe5ef020f998d2356e7eae978fae35cb79e5946b3a",
+          "range_scatter": "2910800af7a06ff8094b1379231a4353532f4689859e37ba36a33c84eaf184b6",
+          "cumsum_apply_chunk_offsets": "289f73e29c655b37b04f635634ff828b225d721622d3e0065c603a869b7d43eb",
+          "cumsum_chunk_offsets": "537f57f25eb12549daa6dd72145702d4a19570c5062dffd8257902cc8cfed908",
+          "cumsum_prefix_chunks": "4417bd7f36a0ae93808494171d5eebbcc2f3c18fb45debeeb8c0b2bc073ffcd6",
+          "scan_prefix_chunks": "b3eed9661c4fd896441b9c083a1fa250c789c0d72c71b69ae4f727d9f1165eb5",
+          "scan_chunk_offsets": "ffb9f1b5461cb39696617c0270d71adc5b76d9b94b91d88870e66481d5085ce9",
+          "scan_apply_chunk_offsets": "790517633f40197e375aec4366906d6d6a1c52fa508015c81abedde9f00b7fbb",
+          "scan_clear": "92801ec344c11f3f9512c588013ac23c1a2e66c9034dcfad23c79ba07c9acd62",
+          "scan_count": "b1e5acf2c5f0a26b341430da9d92b2122af53b010ad23e750a24893fecc89e88",
+          "scan_emit": "15a3096178431dc575a3428b46d290c29c36a660bb17bdaa6cc0b20555a29a33"
+        },
+        "resource_abi_validation": "actual DXC output validated by build/native.rs"
+      }
+    }
+  },
+  "platform_limit": "Windows DX12/Vulkan all-target release checks and actual pinned-DXC artifact/resource ABI validation pass; no Windows GPU runtime execution is claimed.",
+  "red_regression_evidence": {
+    "effect_stack_upload": {
+      "log": "target/cleanup-audit/commands-stack-red.log",
+      "excerpt": "   Compiling tileink v0.1.2 (/Users/jian/tileink)\n    Finished `release` profile [optimized] target(s) in 34.08s\n     Running unittests src/lib.rs (target/release/deps/tileink-87cd0a95a599b828)\n\nrunning 1 test\ntest retained_scene::tests::layer_updates::effect_parameter_updates_do_not_upload_unmodified_clip_stacks ... FAILED\n\nfailures:\n\n---- retained_scene::tests::layer_updates::effect_parameter_updates_do_not_upload_unmodified_clip_stacks stdout ----\n\nthread 'retained_scene::tests::layer_updates::effect_parameter_updates_do_not_upload_unmodified_clip_stacks' (5403125) panicked at src/retained_scene/tests/layer_updates.rs:217:17:\nbackdrop=false, empty=true: [0..1]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    retained_scene::tests::layer_updates::effect_parameter_updates_do_not_upload_unmodified_clip_stacks\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 997 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `--lib`\n"
+    },
+    "sdf_clip_fingerprint": {
+      "log": "target/cleanup-audit/commands-fingerprint-red.log",
+      "excerpt": "    Blocking waiting for file lock on package cache\n   Compiling tileink v0.1.2 (/Users/jian/tileink)\n    Finished `release` profile [optimized] target(s) in 14.22s\n     Running unittests src/lib.rs (target/release/deps/tileink-87cd0a95a599b828)\n\nrunning 1 test\ntest canvas::tests::layer_commands::sdf_clip_geometry_does_not_change_the_execution_topology_fingerprint ... FAILED\n\nfailures:\n\n---- canvas::tests::layer_commands::sdf_clip_geometry_does_not_change_the_execution_topology_fingerprint stdout ----\n\nthread 'canvas::tests::layer_commands::sdf_clip_geometry_does_not_change_the_execution_topology_fingerprint' (5419283) panicked at src/canvas/tests/layer_commands.rs:19:5:\nassertion `left == right` failed\n  left: 307147864575268430\n right: 4542111011817493975\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    canvas::tests::layer_commands::sdf_clip_geometry_does_not_change_the_execution_topology_fingerprint\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1000 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `--lib`\n"
+    }
+  },
+  "temporary_measurement_cleanup_complete": true,
+  "temporary_artifacts_removed": [
+    "examples/cleanup_recorded_layers.rs",
+    "target/cleanup-audit/commands-svg-before",
+    "target/cleanup-audit/commands-svg-after",
+    "target/cleanup-audit/commands-window-before",
+    "target/cleanup-audit/commands-window-after",
+    "target/cleanup-audit/commands-app-before",
+    "target/cleanup-audit/commands-app-after",
+    "target/release/examples/cleanup_recorded_layers-2f239455d82c8d79.d",
+    "target/release/examples/libcleanup_recorded_layers-e5ca16da3c195d6a.rmeta",
+    "target/release/examples/cleanup_recorded_layers-d0346c0ad4629d05",
+    "target/release/examples/cleanup_recorded_layers-e5ca16da3c195d6a.d",
+    "target/release/examples/cleanup_recorded_layers-2f239455d82c8d79",
+    "target/release/examples/cleanup_recorded_layers-d0346c0ad4629d05.d",
+    "target/release/examples/cleanup_recorded_layers.d",
+    "target/release/examples/cleanup_recorded_layers",
+    "target/release/.fingerprint/tileink-2f239455d82c8d79/dep-example-cleanup_recorded_layers",
+    "target/release/.fingerprint/tileink-2f239455d82c8d79/example-cleanup_recorded_layers.json",
+    "target/release/.fingerprint/tileink-2f239455d82c8d79/example-cleanup_recorded_layers",
+    "target/release/.fingerprint/tileink-e5ca16da3c195d6a/output-example-cleanup_recorded_layers",
+    "target/release/.fingerprint/tileink-e5ca16da3c195d6a/dep-example-cleanup_recorded_layers",
+    "target/release/.fingerprint/tileink-e5ca16da3c195d6a/example-cleanup_recorded_layers.json",
+    "target/release/.fingerprint/tileink-e5ca16da3c195d6a/example-cleanup_recorded_layers",
+    "target/release/.fingerprint/tileink-d0346c0ad4629d05/dep-test-example-cleanup_recorded_layers",
+    "target/release/.fingerprint/tileink-d0346c0ad4629d05/test-example-cleanup_recorded_layers",
+    "target/release/.fingerprint/tileink-d0346c0ad4629d05/test-example-cleanup_recorded_layers.json",
+    "target/release/.fingerprint/tileink-e5ca16da3c195d6a",
+    "target/release/.fingerprint/tileink-d0346c0ad4629d05",
+    "target/release/.fingerprint/tileink-2f239455d82c8d79",
+    "target/x86_64-pc-windows-gnu/release/examples/libcleanup_recorded_layers-384f3b0139ea1989.rmeta",
+    "target/x86_64-pc-windows-gnu/release/examples/libcleanup_recorded_layers-5fa95485f55d740d.rmeta",
+    "target/x86_64-pc-windows-gnu/release/examples/cleanup_recorded_layers-5fa95485f55d740d.d",
+    "target/x86_64-pc-windows-gnu/release/examples/cleanup_recorded_layers-384f3b0139ea1989.d",
+    "target/x86_64-pc-windows-gnu/release/.fingerprint/tileink-5fa95485f55d740d/dep-example-cleanup_recorded_layers",
+    "target/x86_64-pc-windows-gnu/release/.fingerprint/tileink-5fa95485f55d740d/example-cleanup_recorded_layers.json",
+    "target/x86_64-pc-windows-gnu/release/.fingerprint/tileink-5fa95485f55d740d/example-cleanup_recorded_layers",
+    "target/x86_64-pc-windows-gnu/release/.fingerprint/tileink-384f3b0139ea1989/dep-example-cleanup_recorded_layers",
+    "target/x86_64-pc-windows-gnu/release/.fingerprint/tileink-384f3b0139ea1989/example-cleanup_recorded_layers.json",
+    "target/x86_64-pc-windows-gnu/release/.fingerprint/tileink-384f3b0139ea1989/example-cleanup_recorded_layers",
+    "target/x86_64-pc-windows-gnu/release/.fingerprint/tileink-5fa95485f55d740d",
+    "target/x86_64-pc-windows-gnu/release/.fingerprint/tileink-384f3b0139ea1989"
+  ]
+}

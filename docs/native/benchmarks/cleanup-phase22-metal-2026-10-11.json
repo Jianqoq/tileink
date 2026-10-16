@@ -1,0 +1,57 @@
+{
+  "recorded_at_utc": "2026-10-11T14:38:38.390755+00:00",
+  "baseline_commit": "989ef6bc16a6863523b6616e5c5ec73fb735403c",
+  "backend": "Metal",
+  "adapter": "Apple M5 (0000000100000575)",
+  "workload": "Actual native_present metal --smoke: eight frames, separate rendering/presentation queues, physical resize 640x360 to 480x270. Whole-process wall time including initialization, window lifecycle, submission and retirement.",
+  "warmup_pairs": 2,
+  "timed_pairs": 10,
+  "order": "alternating before/after, after/before",
+  "validation_layer_in_timed_runs": false,
+  "concurrency": "no competing builds or GPU jobs",
+  "executables": {
+    "before": "bc1e0981f19681fa51eaffbce661821397a7bd7e000529e44f49a54fbe57c3f8",
+    "after": "eea3fbfc79bf1ee2f89ebe191a22a29b9a5e3f4f6886ae7feee9a0478c5e6eca"
+  },
+  "results": {
+    "before": {
+      "samples_ms": [
+        232.730958,
+        232.166417,
+        234.428375,
+        235.550417,
+        232.401625,
+        232.291667,
+        235.21725,
+        230.264125,
+        237.92075,
+        237.2185
+      ],
+      "p50_ms": 233.57966649999997,
+      "p95_ms": 237.92075
+    },
+    "after": {
+      "samples_ms": [
+        233.086916,
+        233.271958,
+        233.468833,
+        232.4965,
+        232.449125,
+        233.084875,
+        241.710833,
+        258.267583,
+        238.126375,
+        242.551333
+      ],
+      "p50_ms": 233.3703955,
+      "p95_ms": 258.267583
+    }
+  },
+  "presentation_reports": {
+    "before": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n",
+    "after": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+  },
+  "interpretation": "Infallible sampler recording removes impossible error plumbing. This whole-process application check does not isolate sampler recording time or measure GPU throughput. No rendering speedup is claimed.",
+  "p50_change_percent": -0.08959298689639184,
+  "percentile_method": "nearest rank; p95 is the maximum of ten samples"
+}

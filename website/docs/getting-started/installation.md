@@ -1,46 +1,9 @@
 ---
-sidebar_position: 1
-title: 安装与本地运行
+title: 安装
 ---
 
 # 安装
 
-Tileink 当前从源码使用：
+在 Cargo.toml 添加 `tileink = { path = "../tileink" }` 和 `peniko = "0.6.1"`。Windows 默认选择 DX12；Windows/Linux 使用 Vulkan、macOS 使用 Metal 时，关闭默认 feature 并只启用一个后端：`cargo test --release --no-default-features --features vulkan -- --test-threads=1` 或 `--features metal`。文档站需要 Node.js 20 以上；在 `website/` 运行 `npm install` 与 `npm run build`。
 
-```toml title="Cargo.toml"
-[dependencies]
-tileink = { path = "../tileink" }
-peniko = "0.6.1"
-wgpu = "30"
-pollster = "0.4"
-```
-
-Rust crate 使用 edition 2024。WGPU renderer 默认可用；`directwrite-reference` 与 `vello-compare` 是开发/对照用途的可选 feature。
-
-## 本地运行文档站
-
-文档站要求 Node.js 20 或更新版本。
-
-```powershell
-cd website
-npm install
-npm run start
-```
-
-默认在 `http://localhost:3000` 启动并热更新。生产构建：
-
-```powershell
-npm run typecheck
-npm run build
-npm run serve
-```
-
-静态输出位于 `website/build/`。
-
-## 验证 Rust 环境
-
-```powershell
-cargo test --release -- --test-threads=1
-cargo run --release --example wgpu_examples
-cargo run --release --example winit_svg_tiger
-```
+macOS 的 Metal 渲染只需要 Xcode 工具链。运行包含 `--include-ignored` 的完整测试时，还需设置固定 GPU 和绝对路径 `TILEINK_NATIVE_DXC_PATH`，供 HLSL 测试实际编译 DXIL 与 SPIR-V。DXC 在 macOS 使用 `libdxcompiler.dylib`；固定版本的构建方法见仓库 `scripts/mac/README.md`。这些编译检查不替代 Windows/Linux 上的 GPU 执行验证。

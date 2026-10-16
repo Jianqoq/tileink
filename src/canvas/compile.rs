@@ -1,4 +1,7 @@
 use super::*;
+mod layers;
+use crate::shared::execution::OffscreenLayer;
+use layers::LayerExecution;
 
 impl Canvas {
     pub(crate) fn compile(&self, list_id: CommandListId) -> ExecPlan {
@@ -14,12 +17,30 @@ impl Canvas {
         if list_id == ROOT_COMMAND_LIST_ID
             && let Some(plan) = &self.compiled_plan
         {
-            return plan.clone();
+            return std::rc::Rc::clone(plan);
         }
         SharedRc::new(self.compile_uncached(list_id))
     }
 
     pub(super) fn compile_uncached(&self, list_id: CommandListId) -> ExecPlan {
+        self.compile_commands(&self.command_lists[list_id].commands, Vec::new())
+    }
+
+    /// Compile a retained fragment directly, preserving its ancestor clip stack without
+    /// allocating a synthetic root list in persistent command storage.
+    pub(crate) fn compile_command(
+        &self,
+        command: &Command,
+        layer_stack: Vec<LayerStackEntry>,
+    ) -> ExecPlan {
+        self.compile_commands(std::slice::from_ref(command), layer_stack)
+    }
+
+    fn compile_commands(
+        &self,
+        commands: &[Command],
+        mut layer_stack: Vec<LayerStackEntry>,
+    ) -> ExecPlan {
         let mut ops = Vec::new();
         let mut plan = ExecPlan {
             ops: Vec::new(),
@@ -30,10 +51,9 @@ impl Canvas {
             layer_stack_locations: std::collections::HashMap::new(),
             direct_root_batch_ops: None,
         };
-        let mut layer_stack = Vec::new();
         let mut surface_slots = std::collections::HashMap::new();
         self.compile_into(
-            list_id,
+            commands,
             &mut ops,
             &mut plan,
             &mut layer_stack,
@@ -69,20 +89,19 @@ impl Canvas {
                         hasher.write_u8(0);
                         hasher.write_usize(*draw);
                     }
-                    Command::MaterializedRetainedScene { id, children, .. } => {
+                    Command::MaterializedRetainedScene { id, fragment, .. } => {
                         hasher.write_u8(1);
                         hasher.write_u64(id.owner);
                         hasher.write_u32(id.slot);
-                        hasher.write_usize(*children);
+                        hasher.write_usize(fragment.start);
+                        hasher.write_usize(fragment.end);
                     }
                     Command::Layer {
                         retained,
-                        draw,
                         layer,
                         children,
                     } => {
                         hasher.write_u8(2);
-                        hasher.write_usize(*draw);
                         hasher.write_usize(*children);
                         if let Some(retained) = retained {
                             hasher.write_u64(retained.id.owner);
@@ -114,7 +133,7 @@ impl Canvas {
 
     fn compile_into(
         &self,
-        list_id: CommandListId,
+        commands: &[Command],
         ops: &mut Vec<ExecOp>,
         plan: &mut ExecPlan,
         layer_stack: &mut Vec<LayerStackEntry>,
@@ -148,17 +167,13 @@ impl Canvas {
             });
         };
 
-        for command in &self.command_lists[list_id].commands {
+        for command in commands {
             match command {
                 Command::Draw(draw_ix) => pending_batch.push(*draw_ix),
-                Command::MaterializedRetainedScene {
-                    id,
-                    revision: _,
-                    children,
-                } => {
+                Command::MaterializedRetainedScene { id, fragment, .. } => {
                     flush_batch(&mut pending_batch, ops, plan, layer_stack, batch_owner);
                     self.compile_into(
-                        *children,
+                        &self.command_lists[fragment.start].commands,
                         ops,
                         plan,
                         layer_stack,
@@ -171,7 +186,6 @@ impl Canvas {
                 }
                 Command::Layer {
                     retained,
-                    draw,
                     layer,
                     children,
                 } => {
@@ -183,106 +197,60 @@ impl Canvas {
                             branch: RetainedBatchBranch::Content,
                         })
                         .or(batch_owner);
-                    if self.can_fuse(layer, *children) {
-                        match layer {
-                            Layer::Clip | Layer::ClipSdf { .. } => {
-                                // SDF clips stay analytic by using their hidden
-                                // draw record as the same layer-stack entry as
-                                // path clips, instead of materializing a mask.
-                                ops.push(ExecOp::BeginClip);
-                                layer_stack.push(LayerStackEntry::Clip { draw: *draw as u32 });
-                                self.compile_into(
-                                    *children,
-                                    ops,
-                                    plan,
-                                    layer_stack,
-                                    CompileOwners {
-                                        retained: retained_owner,
-                                        batch: child_batch_owner,
-                                    },
-                                    surface_slots,
-                                );
-                                layer_stack.pop();
-                                ops.push(ExecOp::EndClip);
-                            }
-                            Layer::Opacity(opacity) => {
-                                ops.push(ExecOp::BeginOpacity);
-                                layer_stack.push(LayerStackEntry::Opacity {
-                                    draw: *draw as u32,
-                                    opacity: opacity.opacity,
-                                });
-                                self.compile_into(
-                                    *children,
-                                    ops,
-                                    plan,
-                                    layer_stack,
-                                    CompileOwners {
-                                        retained: retained_owner,
-                                        batch: child_batch_owner,
-                                    },
-                                    surface_slots,
-                                );
-                                layer_stack.pop();
-                                ops.push(ExecOp::EndOpacity);
-                            }
-                            Layer::Blend(blend) => {
-                                ops.push(ExecOp::BeginBlend);
-                                layer_stack.push(LayerStackEntry::Blend {
-                                    draw: *draw as u32,
-                                    mode: blend.mode,
-                                });
-                                self.compile_into(
-                                    *children,
-                                    ops,
-                                    plan,
-                                    layer_stack,
-                                    CompileOwners {
-                                        retained: retained_owner,
-                                        batch: child_batch_owner,
-                                    },
-                                    surface_slots,
-                                );
-                                layer_stack.pop();
-                                ops.push(ExecOp::EndBlend);
-                            }
-                            _ => unreachable!(),
+                    match self.compile_layer(layer, *children) {
+                        LayerExecution::Fused(entry) => {
+                            // Every fused group has the same traversal. Hidden SDF/path clip
+                            // draws remain analytic through the batch's stack snapshot.
+                            layer_stack.push(entry);
+                            self.compile_into(
+                                &self.command_lists[*children].commands,
+                                ops,
+                                plan,
+                                layer_stack,
+                                CompileOwners {
+                                    retained: retained_owner,
+                                    batch: child_batch_owner,
+                                },
+                                surface_slots,
+                            );
+                            layer_stack.pop();
                         }
-                    } else {
-                        let stack_start = plan.layer_stack_data.len();
-                        plan.layer_stack_data.extend_from_slice(layer_stack);
-                        let stack_end = plan.layer_stack_data.len();
-                        ops.push(ExecOp::OffscreenLayer {
-                            retained_id: retained_owner.map(|owner| {
-                                let slot = surface_slots.entry(owner).or_default();
-                                let id = RetainedSurfaceId::new(owner, *slot);
-                                *slot += 1;
-                                id
-                            }),
-                            draw: *draw,
-                            layer: layer.clone(),
-                            outer_stack: stack_start..stack_end,
-                            children: {
-                                let mut child_ops = Vec::new();
-                                let mut child_layer_stack =
-                                    if matches!(layer, Layer::Backdrop { .. }) {
+                        LayerExecution::Offscreen(layer) => {
+                            let stack_start = plan.layer_stack_data.len();
+                            plan.layer_stack_data.extend_from_slice(layer_stack);
+                            let stack_end = plan.layer_stack_data.len();
+                            let inherit_stack = matches!(layer, OffscreenLayer::Backdrop { .. });
+                            ops.push(ExecOp::OffscreenLayer {
+                                retained_id: retained_owner.map(|owner| {
+                                    let slot = surface_slots.entry(owner).or_default();
+                                    let id = RetainedSurfaceId::new(owner, *slot);
+                                    *slot += 1;
+                                    id
+                                }),
+                                layer,
+                                outer_stack: stack_start..stack_end,
+                                children: {
+                                    let mut child_ops = Vec::new();
+                                    let mut child_layer_stack = if inherit_stack {
                                         layer_stack.clone()
                                     } else {
                                         Vec::new()
                                     };
-                                self.compile_into(
-                                    *children,
-                                    &mut child_ops,
-                                    plan,
-                                    &mut child_layer_stack,
-                                    CompileOwners {
-                                        retained: retained_owner,
-                                        batch: child_batch_owner,
-                                    },
-                                    surface_slots,
-                                );
-                                child_ops
-                            },
-                        });
+                                    self.compile_into(
+                                        &self.command_lists[*children].commands,
+                                        &mut child_ops,
+                                        plan,
+                                        &mut child_layer_stack,
+                                        CompileOwners {
+                                            retained: retained_owner,
+                                            batch: child_batch_owner,
+                                        },
+                                        surface_slots,
+                                    );
+                                    child_ops
+                                },
+                            });
+                        }
                     }
                 }
                 Command::MaskLayer {
@@ -321,7 +289,7 @@ impl Canvas {
                             let mut child_ops = Vec::new();
                             let mut child_layer_stack = Vec::new();
                             self.compile_into(
-                                *content,
+                                &self.command_lists[*content].commands,
                                 &mut child_ops,
                                 plan,
                                 &mut child_layer_stack,
@@ -337,7 +305,7 @@ impl Canvas {
                             let mut mask_ops = Vec::new();
                             let mut mask_layer_stack = Vec::new();
                             self.compile_into(
-                                *mask,
+                                &self.command_lists[*mask].commands,
                                 &mut mask_ops,
                                 plan,
                                 &mut mask_layer_stack,
@@ -370,14 +338,15 @@ impl Canvas {
         }
     }
 
-    pub(super) fn can_fuse(&self, layer: &Layer, children: CommandListId) -> bool {
+    pub(crate) fn can_fuse(&self, layer: &Layer, children: CommandListId) -> bool {
         match layer {
-            Layer::Clip => true,
-            Layer::ClipSdf { .. } => true,
+            Layer::Clip { .. } | Layer::ClipSdf { .. } => true,
             // Group opacity and blend must wrap the composited child subtree.
             // If a child opens its own offscreen layer, keeping the group fused
             // would apply it to separate fragments before they are combined.
-            Layer::Opacity(_) | Layer::Blend(_) => !self.command_list_contains_offscreen(children),
+            Layer::Opacity { .. } | Layer::Blend { .. } => {
+                !self.command_list_contains_offscreen(children)
+            }
             _ => false,
         }
     }
@@ -388,15 +357,18 @@ impl Canvas {
             .iter()
             .any(|command| match command {
                 Command::Draw(_) => false,
-                Command::MaterializedRetainedScene { children, .. } => {
-                    self.command_list_contains_offscreen(*children)
+                Command::MaterializedRetainedScene { fragment, .. } => {
+                    self.command_list_contains_offscreen(fragment.start)
                 }
                 Command::Layer {
                     layer, children, ..
                 } => {
                     !matches!(
                         layer,
-                        Layer::Clip | Layer::ClipSdf { .. } | Layer::Opacity(_) | Layer::Blend(_)
+                        Layer::Clip { .. }
+                            | Layer::ClipSdf { .. }
+                            | Layer::Opacity { .. }
+                            | Layer::Blend { .. }
                     ) || self.command_list_contains_offscreen(*children)
                 }
                 Command::MaskLayer { .. } => true,
@@ -416,7 +388,6 @@ fn exec_ops_contain_owner(ops: &[ExecOp], owner: RetainedBatchOwner) -> bool {
         ExecOp::OffscreenMaskLayer { content, mask, .. } => {
             exec_ops_contain_owner(content, owner) || exec_ops_contain_owner(mask, owner)
         }
-        _ => false,
     })
 }
 struct HasherWriter<'a, H>(&'a mut H);

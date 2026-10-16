@@ -4,26 +4,34 @@ use crate::shared::bounds::Bounds;
 use crate::shared::brush::Brush;
 use crate::shared::layer::region::Region;
 
-pub const COMPONENT_TRANSFER_TABLE_SIZE: usize = 256;
-pub const COMPONENT_TRANSFER_CHANNELS: usize = 4;
+pub const COMPONENT_TRANSFER_TABLE_SIZE: usize =
+    crate::shared::gpu_constants::COMPONENT_TRANSFER_TABLE_SIZE as usize;
+// The packed pixel and channel lookup contract is RGBA; reject incompatible headers.
+const _: () = assert!(crate::shared::gpu_constants::COMPONENT_TRANSFER_CHANNELS == 4);
 pub const COMPONENT_TRANSFER_TABLE_LEN: usize =
-    COMPONENT_TRANSFER_TABLE_SIZE * COMPONENT_TRANSFER_CHANNELS;
-pub const TURBULENCE_LATTICE_SIZE: usize = 256;
-pub const TURBULENCE_TABLE_LEN: usize = TURBULENCE_LATTICE_SIZE * 2 + 2;
-pub const TURBULENCE_CHANNELS: usize = 4;
-pub const TURBULENCE_GRADIENT_COMPONENTS: usize = 2;
+    crate::shared::gpu_constants::COMPONENT_TRANSFER_TABLE_LEN as usize;
+pub const TURBULENCE_LATTICE_SIZE: usize =
+    crate::shared::gpu_constants::TURBULENCE_LATTICE_SIZE as usize;
+pub const TURBULENCE_TABLE_LEN: usize = crate::shared::gpu_constants::TURBULENCE_TABLE_LEN as usize;
+pub const TURBULENCE_CHANNELS: usize = crate::shared::gpu_constants::TURBULENCE_CHANNELS as usize;
+pub const TURBULENCE_GRADIENT_COMPONENTS: usize =
+    crate::shared::gpu_constants::TURBULENCE_GRADIENT_COMPONENTS as usize;
 pub const TURBULENCE_GRADIENT_LEN: usize =
-    TURBULENCE_CHANNELS * TURBULENCE_TABLE_LEN * TURBULENCE_GRADIENT_COMPONENTS;
+    crate::shared::gpu_constants::TURBULENCE_GRADIENT_LEN as usize;
 /// Fixed RGBA lookup table for SVG `feComponentTransfer`.
 ///
 /// Each channel owns 256 u32 entries in R, G, B, A order. Values are stored as
-/// 0..255 bytes so CPU and wgpu can share the same quantized semantics.
+/// 0..255 bytes so CPU and GPU paths share the same quantized semantics.
 pub type ComponentTransferTable = [u32; COMPONENT_TRANSFER_TABLE_LEN];
 
 #[derive(Clone, Debug)]
 pub enum Filter {
+    /// Explicit native GPU resources and passes, including multiresolution/HDR intermediates.
+    ShaderPipeline(crate::shared::shader::ShaderPipeline),
+    /// Smooth spatial blur using a multiscale GPU approximation.
+    ProgressiveBlur(ProgressiveBlur),
     Chain {
-        filters: Vec<Filter>,
+        filters: Vec<Self>,
         fixed_region: bool,
     },
     /// A lowered SVG filter graph. Primitive regions are absolute pixel bounds;
@@ -102,6 +110,8 @@ pub struct FilterPrimitive {
     pub input: FilterInput,
     pub input2: Option<FilterInput>,
     pub region: Bounds,
+    /// SVG primitives default to linear RGB; graph surfaces remain stored as sRGB.
+    pub linear_rgb: bool,
     pub kind: FilterPrimitiveKind,
 }
 
@@ -116,6 +126,13 @@ pub enum FilterInput {
 pub enum FilterPrimitiveKind {
     Identity,
     Filter(Box<Filter>),
+    /// Binds `SourceGraphic`, `SourceAlpha` and preceding primitive results directly
+    /// to pipeline Input(0..N). Inputs stay immutable and resident on the GPU.
+    /// The primitive's explicit region clips output; `input`/`input2` are unused.
+    ShaderPipeline {
+        pipeline: crate::ShaderPipeline,
+        inputs: Vec<FilterInput>,
+    },
     /// Produces an image without reading a graph input, matching SVG `feImage`.
     ///
     /// The brush is sampled in absolute canvas coordinates and the primitive
@@ -196,7 +213,8 @@ impl BlurSampling {
         upsample_filter: BlurUpsampleFilter::Bilinear,
     };
 
-    pub fn downsampled(factor: u32) -> Self {
+    #[must_use]
+    pub const fn downsampled(factor: u32) -> Self {
         Self {
             factor,
             ..Self::FULL_RES
@@ -264,9 +282,10 @@ impl Default for RectLiquidGlass {
 }
 
 impl RectLiquidGlass {
-    pub(crate) fn sample_outset(self) -> i32 {
-        let refraction = LIQUID_GLASS_REFRACTION_PIXEL_SCALE.ceil() as i32;
-        blur_outset(self.blur_radius as f32 * LIQUID_GLASS_BLUR_STD_DEV_SCALE) + refraction + 2
+    pub(crate) fn sample_outset(self) -> u32 {
+        let refraction = LIQUID_GLASS_REFRACTION_PIXEL_SCALE.ceil() as u32;
+        blur_outset(self.blur_radius as f32 * LIQUID_GLASS_BLUR_STD_DEV_SCALE)
+            .saturating_add(refraction + 2)
     }
 }
 
@@ -283,7 +302,7 @@ pub(crate) struct RectLiquidGlassRegion {
 }
 
 impl RectLiquidGlassRegion {
-    fn from_bounds(bounds: Bounds) -> Self {
+    const fn from_bounds(bounds: Bounds) -> Self {
         Self {
             x0: bounds.x0 as f32,
             y0: bounds.y0 as f32,
@@ -297,6 +316,10 @@ impl RectLiquidGlassRegion {
     }
 }
 
+#[allow(
+    clippy::panic,
+    reason = "The public backdrop API explicitly rejects incompatible region geometry"
+)]
 pub(crate) fn rect_liquid_glass_region(
     region: Option<&crate::shared::layer::region::Region>,
     fallback_bounds: Bounds,
@@ -391,6 +414,10 @@ pub(crate) struct TurbulenceLattice {
     pub(crate) gradients: Vec<f32>,
 }
 
+#[allow(
+    clippy::imprecise_flops,
+    reason = "Bounded gradients cannot overflow; preserve SVG reference normalization rounding"
+)]
 pub(crate) fn turbulence_lattice(seed: i32) -> TurbulenceLattice {
     const RAND_M: i64 = 2_147_483_647;
     const RAND_A: i64 = 16_807;
@@ -405,7 +432,7 @@ pub(crate) fn turbulence_lattice(seed: i32) -> TurbulenceLattice {
         seed.min(RAND_M - 1)
     }
 
-    fn next_random(seed: &mut i64) -> i64 {
+    const fn next_random(seed: &mut i64) -> i64 {
         let result = RAND_A * (*seed % RAND_Q) - RAND_R * (*seed / RAND_Q);
         *seed = if result <= 0 { result + RAND_M } else { result };
         *seed
@@ -456,7 +483,7 @@ pub(crate) fn turbulence_lattice(seed: i32) -> TurbulenceLattice {
 }
 
 #[inline]
-pub(crate) fn turbulence_gradient_index(channel: usize, selector: usize) -> usize {
+pub(crate) const fn turbulence_gradient_index(channel: usize, selector: usize) -> usize {
     (channel * TURBULENCE_TABLE_LEN + selector) * TURBULENCE_GRADIENT_COMPONENTS
 }
 
@@ -495,8 +522,7 @@ pub(crate) fn filter_surface_bounds(
     // morphology, offset, drop-shadow, or graph tiling. The surface keeps only
     // pixels that can still influence the visible target, so very large source
     // bboxes outside the canvas do not turn into huge intermediate buffers.
-    let source_window = target_bounds.outset(filter_dependency_outset(filter));
-    let surface = full_output.intersect(source_window);
+    let surface = filter_dependency(filter).source_bounds(target_bounds, full_output);
     (!surface.is_empty()).then_some(FilterSurfaceBounds { surface, output })
 }
 
@@ -504,7 +530,7 @@ pub(crate) fn unclipped_filtered_region_bounds(filter: &Filter, sample_region: &
     region_bounds(sample_region).outset(filter_outset(filter))
 }
 
-pub(crate) fn filter_outset(filter: &Filter) -> i32 {
+pub(crate) fn filter_outset(filter: &Filter) -> u32 {
     match filter {
         Filter::Chain {
             filters,
@@ -513,80 +539,47 @@ pub(crate) fn filter_outset(filter: &Filter) -> i32 {
             if *fixed_region {
                 0
             } else {
-                filters.iter().map(filter_outset).sum()
+                // Large valid output declarations must saturate before canvas
+                // clipping; wrapping the sum would shrink or invert the region.
+                filters
+                    .iter()
+                    .map(filter_outset)
+                    .fold(0, u32::saturating_add)
             }
         }
-        Filter::Graph { .. } => 0,
+        Filter::ShaderPipeline(pipeline) => pipeline.output_outset(),
         Filter::RectLiquidGlass(glass) => glass.sample_outset(),
+        Filter::ProgressiveBlur(blur) => blur.sample_outset(),
         Filter::Blur {
             std_dev_x,
             std_dev_y,
-            sampling: _,
+            ..
         } => blur_outset(std_dev_x.max(*std_dev_y)),
-        Filter::Offset { dx, dy } => dx.abs().ceil().max(dy.abs().ceil()) as i32,
+        Filter::Offset { dx, dy } => dx.abs().ceil().max(dy.abs().ceil()) as u32,
         Filter::Morphology {
             radius_x,
             radius_y,
             operator,
         } => match operator {
             MorphologyOperator::Erode => 0,
-            MorphologyOperator::Dilate => (*radius_x).max(*radius_y).max(0.0).ceil() as i32,
+            MorphologyOperator::Dilate => (*radius_x).max(*radius_y).max(0.0).ceil() as u32,
         },
         Filter::DropShadow {
             std_dev,
             offset_x,
             offset_y,
             ..
-        } => blur_outset(*std_dev) + offset_x.abs().ceil().max(offset_y.abs().ceil()) as i32,
+        } => blur_outset(*std_dev)
+            .saturating_add(offset_x.abs().ceil().max(offset_y.abs().ceil()) as u32),
         _ => 0,
     }
-}
-
-pub(crate) fn filter_dependency_outset(filter: &Filter) -> i32 {
-    match filter {
-        Filter::Chain { filters, .. } => filters.iter().map(filter_dependency_outset).sum(),
-        Filter::Graph { primitives, .. } => graph_dependency_outset(primitives),
-        _ => filter_outset(filter),
-    }
-}
-
-fn graph_dependency_outset(primitives: &[FilterPrimitive]) -> i32 {
-    primitives.iter().map(primitive_dependency_outset).sum()
-}
-
-fn primitive_dependency_outset(primitive: &FilterPrimitive) -> i32 {
-    match &primitive.kind {
-        FilterPrimitiveKind::Filter(filter) => filter_dependency_outset(filter),
-        FilterPrimitiveKind::DisplacementMap(map) => {
-            (map.scale_x.abs().max(map.scale_y.abs()) * 0.5).ceil() as i32
-        }
-        FilterPrimitiveKind::Tile { source_region } => {
-            bounds_distance(primitive.region, *source_region)
-        }
-        FilterPrimitiveKind::Identity
-        | FilterPrimitiveKind::Blend { .. }
-        | FilterPrimitiveKind::Composite { .. }
-        | FilterPrimitiveKind::Image { .. }
-        | FilterPrimitiveKind::Merge { .. } => 0,
-        FilterPrimitiveKind::Turbulence(_) => 0,
-    }
-}
-
-fn bounds_distance(a: Bounds, b: Bounds) -> i32 {
-    (a.x0 - b.x0)
-        .abs()
-        .max((a.y0 - b.y0).abs())
-        .max((a.x1 - b.x1).abs())
-        .max((a.y1 - b.y1).abs())
 }
 
 pub(crate) fn region_bounds(region: &Region) -> Bounds {
     match region {
         Region::Rect { rect, .. } => rect_bounds(*rect),
         Region::Path {
-            path,
-            transform,
-            tolerance: _,
+            path, transform, ..
         } => {
             let path = *transform * path;
             rect_bounds(path.bounding_box())
@@ -594,7 +587,7 @@ pub(crate) fn region_bounds(region: &Region) -> Bounds {
     }
 }
 
-fn rect_bounds(rect: peniko::kurbo::Rect) -> Bounds {
+const fn rect_bounds(rect: peniko::kurbo::Rect) -> Bounds {
     Bounds::new(
         rect.x0.floor() as i32,
         rect.y0.floor() as i32,
@@ -603,8 +596,8 @@ fn rect_bounds(rect: peniko::kurbo::Rect) -> Bounds {
     )
 }
 
-fn blur_outset(std_dev: f32) -> i32 {
-    (std_dev.max(0.0) * 3.0).ceil() as i32
+pub(crate) fn blur_outset(std_dev: f32) -> u32 {
+    (std_dev.max(0.0) * 3.0).ceil() as u32
 }
 
 #[derive(Clone, Debug)]
@@ -666,3 +659,11 @@ pub enum LightSource {
         limiting_cone_angle: Option<f32>,
     },
 }
+
+#[cfg(test)]
+mod tests;
+
+mod dependency;
+mod progressive;
+pub(crate) use dependency::{FilterDependency, filter_dependency, filter_input_bounds};
+pub use progressive::{ProgressiveBlur, ProgressiveBlurQuality};

@@ -1,4 +1,5 @@
 use super::*;
+use crate::shared::execution::OffscreenLayer;
 use crate::shared::layer::mask::MaskKind;
 use peniko::{BlendMode, Compose, Mix};
 
@@ -53,6 +54,48 @@ fn reset_reuses_root_command_storage() {
 }
 
 #[test]
+fn empty_fused_groups_preserve_draw_order_and_stack_state() {
+    let mut canvas = test_scene();
+    let rect = Rect::new(0.0, 0.0, 32.0, 32.0);
+    canvas.push_clip_sdf_rect_layer(rect, Radius::ZERO);
+    canvas.push_rect(rect, Radius::ZERO, rgb(255, 0, 0));
+    canvas.push_opacity_layer(rect.to_path(0.1), Affine::IDENTITY, 0.1, 0.5);
+    canvas.push_blend_layer(
+        rect.to_path(0.1),
+        Affine::IDENTITY,
+        0.1,
+        Mix::Multiply,
+        Compose::SrcOver,
+    );
+    canvas.pop_layer();
+    canvas.pop_layer();
+    canvas.push_rect(rect, Radius::ZERO, rgb(0, 255, 0));
+    canvas.pop_layer();
+    canvas.push_rect(rect, Radius::ZERO, rgb(0, 0, 255));
+
+    let plan = canvas.compile(ROOT_COMMAND_LIST_ID);
+    assert_eq!(*plan.draw_order, [1, 4, 5]);
+    assert_eq!(
+        plan.ops.len(),
+        2,
+        "empty groups must not split identical stacks"
+    );
+    for op in &plan.ops {
+        if let ExecOp::DrawBatch {
+            draws, layer_stack, ..
+        } = op
+        {
+            let expected = if draws.contains(&5) {
+                &[][..]
+            } else {
+                &[LayerStackEntry::Clip { draw: 0 }][..]
+            };
+            assert_layer_stack(&plan, layer_stack.clone(), expected);
+        }
+    }
+}
+
+#[test]
 fn compile_lowers_clip_blend_batches_in_user_order() {
     let mut canvas = test_scene();
     canvas.push_clip_layer(
@@ -93,13 +136,9 @@ fn compile_lowers_clip_blend_batches_in_user_order() {
     canvas.pop_layer();
 
     let plan = canvas.compile(ROOT_COMMAND_LIST_ID);
-    assert_eq!(plan.ops.len(), 7, "{:#?}", plan.ops);
+    assert_eq!(plan.ops.len(), 3, "{:#?}", plan.ops);
 
     match &plan.ops[0] {
-        ExecOp::BeginClip => {}
-        op => panic!("expected BeginClip, got {op:#?}"),
-    }
-    match &plan.ops[1] {
         ExecOp::DrawBatch {
             draws, layer_stack, ..
         } => {
@@ -112,11 +151,7 @@ fn compile_lowers_clip_blend_batches_in_user_order() {
         }
         op => panic!("expected first DrawBatch, got {op:#?}"),
     }
-    match &plan.ops[2] {
-        ExecOp::BeginBlend => {}
-        op => panic!("expected BeginBlend, got {op:#?}"),
-    }
-    match &plan.ops[3] {
+    match &plan.ops[1] {
         ExecOp::DrawBatch {
             draws, layer_stack, ..
         } => {
@@ -135,11 +170,7 @@ fn compile_lowers_clip_blend_batches_in_user_order() {
         }
         op => panic!("expected second DrawBatch, got {op:#?}"),
     }
-    match &plan.ops[4] {
-        ExecOp::EndBlend => {}
-        op => panic!("expected EndBlend, got {op:#?}"),
-    }
-    match &plan.ops[5] {
+    match &plan.ops[2] {
         ExecOp::DrawBatch {
             draws, layer_stack, ..
         } => {
@@ -151,10 +182,6 @@ fn compile_lowers_clip_blend_batches_in_user_order() {
             );
         }
         op => panic!("expected third DrawBatch, got {op:#?}"),
-    }
-    match &plan.ops[6] {
-        ExecOp::EndClip => {}
-        op => panic!("expected EndClip, got {op:#?}"),
     }
 }
 
@@ -194,13 +221,9 @@ fn compile_keeps_opacity_group_alive_across_nested_batches() {
     canvas.pop_layer();
 
     let plan = canvas.compile(ROOT_COMMAND_LIST_ID);
-    assert_eq!(plan.ops.len(), 7, "{:#?}", plan.ops);
+    assert_eq!(plan.ops.len(), 3, "{:#?}", plan.ops);
 
     match &plan.ops[0] {
-        ExecOp::BeginOpacity => {}
-        op => panic!("expected BeginOpacity, got {op:#?}"),
-    }
-    match &plan.ops[1] {
         ExecOp::DrawBatch {
             draws, layer_stack, ..
         } => {
@@ -216,11 +239,7 @@ fn compile_keeps_opacity_group_alive_across_nested_batches() {
         }
         op => panic!("expected first DrawBatch, got {op:#?}"),
     }
-    match &plan.ops[2] {
-        ExecOp::BeginBlend => {}
-        op => panic!("expected BeginBlend, got {op:#?}"),
-    }
-    match &plan.ops[3] {
+    match &plan.ops[1] {
         ExecOp::DrawBatch {
             draws, layer_stack, ..
         } => {
@@ -242,11 +261,7 @@ fn compile_keeps_opacity_group_alive_across_nested_batches() {
         }
         op => panic!("expected second DrawBatch, got {op:#?}"),
     }
-    match &plan.ops[4] {
-        ExecOp::EndBlend => {}
-        op => panic!("expected EndBlend, got {op:#?}"),
-    }
-    match &plan.ops[5] {
+    match &plan.ops[2] {
         ExecOp::DrawBatch {
             draws, layer_stack, ..
         } => {
@@ -261,10 +276,6 @@ fn compile_keeps_opacity_group_alive_across_nested_batches() {
             );
         }
         op => panic!("expected third DrawBatch, got {op:#?}"),
-    }
-    match &plan.ops[6] {
-        ExecOp::EndOpacity => {}
-        op => panic!("expected EndOpacity, got {op:#?}"),
     }
 }
 
@@ -287,12 +298,8 @@ fn compile_fuses_sdf_clip_into_layer_stack() {
         Some(Sdf::Rect(rect)) => assert_eq!(rect.radius.top_left, 6.0),
         sdf => panic!("expected hidden SDF clip draw, got {sdf:#?}"),
     }
-    assert_eq!(plan.ops.len(), 3, "{:#?}", plan.ops);
+    assert_eq!(plan.ops.len(), 1, "{:#?}", plan.ops);
     match &plan.ops[0] {
-        ExecOp::BeginClip => {}
-        op => panic!("expected BeginClip, got {op:#?}"),
-    }
-    match &plan.ops[1] {
         ExecOp::DrawBatch {
             draws, layer_stack, ..
         } => {
@@ -304,10 +311,6 @@ fn compile_fuses_sdf_clip_into_layer_stack() {
             );
         }
         op => panic!("expected clipped DrawBatch, got {op:#?}"),
-    }
-    match &plan.ops[2] {
-        ExecOp::EndClip => {}
-        op => panic!("expected EndClip, got {op:#?}"),
     }
 }
 
@@ -439,7 +442,6 @@ fn compile_fuses_generic_sdf_clip_without_path_storage() {
 
     let plan = canvas.compile(ROOT_COMMAND_LIST_ID);
     assert!(canvas.path_records.is_empty());
-    assert!(canvas.path_records.is_empty());
     match canvas.draw_sdf(&canvas.draw_records[0]) {
         Some(Sdf::Line(line)) => assert_eq!(line.width, 6.0),
         sdf => panic!("expected hidden line SDF clip draw, got {sdf:#?}"),
@@ -448,8 +450,8 @@ fn compile_fuses_generic_sdf_clip_without_path_storage() {
     assert_eq!(canvas.draw_records[0].pixel_bounds.y0, 21);
     assert_eq!(canvas.draw_records[0].pixel_bounds.x1, 43);
     assert_eq!(canvas.draw_records[0].pixel_bounds.y1, 27);
-    assert_eq!(plan.ops.len(), 3, "{:#?}", plan.ops);
-    match &plan.ops[1] {
+    assert_eq!(plan.ops.len(), 1, "{:#?}", plan.ops);
+    match &plan.ops[0] {
         ExecOp::DrawBatch {
             draws, layer_stack, ..
         } => {
@@ -483,13 +485,11 @@ fn compile_keeps_outer_sdf_clip_on_backdrop_layer_children() {
     let plan = canvas.compile(ROOT_COMMAND_LIST_ID);
     match &plan.ops[..] {
         [
-            ExecOp::BeginClip,
             ExecOp::OffscreenLayer {
                 outer_stack,
                 children,
                 ..
             },
-            ExecOp::EndClip,
         ] => {
             assert_layer_stack(
                 &plan,
@@ -538,19 +538,18 @@ fn compile_keeps_opacity_with_offscreen_child_isolated() {
     assert_eq!(plan.ops.len(), 1, "{:#?}", plan.ops);
     match &plan.ops[0] {
         ExecOp::OffscreenLayer {
-            retained_id: _,
-            draw,
-            layer: Layer::Opacity(opacity),
+            layer: OffscreenLayer::Opacity { draw, opacity },
             outer_stack,
             children,
+            ..
         } => {
             assert_eq!(*draw, 0);
-            assert_eq!(opacity.opacity, 0.5);
+            assert_eq!(*opacity, 0.5);
             assert!(outer_stack.is_empty());
             assert!(matches!(
                 children.as_slice(),
                 [ExecOp::OffscreenLayer {
-                    layer: Layer::Filter { .. },
+                    layer: OffscreenLayer::Filter { .. },
                     ..
                 }]
             ));
@@ -587,19 +586,18 @@ fn compile_keeps_blend_with_offscreen_child_isolated() {
     assert_eq!(plan.ops.len(), 1, "{:#?}", plan.ops);
     match &plan.ops[0] {
         ExecOp::OffscreenLayer {
-            retained_id: _,
-            draw,
-            layer: Layer::Blend(blend),
+            layer: OffscreenLayer::Blend { draw, mode },
             outer_stack,
             children,
+            ..
         } => {
             assert_eq!(*draw, 0);
-            assert_eq!(blend.mode, BlendMode::new(Mix::Multiply, Compose::SrcOver));
+            assert_eq!(*mode, BlendMode::new(Mix::Multiply, Compose::SrcOver));
             assert!(outer_stack.is_empty());
             assert!(matches!(
                 children.as_slice(),
                 [ExecOp::OffscreenLayer {
-                    layer: Layer::Filter { .. },
+                    layer: OffscreenLayer::Filter { .. },
                     ..
                 }]
             ));
@@ -625,11 +623,10 @@ fn compile_keeps_isolate_as_offscreen_layer() {
     assert_eq!(plan.ops.len(), 1, "{:#?}", plan.ops);
     match &plan.ops[0] {
         ExecOp::OffscreenLayer {
-            retained_id: _,
-            draw,
-            layer: Layer::Isolate,
+            layer: OffscreenLayer::Isolate { draw },
             outer_stack,
             children,
+            ..
         } => {
             assert_eq!(*draw, 0);
             assert!(outer_stack.is_empty());
@@ -676,11 +673,11 @@ fn compile_keeps_mask_content_and_mask_isolated() {
     assert_eq!(plan.ops.len(), 1, "{:#?}", plan.ops);
     match &plan.ops[0] {
         ExecOp::OffscreenMaskLayer {
-            retained_id: _,
             layer,
             outer_stack,
             content,
             mask,
+            ..
         } => {
             assert!(outer_stack.is_empty());
             assert_eq!(layer.kind, MaskKind::Alpha);

@@ -61,6 +61,10 @@ impl GpuAffine {
     }
 
     /// Matrix composition with kurbo semantics: `self * rhs` applies `rhs` first.
+    #[allow(
+        clippy::suspicious_operation_groupings,
+        reason = "Affine composition multiplies matrix rows by columns, including cross-component products"
+    )]
     pub(crate) fn compose(self, rhs: Self) -> Self {
         Self {
             a: self.a * rhs.a + self.c * rhs.b,

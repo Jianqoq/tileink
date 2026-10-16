@@ -1,0 +1,94 @@
+use super::{Interface, Kind, buffer, interface, uniform};
+use crate::gpu_constants as constants;
+
+pub(super) fn validation() -> Interface {
+    interface(
+        [constants::get("FINE_WORKGROUP_SIZE"), 1, 1],
+        &[
+            (
+                "config",
+                uniform(
+                    0,
+                    &[
+                        ("width", 0, 1),
+                        ("height", 4, 1),
+                        ("pad0", 8, 1),
+                        ("pad1", 12, 1),
+                    ],
+                    false,
+                ),
+            ),
+            ("source", buffer(1, Kind::Texture)),
+            ("destination", buffer(2, Kind::TextureWrite)),
+        ],
+        &[("texture_flip", &["config", "source", "destination"])],
+    )
+}
+
+#[allow(
+    clippy::expect_used,
+    reason = "Built-in ABI recipes provide the required entry, resource, field and constant before specialization"
+)]
+pub(super) fn array() -> Interface {
+    let mut result = validation();
+    result.resources.get_mut("config").expect("Built-in ABI recipes provide the required entry, resource, field and constant before specialization").fields[2].name = "layer".into();
+    result.resources.get_mut("source").expect("Built-in ABI recipes provide the required entry, resource, field and constant before specialization").kind = Kind::TextureArray;
+    result.entries = [(
+        "texture_layer".into(),
+        vec!["config".into(), "source".into(), "destination".into()],
+    )]
+    .into();
+    result
+}
+
+pub(super) fn sampler() -> Interface {
+    interface(
+        [constants::get("FINE_WORKGROUP_SIZE"), 1, 1],
+        &[
+            (
+                "config",
+                uniform(
+                    0,
+                    &[
+                        ("count", 0, 1),
+                        ("pad0", 4, 1),
+                        ("pad1", 8, 1),
+                        ("pad2", 12, 1),
+                    ],
+                    false,
+                ),
+            ),
+            ("source", buffer(1, Kind::TextureArray)),
+            ("image_sampler", super::sampler(2)),
+            ("requests", buffer(3, Kind::Read)),
+            ("destination", buffer(4, Kind::Write)),
+            ("dispatch_grid", uniform(31, super::DISPATCH_GRID, true)),
+        ],
+        &[(
+            "sampler_words",
+            &[
+                "config",
+                "source",
+                "image_sampler",
+                "requests",
+                "destination",
+                "dispatch_grid",
+            ],
+        )],
+    )
+}
+
+pub(super) fn table() -> Interface {
+    interface(
+        [constants::get("FINE_WORKGROUP_SIZE"), 1, 1],
+        &[
+            ("requests", buffer(0, Kind::Read)),
+            ("output", buffer(1, Kind::TextureWrite)),
+            ("texture_table", super::texture_table()),
+        ],
+        &[(
+            "texture_table_words",
+            &["requests", "output", "texture_table"],
+        )],
+    )
+}

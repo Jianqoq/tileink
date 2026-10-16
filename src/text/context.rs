@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
-use cosmic_text::{Buffer, CacheKey, FontSystem, Metrics, Shaping};
+use cosmic_text::{Buffer, CacheKey, FontSystem, Metrics, Shaping, SubpixelBin};
 use peniko::kurbo::{BezPath, Point};
 use swash::scale::ScaleContext;
 
 use crate::shared::bounds::Bounds;
 
 use super::{
-    layout::{TextGlyph, TextLayout},
+    layout::{CanvasGlyph, TextGlyph, TextLayout},
     options::{TextLayoutOptions, TextRasterOptions},
     outline::{append_outline_path, outline_cache_key, outline_glyph_path},
     raster::{GlyphRasterImage, RasterGlyphKey, raster_glyph_image},
@@ -22,6 +22,7 @@ pub struct TextContext {
 }
 
 impl TextContext {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             scale_context: ScaleContext::new(),
@@ -32,15 +33,16 @@ impl TextContext {
         }
     }
 
-    pub fn raster_options(&self) -> TextRasterOptions {
+    #[must_use]
+    pub const fn raster_options(&self) -> TextRasterOptions {
         self.raster_options
     }
 
-    pub fn set_raster_options(&mut self, options: TextRasterOptions) {
+    pub const fn set_raster_options(&mut self, options: TextRasterOptions) {
         self.raster_options = options;
     }
 
-    pub(crate) fn cache_generation(&self) -> u64 {
+    pub(crate) const fn cache_generation(&self) -> u64 {
         self.cache_generation
     }
 
@@ -49,6 +51,10 @@ impl TextContext {
     /// `TextContext` does not own `FontSystem`; pass the same font system to
     /// later glyph preparation/rendering calls because cosmic glyph cache keys
     /// contain font-system-local font ids.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "Shaping consumes temporary layout options and releases their owned font-feature storage"
+    )]
     pub fn layout(
         &mut self,
         font_system: &mut FontSystem,
@@ -78,6 +84,10 @@ impl TextContext {
     /// recording. Pending buffer changes are shaped before glyph extraction, while an unchanged
     /// already-shaped buffer stays on Cosmic Text's inexpensive reuse path. `buffer` must have
     /// been created with `font_system` because Cosmic Text's font ids are local to that system.
+    #[allow(
+        clippy::suspicious_operation_groupings,
+        reason = "Glyph placement combines the run baseline with the glyph offset in the same axis"
+    )]
     pub fn layout_buffer(
         &mut self,
         font_system: &mut FontSystem,
@@ -88,10 +98,29 @@ impl TextContext {
         for run in buffer.layout_runs() {
             for glyph in run.glyphs {
                 let outline_origin = Point::new(
-                    (glyph.x + glyph.font_size * glyph.x_offset) as f64,
-                    (run.line_y + glyph.y - glyph.font_size * glyph.y_offset) as f64,
+                    f64::from(glyph.x + glyph.font_size * glyph.x_offset),
+                    f64::from(run.line_y + glyph.y - glyph.font_size * glyph.y_offset),
                 );
-                let physical = glyph.physical((0.0, run.line_y), 1.0);
+                // Preserve Cosmic Text's Y hinting and key metadata, but use
+                // the same bounded position conversion as recording/append.
+                // physical() passes full positions to its overflowing bin carry.
+                let physical = CanvasGlyph::at_position(
+                    CacheKey {
+                        font_id: glyph.font_id,
+                        glyph_id: glyph.glyph_id,
+                        font_size_bits: glyph.font_size.to_bits(),
+                        x_bin: SubpixelBin::Zero,
+                        y_bin: SubpixelBin::Zero,
+                        font_weight: glyph.font_weight,
+                        flags: glyph.cache_key_flags,
+                    },
+                    f64::from(glyph.x + glyph.font_size * glyph.x_offset),
+                    f64::from(
+                        (glyph.y - glyph.font_size * glyph.y_offset)
+                            .mul_add(1.0, run.line_y)
+                            .trunc(),
+                    ),
+                );
                 glyphs.push(TextGlyph {
                     cache_key: physical.cache_key,
                     x: physical.x,
@@ -114,11 +143,18 @@ impl TextContext {
             subpixel_mode: self.raster_options.subpixel_mode,
             embolden_bits: self.raster_options.mask_embolden().to_bits(),
         };
-        if !self.image_cache.contains_key(&key) {
-            let image = self.raster_glyph_image(font_system, cache_key);
-            self.image_cache.insert(key, image);
-        }
-        self.image_cache.get(&key).and_then(Option::as_ref)
+        self.image_cache
+            .entry(key)
+            .or_insert_with(|| {
+                raster_glyph_image(
+                    font_system,
+                    &mut self.scale_context,
+                    cache_key,
+                    key.subpixel_mode,
+                    f32::from_bits(key.embolden_bits),
+                )
+            })
+            .as_ref()
     }
 
     /// Builds a vector path for every scalable glyph in `layout`.
@@ -156,11 +192,10 @@ impl TextContext {
         cache_key: CacheKey,
     ) -> Option<&BezPath> {
         let key = outline_cache_key(cache_key);
-        if !self.outline_cache.contains_key(&key) {
-            let outline = outline_glyph_path(font_system, &mut self.scale_context, key);
-            self.outline_cache.insert(key, outline);
-        }
-        self.outline_cache.get(&key).and_then(Option::as_ref)
+        self.outline_cache
+            .entry(key)
+            .or_insert_with(|| outline_glyph_path(font_system, &mut self.scale_context, key))
+            .as_ref()
     }
 
     fn raster_bounds(&mut self, font_system: &mut FontSystem, glyphs: &[TextGlyph]) -> Bounds {
@@ -179,21 +214,6 @@ impl TextContext {
         bounds
     }
 
-    fn raster_glyph_image(
-        &mut self,
-        font_system: &mut FontSystem,
-        cache_key: CacheKey,
-    ) -> Option<GlyphRasterImage> {
-        raster_glyph_image(
-            font_system,
-            &mut self.scale_context,
-            cache_key,
-            self.raster_options.subpixel_mode,
-            self.raster_options.mask_embolden(),
-        )
-        .map(GlyphRasterImage::from_swash)
-    }
-
     /// Clears cached glyph images and outlines after external font database changes.
     pub fn clear_glyph_caches(&mut self) {
         self.image_cache.clear();
@@ -208,3 +228,6 @@ impl Default for TextContext {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests;

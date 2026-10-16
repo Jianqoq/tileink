@@ -28,15 +28,15 @@ pub(crate) const GLYPH_RUN_RECORD_WORDS: usize = std::mem::size_of::<GlyphRunRec
 pub(crate) const GLYPH_RECORD_WORDS: usize = std::mem::size_of::<GlyphRecord>() / 4;
 pub(crate) const GLYPH_IMAGE_RECORD_WORDS: usize = std::mem::size_of::<GlyphImageRecord>() / 4;
 
-pub(crate) fn text_blob_glyph_word_offset(run_count: usize) -> usize {
+pub(crate) const fn text_blob_glyph_word_offset(run_count: usize) -> usize {
     run_count * GLYPH_RUN_RECORD_WORDS
 }
 
-pub(crate) fn text_blob_image_word_offset(run_count: usize, glyph_count: usize) -> usize {
+pub(crate) const fn text_blob_image_word_offset(run_count: usize, glyph_count: usize) -> usize {
     text_blob_glyph_word_offset(run_count) + glyph_count * GLYPH_RECORD_WORDS
 }
 
-pub(crate) fn text_blob_word_len(
+pub(crate) const fn text_blob_word_len(
     run_count: usize,
     glyph_count: usize,
     image_count: usize,

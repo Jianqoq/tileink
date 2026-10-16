@@ -1,4 +1,4 @@
-use cosmic_text::CacheKey;
+use cosmic_text::{CacheKey, SubpixelBin};
 use peniko::kurbo::Point;
 
 use crate::shared::bounds::Bounds;
@@ -12,11 +12,13 @@ pub struct TextLayout {
 }
 
 impl TextLayout {
-    pub fn is_empty(&self) -> bool {
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
         self.glyphs.is_empty() || self.bounds.is_empty()
     }
 
-    pub fn bounds(&self) -> Bounds {
+    #[must_use]
+    pub const fn bounds(&self) -> Bounds {
         self.bounds
     }
 
@@ -34,28 +36,18 @@ pub(crate) struct TextGlyph {
 }
 
 impl TextGlyph {
-    fn at_origin(self, origin: Point) -> CanvasGlyph {
-        let (cache_key, x, y) = translated_cache_key(self.cache_key, self.x, self.y, origin);
-        CanvasGlyph { cache_key, x, y }
-    }
-
     fn at_scaled_origin(self, origin: Point, scale: f32) -> CanvasGlyph {
-        if scale == 1.0 {
-            return self.at_origin(origin);
-        }
-
-        let font_size = f32::from_bits(self.cache_key.font_size_bits) * scale;
-        let x = (self.x as f32 + self.cache_key.x_bin.as_float() + origin.x as f32) * scale;
-        let y = (self.y as f32 + self.cache_key.y_bin.as_float() + origin.y as f32) * scale;
-        let (cache_key, x, y) = CacheKey::new(
-            self.cache_key.font_id,
-            self.cache_key.glyph_id,
-            font_size,
-            (x, y),
-            self.cache_key.font_weight,
-            self.cache_key.flags,
-        );
-        CanvasGlyph { cache_key, x, y }
+        let cache_key = CacheKey {
+            font_size_bits: (f32::from_bits(self.cache_key.font_size_bits) * scale).to_bits(),
+            ..self.cache_key
+        };
+        CanvasGlyph::at_position(
+            cache_key,
+            (f64::from(self.x) + f64::from(self.cache_key.x_bin.as_float()) + origin.x)
+                * f64::from(scale),
+            (f64::from(self.y) + f64::from(self.cache_key.y_bin.as_float()) + origin.y)
+                * f64::from(scale),
+        )
     }
 
     pub(crate) fn image_bounds(self, image: &GlyphRasterImage) -> Bounds {
@@ -64,7 +56,8 @@ impl TextGlyph {
             self.y,
             image.placement.left,
             image.placement.top,
-            image,
+            image.placement.width,
+            image.placement.height,
         )
     }
 }
@@ -77,11 +70,37 @@ pub(crate) struct CanvasGlyph {
 }
 
 impl CanvasGlyph {
-    pub(crate) fn translated(self, dx: f64, dy: f64) -> Self {
-        let (cache_key, x, y) =
-            translated_cache_key(self.cache_key, self.x, self.y, Point::new(dx, dy));
-        Self { cache_key, x, y }
+    pub(super) fn at_position(cache_key: CacheKey, x: f64, y: f64) -> Self {
+        let (x, x_bin) = split_position(x);
+        let (y, y_bin) = split_position(y);
+        Self {
+            cache_key: CacheKey {
+                x_bin,
+                y_bin,
+                ..cache_key
+            },
+            x,
+            y,
+        }
     }
+
+    pub(crate) fn translated(self, dx: f64, dy: f64) -> Self {
+        Self::at_position(
+            self.cache_key,
+            f64::from(self.x) + f64::from(self.cache_key.x_bin.as_float()) + dx,
+            f64::from(self.y) + f64::from(self.cache_key.y_bin.as_float()) + dy,
+        )
+    }
+}
+
+// Only the fractional part reaches cosmic-text's binning arithmetic. Passing a
+// saturated full position can overflow its +/-1 carry; f64 also preserves small
+// offsets when large integer translations cancel. Clamping before splitting
+// guarantees that the carry still fits the signed coordinate domain.
+fn split_position(position: f64) -> (i32, SubpixelBin) {
+    let position = position.clamp(f64::from(i32::MIN), f64::from(i32::MAX));
+    let (carry, bin) = SubpixelBin::new(position.fract() as f32);
+    (position.trunc() as i32 + carry, bin)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -91,22 +110,18 @@ pub(crate) struct TextRun {
 }
 
 #[cfg(test)]
-pub(crate) fn scene_glyphs_at_origin<'a>(
-    layout: &'a TextLayout,
+pub(crate) fn scene_glyphs_at_origin(
+    layout: &TextLayout,
     origin: Point,
-) -> impl Iterator<Item = CanvasGlyph> + 'a {
-    layout
-        .glyphs()
-        .iter()
-        .copied()
-        .map(move |glyph| glyph.at_origin(origin))
+) -> impl Iterator<Item = CanvasGlyph> + '_ {
+    scene_glyphs_at_scaled_origin(layout, origin, 1.0)
 }
 
-pub(crate) fn scene_glyphs_at_scaled_origin<'a>(
-    layout: &'a TextLayout,
+pub(crate) fn scene_glyphs_at_scaled_origin(
+    layout: &TextLayout,
     origin: Point,
     scale: f32,
-) -> impl Iterator<Item = CanvasGlyph> + 'a {
+) -> impl Iterator<Item = CanvasGlyph> + '_ {
     layout
         .glyphs()
         .iter()
@@ -114,71 +129,56 @@ pub(crate) fn scene_glyphs_at_scaled_origin<'a>(
         .map(move |glyph| glyph.at_scaled_origin(origin, scale))
 }
 
-pub(crate) fn layout_bounds_at_origin(layout: &TextLayout, origin: Point) -> Bounds {
-    if layout.bounds.is_empty() {
-        return layout.bounds;
-    }
-    // Fractional origins can change the subpixel cache bin and shift raster
-    // extents by one pixel, so the canvas bounds are deliberately conservative.
-    Bounds::new(
-        layout.bounds.x0 + origin.x.floor() as i32 - 1,
-        layout.bounds.y0 + origin.y.floor() as i32 - 1,
-        layout.bounds.x1 + origin.x.ceil() as i32 + 1,
-        layout.bounds.y1 + origin.y.ceil() as i32 + 1,
-    )
-}
-
 pub(crate) fn layout_bounds_at_scaled_origin(
     layout: &TextLayout,
     origin: Point,
     scale: f32,
 ) -> Bounds {
-    let bounds = layout_bounds_at_origin(layout, origin);
-    if bounds.is_empty() || scale == 1.0 {
+    let bounds = layout.bounds;
+    if bounds.is_empty() {
         return bounds;
     }
-
-    let pad = scale.ceil() as i32 + 2;
+    // Keep translation, DPI and raster padding wide until the final endpoints.
+    // Clamping before scaling loses large logical origins that become visible
+    // at small DPI. One local pixel covers cache-bin shifts; scaled hinting adds
+    // the existing ceil(scale)+2 physical support.
+    let scale = f64::from(scale);
+    let pad = if scale == 1.0 {
+        0.0
+    } else {
+        scale.ceil() + 2.0
+    };
+    let lower = |edge: i32, origin: f64| {
+        (((f64::from(edge) + origin.floor() - 1.0) * scale).floor() - pad) as i32
+    };
+    let upper = |edge: i32, origin: f64| {
+        (((f64::from(edge) + origin.ceil() + 1.0) * scale).ceil() + pad) as i32
+    };
     Bounds::new(
-        (bounds.x0 as f32 * scale).floor() as i32 - pad,
-        (bounds.y0 as f32 * scale).floor() as i32 - pad,
-        (bounds.x1 as f32 * scale).ceil() as i32 + pad,
-        (bounds.y1 as f32 * scale).ceil() as i32 + pad,
+        lower(bounds.x0, origin.x),
+        lower(bounds.y0, origin.y),
+        upper(bounds.x1, origin.x),
+        upper(bounds.y1, origin.y),
     )
 }
 
-fn translated_cache_key(
-    cache_key: CacheKey,
+/// Raster and prepared images share one endpoint calculation. Clamp after the
+/// complete sum so bearings outside the domain cannot erase the visible tail.
+pub(super) fn glyph_image_bounds(
     x: i32,
     y: i32,
-    origin: Point,
-) -> (CacheKey, i32, i32) {
-    CacheKey::new(
-        cache_key.font_id,
-        cache_key.glyph_id,
-        f32::from_bits(cache_key.font_size_bits),
-        (
-            x as f32 + cache_key.x_bin.as_float() + origin.x as f32,
-            y as f32 + cache_key.y_bin.as_float() + origin.y as f32,
-        ),
-        cache_key.font_weight,
-        cache_key.flags,
-    )
-}
-
-fn glyph_image_bounds(
-    x: i32,
-    y: i32,
-    placement_left: i32,
-    placement_top: i32,
-    image: &GlyphRasterImage,
+    left: i32,
+    top: i32,
+    width: u32,
+    height: u32,
 ) -> Bounds {
-    let left = x + placement_left;
-    let top = y - placement_top;
+    let left = i64::from(x) + i64::from(left);
+    let top = i64::from(y) - i64::from(top);
+    let clamp = |value: i64| value.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
     Bounds::new(
-        left,
-        top,
-        left + image.placement.width as i32,
-        top + image.placement.height as i32,
+        clamp(left),
+        clamp(top),
+        clamp(left + i64::from(width)),
+        clamp(top + i64::from(height)),
     )
 }

@@ -88,7 +88,7 @@ pub(super) fn svg_image_raster_size(transform: Affine, size: usvg::Size) -> (u32
     )
 }
 
-pub(super) fn image_sampling(rendering: usvg::ImageRendering) -> PatternSampling {
+pub(super) const fn image_sampling(rendering: usvg::ImageRendering) -> PatternSampling {
     // SVG raster images are smooth by default; explicit speed/crisp/pixelated hints keep hard edges.
     match rendering {
         usvg::ImageRendering::OptimizeSpeed

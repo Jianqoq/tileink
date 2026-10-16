@@ -6,17 +6,28 @@ impl Canvas {
     /// Vector capacities are retained, making this the preferred frame boundary for immediate
     /// renderers whose viewport can change. No recorded geometry survives the call, so changing
     /// the scale factor cannot leave mixed-scale records behind.
+    ///
+    /// # Panics
+    /// Panics if the scale is nonpositive/nonfinite or the resulting surface extent is unrepresentable.
     pub fn reset_for_surface(
         &mut self,
         logical_width: u32,
         logical_height: u32,
         scale_factor: f32,
     ) {
-        let scale_factor = valid_scale_factor(scale_factor);
+        #[allow(
+            clippy::expect_used,
+            reason = "The authored reset requires a representable canvas surface before mutation"
+        )]
+        let surface = CanvasSurface::from_logical((logical_width, logical_height), scale_factor)
+            .expect("valid canvas surface");
+        self.reset_to_surface(surface);
+    }
+
+    /// Clears drawing while retaining allocations and the exact validated viewport.
+    pub fn reset_to_surface(&mut self, surface: CanvasSurface) {
         self.reset();
-        self.logical_width = logical_width;
-        self.logical_height = logical_height;
-        self.scale_factor = scale_factor;
+        self.set_surface_extent(surface);
     }
 
     pub fn reset(&mut self) {
@@ -29,25 +40,18 @@ impl Canvas {
         self.text_glyphs.clear();
         self.text_runs.clear();
         self.scene_images.clear();
-        if let Some(root) = self.command_lists.first_mut() {
-            root.commands.clear();
-            self.command_lists.truncate(1);
-        } else {
-            self.command_lists.push(CommandList::default());
-        }
-        self.root_commands = ROOT_COMMAND_LIST_ID;
-        self.command_stack.clear();
-        self.command_stack.push(self.root_commands);
+        self.command_lists[ROOT_COMMAND_LIST_ID].commands.clear();
+        self.command_lists.truncate(1);
+        self.current_commands = ROOT_COMMAND_LIST_ID;
         self.layer_stack.clear();
         self.invalidated_bounds.clear();
         self.invalidate_all = false;
         self.buffer_changes = None;
         self.plan_cache_key = None;
+        self.materialization_key = None;
         self.compiled_plan = None;
         self.persistent_frame = None;
-        self.painter_keys = None;
-        self.stable_batch_ids = None;
-        self.stable_batch_counts = None;
+        self.painter = PainterMetadata::default();
         self.retained_transform = GpuAffine::IDENTITY;
         self.path_cnt = 0;
         self.backdrop_pool_capacity = 0;
@@ -62,11 +66,11 @@ impl Canvas {
     }
 
     pub(super) fn push_brush(&mut self, brush: Brush) -> (u32, u32) {
-        self.push_physical_brush(self.physical_brush(brush))
+        self.push_physical_brush(&self.physical_brush(brush))
     }
 
-    pub(super) fn push_physical_brush(&mut self, brush: Brush) -> (u32, u32) {
-        push_encoded_brush(&mut self.brush_blob, &brush)
+    pub(super) fn push_physical_brush(&mut self, brush: &Brush) -> (u32, u32) {
+        push_encoded_brush(&mut self.brush_blob, brush)
     }
 
     pub(super) fn push_sdf(&mut self, sdf: Sdf) -> (u32, u32) {
@@ -77,27 +81,49 @@ impl Canvas {
         push_encoded_sdf_shadow(&mut self.sdf_shadow_blob, sdf_shadow)
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Present canvas records are encoder-owned; decode failure indicates internal corruption"
+    )]
     pub(crate) fn draw_brush_for_record(&self, draw: &DrawRecord) -> Option<Brush> {
-        decode_encoded_brush(&self.brush_blob, draw.brush_offset, draw.brush_len)
+        // NONE represents absence. A present record is encoder-owned and must
+        // decode; treating corruption as absence silently drops paint on append.
+        (draw.brush_offset != DrawRecord::NONE).then(|| {
+            decode_encoded_brush(&self.brush_blob, draw.brush_offset, draw.brush_len)
+                .expect("encoded canvas brush")
+        })
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Present canvas records are encoder-owned; decode failure indicates internal corruption"
+    )]
     pub(crate) fn draw_sdf(&self, draw: &DrawRecord) -> Option<Sdf> {
-        decode_sdf(&self.sdf_blob, draw.sdf_offset, draw.sdf_len)
+        (draw.sdf_offset != DrawRecord::NONE).then(|| {
+            decode_sdf(&self.sdf_blob, draw.sdf_offset, draw.sdf_len).expect("encoded canvas SDF")
+        })
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Present canvas records are encoder-owned; decode failure indicates internal corruption"
+    )]
     pub(crate) fn draw_sdf_shadow(&self, draw: &DrawRecord) -> Option<SdfShadow> {
-        decode_sdf_shadow(
-            &self.sdf_shadow_blob,
-            draw.sdf_shadow_offset,
-            draw.sdf_shadow_len,
-        )
+        (draw.sdf_shadow_offset != DrawRecord::NONE).then(|| {
+            decode_sdf_shadow(
+                &self.sdf_shadow_blob,
+                draw.sdf_shadow_offset,
+                draw.sdf_shadow_len,
+            )
+            .expect("encoded canvas SDF shadow")
+        })
     }
 
-    pub(crate) fn width_in_tiles(&self) -> u32 {
+    pub(crate) const fn width_in_tiles(&self) -> u32 {
         self.physical_width().div_ceil(crate::TILE_SIZE)
     }
 
-    pub(crate) fn height_in_tiles(&self) -> u32 {
+    pub(crate) const fn height_in_tiles(&self) -> u32 {
         self.physical_height().div_ceil(crate::TILE_SIZE)
     }
 
@@ -107,11 +133,10 @@ impl Canvas {
         line_count: u32,
         tile_bbox: crate::shared::bounds::TileBbox,
     ) -> u32 {
-        let tiles_size = (self.width_in_tiles(), self.height_in_tiles());
         self.lines[line_start as usize..(line_start + line_count) as usize]
             .iter()
             .fold(0u32, |capacity, &line| {
-                capacity.saturating_add(line_scanned_tile_count(line, tile_bbox, tiles_size))
+                capacity.saturating_add(line_scanned_tile_count(line, tile_bbox))
             })
     }
 }

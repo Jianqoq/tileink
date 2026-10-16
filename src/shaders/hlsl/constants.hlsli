@@ -1,0 +1,36 @@
+#ifndef TILEINK_HLSL_CONSTANTS_HLSLI_INCLUDED
+#define TILEINK_HLSL_CONSTANTS_HLSLI_INCLUDED
+
+// Canonical GPU algorithm constants. Rust and WGSL are generated from this file.
+// Keep declarations to uint literals, prior constant names and multiplication.
+
+// Physical tile dimension shared by geometry, fine lanes and damage tiles.
+static const uint TILE_SIZE = 16u;
+static const uint CUMSUM_CHUNK_SIZE = 256u;
+static const uint SCAN_CHUNK_SIZE = 256u;
+static const uint RANGE_SCATTER_WORKGROUP_SIZE = 256u;
+static const uint COARSE_WORKGROUP_SIZE = 256u;
+// One fine interpreter lane per pixel, including spill-buffer addressing.
+static const uint FINE_WORKGROUP_SIZE = TILE_SIZE * TILE_SIZE;
+static const uint FILTER_WORKGROUP_SIZE = 256u;
+// Shared blur follows the renderer's damage-tile grid.
+static const uint SHARED_BLUR_TILE_WIDTH = TILE_SIZE;
+static const uint SHARED_BLUR_TILE_HEIGHT = TILE_SIZE;
+static const uint SHARED_BLUR_MAX_RADIUS = 16u;
+
+// Quantized RGBA component-transfer table layout, shared with host and WGSL.
+static const uint COMPONENT_TRANSFER_TABLE_SIZE = 256u;
+static const uint COMPONENT_TRANSFER_CHANNELS = 4u;
+static const uint COMPONENT_TRANSFER_TABLE_LEN = COMPONENT_TRANSFER_TABLE_SIZE * COMPONENT_TRANSFER_CHANNELS;
+
+static const uint PATH_MASK_COORDINATE_SCALE = 256u;
+static const uint TURBULENCE_LATTICE_SIZE = 256u;
+static const uint TURBULENCE_TABLE_LEN = 514u;
+static const uint TURBULENCE_CHANNELS = 4u;
+static const uint TURBULENCE_GRADIENT_COMPONENTS = 2u;
+static const uint TURBULENCE_GRADIENT_LEN = TURBULENCE_CHANNELS * TURBULENCE_TABLE_LEN * TURBULENCE_GRADIENT_COMPONENTS;
+static const uint TURBULENCE_COORDINATE_OFFSET = 4096u;
+static const uint TURBULENCE_MAX_EFFECTIVE_OCTAVES = 150u;
+// Shared SDF payload and validation request layout.
+static const uint SDF_RECORD_WORDS = 17u;
+#endif // TILEINK_HLSL_CONSTANTS_HLSLI_INCLUDED

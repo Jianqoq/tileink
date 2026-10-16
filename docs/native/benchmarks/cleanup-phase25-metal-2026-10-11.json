@@ -1,0 +1,152 @@
+{
+  "recorded_at_utc": "2026-10-11T15:06:21.244069+00:00",
+  "baseline_commit": "cf2b095ee31a45e534d117be1fd3f267dcd37d79",
+  "backend": "Metal",
+  "adapter": "Apple M5 (0000000100000575)",
+  "workload": "Actual 960x600 progressive_blur example, Balanced quality, 240 rounded source rectangles and a 24px progressive backdrop blur. Complete process including native shader/cache loading, resource creation, rendering, GPU readback and PNG output. Every warmup/timed image compared with baseline pixels.",
+  "warmup_pairs": 2,
+  "timed_pairs": 10,
+  "order": "alternating before/after, after/before",
+  "pair_order": [
+    {
+      "pair": 0,
+      "warmup": true,
+      "order": [
+        "before",
+        "after"
+      ]
+    },
+    {
+      "pair": 1,
+      "warmup": true,
+      "order": [
+        "after",
+        "before"
+      ]
+    },
+    {
+      "pair": 2,
+      "warmup": false,
+      "order": [
+        "before",
+        "after"
+      ]
+    },
+    {
+      "pair": 3,
+      "warmup": false,
+      "order": [
+        "after",
+        "before"
+      ]
+    },
+    {
+      "pair": 4,
+      "warmup": false,
+      "order": [
+        "before",
+        "after"
+      ]
+    },
+    {
+      "pair": 5,
+      "warmup": false,
+      "order": [
+        "after",
+        "before"
+      ]
+    },
+    {
+      "pair": 6,
+      "warmup": false,
+      "order": [
+        "before",
+        "after"
+      ]
+    },
+    {
+      "pair": 7,
+      "warmup": false,
+      "order": [
+        "after",
+        "before"
+      ]
+    },
+    {
+      "pair": 8,
+      "warmup": false,
+      "order": [
+        "before",
+        "after"
+      ]
+    },
+    {
+      "pair": 9,
+      "warmup": false,
+      "order": [
+        "after",
+        "before"
+      ]
+    },
+    {
+      "pair": 10,
+      "warmup": false,
+      "order": [
+        "before",
+        "after"
+      ]
+    },
+    {
+      "pair": 11,
+      "warmup": false,
+      "order": [
+        "after",
+        "before"
+      ]
+    }
+  ],
+  "percentile_method": "nearest rank; p95 is the maximum of ten samples",
+  "validation_layer_in_timed_runs": false,
+  "shader_cache": "warmed; does not measure cold compilation",
+  "concurrency": "no competing builds or GPU jobs",
+  "executables": {
+    "before": "e7b7079343787c1bec9c8cce924b2907d4e95864ca68fe4b0096feab239939ef",
+    "after": "b7424ca063d83e34a4df4c78dd0ea8953e6319345d5d4cf0ddb65c8515cef825"
+  },
+  "results": {
+    "before": {
+      "samples_ms": [
+        64.689458,
+        63.313209,
+        63.987291,
+        60.152084,
+        63.270291,
+        61.164583,
+        57.709833,
+        61.35675,
+        59.202875,
+        63.8295
+      ],
+      "p50_ms": 62.313520499999996,
+      "p95_ms": 64.689458
+    },
+    "after": {
+      "samples_ms": [
+        61.818917,
+        62.354959,
+        61.477375,
+        65.512834,
+        62.009625,
+        59.090083,
+        56.858167,
+        56.664625,
+        59.630458,
+        57.398166
+      ],
+      "p50_ms": 60.5539165,
+      "p95_ms": 65.512834
+    }
+  },
+  "interpretation": "Repeated explicit zero defaults now reuse the existing Zeroable implementation; no live filter algorithm, ABI or shader math changes. Three common helpers had no callers. Actual application wall time is dominated by initialization, rendering/readback and PNG I/O; this does not isolate uniform initialization or GPU throughput. No speedup claimed.",
+  "p50_change_percent": -2.8237916681340347
+}

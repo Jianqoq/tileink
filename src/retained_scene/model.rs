@@ -8,6 +8,7 @@ pub struct SceneVersion(pub(crate) u64);
 impl SceneVersion {
     pub const INITIAL: Self = Self(0);
 
+    #[must_use]
     pub const fn get(self) -> u64 {
         self.0
     }
@@ -27,6 +28,7 @@ pub struct RetainedParent {
 }
 
 impl RetainedParent {
+    #[must_use]
     pub const fn content(node: RetainedNodeId) -> Self {
         Self {
             node,
@@ -34,6 +36,7 @@ impl RetainedParent {
         }
     }
 
+    #[must_use]
     pub const fn mask(node: RetainedNodeId) -> Self {
         Self {
             node,
@@ -177,13 +180,8 @@ impl ChildList {
         id: RetainedNodeId,
         before: Option<RetainedNodeId>,
     ) -> Result<ChildInsertion, RetainedSceneError> {
-        if self.order.is_empty() {
-            self.insert_at(ORDER_STEP, id);
-            return Ok(ChildInsertion {
-                key: ORDER_STEP,
-                before_rebalance: None,
-            });
-        }
+        // Validate an explicit sibling even in an empty branch. Missing siblings
+        // are transaction errors, never alternate spellings of append.
         let (lower, upper) = if let Some(before) = before {
             let upper = self
                 .key_of(before)
@@ -194,6 +192,7 @@ impl ChildList {
             (self.order.last_key_value().map(|(key, _)| *key), None)
         };
         let key = match (lower, upper) {
+            (None, None) => ORDER_STEP,
             (Some(lower), Some(upper)) if upper - lower > 1 => lower + (upper - lower) / 2,
             (None, Some(upper)) if upper > 1 => upper / 2,
             (Some(lower), None) if u128::MAX - lower >= ORDER_STEP => lower + ORDER_STEP,
@@ -251,42 +250,40 @@ impl SceneNode {
         }
     }
 
-    pub(crate) fn children(
+    pub(crate) const fn children(
         &self,
-        branch: RetainedChildBranch,
+        parent: RetainedParent,
     ) -> Result<&ChildList, RetainedSceneError> {
-        match branch {
-            RetainedChildBranch::Content => Ok(&self.content),
-            RetainedChildBranch::Mask
-                if matches!(self.kind, NodeKind::Layer(RetainedLayerDescriptor::Mask(_))) =>
-            {
+        // Scene nodes own immutable Canvas content and have no retained child
+        // branches. Both readers and writers use this single hierarchy contract.
+        match (&self.kind, parent.branch) {
+            (NodeKind::Group | NodeKind::Layer(_), RetainedChildBranch::Content) => {
+                Ok(&self.content)
+            }
+            (NodeKind::Layer(RetainedLayerDescriptor::Mask(_)), RetainedChildBranch::Mask) => {
                 Ok(&self.mask)
             }
-            RetainedChildBranch::Mask => Err(RetainedSceneError::InvalidParentBranch(
-                self.parent
-                    .map_or(RetainedNodeId::for_owner(0), |parent| parent.node),
-            )),
+            _ => Err(RetainedSceneError::InvalidParentBranch(parent.node)),
         }
     }
 
     pub(crate) fn children_mut(
         &mut self,
-        id: RetainedNodeId,
-        branch: RetainedChildBranch,
+        parent: RetainedParent,
     ) -> Result<&mut ChildList, RetainedSceneError> {
-        match branch {
-            RetainedChildBranch::Content => Ok(&mut self.content),
-            RetainedChildBranch::Mask
-                if matches!(self.kind, NodeKind::Layer(RetainedLayerDescriptor::Mask(_))) =>
-            {
-                Ok(&mut self.mask)
-            }
-            RetainedChildBranch::Mask => Err(RetainedSceneError::InvalidParentBranch(id)),
-        }
+        self.children(parent)?;
+        Ok(match parent.branch {
+            RetainedChildBranch::Content => &mut self.content,
+            RetainedChildBranch::Mask => &mut self.mask,
+        })
     }
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "Flags describe independent changes or statistics that may be true together"
+)]
 pub(crate) struct SceneChangeSet {
     pub(crate) changed_nodes: HashSet<RetainedNodeId>,
     pub(crate) changed_layers: HashSet<RetainedNodeId>,

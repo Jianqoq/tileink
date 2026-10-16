@@ -1,0 +1,57 @@
+{
+  "recorded_at_utc": "2026-10-11T14:46:58.306118+00:00",
+  "baseline_commit": "61c90c9187ff77d68ec8ca8f147182aa20528962",
+  "backend": "Metal",
+  "adapter": "Apple M5 (0000000100000575)",
+  "workload": "Actual native_present metal --smoke: retained rendering, eight frames, separate rendering/presentation queues, physical resize 640x360 to 480x270. Whole-process wall time includes initialization, window lifecycle, submissions and retirement.",
+  "warmup_pairs": 2,
+  "timed_pairs": 10,
+  "order": "alternating before/after, after/before",
+  "percentile_method": "nearest rank; p95 is the maximum of ten samples",
+  "validation_layer_in_timed_runs": false,
+  "concurrency": "no competing builds or GPU jobs",
+  "executables": {
+    "before": "eea3fbfc79bf1ee2f89ebe191a22a29b9a5e3f4f6886ae7feee9a0478c5e6eca",
+    "after": "5c29eb892334dbaef53e2320aba4fce5689507730cf98c7a1d26c9731ee3de78"
+  },
+  "results": {
+    "before": {
+      "samples_ms": [
+        228.157416,
+        229.77975,
+        226.119375,
+        225.60825,
+        226.429292,
+        226.483125,
+        230.947583,
+        226.948167,
+        225.2785,
+        227.409125
+      ],
+      "p50_ms": 226.715646,
+      "p95_ms": 230.947583
+    },
+    "after": {
+      "samples_ms": [
+        225.832916,
+        220.521375,
+        222.629834,
+        221.218333,
+        223.681792,
+        223.55325,
+        225.768417,
+        228.250542,
+        226.348625,
+        224.806416
+      ],
+      "p50_ms": 224.244104,
+      "p95_ms": 228.250542
+    }
+  },
+  "presentation_reports": {
+    "before": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n",
+    "after": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+  },
+  "interpretation": "The native buffer extent now represents the existing 32-bit byte-address contract. Removing impossible scatter destination-size rejection does not change copy/scatter selection for valid inputs. This actual application workload check does not isolate sparse-upload recording or measure GPU throughput; no rendering speedup is claimed.",
+  "p50_change_percent": -1.0901506109551873
+}

@@ -1,0 +1,3320 @@
+{
+  "baseline_commit": "9cece65920e6a1a0cc2711431c3baaf368e118ed",
+  "gpu": "Apple M5",
+  "device_selection": {
+    "window_and_text": "Explicit registry ID 0000000100000575",
+    "svg": "System default on freshly verified single-GPU host"
+  },
+  "validation": {
+    "commands": {
+      "build-final-examples": {
+        "command": [
+          "cargo",
+          "build",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--examples"
+        ],
+        "exit_code": 0,
+        "seconds": 0.7888784999959171,
+        "log": "target/cleanup-audit/text-build-final-examples.log"
+      },
+      "clippy": {
+        "command": [
+          "cargo",
+          "clippy",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets"
+        ],
+        "exit_code": 0,
+        "seconds": 3.624158874998102,
+        "log": "target/cleanup-audit/text-clippy.log"
+      },
+      "backend-free": {
+        "command": [
+          "cargo",
+          "check",
+          "--release",
+          "--no-default-features",
+          "--lib"
+        ],
+        "exit_code": 0,
+        "seconds": 1.0318744159885682,
+        "log": "target/cleanup-audit/text-backend-free.log"
+      },
+      "fmt-check": {
+        "command": [
+          "cargo",
+          "fmt",
+          "--check"
+        ],
+        "exit_code": 0,
+        "seconds": 0.597409540991066,
+        "log": "target/cleanup-audit/text-fmt-check.log"
+      },
+      "svg": {
+        "command": [
+          "target/cleanup-audit/text-svg-after",
+          "target/cleanup-audit/text-svg"
+        ],
+        "exit_code": 0,
+        "seconds": 8.006262083014008,
+        "log": "target/cleanup-audit/text-svg.log"
+      },
+      "mesh-gradient": {
+        "command": [
+          "target/release/examples/mesh_gradient",
+          "target/cleanup-audit/text-mesh-gradient.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.48163958301302046,
+        "log": "target/cleanup-audit/text-mesh-gradient.log"
+      },
+      "program-brush": {
+        "command": [
+          "target/release/examples/program_brush",
+          "target/cleanup-audit/text-program-brush.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5233244580158498,
+        "log": "target/cleanup-audit/text-program-brush.log"
+      },
+      "program-glass": {
+        "command": [
+          "target/release/examples/program_glass",
+          "target/cleanup-audit/text-program-glass.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.4672317919903435,
+        "log": "target/cleanup-audit/text-program-glass.log"
+      },
+      "shader-pipeline": {
+        "command": [
+          "target/release/examples/shader_pipeline",
+          "target/cleanup-audit/text-shader-pipeline.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.515635415998986,
+        "log": "target/cleanup-audit/text-shader-pipeline.log"
+      },
+      "shader-graph": {
+        "command": [
+          "target/release/examples/shader_graph",
+          "target/cleanup-audit/text-shader-graph.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5166599589865655,
+        "log": "target/cleanup-audit/text-shader-graph.log"
+      },
+      "progressive-balanced": {
+        "command": [
+          "target/release/examples/progressive_blur",
+          "target/cleanup-audit/text-progressive-balanced.png",
+          "balanced"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5212912499846425,
+        "log": "target/cleanup-audit/text-progressive-balanced.log"
+      },
+      "progressive-high": {
+        "command": [
+          "target/release/examples/progressive_blur",
+          "target/cleanup-audit/text-progressive-high.png",
+          "high"
+        ],
+        "exit_code": 0,
+        "seconds": 0.05749949999153614,
+        "log": "target/cleanup-audit/text-progressive-high.log"
+      },
+      "window": {
+        "command": [
+          "target/cleanup-audit/text-window-after",
+          "metal",
+          "--smoke"
+        ],
+        "exit_code": 0,
+        "seconds": 0.9813762090052478,
+        "log": "target/cleanup-audit/text-window.log"
+      },
+      "text-examples": {
+        "command": [
+          "target/cleanup-audit/text-text-after",
+          "target/cleanup-audit/text-current"
+        ],
+        "exit_code": 0,
+        "seconds": 1.2161724579927977,
+        "log": "target/cleanup-audit/text-text-examples.log"
+      }
+    },
+    "focused": {
+      "text-focused-canvas-tests": {
+        "log": "target/cleanup-audit/text-focused-canvas-tests.log",
+        "summaries": [
+          "test result: ok. 86 passed; 0 failed; 0 ignored; 0 measured; 900 filtered out; finished in 0.03s"
+        ],
+        "passed": 86,
+        "failed": 0,
+        "ignored": 0,
+        "failures": []
+      },
+      "text-focused-gpu": {
+        "log": "target/cleanup-audit/text-focused-gpu.log",
+        "summaries": [
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s"
+        ],
+        "passed": 1,
+        "failed": 0,
+        "ignored": 0,
+        "failures": []
+      },
+      "text-focused-retained_scene": {
+        "log": "target/cleanup-audit/text-focused-retained_scene.log",
+        "summaries": [
+          "test result: ok. 111 passed; 0 failed; 0 ignored; 0 measured; 875 filtered out; finished in 0.07s"
+        ],
+        "passed": 111,
+        "failed": 0,
+        "ignored": 0,
+        "failures": []
+      },
+      "text-focused-shared-gpu_plan": {
+        "log": "target/cleanup-audit/text-focused-shared-gpu_plan.log",
+        "summaries": [
+          "test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 955 filtered out; finished in 0.00s"
+        ],
+        "passed": 31,
+        "failed": 0,
+        "ignored": 0,
+        "failures": []
+      },
+      "text-focused-text": {
+        "log": "target/cleanup-audit/text-focused-text.log",
+        "summaries": [
+          "test result: ok. 72 passed; 0 failed; 0 ignored; 0 measured; 914 filtered out; finished in 0.06s"
+        ],
+        "passed": 72,
+        "failed": 0,
+        "ignored": 0,
+        "failures": []
+      }
+    },
+    "render": {
+      "svg": {
+        "exact_pngs": 1730
+      },
+      "mesh-gradient": {
+        "exact_png": true,
+        "sha256": "b441ab07fa794d197930974308e74ccf02eb6790ea39c2ddfdda556c31afa91b"
+      },
+      "program-brush": {
+        "exact_png": true,
+        "sha256": "e43f483170f77abeecfd10698aeddcd2b56c3cd6bd69f46a1b0522b5d332a5be"
+      },
+      "program-glass": {
+        "exact_png": true,
+        "sha256": "90115ade795808c3b5b3b3aeb229ba98bbb8d33d2cc65fd02755bbcbbb9e341e"
+      },
+      "shader-pipeline": {
+        "exact_png": true,
+        "sha256": "b5518d0badb099847172803ea06892212d864ac4a023be365b19741042e161cb"
+      },
+      "shader-graph": {
+        "exact_png": true,
+        "sha256": "4a2ad67381fdad4f44ad88a324f16a092bdd8c7bf43adf36e3e7799730bc06d8"
+      },
+      "progressive-balanced": {
+        "exact_png": true,
+        "sha256": "79b56db9b658c240324aa6ea06a6e463795aa98c43ac010e402878c95d44d0cf"
+      },
+      "progressive-high": {
+        "exact_png": true,
+        "sha256": "5b100f5ce99634323890e2a49a0d4984ffe62082fa3dcabc67651999c46d1d7d"
+      },
+      "window": {
+        "frames": 8,
+        "sizes": [
+          [
+            640,
+            360
+          ],
+          [
+            480,
+            270
+          ]
+        ]
+      },
+      "text": {
+        "frames": 224,
+        "exact_pngs": 7,
+        "sha256": {
+          "text_black_on_white_24px.png": "4f05d1c0896dc83cd662a17284bbba45f3e8d94f73b6b5d021744af792fbdf8b",
+          "emoji.png": "8c56a55cc200733d977249bbd940608b3d7764c9dd8b429b530d44f7f6d0e24e",
+          "text_white_on_black_24px.png": "c8705370f2e01f48297642660a97acd4d04d00eeae08442a6cf212a6ff22e494",
+          "text_black_on_white_12px.png": "edcb00d8751b14e9088fc8141b17e7b36eb8d40d8420a263fa693f52e6a5b2b9",
+          "text_black_on_white_16px.png": "344df7f1073afd477a07b704abdef406997d5d0be0e855263ad1a46e1709f3ff",
+          "text_white_on_black_16px.png": "3582ce80d5ec33acf4b2c6910ba2aaa081c4fd4379237d933db3200144df1c6e",
+          "text_white_on_black_12px.png": "95823989f228affdcdccef5f13db714e7852094f353d6f11f1c57cd573c088a8"
+        }
+      }
+    },
+    "tests": {
+      "log": "target/cleanup-audit/text-release-final.log",
+      "summaries": [
+        "test result: ok. 986 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 15.38s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.01s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.02s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
+        "test result: FAILED. 4 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.90s",
+        "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ],
+      "passed": 1106,
+      "failed": 3,
+      "ignored": 0,
+      "failures": [
+        "every_hlsl_header_compiles_without_callers_globals",
+        "pinned_dxc_reports_invalid_source_for_both_targets",
+        "scaled_turbulence_matches_canonical_rgba"
+      ]
+    },
+    "clippy_warnings": [
+      "warning: using `chunks_exact` with a constant chunk size",
+      "warning: `tileink` (lib) generated 1 warning (run `cargo clippy --fix --lib -p tileink -- ` to apply 1 suggestion)",
+      "warning: an array of `Range` that is only one element",
+      "warning: using `chunks_exact_mut` with a constant chunk size",
+      "warning: using `chunks_exact_mut` with a constant chunk size",
+      "warning: using `chunks_exact_mut` with a constant chunk size",
+      "warning: using `chunks_exact` with a constant chunk size",
+      "warning: using `chunks_exact` with a constant chunk size",
+      "warning: using `chunks_exact` with a constant chunk size",
+      "warning: `tileink` (lib test) generated 8 warnings (1 duplicate) (run `cargo clippy --fix --lib -p tileink --tests -- ` to apply 6 suggestions)"
+    ],
+    "executables": {
+      "svg": {
+        "before": {
+          "path": "target/cleanup-audit/text-svg-before",
+          "sha256": "74de6fb220c91a36442392c683ff3e6c41537cdd89227b3bf5a60f7d7852635b"
+        },
+        "after": {
+          "path": "target/cleanup-audit/text-svg-after",
+          "sha256": "1240e2117464bd5fd85bdf5b050963f0b5e02c1d19270c3faaef10647b04ea77"
+        }
+      },
+      "window": {
+        "before": {
+          "path": "target/cleanup-audit/text-window-before",
+          "sha256": "590471342dd7ab98660c3a792a6ea0f13afb03f71d6cde5d75ec8de37eb650bf"
+        },
+        "after": {
+          "path": "target/cleanup-audit/text-window-after",
+          "sha256": "21a46a8dc59cb7d62df9dadcd4376c4812548e9a32b26acbe720c8962994f3c5"
+        }
+      },
+      "text": {
+        "before": {
+          "path": "target/cleanup-audit/text-text-before",
+          "sha256": "2661278728e338342195db273e59ad40e046199f944914b9703cff014edb2b9c"
+        },
+        "after": {
+          "path": "target/cleanup-audit/text-text-after",
+          "sha256": "84c3bd37d8bb8d4c8955fb4b0d856f2de684397fb22d1019ca74efe8c055fe73"
+        }
+      }
+    },
+    "manifests": {
+      "unchanged": true,
+      "sha256": {
+        "target/release/build/tileink-693345b8f8240684/out/tileink_native_artifacts.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "target/release/build/tileink-24048925a7656d71/out/tileink_native_artifacts.json": "a9498b48fd779f43cd2b47503c87fd31e0bbd1c0fb9c0ed0d080a8e24cdf2d2b",
+        "target/release/build/tileink-02c1122da65b8cf5/out/tileink_native_artifacts.json": "a9498b48fd779f43cd2b47503c87fd31e0bbd1c0fb9c0ed0d080a8e24cdf2d2b"
+      }
+    },
+    "tests_final_review": {
+      "log": "target/cleanup-audit/text-release-final-reviewed.log",
+      "summaries": [
+        "test result: ok. 986 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 15.47s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.38s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.41s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: FAILED. 4 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.08s",
+        "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ],
+      "passed": 1105,
+      "failed": 3,
+      "ignored": 0,
+      "failures": [
+        "every_hlsl_header_compiles_without_callers_globals",
+        "pinned_dxc_reports_invalid_source_for_both_targets",
+        "scaled_turbulence_matches_canonical_rgba"
+      ]
+    },
+    "example_tests_final_review": {
+      "log": "target/cleanup-audit/text-examples-final-reviewed.log",
+      "summaries": [
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ],
+      "passed": 10,
+      "failed": 0,
+      "ignored": 0,
+      "failures": []
+    },
+    "unique_passing_tests_final_review": 1106,
+    "test_count_note": "Standard cargo test includes 9 example tests; explicit --examples covers 10 including mesh-gradient. Count the 9 duplicates only once. The earlier --all-targets run already reports all 1106 passing tests.",
+    "clippy_final_review": {
+      "command": [
+        "cargo",
+        "clippy",
+        "--release",
+        "--no-default-features",
+        "--features",
+        "metal",
+        "--all-targets"
+      ],
+      "exit_code": 0,
+      "log": "target/cleanup-audit/text-clippy-reviewed.log"
+    },
+    "clippy_warnings_final_review": [
+      "warning: using `chunks_exact` with a constant chunk size",
+      "warning: `tileink` (lib) generated 1 warning (run `cargo clippy --fix --lib -p tileink -- ` to apply 1 suggestion)",
+      "warning: an array of `Range` that is only one element",
+      "warning: using `chunks_exact_mut` with a constant chunk size",
+      "warning: using `chunks_exact_mut` with a constant chunk size",
+      "warning: using `chunks_exact_mut` with a constant chunk size",
+      "warning: using `chunks_exact` with a constant chunk size",
+      "warning: using `chunks_exact` with a constant chunk size",
+      "warning: using `chunks_exact` with a constant chunk size",
+      "warning: `tileink` (lib test) generated 8 warnings (1 duplicate) (run `cargo clippy --fix --lib -p tileink --tests -- ` to apply 6 suggestions)"
+    ],
+    "formatting_final_review": {
+      "commands": [
+        [
+          "cargo",
+          "fmt",
+          "--check"
+        ],
+        [
+          "cargo",
+          "fmt"
+        ]
+      ],
+      "exit_code": 0
+    }
+  },
+  "text_workload": {
+    "source_sha256": "3df1869b7f13f2a3b58625a5ef92f96b800ef9d7cc42e13ccfb9be6a2cdb18e7",
+    "scenes": "Six repository text_scene cases at 12/16/24 px in both colors plus emoji_scene, rebuilt/shaped/rasterized/prepared/readback over 32 iterations at 1920x1080; 224 native frames, seven PNGs per process.",
+    "fonts": {
+      "src/svg/fonts/NotoSans-Regular.ttf": "6b04c8dd65af6b73eb4279472ed1580b29102d6496a377340e80a40cdb3b22c9",
+      "src/svg/fonts/NotoSans-Bold.ttf": "7c15ac396d2ce6bc33a3b4efacdbd322c9e46376599a725c6f790d8036052cab",
+      "src/svg/fonts/NotoColorEmojiCBDT.subset.ttf": "4dd87408bcb72d8d8b9282a696abf02af9713296fc4327ee439d66f447965e36"
+    },
+    "rust_source_removed_before_full_tests": true,
+    "final_library_sources_unchanged_after_snapshot": true,
+    "model_note": "Both copied text programs contain identical former repository text/emoji demo sources. Those orphan modules and their temporary harness are removed from the final tree; current library implementation is identical to the after snapshot."
+  },
+  "orphan_example_proof": "All Cargo example/test module entry points and repository filename/symbol references inspected. Fourteen scene modules have no current source caller; liquid_glass_fast_path is declared but never consumed; fonts::Snapshot has only its own tests, repeated in seven crates. common/mod.rs runtime callers only use the four SVG loader functions. Current shader examples remain independently included.",
+  "removed_example_files": [
+    {
+      "path": "examples/common/candlestick_scene.rs",
+      "sha256": "867ccce34c74a3731033ee52d7431a2bddefbc61ed501e34cf4436b2c308e207",
+      "lines": 57
+    },
+    {
+      "path": "examples/common/emoji_scene.rs",
+      "sha256": "3ff496cb6f83eaf425e638850986e104c9152d28e805a647689a2013183d58c4",
+      "lines": 88
+    },
+    {
+      "path": "examples/common/fonts.rs",
+      "sha256": "098b98589767ad7bcd998f041267c83d6c7b1830c53838e567787338c485b917",
+      "lines": 157
+    },
+    {
+      "path": "examples/common/gradient_scene.rs",
+      "sha256": "96ab7b00c148bdef8bccffd9057d5688ec6b90958db96bc9e2dc64fd579f9f26",
+      "lines": 96
+    },
+    {
+      "path": "examples/common/layer_filter_scenes.rs",
+      "sha256": "7e0324bba7da76e77fed9fb936318cb4cd304dac450e26f542d93d462c339245",
+      "lines": 250
+    },
+    {
+      "path": "examples/common/liquid_glass_fast_path.rs",
+      "sha256": "4eb11b47421057527acac6211d483fb97642f8e2b9aa9c666f6a971335abd871",
+      "lines": 134
+    },
+    {
+      "path": "examples/common/mod.rs",
+      "sha256": "e443b9e5a01e650b6642af4300b216e02c4e93b7e98d8dbf31cfff0bc252d4f8",
+      "lines": 137
+    },
+    {
+      "path": "examples/common/path_current_close_dash_scene.rs",
+      "sha256": "baa1f3c06c3aaa330cacc06bc2d8812909f77476717f44b30c8f5f2220e4c004",
+      "lines": 82
+    },
+    {
+      "path": "examples/common/path_text_scene.rs",
+      "sha256": "24b17eda0ada8167128ab55b569aa8a94cf6aa4e5241ef78821a4573f0b2b126",
+      "lines": 226
+    },
+    {
+      "path": "examples/common/sdf_clip_scene.rs",
+      "sha256": "17d7d7f6bac23f29c86f5ec38e7169b095341ac5e713be261359e1a85b7ec71a",
+      "lines": 118
+    },
+    {
+      "path": "examples/common/sdf_dash_line_scene.rs",
+      "sha256": "4ced77040d1c289b4cb4dfe87628ba605f996a812bf419071136ef8732f724e7",
+      "lines": 83
+    },
+    {
+      "path": "examples/common/sdf_line_scene.rs",
+      "sha256": "1bb8de9eecee715ee50de10d2590bb231e8d8b9c0d396291a17341cfe1e5aab4",
+      "lines": 83
+    },
+    {
+      "path": "examples/common/sdf_nested_clip_blur_scene.rs",
+      "sha256": "43c159cb3f18a141e9a25841d13a1879de75ff5c488f2a78174526bf464efb63",
+      "lines": 121
+    },
+    {
+      "path": "examples/common/sdf_rect_shadow_scene.rs",
+      "sha256": "5e12aa149540b5a895d8fb8db9bcd6b7fc0285a875ced7b3c313ebef5612f083",
+      "lines": 64
+    },
+    {
+      "path": "examples/common/sdf_shape_shadows_scene.rs",
+      "sha256": "d4b6c61074d6aaf5e180316ff977b68ae85dfb357746b7ea028bfa9684bab8c0",
+      "lines": 55
+    },
+    {
+      "path": "examples/common/svg_radial_gradient_scene.rs",
+      "sha256": "0acd2e5e4f8d2e44ef93b6fdfd0e55180a169035720ac5218c2df36acf2db9ab",
+      "lines": 33
+    },
+    {
+      "path": "examples/common/text_scene.rs",
+      "sha256": "b91609aae64a359795b7f88983bf6c4f49e34239d399952dcb39997fdd6560fe",
+      "lines": 71
+    }
+  ],
+  "svg_source_manifest": {
+    "count": 1730,
+    "sha256": "3850d8cdef97258ae3caae438b1fb6d7a2014b9f241306d7b3ce9e7e916201e1",
+    "encoding": "Sorted relative path, NUL, SHA-256 rows separated by LF, no final LF"
+  },
+  "method": {
+    "timer": "Whole process from launch through exit, completion and teardown. SVG and text include parsing/shaping/recording/preparation/readback/PNG saving. Outputs removed before launch; verification follows each stopped timer.",
+    "warmups_per_label": 2,
+    "timed_pairs_per_comparison": 10,
+    "order": "Alternating pair order",
+    "metal_validation": false,
+    "p95": "Nearest-rank, maximum of ten timed samples",
+    "controls": "Identical current executable under both labels",
+    "excluded_observations": []
+  },
+  "measurements": [
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "executables": [
+        "target/cleanup-audit/text-svg-before",
+        "target/cleanup-audit/text-svg-after"
+      ],
+      "observations": [
+        {
+          "warmup": true,
+          "pair": 0,
+          "label": 0,
+          "milliseconds": 4815.595667,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": true,
+          "pair": 0,
+          "label": 1,
+          "milliseconds": 4403.673667,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": true,
+          "pair": 1,
+          "label": 1,
+          "milliseconds": 4372.365125,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": true,
+          "pair": 1,
+          "label": 0,
+          "milliseconds": 4561.105,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 0,
+          "label": 0,
+          "milliseconds": 4405.859708,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 0,
+          "label": 1,
+          "milliseconds": 4370.32475,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 1,
+          "label": 1,
+          "milliseconds": 4542.292125,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 1,
+          "label": 0,
+          "milliseconds": 4377.118292,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 2,
+          "label": 0,
+          "milliseconds": 4401.2215,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 2,
+          "label": 1,
+          "milliseconds": 5227.584167,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 3,
+          "label": 1,
+          "milliseconds": 4662.455291,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 3,
+          "label": 0,
+          "milliseconds": 4483.72925,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 4,
+          "label": 0,
+          "milliseconds": 4407.214708,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 4,
+          "label": 1,
+          "milliseconds": 4387.646166,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 5,
+          "label": 1,
+          "milliseconds": 4499.902292,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 5,
+          "label": 0,
+          "milliseconds": 5072.402542,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 6,
+          "label": 0,
+          "milliseconds": 4440.658084,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 6,
+          "label": 1,
+          "milliseconds": 4463.77625,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 7,
+          "label": 1,
+          "milliseconds": 4421.566041,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 7,
+          "label": 0,
+          "milliseconds": 4533.601583,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 8,
+          "label": 0,
+          "milliseconds": 4412.430792,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 8,
+          "label": 1,
+          "milliseconds": 4405.988125,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 9,
+          "label": 1,
+          "milliseconds": 4400.217292,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 9,
+          "label": 0,
+          "milliseconds": 4418.188041,
+          "verified": 1730,
+          "frames": 1730
+        }
+      ],
+      "summary": [
+        {
+          "count": 10,
+          "min": 4377.118292,
+          "median": 4415.3094165,
+          "p95_nearest_rank": 5072.402542,
+          "max": 5072.402542
+        },
+        {
+          "count": 10,
+          "min": 4370.32475,
+          "median": 4442.6711455,
+          "p95_nearest_rank": 5227.584167,
+          "max": 5227.584167
+        }
+      ],
+      "median_change_percent": 0.6197012806792079,
+      "paired": {
+        "percent_changes": [
+          -0.8065385726076846,
+          3.7735748038129513,
+          18.7757572982864,
+          3.986102439169348,
+          -0.4440115423575586,
+          -11.286569732185903,
+          0.5206022522494358,
+          -2.4712260208331505,
+          -0.1460117405508332,
+          -0.40674477485418414
+        ],
+        "median_percent": -0.2763782577025087,
+        "bootstrap_median_95_percent_interval": [
+          -1.4576187815953545,
+          3.7735748038129513
+        ],
+        "bootstrap_seed": 46,
+        "resamples": 20000
+      }
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "executables": [
+        "target/cleanup-audit/text-svg-after",
+        "target/cleanup-audit/text-svg-after"
+      ],
+      "observations": [
+        {
+          "warmup": true,
+          "pair": 0,
+          "label": 0,
+          "milliseconds": 4403.120625,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": true,
+          "pair": 0,
+          "label": 1,
+          "milliseconds": 4349.688125,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": true,
+          "pair": 1,
+          "label": 1,
+          "milliseconds": 4404.196541,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": true,
+          "pair": 1,
+          "label": 0,
+          "milliseconds": 4403.79575,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 0,
+          "label": 0,
+          "milliseconds": 4401.530208,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 0,
+          "label": 1,
+          "milliseconds": 4510.931125,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 1,
+          "label": 1,
+          "milliseconds": 4394.995625,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 1,
+          "label": 0,
+          "milliseconds": 4673.728667,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 2,
+          "label": 0,
+          "milliseconds": 4537.005291,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 2,
+          "label": 1,
+          "milliseconds": 4414.99425,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 3,
+          "label": 1,
+          "milliseconds": 4406.926125,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 3,
+          "label": 0,
+          "milliseconds": 4386.178542,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 4,
+          "label": 0,
+          "milliseconds": 4407.247292,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 4,
+          "label": 1,
+          "milliseconds": 4423.443459,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 5,
+          "label": 1,
+          "milliseconds": 4411.823667,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 5,
+          "label": 0,
+          "milliseconds": 4414.558167,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 6,
+          "label": 0,
+          "milliseconds": 4384.110708,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 6,
+          "label": 1,
+          "milliseconds": 4383.066583,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 7,
+          "label": 1,
+          "milliseconds": 4371.347875,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 7,
+          "label": 0,
+          "milliseconds": 4402.638417,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 8,
+          "label": 0,
+          "milliseconds": 4429.896,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 8,
+          "label": 1,
+          "milliseconds": 4433.320917,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 9,
+          "label": 1,
+          "milliseconds": 4406.463667,
+          "verified": 1730,
+          "frames": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 9,
+          "label": 0,
+          "milliseconds": 4442.953083,
+          "verified": 1730,
+          "frames": 1730
+        }
+      ],
+      "summary": [
+        {
+          "count": 10,
+          "min": 4384.110708,
+          "median": 4410.9027295,
+          "p95_nearest_rank": 4673.728667,
+          "max": 4673.728667
+        },
+        {
+          "count": 10,
+          "min": 4371.347875,
+          "median": 4409.374895999999,
+          "p95_nearest_rank": 4510.931125,
+          "max": 4510.931125
+        }
+      ],
+      "median_change_percent": -0.03463766021821746,
+      "paired": {
+        "percent_changes": [
+          2.4855200766578545,
+          -5.963825926996213,
+          -2.689241761344918,
+          0.4730218526521668,
+          0.3674894083978364,
+          -0.061942778791357345,
+          -0.02381611846833387,
+          -0.7107225040143383,
+          0.07731371120225372,
+          -0.8212874481978938
+        ],
+        "median_percent": -0.04287944862984561,
+        "bootstrap_median_95_percent_interval": [
+          -1.6999821326796283,
+          0.3674894083978364
+        ],
+        "bootstrap_seed": 46,
+        "resamples": 20000
+      }
+    },
+    {
+      "workload": "text",
+      "comparison": "baseline-current",
+      "executables": [
+        "target/cleanup-audit/text-text-before",
+        "target/cleanup-audit/text-text-after"
+      ],
+      "observations": [
+        {
+          "warmup": true,
+          "pair": 0,
+          "label": 0,
+          "milliseconds": 446.563,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": true,
+          "pair": 0,
+          "label": 1,
+          "milliseconds": 445.750959,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": true,
+          "pair": 1,
+          "label": 1,
+          "milliseconds": 431.679708,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": true,
+          "pair": 1,
+          "label": 0,
+          "milliseconds": 440.627959,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 0,
+          "label": 0,
+          "milliseconds": 433.738125,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 0,
+          "label": 1,
+          "milliseconds": 434.692958,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 1,
+          "label": 1,
+          "milliseconds": 440.183834,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 1,
+          "label": 0,
+          "milliseconds": 437.991167,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 2,
+          "label": 0,
+          "milliseconds": 583.817708,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 2,
+          "label": 1,
+          "milliseconds": 587.071625,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 3,
+          "label": 1,
+          "milliseconds": 594.625792,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 3,
+          "label": 0,
+          "milliseconds": 592.79625,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 4,
+          "label": 0,
+          "milliseconds": 580.211167,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 4,
+          "label": 1,
+          "milliseconds": 588.373083,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 5,
+          "label": 1,
+          "milliseconds": 589.710541,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 5,
+          "label": 0,
+          "milliseconds": 526.293833,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 6,
+          "label": 0,
+          "milliseconds": 592.520792,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 6,
+          "label": 1,
+          "milliseconds": 594.964583,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 7,
+          "label": 1,
+          "milliseconds": 578.993208,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 7,
+          "label": 0,
+          "milliseconds": 440.071542,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 8,
+          "label": 0,
+          "milliseconds": 447.696542,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 8,
+          "label": 1,
+          "milliseconds": 430.181416,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 9,
+          "label": 1,
+          "milliseconds": 433.517625,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 9,
+          "label": 0,
+          "milliseconds": 443.656125,
+          "verified": 7,
+          "frames": 224
+        }
+      ],
+      "summary": [
+        {
+          "count": 10,
+          "min": 433.738125,
+          "median": 486.9951875,
+          "p95_nearest_rank": 592.79625,
+          "max": 592.79625
+        },
+        {
+          "count": 10,
+          "min": 430.181416,
+          "median": 583.0324165,
+          "p95_nearest_rank": 594.964583,
+          "max": 594.964583
+        }
+      ],
+      "median_change_percent": 19.720365101143834,
+      "paired": {
+        "percent_changes": [
+          0.22014043612144096,
+          0.5006189999260835,
+          0.5573515423413555,
+          0.3086291453429535,
+          1.4067147383945322,
+          12.049677199998676,
+          0.41243970388804563,
+          31.567973100155598,
+          -3.91227636509196,
+          -2.2852158301657544
+        ],
+        "median_percent": 0.45652935190706456,
+        "bootstrap_median_95_percent_interval": [
+          -0.9882933424114004,
+          6.3035143711700155
+        ],
+        "bootstrap_seed": 46,
+        "resamples": 20000
+      }
+    },
+    {
+      "workload": "text",
+      "comparison": "identical-current",
+      "executables": [
+        "target/cleanup-audit/text-text-after",
+        "target/cleanup-audit/text-text-after"
+      ],
+      "observations": [
+        {
+          "warmup": true,
+          "pair": 0,
+          "label": 0,
+          "milliseconds": 432.7195,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": true,
+          "pair": 0,
+          "label": 1,
+          "milliseconds": 451.8875,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": true,
+          "pair": 1,
+          "label": 1,
+          "milliseconds": 433.973625,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": true,
+          "pair": 1,
+          "label": 0,
+          "milliseconds": 452.066375,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 0,
+          "label": 0,
+          "milliseconds": 455.597583,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 0,
+          "label": 1,
+          "milliseconds": 463.513791,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 1,
+          "label": 1,
+          "milliseconds": 457.733583,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 1,
+          "label": 0,
+          "milliseconds": 583.564542,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 2,
+          "label": 0,
+          "milliseconds": 447.79875,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 2,
+          "label": 1,
+          "milliseconds": 440.758417,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 3,
+          "label": 1,
+          "milliseconds": 449.06375,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 3,
+          "label": 0,
+          "milliseconds": 519.983334,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 4,
+          "label": 0,
+          "milliseconds": 599.643625,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 4,
+          "label": 1,
+          "milliseconds": 502.712,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 5,
+          "label": 1,
+          "milliseconds": 448.957208,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 5,
+          "label": 0,
+          "milliseconds": 436.940875,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 6,
+          "label": 0,
+          "milliseconds": 433.022583,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 6,
+          "label": 1,
+          "milliseconds": 432.3525,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 7,
+          "label": 1,
+          "milliseconds": 439.942416,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 7,
+          "label": 0,
+          "milliseconds": 432.902458,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 8,
+          "label": 0,
+          "milliseconds": 435.415083,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 8,
+          "label": 1,
+          "milliseconds": 554.05575,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 9,
+          "label": 1,
+          "milliseconds": 449.64775,
+          "verified": 7,
+          "frames": 224
+        },
+        {
+          "warmup": false,
+          "pair": 9,
+          "label": 0,
+          "milliseconds": 433.957875,
+          "verified": 7,
+          "frames": 224
+        }
+      ],
+      "summary": [
+        {
+          "count": 10,
+          "min": 432.902458,
+          "median": 442.36981249999997,
+          "p95_nearest_rank": 599.643625,
+          "max": 599.643625
+        },
+        {
+          "count": 10,
+          "min": 432.3525,
+          "median": 449.35575,
+          "p95_nearest_rank": 554.05575,
+          "max": 554.05575
+        }
+      ],
+      "median_change_percent": 1.5792075549911244,
+      "paired": {
+        "percent_changes": [
+          1.7375438973740165,
+          -21.562475089516308,
+          -1.572209167622729,
+          -13.638818662599672,
+          -16.164872093820737,
+          2.7501050342337408,
+          -0.1547455089657479,
+          1.626222690562762,
+          27.247716404900025,
+          3.6155295027195944
+        ],
+        "median_percent": 0.735738590798507,
+        "bootstrap_median_95_percent_interval": [
+          -13.638818662599672,
+          2.7501050342337408
+        ],
+        "bootstrap_seed": 46,
+        "resamples": 20000
+      }
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "executables": [
+        "target/cleanup-audit/text-window-before",
+        "target/cleanup-audit/text-window-after"
+      ],
+      "observations": [
+        {
+          "warmup": true,
+          "pair": 0,
+          "label": 0,
+          "milliseconds": 1277.084291,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": true,
+          "pair": 0,
+          "label": 1,
+          "milliseconds": 243.327333,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": true,
+          "pair": 1,
+          "label": 1,
+          "milliseconds": 239.403333,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": true,
+          "pair": 1,
+          "label": 0,
+          "milliseconds": 239.355542,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 0,
+          "label": 0,
+          "milliseconds": 232.155625,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 0,
+          "label": 1,
+          "milliseconds": 232.176625,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 1,
+          "label": 1,
+          "milliseconds": 233.683166,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 1,
+          "label": 0,
+          "milliseconds": 232.744,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 2,
+          "label": 0,
+          "milliseconds": 232.993167,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 2,
+          "label": 1,
+          "milliseconds": 231.303459,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 3,
+          "label": 1,
+          "milliseconds": 233.792541,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 3,
+          "label": 0,
+          "milliseconds": 236.074583,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 4,
+          "label": 0,
+          "milliseconds": 233.78925,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 4,
+          "label": 1,
+          "milliseconds": 230.938791,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 5,
+          "label": 1,
+          "milliseconds": 228.570292,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 5,
+          "label": 0,
+          "milliseconds": 229.871833,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 6,
+          "label": 0,
+          "milliseconds": 233.3525,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 6,
+          "label": 1,
+          "milliseconds": 239.59175,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 7,
+          "label": 1,
+          "milliseconds": 231.169875,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 7,
+          "label": 0,
+          "milliseconds": 228.516791,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 8,
+          "label": 0,
+          "milliseconds": 236.56125,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 8,
+          "label": 1,
+          "milliseconds": 229.46275,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 9,
+          "label": 1,
+          "milliseconds": 232.216209,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 9,
+          "label": 0,
+          "milliseconds": 234.613666,
+          "verified": 8,
+          "frames": 8
+        }
+      ],
+      "summary": [
+        {
+          "count": 10,
+          "min": 228.516791,
+          "median": 233.1728335,
+          "p95_nearest_rank": 236.56125,
+          "max": 236.56125
+        },
+        {
+          "count": 10,
+          "min": 228.570292,
+          "median": 231.74004200000002,
+          "p95_nearest_rank": 239.59175,
+          "max": 239.59175
+        }
+      ],
+      "median_change_percent": -0.6144761713846814,
+      "paired": {
+        "percent_changes": [
+          0.009045656335060492,
+          0.4035188877049567,
+          -0.7252178343925442,
+          -0.9666614554604491,
+          -1.2192429720357167,
+          -0.5662029066432095,
+          2.6737446566889034,
+          1.1610017751386925,
+          -3.0007027778218065,
+          -1.021874403514078
+        ],
+        "median_percent": -0.6457103705178768,
+        "bootstrap_median_95_percent_interval": [
+          -1.092952213748083,
+          0.5850237157368765
+        ],
+        "bootstrap_seed": 46,
+        "resamples": 20000
+      }
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "executables": [
+        "target/cleanup-audit/text-window-after",
+        "target/cleanup-audit/text-window-after"
+      ],
+      "observations": [
+        {
+          "warmup": true,
+          "pair": 0,
+          "label": 0,
+          "milliseconds": 221.535667,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": true,
+          "pair": 0,
+          "label": 1,
+          "milliseconds": 237.633209,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": true,
+          "pair": 1,
+          "label": 1,
+          "milliseconds": 232.377833,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": true,
+          "pair": 1,
+          "label": 0,
+          "milliseconds": 233.713583,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 0,
+          "label": 0,
+          "milliseconds": 234.4475,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 0,
+          "label": 1,
+          "milliseconds": 236.977166,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 1,
+          "label": 1,
+          "milliseconds": 226.126875,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 1,
+          "label": 0,
+          "milliseconds": 231.73275,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 2,
+          "label": 0,
+          "milliseconds": 233.748292,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 2,
+          "label": 1,
+          "milliseconds": 233.166625,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 3,
+          "label": 1,
+          "milliseconds": 232.426625,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 3,
+          "label": 0,
+          "milliseconds": 229.381041,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 4,
+          "label": 0,
+          "milliseconds": 233.374917,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 4,
+          "label": 1,
+          "milliseconds": 227.52375,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 5,
+          "label": 1,
+          "milliseconds": 239.798375,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 5,
+          "label": 0,
+          "milliseconds": 235.665917,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 6,
+          "label": 0,
+          "milliseconds": 234.777542,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 6,
+          "label": 1,
+          "milliseconds": 233.558,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 7,
+          "label": 1,
+          "milliseconds": 231.506834,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 7,
+          "label": 0,
+          "milliseconds": 238.218625,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 8,
+          "label": 0,
+          "milliseconds": 237.18625,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 8,
+          "label": 1,
+          "milliseconds": 231.945875,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 9,
+          "label": 1,
+          "milliseconds": 237.37025,
+          "verified": 8,
+          "frames": 8
+        },
+        {
+          "warmup": false,
+          "pair": 9,
+          "label": 0,
+          "milliseconds": 230.635917,
+          "verified": 8,
+          "frames": 8
+        }
+      ],
+      "summary": [
+        {
+          "count": 10,
+          "min": 229.381041,
+          "median": 234.097896,
+          "p95_nearest_rank": 238.218625,
+          "max": 238.218625
+        },
+        {
+          "count": 10,
+          "min": 226.126875,
+          "median": 232.796625,
+          "p95_nearest_rank": 239.798375,
+          "max": 239.798375
+        }
+      ],
+      "median_change_percent": -0.5558661663494724,
+      "paired": {
+        "percent_changes": [
+          1.0789903923053235,
+          -2.419112102195309,
+          -0.24884331561232376,
+          1.3277400724674537,
+          -2.5071961782422436,
+          1.7535238241514595,
+          -0.5194457653875717,
+          -2.8174921251434504,
+          -2.2093924078651295,
+          2.919897771169788
+        ],
+        "median_percent": -0.38414454049994773,
+        "bootstrap_median_95_percent_interval": [
+          -2.419112102195309,
+          1.4162571082283915
+        ],
+        "bootstrap_seed": 46,
+        "resamples": 20000
+      }
+    }
+  ],
+  "verification_totals": {
+    "observations": 144,
+    "svg_png_hashes": 83040,
+    "text_png_hashes": 336,
+    "text_frames": 10752,
+    "window_frames": 384,
+    "svg_sources_unchanged": true
+  },
+  "artifact_note": "Metal and backend-free artifact manifests exact; GPU source/ABI unchanged. Actual HLSL compilation unavailable.",
+  "text_confirmation": {
+    "reason": "Initial whole-process text samples have common multimodal startup drift; retain them and collect 30 alternating pairs plus identical-current controls.",
+    "warmups_per_label": 2,
+    "timed_pairs_per_comparison": 30,
+    "measurements": [
+      {
+        "comparison": "baseline-current",
+        "executables": [
+          "target/cleanup-audit/text-text-before",
+          "target/cleanup-audit/text-text-after"
+        ],
+        "observations": [
+          {
+            "warmup": true,
+            "pair": 0,
+            "label": 0,
+            "milliseconds": 610.613375,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": true,
+            "pair": 0,
+            "label": 1,
+            "milliseconds": 445.943125,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": true,
+            "pair": 1,
+            "label": 1,
+            "milliseconds": 452.422083,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": true,
+            "pair": 1,
+            "label": 0,
+            "milliseconds": 432.039375,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 0,
+            "label": 0,
+            "milliseconds": 490.790709,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 0,
+            "label": 1,
+            "milliseconds": 440.823958,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 1,
+            "label": 1,
+            "milliseconds": 415.459416,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 1,
+            "label": 0,
+            "milliseconds": 496.6215,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 2,
+            "label": 0,
+            "milliseconds": 449.180583,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 2,
+            "label": 1,
+            "milliseconds": 430.713958,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 3,
+            "label": 1,
+            "milliseconds": 431.091667,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 3,
+            "label": 0,
+            "milliseconds": 422.782958,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 4,
+            "label": 0,
+            "milliseconds": 428.124667,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 4,
+            "label": 1,
+            "milliseconds": 432.800667,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 5,
+            "label": 1,
+            "milliseconds": 422.878875,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 5,
+            "label": 0,
+            "milliseconds": 428.064167,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 6,
+            "label": 0,
+            "milliseconds": 532.622209,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 6,
+            "label": 1,
+            "milliseconds": 450.170291,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 7,
+            "label": 1,
+            "milliseconds": 439.059125,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 7,
+            "label": 0,
+            "milliseconds": 489.312875,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 8,
+            "label": 0,
+            "milliseconds": 617.740375,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 8,
+            "label": 1,
+            "milliseconds": 446.569875,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 9,
+            "label": 1,
+            "milliseconds": 431.564041,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 9,
+            "label": 0,
+            "milliseconds": 420.302125,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 10,
+            "label": 0,
+            "milliseconds": 426.239083,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 10,
+            "label": 1,
+            "milliseconds": 444.801791,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 11,
+            "label": 1,
+            "milliseconds": 419.478,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 11,
+            "label": 0,
+            "milliseconds": 422.706791,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 12,
+            "label": 0,
+            "milliseconds": 428.53175,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 12,
+            "label": 1,
+            "milliseconds": 432.558209,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 13,
+            "label": 1,
+            "milliseconds": 422.103375,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 13,
+            "label": 0,
+            "milliseconds": 425.097625,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 14,
+            "label": 0,
+            "milliseconds": 430.302375,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 14,
+            "label": 1,
+            "milliseconds": 423.607875,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 15,
+            "label": 1,
+            "milliseconds": 427.747833,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 15,
+            "label": 0,
+            "milliseconds": 447.871458,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 16,
+            "label": 0,
+            "milliseconds": 431.153333,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 16,
+            "label": 1,
+            "milliseconds": 432.885667,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 17,
+            "label": 1,
+            "milliseconds": 430.388042,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 17,
+            "label": 0,
+            "milliseconds": 452.493917,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 18,
+            "label": 0,
+            "milliseconds": 432.856209,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 18,
+            "label": 1,
+            "milliseconds": 455.494541,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 19,
+            "label": 1,
+            "milliseconds": 434.483291,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 19,
+            "label": 0,
+            "milliseconds": 432.950875,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 20,
+            "label": 0,
+            "milliseconds": 439.921792,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 20,
+            "label": 1,
+            "milliseconds": 425.987166,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 21,
+            "label": 1,
+            "milliseconds": 438.533791,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 21,
+            "label": 0,
+            "milliseconds": 432.225208,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 22,
+            "label": 0,
+            "milliseconds": 427.492333,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 22,
+            "label": 1,
+            "milliseconds": 438.087958,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 23,
+            "label": 1,
+            "milliseconds": 626.734208,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 23,
+            "label": 0,
+            "milliseconds": 428.805167,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 24,
+            "label": 0,
+            "milliseconds": 422.811417,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 24,
+            "label": 1,
+            "milliseconds": 437.392834,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 25,
+            "label": 1,
+            "milliseconds": 447.38325,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 25,
+            "label": 0,
+            "milliseconds": 439.206959,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 26,
+            "label": 0,
+            "milliseconds": 535.160375,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 26,
+            "label": 1,
+            "milliseconds": 444.4995,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 27,
+            "label": 1,
+            "milliseconds": 443.6975,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 27,
+            "label": 0,
+            "milliseconds": 432.204125,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 28,
+            "label": 0,
+            "milliseconds": 431.439333,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 28,
+            "label": 1,
+            "milliseconds": 433.493917,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 29,
+            "label": 1,
+            "milliseconds": 435.6365,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 29,
+            "label": 0,
+            "milliseconds": 431.829792,
+            "verified": 7,
+            "frames": 224
+          }
+        ],
+        "summary": [
+          {
+            "count": 30,
+            "min": 420.302125,
+            "median": 432.0169585,
+            "p95_nearest_rank": 535.160375,
+            "max": 617.740375
+          },
+          {
+            "count": 30,
+            "min": 415.459416,
+            "median": 433.988604,
+            "p95_nearest_rank": 455.494541,
+            "max": 626.734208
+          }
+        ],
+        "median_change_percent": 0.4563815056811027,
+        "paired": {
+          "percent_changes": [
+            -10.180867339931654,
+            -16.342845406411133,
+            -4.11118060283564,
+            1.96524217515881,
+            1.0922052290904372,
+            -1.2113352155449175,
+            -15.480375509463595,
+            -10.270269303663838,
+            -27.709132659493065,
+            2.6794810994591023,
+            4.354999046392005,
+            -0.7638370304772324,
+            0.9395940907529043,
+            -0.7043676143803412,
+            -1.5557664537640514,
+            -4.4931697790842495,
+            0.4017907012213717,
+            -4.885341917204167,
+            5.229988973081823,
+            0.35394685367018397,
+            -3.1675234674439556,
+            1.4595592490292741,
+            2.478553223549862,
+            46.158268657243106,
+            3.448680999075293,
+            1.8616032447700714,
+            -16.940879638183226,
+            2.659246947261318,
+            0.4762162007143633,
+            0.8815297301210778
+          ],
+          "median_percent": 0.37786877744577785,
+          "bootstrap_median_95_percent_interval": [
+            -2.3616449606040035,
+            1.2758822390598556
+          ],
+          "bootstrap_seed": 46,
+          "resamples": 20000
+        }
+      },
+      {
+        "comparison": "identical-current",
+        "executables": [
+          "target/cleanup-audit/text-text-after",
+          "target/cleanup-audit/text-text-after"
+        ],
+        "observations": [
+          {
+            "warmup": true,
+            "pair": 0,
+            "label": 0,
+            "milliseconds": 433.592958,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": true,
+            "pair": 0,
+            "label": 1,
+            "milliseconds": 432.088042,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": true,
+            "pair": 1,
+            "label": 1,
+            "milliseconds": 515.834167,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": true,
+            "pair": 1,
+            "label": 0,
+            "milliseconds": 455.242583,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 0,
+            "label": 0,
+            "milliseconds": 433.791458,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 0,
+            "label": 1,
+            "milliseconds": 588.174333,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 1,
+            "label": 1,
+            "milliseconds": 580.398333,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 1,
+            "label": 0,
+            "milliseconds": 427.016625,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 2,
+            "label": 0,
+            "milliseconds": 427.67,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 2,
+            "label": 1,
+            "milliseconds": 430.503292,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 3,
+            "label": 1,
+            "milliseconds": 444.24375,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 3,
+            "label": 0,
+            "milliseconds": 430.762875,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 4,
+            "label": 0,
+            "milliseconds": 424.495584,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 4,
+            "label": 1,
+            "milliseconds": 421.022292,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 5,
+            "label": 1,
+            "milliseconds": 423.791125,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 5,
+            "label": 0,
+            "milliseconds": 432.857,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 6,
+            "label": 0,
+            "milliseconds": 423.567125,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 6,
+            "label": 1,
+            "milliseconds": 416.978583,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 7,
+            "label": 1,
+            "milliseconds": 427.332083,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 7,
+            "label": 0,
+            "milliseconds": 442.223166,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 8,
+            "label": 0,
+            "milliseconds": 464.722458,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 8,
+            "label": 1,
+            "milliseconds": 466.533917,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 9,
+            "label": 1,
+            "milliseconds": 441.977,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 9,
+            "label": 0,
+            "milliseconds": 527.547375,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 10,
+            "label": 0,
+            "milliseconds": 437.277916,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 10,
+            "label": 1,
+            "milliseconds": 426.339375,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 11,
+            "label": 1,
+            "milliseconds": 439.012125,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 11,
+            "label": 0,
+            "milliseconds": 431.799,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 12,
+            "label": 0,
+            "milliseconds": 431.723167,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 12,
+            "label": 1,
+            "milliseconds": 435.785875,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 13,
+            "label": 1,
+            "milliseconds": 439.687625,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 13,
+            "label": 0,
+            "milliseconds": 431.4335,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 14,
+            "label": 0,
+            "milliseconds": 424.742208,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 14,
+            "label": 1,
+            "milliseconds": 438.367459,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 15,
+            "label": 1,
+            "milliseconds": 425.42075,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 15,
+            "label": 0,
+            "milliseconds": 432.124917,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 16,
+            "label": 0,
+            "milliseconds": 432.317667,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 16,
+            "label": 1,
+            "milliseconds": 441.654833,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 17,
+            "label": 1,
+            "milliseconds": 433.193625,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 17,
+            "label": 0,
+            "milliseconds": 437.896666,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 18,
+            "label": 0,
+            "milliseconds": 445.12475,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 18,
+            "label": 1,
+            "milliseconds": 438.462,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 19,
+            "label": 1,
+            "milliseconds": 431.526208,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 19,
+            "label": 0,
+            "milliseconds": 522.737125,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 20,
+            "label": 0,
+            "milliseconds": 464.624792,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 20,
+            "label": 1,
+            "milliseconds": 683.907083,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 21,
+            "label": 1,
+            "milliseconds": 705.552042,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 21,
+            "label": 0,
+            "milliseconds": 524.855667,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 22,
+            "label": 0,
+            "milliseconds": 468.737916,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 22,
+            "label": 1,
+            "milliseconds": 467.329208,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 23,
+            "label": 1,
+            "milliseconds": 465.128708,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 23,
+            "label": 0,
+            "milliseconds": 430.55225,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 24,
+            "label": 0,
+            "milliseconds": 432.835542,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 24,
+            "label": 1,
+            "milliseconds": 432.109333,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 25,
+            "label": 1,
+            "milliseconds": 434.603542,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 25,
+            "label": 0,
+            "milliseconds": 428.190708,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 26,
+            "label": 0,
+            "milliseconds": 432.926416,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 26,
+            "label": 1,
+            "milliseconds": 427.846,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 27,
+            "label": 1,
+            "milliseconds": 427.339459,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 27,
+            "label": 0,
+            "milliseconds": 443.584167,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 28,
+            "label": 0,
+            "milliseconds": 423.97,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 28,
+            "label": 1,
+            "milliseconds": 420.258917,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 29,
+            "label": 1,
+            "milliseconds": 432.800875,
+            "verified": 7,
+            "frames": 224
+          },
+          {
+            "warmup": false,
+            "pair": 29,
+            "label": 0,
+            "milliseconds": 576.49225,
+            "verified": 7,
+            "frames": 224
+          }
+        ],
+        "summary": [
+          {
+            "count": 30,
+            "min": 423.567125,
+            "median": 432.846271,
+            "p95_nearest_rank": 527.547375,
+            "max": 576.49225
+          },
+          {
+            "count": 30,
+            "min": 416.978583,
+            "median": 435.1947085,
+            "p95_nearest_rank": 683.907083,
+            "max": 705.552042
+          }
+        ],
+        "median_change_percent": 0.5425569439640565,
+        "paired": {
+          "percent_changes": [
+            35.589192030609354,
+            35.91937620695682,
+            0.66249491430308,
+            3.129535013898299,
+            -0.8182162856139374,
+            -2.0944272588868884,
+            -1.5554894634469019,
+            -3.3673231401902592,
+            0.3897937293144471,
+            -16.220415275500145,
+            -2.50150775965553,
+            1.670482099310111,
+            0.9410447042328851,
+            1.9131859255250294,
+            3.207887218027561,
+            -1.551441894751926,
+            2.159792835854657,
+            -1.07400703525794,
+            -1.4968275747416881,
+            -17.44871612093746,
+            47.19556398531568,
+            34.42782203969228,
+            -0.30053212081098124,
+            8.030722868130402,
+            -0.16777942879745433,
+            1.497658375155586,
+            -1.1735056610636563,
+            -3.6621478421703935,
+            -0.8753173573601947,
+            -24.925118247469936
+          ],
+          "median_percent": -0.2341557748042178,
+          "bootstrap_median_95_percent_interval": [
+            -1.3351666179026722,
+            1.5840702372328486
+          ],
+          "bootstrap_seed": 46,
+          "resamples": 20000
+        }
+      }
+    ],
+    "excluded_observations": [],
+    "verification_totals": {
+      "observations": 128,
+      "text_png_hashes": 896,
+      "text_frames": 28672
+    }
+  },
+  "combined_verification_totals": {
+    "observations": 272,
+    "svg_png_hashes": 83040,
+    "text_png_hashes": 1232,
+    "text_frames": 39424,
+    "window_frames": 384
+  },
+  "red_regressions": {
+    "phase46_red_regressions": {
+      "log": "target/cleanup-audit/text-red-bounds.log",
+      "exit_code": 101,
+      "failed": [
+        "text::tests::bounds::nonfinite_text_origins_do_not_record_substitute_positions",
+        "text::tests::bounds::prepared_glyph_bounds_clamp_after_complete_endpoint_arithmetic",
+        "text::tests::bounds::raster_glyph_bounds_clamp_after_complete_endpoint_arithmetic",
+        "text::tests::bounds::scaled_text_layout_bounds_transform_before_coordinate_clipping",
+        "text::tests::bounds::text_glyph_cache_positions_saturate_without_wrapping",
+        "text::tests::bounds::translated_text_layout_bounds_do_not_wrap_at_coordinate_edges"
+      ],
+      "summary": [
+        "test result: FAILED. 0 passed; 6 failed; 0 ignored; 0 measured; 975 filtered out; finished in 0.00s"
+      ]
+    },
+    "phase46_red_empty": {
+      "exit_code": 101,
+      "log": "target/cleanup-audit/text-red-empty.log",
+      "failures": [
+        "text::tests::bounds::text_outside_the_coordinate_domain_does_not_append_empty_runs"
+      ],
+      "summary": [
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 981 filtered out; finished in 0.00s"
+      ]
+    },
+    "phase46_red_cancellation": {
+      "exit_code": 101,
+      "log": "target/cleanup-audit/text-red-cancellation.log",
+      "failures": [
+        "text::tests::bounds::text_translation_preserves_fractional_offsets_after_large_coordinate_cancellation"
+      ],
+      "summary": [
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 982 filtered out; finished in 0.00s"
+      ]
+    },
+    "phase46_red_gpu": {
+      "exit_code": 101,
+      "log": "target/cleanup-audit/text-red-gpu.log",
+      "failures": [
+        "appended_text_preserves_fractional_pixels_after_large_coordinate_cancellation"
+      ],
+      "summary": [
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s"
+      ]
+    },
+    "phase46_red_shaping": {
+      "exit_code": 101,
+      "log": "target/cleanup-audit/text-red-shaping.log",
+      "failures": [
+        "text::tests::bounds::aligned_layout_does_not_wrap_out_of_domain_cosmic_positions"
+      ],
+      "summary": [
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 984 filtered out; finished in 0.00s"
+      ]
+    }
+  },
+  "interpretation": "All outputs exact. Initial text process timings are multimodal and their separate medians are misleading without paired observations. Thirty additional pairs plus identical-current controls show no stable material whole-application timing regression; intervals include zero and overlap controls. No isolated speedup is established. All observations and tails retained.",
+  "temporary_measurement_cleanup": [
+    {
+      "path": "target/cleanup-audit/text_validate.py",
+      "sha256": "d445f07ae86f56be2dae5e05ff72a1fc3c85aa1ac50dcac9f79c1ce6c2014912"
+    },
+    {
+      "path": "target/cleanup-audit/text_confirm.py",
+      "sha256": "516fae3e24885e7732fa1760270984b0013b2b4b3da9003cc96047af8cefcb41"
+    },
+    {
+      "path": "target/cleanup-audit/text-svg-before",
+      "sha256": "74de6fb220c91a36442392c683ff3e6c41537cdd89227b3bf5a60f7d7852635b"
+    },
+    {
+      "path": "target/cleanup-audit/text-svg-after",
+      "sha256": "1240e2117464bd5fd85bdf5b050963f0b5e02c1d19270c3faaef10647b04ea77"
+    },
+    {
+      "path": "target/cleanup-audit/text-window-before",
+      "sha256": "590471342dd7ab98660c3a792a6ea0f13afb03f71d6cde5d75ec8de37eb650bf"
+    },
+    {
+      "path": "target/cleanup-audit/text-window-after",
+      "sha256": "21a46a8dc59cb7d62df9dadcd4376c4812548e9a32b26acbe720c8962994f3c5"
+    },
+    {
+      "path": "target/cleanup-audit/text-text-before",
+      "sha256": "2661278728e338342195db273e59ad40e046199f944914b9703cff014edb2b9c"
+    },
+    {
+      "path": "target/cleanup-audit/text-text-after",
+      "sha256": "84c3bd37d8bb8d4c8955fb4b0d856f2de684397fb22d1019ca74efe8c055fe73"
+    }
+  ],
+  "temporary_measurement_cleanup_complete": true
+}

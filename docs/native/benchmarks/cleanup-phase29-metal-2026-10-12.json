@@ -1,0 +1,511 @@
+{
+  "schema": 1,
+  "phase": 29,
+  "date": "2026-10-12",
+  "baseline_commit": "129c9f039fdf880ff29270357e185aaf90885380",
+  "change": "Delete inert retained-frame/node fields and unreachable states; encode mandatory scene versions; fix shared-base shortcut losing logical overlay damage after rejected targets; split materializer damage ownership.",
+  "environment": {
+    "os": "macOS 27.0.1",
+    "gpu": "Apple M5",
+    "gpu_registry_id": "0000000100000575",
+    "build_profile": "release",
+    "backend": "metal",
+    "rayon_num_threads": 1,
+    "validation_during_timing": false,
+    "competing_builds_or_gpu_jobs": false
+  },
+  "workload": {
+    "command": [
+      "native_present",
+      "metal",
+      "--smoke"
+    ],
+    "timing_scope": "Whole process: context/window initialization, warmed shader-cache load, eight presented frames, resize and teardown; not isolated frame or GPU timing.",
+    "physical_sizes": [
+      [
+        640,
+        360
+      ],
+      [
+        480,
+        270
+      ]
+    ],
+    "frames_per_process": 8,
+    "warmup_processes_per_variant_per_mode": 2,
+    "timed_alternating_pairs_per_mode": 10,
+    "same_implementation_control": "Both labels run the current executable.",
+    "p95_method": "nearest rank"
+  },
+  "executable_sha256": {
+    "before": "5d9c80acfcbf31663c9a967dab51eacd48b97d2d9f58535f8c5c2056facd9e2a",
+    "after": "67b787a46cbd04f141a1dcaa4e0b6048fa936830350b1684368175fd0c8aabc0"
+  },
+  "summary": {
+    "compare": {
+      "before": {
+        "timed_processes": 10,
+        "median_ms": 233.84475000784732,
+        "p95_ms": 250.86274999193847,
+        "min_ms": 232.1432089956943,
+        "max_ms": 250.86274999193847
+      },
+      "after": {
+        "timed_processes": 10,
+        "median_ms": 233.12645850819536,
+        "p95_ms": 239.41220800043084,
+        "min_ms": 231.57958401134238,
+        "max_ms": 239.41220800043084
+      },
+      "change_percent": {
+        "median_ms": -0.3071659721365805,
+        "p95_ms": -4.5644648286266465
+      }
+    },
+    "same-after-control": {
+      "before": {
+        "timed_processes": 10,
+        "median_ms": 233.0414994939929,
+        "p95_ms": 240.76075002085418,
+        "min_ms": 231.30325000965968,
+        "max_ms": 240.76075002085418
+      },
+      "after": {
+        "timed_processes": 10,
+        "median_ms": 233.0345835071057,
+        "p95_ms": 249.41237500752322,
+        "min_ms": 230.9653749980498,
+        "max_ms": 249.41237500752322
+      },
+      "change_percent": {
+        "median_ms": -0.0029677061391231163,
+        "p95_ms": 3.5934532459795276
+      }
+    }
+  },
+  "runs": [
+    {
+      "mode": "compare",
+      "pair": 0,
+      "variant": "before",
+      "warmup": true,
+      "elapsed_ms": 724.2100829898845,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "compare",
+      "pair": 0,
+      "variant": "after",
+      "warmup": true,
+      "elapsed_ms": 229.9670829961542,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "compare",
+      "pair": 1,
+      "variant": "after",
+      "warmup": true,
+      "elapsed_ms": 232.4925839784555,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "compare",
+      "pair": 1,
+      "variant": "before",
+      "warmup": true,
+      "elapsed_ms": 232.6649579918012,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "compare",
+      "pair": 2,
+      "variant": "before",
+      "warmup": false,
+      "elapsed_ms": 250.86274999193847,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "compare",
+      "pair": 2,
+      "variant": "after",
+      "warmup": false,
+      "elapsed_ms": 234.42716599674895,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "compare",
+      "pair": 3,
+      "variant": "after",
+      "warmup": false,
+      "elapsed_ms": 231.7955000034999,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "compare",
+      "pair": 3,
+      "variant": "before",
+      "warmup": false,
+      "elapsed_ms": 232.99074999522418,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "compare",
+      "pair": 4,
+      "variant": "before",
+      "warmup": false,
+      "elapsed_ms": 232.5864169979468,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "compare",
+      "pair": 4,
+      "variant": "after",
+      "warmup": false,
+      "elapsed_ms": 233.0294999992475,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "compare",
+      "pair": 5,
+      "variant": "after",
+      "warmup": false,
+      "elapsed_ms": 233.22341701714322,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "compare",
+      "pair": 5,
+      "variant": "before",
+      "warmup": false,
+      "elapsed_ms": 232.1432089956943,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "compare",
+      "pair": 6,
+      "variant": "before",
+      "warmup": false,
+      "elapsed_ms": 233.80229200120084,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "compare",
+      "pair": 6,
+      "variant": "after",
+      "warmup": false,
+      "elapsed_ms": 234.20825001085177,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "compare",
+      "pair": 7,
+      "variant": "after",
+      "warmup": false,
+      "elapsed_ms": 232.16724998201244,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "compare",
+      "pair": 7,
+      "variant": "before",
+      "warmup": false,
+      "elapsed_ms": 233.8872080144938,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "compare",
+      "pair": 8,
+      "variant": "before",
+      "warmup": false,
+      "elapsed_ms": 247.9317919933237,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "compare",
+      "pair": 8,
+      "variant": "after",
+      "warmup": false,
+      "elapsed_ms": 233.32770899287425,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "compare",
+      "pair": 9,
+      "variant": "after",
+      "warmup": false,
+      "elapsed_ms": 232.59245898225345,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "compare",
+      "pair": 9,
+      "variant": "before",
+      "warmup": false,
+      "elapsed_ms": 232.65695801819675,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "compare",
+      "pair": 10,
+      "variant": "before",
+      "warmup": false,
+      "elapsed_ms": 234.6018750104122,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "compare",
+      "pair": 10,
+      "variant": "after",
+      "warmup": false,
+      "elapsed_ms": 231.57958401134238,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "compare",
+      "pair": 11,
+      "variant": "after",
+      "warmup": false,
+      "elapsed_ms": 239.41220800043084,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "compare",
+      "pair": 11,
+      "variant": "before",
+      "warmup": false,
+      "elapsed_ms": 243.75575000885874,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 0,
+      "variant": "before",
+      "warmup": true,
+      "elapsed_ms": 232.57295798975974,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 0,
+      "variant": "after",
+      "warmup": true,
+      "elapsed_ms": 232.668292010203,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 1,
+      "variant": "after",
+      "warmup": true,
+      "elapsed_ms": 234.25304199918173,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 1,
+      "variant": "before",
+      "warmup": true,
+      "elapsed_ms": 231.61341599188745,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 2,
+      "variant": "before",
+      "warmup": false,
+      "elapsed_ms": 233.3539160026703,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 2,
+      "variant": "after",
+      "warmup": false,
+      "elapsed_ms": 232.70441699423827,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 3,
+      "variant": "after",
+      "warmup": false,
+      "elapsed_ms": 232.40941599942744,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 3,
+      "variant": "before",
+      "warmup": false,
+      "elapsed_ms": 233.79870800999925,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 4,
+      "variant": "before",
+      "warmup": false,
+      "elapsed_ms": 232.72908298531547,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 4,
+      "variant": "after",
+      "warmup": false,
+      "elapsed_ms": 232.61058400385082,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 5,
+      "variant": "after",
+      "warmup": false,
+      "elapsed_ms": 234.98462501447648,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 5,
+      "variant": "before",
+      "warmup": false,
+      "elapsed_ms": 231.30325000965968,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 6,
+      "variant": "before",
+      "warmup": false,
+      "elapsed_ms": 232.51129101845436,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 6,
+      "variant": "after",
+      "warmup": false,
+      "elapsed_ms": 232.4997920077294,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 7,
+      "variant": "after",
+      "warmup": false,
+      "elapsed_ms": 230.9653749980498,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 7,
+      "variant": "before",
+      "warmup": false,
+      "elapsed_ms": 237.44583301595412,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 8,
+      "variant": "before",
+      "warmup": false,
+      "elapsed_ms": 232.5772079930175,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 8,
+      "variant": "after",
+      "warmup": false,
+      "elapsed_ms": 236.19441702612676,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 9,
+      "variant": "after",
+      "warmup": false,
+      "elapsed_ms": 249.41237500752322,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 9,
+      "variant": "before",
+      "warmup": false,
+      "elapsed_ms": 234.62662499514408,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 10,
+      "variant": "before",
+      "warmup": false,
+      "elapsed_ms": 240.76075002085418,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 10,
+      "variant": "after",
+      "warmup": false,
+      "elapsed_ms": 235.36420799791813,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 11,
+      "variant": "after",
+      "warmup": false,
+      "elapsed_ms": 233.36475001997314,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    },
+    {
+      "mode": "same-after-control",
+      "pair": 11,
+      "variant": "before",
+      "warmup": false,
+      "elapsed_ms": 231.60629198537208,
+      "stdout": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]"
+    }
+  ],
+  "verification": {
+    "all_48_window_processes_completed_8_frames_and_resize": true,
+    "validated_window_completed": true,
+    "svg_exact_matches": 1730,
+    "example_exact_matches": 7,
+    "active_metal_manifests_byte_identical": true,
+    "focused_retained_selection_passed": 163,
+    "final_focused_incremental_selection_passed": 20,
+    "final_focused_native_regressions_passed": 2,
+    "release_all_targets": {
+      "passed": 1054,
+      "failed": 3,
+      "ignored": 0
+    },
+    "example_tests_passed": 12,
+    "baseline_regressions": {
+      "passed": 1,
+      "failed": 1,
+      "failure": "rejected_targets_preserve_damage_across_pruned_versions: domain 0 retained pixels differ from fresh rendering"
+    },
+    "clippy": {
+      "library_warnings": 1,
+      "library_test_warnings": 8,
+      "new_warnings": 0
+    },
+    "known_failures": [
+      "every_hlsl_header_compiles_without_callers_globals",
+      "pinned_dxc_reports_invalid_source_for_both_targets",
+      "scaled_turbulence_matches_canonical_rgba"
+    ],
+    "materializer_split_method_bodies_preserved_after_recorded_field_changes": true
+  },
+  "interpretation": "The actual window application preserves measured whole-process performance: median -0.31%; same-current control median approximately unchanged. Neither that small difference nor tail differences establish a GPU/frame-throughput speedup. The native regression fixes incorrect pixels on the rejected-target/version-gap path; comparison against its old skipped drawing cannot establish useful rendering throughput.",
+  "limitations": [
+    "Window timing includes startup and teardown and does not isolate retained damage planning or the corrected error path.",
+    "DXC, ShaderTools and actual DX12/Vulkan GPU runtimes unavailable; two known DXC tests fail.",
+    "Preexisting scaled-turbulence canonical-image mismatch unchanged."
+  ],
+  "temporary_measurement_code": "No Rust measurement program added. Copied baseline executable removed after measurement; all 48 process observations retained."
+}

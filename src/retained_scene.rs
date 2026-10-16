@@ -19,16 +19,16 @@ mod prelude {
     pub(crate) use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
     pub(crate) use crate::{
-        Canvas, FillRule, Filter, Mask, NodeGeneration, PersistentLayerKey, Region, RetainedNodeId,
-        Sdf,
+        Canvas, CanvasSurface, FillRule, Filter, Mask, NodeRevision, PersistentLayerKey, Region,
+        RetainedNodeId, Sdf,
         canvas::{
-            PainterKey, RetainedFrameDelta, RetainedNodeKind, RetainedNodePatch, SceneBufferChanges,
+            PainterKey, PainterMetadata, RetainedFrameDelta, RetainedNodeKind, RetainedNodePatch,
+            SceneBufferChanges,
         },
         shared::{
             bounds::Bounds,
             draw_record::{DrawRecord, DrawTagWord, FillRuleWord},
-            execution::{Command, CommandList, RetainedBatchBranch},
-            image::Image,
+            execution::{Command, CommandList},
             image_resource::{ImageKey, ImageResourceStore},
             layer::{Layer, filter},
             line::Line,
@@ -44,6 +44,7 @@ pub(crate) use prelude::*;
 
 mod materializer;
 mod model;
+mod mutation;
 mod scene;
 mod transaction;
 mod validation;
@@ -59,9 +60,6 @@ pub use model::{
 };
 pub use scene::RetainedScene;
 pub use transaction::RetainedSceneTransaction;
-
-#[cfg(feature = "bench-internals")]
-pub use materializer::RetainedMaterializerBenchmark;
 
 #[cfg(test)]
 #[path = "retained_scene/tests.rs"]

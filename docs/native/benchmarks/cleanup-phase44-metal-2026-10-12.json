@@ -1,0 +1,1243 @@
+{
+  "baseline_commit": "f80b431260cd4a9a59b2f580b583f03981798471",
+  "gpu": "Apple M5",
+  "device_selection": {
+    "window": "Explicit registry ID 0000000100000575",
+    "svg": "System default on freshly verified single-GPU host"
+  },
+  "validation": {
+    "commands": {
+      "svg-focused": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--lib",
+          "svg::",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 0.07079216701094992,
+        "log": "target/cleanup-audit/lowering-svg-focused.log"
+      },
+      "progressive-focused": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--lib",
+          "progressive",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 0.36765662499237806,
+        "log": "target/cleanup-audit/lowering-progressive-focused.log"
+      },
+      "glass-focused": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--lib",
+          "glass",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 0.076322834007442,
+        "log": "target/cleanup-audit/lowering-glass-focused.log"
+      },
+      "release-all": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets",
+          "--no-fail-fast",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 101,
+        "seconds": 57.67682308299118,
+        "log": "target/cleanup-audit/lowering-release-all.log"
+      },
+      "build-examples": {
+        "command": [
+          "cargo",
+          "build",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--examples"
+        ],
+        "exit_code": 0,
+        "seconds": 1.9870393330056686,
+        "log": "target/cleanup-audit/lowering-build-examples.log"
+      },
+      "clippy": {
+        "command": [
+          "cargo",
+          "clippy",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets"
+        ],
+        "exit_code": 0,
+        "seconds": 21.985273333004443,
+        "log": "target/cleanup-audit/lowering-clippy.log"
+      },
+      "backend-free": {
+        "command": [
+          "cargo",
+          "check",
+          "--release",
+          "--no-default-features",
+          "--lib"
+        ],
+        "exit_code": 0,
+        "seconds": 1.1012162500119302,
+        "log": "target/cleanup-audit/lowering-backend-free.log"
+      },
+      "fmt": {
+        "command": [
+          "cargo",
+          "fmt"
+        ],
+        "exit_code": 0,
+        "seconds": 0.6006809999817051,
+        "log": "target/cleanup-audit/lowering-fmt.log"
+      },
+      "fmt-check": {
+        "command": [
+          "cargo",
+          "fmt",
+          "--check"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5933788749971427,
+        "log": "target/cleanup-audit/lowering-fmt-check.log"
+      },
+      "svg": {
+        "command": [
+          "target/cleanup-audit/lowering-svg-after",
+          "target/cleanup-audit/lowering-svg"
+        ],
+        "exit_code": 0,
+        "seconds": 8.108135999995284,
+        "log": "target/cleanup-audit/lowering-svg.log"
+      },
+      "mesh-gradient": {
+        "command": [
+          "target/release/examples/mesh_gradient",
+          "target/cleanup-audit/lowering-mesh-gradient.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5084642079891637,
+        "log": "target/cleanup-audit/lowering-mesh-gradient.log"
+      },
+      "program-brush": {
+        "command": [
+          "target/release/examples/program_brush",
+          "target/cleanup-audit/lowering-program-brush.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5090793750132434,
+        "log": "target/cleanup-audit/lowering-program-brush.log"
+      },
+      "program-glass": {
+        "command": [
+          "target/release/examples/program_glass",
+          "target/cleanup-audit/lowering-program-glass.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.4569614579959307,
+        "log": "target/cleanup-audit/lowering-program-glass.log"
+      },
+      "shader-pipeline": {
+        "command": [
+          "target/release/examples/shader_pipeline",
+          "target/cleanup-audit/lowering-shader-pipeline.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.38572520899469964,
+        "log": "target/cleanup-audit/lowering-shader-pipeline.log"
+      },
+      "shader-graph": {
+        "command": [
+          "target/release/examples/shader_graph",
+          "target/cleanup-audit/lowering-shader-graph.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.44817374998820014,
+        "log": "target/cleanup-audit/lowering-shader-graph.log"
+      },
+      "progressive-balanced": {
+        "command": [
+          "target/release/examples/progressive_blur",
+          "target/cleanup-audit/lowering-progressive-balanced.png",
+          "balanced"
+        ],
+        "exit_code": 0,
+        "seconds": 0.46274495898978785,
+        "log": "target/cleanup-audit/lowering-progressive-balanced.log"
+      },
+      "progressive-high": {
+        "command": [
+          "target/release/examples/progressive_blur",
+          "target/cleanup-audit/lowering-progressive-high.png",
+          "high"
+        ],
+        "exit_code": 0,
+        "seconds": 0.058117082982789725,
+        "log": "target/cleanup-audit/lowering-progressive-high.log"
+      },
+      "window": {
+        "command": [
+          "target/cleanup-audit/lowering-window-after",
+          "metal",
+          "--smoke"
+        ],
+        "exit_code": 0,
+        "seconds": 0.9303380420024041,
+        "log": "target/cleanup-audit/lowering-window.log"
+      }
+    },
+    "focused": {
+      "svg-focused": {
+        "passed": 15,
+        "failed": 0,
+        "ignored": 0
+      },
+      "progressive-focused": {
+        "passed": 11,
+        "failed": 0,
+        "ignored": 0
+      },
+      "glass-focused": {
+        "passed": 4,
+        "failed": 0,
+        "ignored": 0
+      }
+    },
+    "tests": {
+      "passed": 1100,
+      "failed": 3,
+      "ignored": 0,
+      "failures": [
+        "every_hlsl_header_compiles_without_callers_globals",
+        "pinned_dxc_reports_invalid_source_for_both_targets",
+        "scaled_turbulence_matches_canonical_rgba"
+      ]
+    },
+    "executables": {
+      "svg": {
+        "path": "target/cleanup-audit/lowering-svg-after",
+        "sha256": "10c501dcaa21d2fcb003a6d9ede545f8b7a0b598956b731c4a31014e65f93f9d"
+      },
+      "window": {
+        "path": "target/cleanup-audit/lowering-window-after",
+        "sha256": "ae5469ee4eefbc5fb86971a3a3b1ed6ba602f3169fbbfce2b65c862d879e48d3"
+      }
+    },
+    "manifests": [
+      {
+        "path": "target/release/build/tileink-693345b8f8240684/out/tileink_native_artifacts.json",
+        "before_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "after_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "path": "target/release/build/tileink-24048925a7656d71/out/tileink_native_artifacts.json",
+        "before_sha256": "dbe277ec7af54dc1ae1e9d6d0f1ccb6607269c648a12f371126a65676d75085b",
+        "after_sha256": "a9498b48fd779f43cd2b47503c87fd31e0bbd1c0fb9c0ed0d080a8e24cdf2d2b"
+      },
+      {
+        "path": "target/release/build/tileink-02c1122da65b8cf5/out/tileink_native_artifacts.json",
+        "before_sha256": "dbe277ec7af54dc1ae1e9d6d0f1ccb6607269c648a12f371126a65676d75085b",
+        "after_sha256": "a9498b48fd779f43cd2b47503c87fd31e0bbd1c0fb9c0ed0d080a8e24cdf2d2b"
+      }
+    ],
+    "render": {
+      "svg": {
+        "count": 1730,
+        "diffs": []
+      },
+      "examples": [
+        {
+          "name": "mesh-gradient",
+          "exact_png_and_pixels": true,
+          "sha256": "b441ab07fa794d197930974308e74ccf02eb6790ea39c2ddfdda556c31afa91b"
+        },
+        {
+          "name": "program-brush",
+          "exact_png_and_pixels": true,
+          "sha256": "e43f483170f77abeecfd10698aeddcd2b56c3cd6bd69f46a1b0522b5d332a5be"
+        },
+        {
+          "name": "program-glass",
+          "exact_png_and_pixels": true,
+          "sha256": "90115ade795808c3b5b3b3aeb229ba98bbb8d33d2cc65fd02755bbcbbb9e341e"
+        },
+        {
+          "name": "shader-pipeline",
+          "exact_png_and_pixels": true,
+          "sha256": "b5518d0badb099847172803ea06892212d864ac4a023be365b19741042e161cb"
+        },
+        {
+          "name": "shader-graph",
+          "exact_png_and_pixels": true,
+          "sha256": "4a2ad67381fdad4f44ad88a324f16a092bdd8c7bf43adf36e3e7799730bc06d8"
+        },
+        {
+          "name": "progressive-balanced",
+          "exact_png_and_pixels": true,
+          "sha256": "79b56db9b658c240324aa6ea06a6e463795aa98c43ac010e402878c95d44d0cf"
+        },
+        {
+          "name": "progressive-high",
+          "exact_png_and_pixels": true,
+          "sha256": "5b100f5ce99634323890e2a49a0d4984ffe62082fa3dcabc67651999c46d1d7d"
+        }
+      ],
+      "window": {
+        "frames": 8,
+        "sizes": [
+          [
+            640,
+            360
+          ],
+          [
+            480,
+            270
+          ]
+        ]
+      }
+    },
+    "clippy_warnings": {
+      "lib": 1,
+      "lib_test": 8,
+      "unchanged": true
+    },
+    "baseline_semantic_tests": {
+      "svg": 15,
+      "new_cases": 7,
+      "passed_before_and_after": true
+    }
+  },
+  "svg_source_manifest": {
+    "count": 1730,
+    "sha256": "0cf891b6433247159b2c82daced1b3cbc86c55d2c594b5177606b80defab5ae9",
+    "encoding": "Sorted relative path, NUL, SHA-256 rows separated by LF, no final LF"
+  },
+  "method": {
+    "timer": "Whole process from launch through exit, completion and teardown; SVG includes parsing/readback/PNG saving. Verification runs after stopped timer.",
+    "warmups_per_label": 2,
+    "timed_pairs_per_comparison": 10,
+    "order": "Alternating pair order",
+    "metal_validation": false,
+    "p95": "Nearest-rank, maximum of ten timed samples",
+    "controls": "Identical current executable under both labels",
+    "excluded_observations": []
+  },
+  "measurements": [
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "executables": [
+        "target/cleanup-audit/lowering-svg-before",
+        "target/cleanup-audit/lowering-svg-after"
+      ],
+      "observations": [
+        {
+          "warmup": true,
+          "pair": 0,
+          "label": 0,
+          "milliseconds": 4907.424209,
+          "verified": 1730
+        },
+        {
+          "warmup": true,
+          "pair": 0,
+          "label": 1,
+          "milliseconds": 4336.049042,
+          "verified": 1730
+        },
+        {
+          "warmup": true,
+          "pair": 1,
+          "label": 1,
+          "milliseconds": 4395.512292,
+          "verified": 1730
+        },
+        {
+          "warmup": true,
+          "pair": 1,
+          "label": 0,
+          "milliseconds": 4281.352584,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 0,
+          "label": 0,
+          "milliseconds": 4269.140333,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 0,
+          "label": 1,
+          "milliseconds": 4287.162458,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 1,
+          "label": 1,
+          "milliseconds": 4405.172209,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 1,
+          "label": 0,
+          "milliseconds": 4300.395208,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 2,
+          "label": 0,
+          "milliseconds": 4304.916209,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 2,
+          "label": 1,
+          "milliseconds": 4273.864334,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 3,
+          "label": 1,
+          "milliseconds": 4473.108,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 3,
+          "label": 0,
+          "milliseconds": 4349.587417,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 4,
+          "label": 0,
+          "milliseconds": 4314.00725,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 4,
+          "label": 1,
+          "milliseconds": 4302.162916,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 5,
+          "label": 1,
+          "milliseconds": 4326.553166,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 5,
+          "label": 0,
+          "milliseconds": 4261.190416,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 6,
+          "label": 0,
+          "milliseconds": 4253.31525,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 6,
+          "label": 1,
+          "milliseconds": 4275.413375,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 7,
+          "label": 1,
+          "milliseconds": 4248.204041,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 7,
+          "label": 0,
+          "milliseconds": 5033.876541,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 8,
+          "label": 0,
+          "milliseconds": 4379.012125,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 8,
+          "label": 1,
+          "milliseconds": 4260.634542,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 9,
+          "label": 1,
+          "milliseconds": 4252.754709,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 9,
+          "label": 0,
+          "milliseconds": 4552.326291,
+          "verified": 1730
+        }
+      ],
+      "summary": [
+        {
+          "count": 10,
+          "min": 4253.31525,
+          "median": 4309.4617295,
+          "p95_nearest_rank": 5033.876541,
+          "max": 5033.876541
+        },
+        {
+          "count": 10,
+          "min": 4248.204041,
+          "median": 4281.2879164999995,
+          "p95_nearest_rank": 4473.108,
+          "max": 4473.108
+        }
+      ],
+      "median_change_percent": -0.6537664044476643,
+      "paired": {
+        "percent_changes": [
+          0.4221488073533305,
+          2.4364505105271337,
+          -0.7213119487687597,
+          2.839822979927488,
+          -0.27455526413404696,
+          1.5339082185713644,
+          0.5195506023213406,
+          -15.607703001868273,
+          -2.7032942504127093,
+          -6.580626318290427
+        ],
+        "median_percent": 0.07379677160964176,
+        "bootstrap_median_95_percent_interval": [
+          -3.6509691335295935,
+          1.5339082185713644
+        ],
+        "bootstrap_seed": 44,
+        "resamples": 20000
+      }
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "executables": [
+        "target/cleanup-audit/lowering-svg-after",
+        "target/cleanup-audit/lowering-svg-after"
+      ],
+      "observations": [
+        {
+          "warmup": true,
+          "pair": 0,
+          "label": 0,
+          "milliseconds": 4706.491209,
+          "verified": 1730
+        },
+        {
+          "warmup": true,
+          "pair": 0,
+          "label": 1,
+          "milliseconds": 4263.778666,
+          "verified": 1730
+        },
+        {
+          "warmup": true,
+          "pair": 1,
+          "label": 1,
+          "milliseconds": 4403.635625,
+          "verified": 1730
+        },
+        {
+          "warmup": true,
+          "pair": 1,
+          "label": 0,
+          "milliseconds": 4235.308541,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 0,
+          "label": 0,
+          "milliseconds": 4286.124667,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 0,
+          "label": 1,
+          "milliseconds": 4296.835083,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 1,
+          "label": 1,
+          "milliseconds": 4309.138709,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 1,
+          "label": 0,
+          "milliseconds": 4234.976208,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 2,
+          "label": 0,
+          "milliseconds": 4228.053,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 2,
+          "label": 1,
+          "milliseconds": 4252.974625,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 3,
+          "label": 1,
+          "milliseconds": 4227.82625,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 3,
+          "label": 0,
+          "milliseconds": 4336.9165,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 4,
+          "label": 0,
+          "milliseconds": 4260.77075,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 4,
+          "label": 1,
+          "milliseconds": 4264.975583,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 5,
+          "label": 1,
+          "milliseconds": 4224.603792,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 5,
+          "label": 0,
+          "milliseconds": 4225.113083,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 6,
+          "label": 0,
+          "milliseconds": 4240.378708,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 6,
+          "label": 1,
+          "milliseconds": 4221.827792,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 7,
+          "label": 1,
+          "milliseconds": 4257.846208,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 7,
+          "label": 0,
+          "milliseconds": 4258.554333,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 8,
+          "label": 0,
+          "milliseconds": 4310.705541,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 8,
+          "label": 1,
+          "milliseconds": 4282.242458,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 9,
+          "label": 1,
+          "milliseconds": 4229.772708,
+          "verified": 1730
+        },
+        {
+          "warmup": false,
+          "pair": 9,
+          "label": 0,
+          "milliseconds": 4207.989208,
+          "verified": 1730
+        }
+      ],
+      "summary": [
+        {
+          "count": 10,
+          "min": 4207.989208,
+          "median": 4249.4665205,
+          "p95_nearest_rank": 4336.9165,
+          "max": 4336.9165
+        },
+        {
+          "count": 10,
+          "min": 4221.827792,
+          "median": 4255.4104165,
+          "p95_nearest_rank": 4309.138709,
+          "max": 4309.138709
+        }
+      ],
+      "median_change_percent": 0.13987393408856352,
+      "paired": {
+        "percent_changes": [
+          0.24988577869566425,
+          1.7511904992501388,
+          0.5894350189082291,
+          -2.5153873725721994,
+          0.0986871448082648,
+          -0.012053902226888704,
+          -0.43748252874210364,
+          -0.01662829553477272,
+          -0.6602882690381507,
+          0.5176700538724494
+        ],
+        "median_percent": 0.04331662129068805,
+        "bootstrap_median_95_percent_interval": [
+          -0.43748252874210364,
+          0.5176700538724494
+        ],
+        "bootstrap_seed": 44,
+        "resamples": 20000
+      }
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "executables": [
+        "target/cleanup-audit/lowering-window-before",
+        "target/cleanup-audit/lowering-window-after"
+      ],
+      "observations": [
+        {
+          "warmup": true,
+          "pair": 0,
+          "label": 0,
+          "milliseconds": 1853.23325,
+          "verified": 8
+        },
+        {
+          "warmup": true,
+          "pair": 0,
+          "label": 1,
+          "milliseconds": 236.713292,
+          "verified": 8
+        },
+        {
+          "warmup": true,
+          "pair": 1,
+          "label": 1,
+          "milliseconds": 233.151291,
+          "verified": 8
+        },
+        {
+          "warmup": true,
+          "pair": 1,
+          "label": 0,
+          "milliseconds": 238.953458,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 0,
+          "label": 0,
+          "milliseconds": 237.661,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 0,
+          "label": 1,
+          "milliseconds": 236.667166,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 1,
+          "label": 1,
+          "milliseconds": 229.358958,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 1,
+          "label": 0,
+          "milliseconds": 234.715,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 2,
+          "label": 0,
+          "milliseconds": 233.25225,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 2,
+          "label": 1,
+          "milliseconds": 238.031125,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 3,
+          "label": 1,
+          "milliseconds": 230.628583,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 3,
+          "label": 0,
+          "milliseconds": 231.634,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 4,
+          "label": 0,
+          "milliseconds": 235.329416,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 4,
+          "label": 1,
+          "milliseconds": 231.489916,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 5,
+          "label": 1,
+          "milliseconds": 231.500916,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 5,
+          "label": 0,
+          "milliseconds": 233.158917,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 6,
+          "label": 0,
+          "milliseconds": 232.513083,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 6,
+          "label": 1,
+          "milliseconds": 234.0205,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 7,
+          "label": 1,
+          "milliseconds": 232.655542,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 7,
+          "label": 0,
+          "milliseconds": 233.769833,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 8,
+          "label": 0,
+          "milliseconds": 233.786084,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 8,
+          "label": 1,
+          "milliseconds": 232.702375,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 9,
+          "label": 1,
+          "milliseconds": 234.577834,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 9,
+          "label": 0,
+          "milliseconds": 232.222375,
+          "verified": 8
+        }
+      ],
+      "summary": [
+        {
+          "count": 10,
+          "min": 231.634,
+          "median": 233.5110415,
+          "p95_nearest_rank": 237.661,
+          "max": 237.661
+        },
+        {
+          "count": 10,
+          "min": 229.358958,
+          "median": 232.6789585,
+          "p95_nearest_rank": 238.031125,
+          "max": 238.031125
+        }
+      ],
+      "median_change_percent": -0.35633561250678625,
+      "paired": {
+        "percent_changes": [
+          -0.41817294381492653,
+          -2.281934260699147,
+          2.048801244146626,
+          -0.4340541543987473,
+          -1.631542739221354,
+          -0.7111034059229281,
+          0.6483149165417087,
+          -0.4766615887517054,
+          -0.46354726571321453,
+          1.0143118207278674
+        ],
+        "median_percent": -0.4488007100559809,
+        "bootstrap_median_95_percent_interval": [
+          -1.0541021639865296,
+          0.6483149165417087
+        ],
+        "bootstrap_seed": 44,
+        "resamples": 20000
+      }
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "executables": [
+        "target/cleanup-audit/lowering-window-after",
+        "target/cleanup-audit/lowering-window-after"
+      ],
+      "observations": [
+        {
+          "warmup": true,
+          "pair": 0,
+          "label": 0,
+          "milliseconds": 225.367959,
+          "verified": 8
+        },
+        {
+          "warmup": true,
+          "pair": 0,
+          "label": 1,
+          "milliseconds": 237.871,
+          "verified": 8
+        },
+        {
+          "warmup": true,
+          "pair": 1,
+          "label": 1,
+          "milliseconds": 233.203417,
+          "verified": 8
+        },
+        {
+          "warmup": true,
+          "pair": 1,
+          "label": 0,
+          "milliseconds": 238.039458,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 0,
+          "label": 0,
+          "milliseconds": 231.749791,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 0,
+          "label": 1,
+          "milliseconds": 236.36175,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 1,
+          "label": 1,
+          "milliseconds": 233.189333,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 1,
+          "label": 0,
+          "milliseconds": 236.23975,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 2,
+          "label": 0,
+          "milliseconds": 240.217584,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 2,
+          "label": 1,
+          "milliseconds": 234.081084,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 3,
+          "label": 1,
+          "milliseconds": 236.569208,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 3,
+          "label": 0,
+          "milliseconds": 233.300625,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 4,
+          "label": 0,
+          "milliseconds": 235.499833,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 4,
+          "label": 1,
+          "milliseconds": 238.561167,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 5,
+          "label": 1,
+          "milliseconds": 225.476583,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 5,
+          "label": 0,
+          "milliseconds": 234.424625,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 6,
+          "label": 0,
+          "milliseconds": 232.417292,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 6,
+          "label": 1,
+          "milliseconds": 231.469875,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 7,
+          "label": 1,
+          "milliseconds": 233.751,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 7,
+          "label": 0,
+          "milliseconds": 231.497416,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 8,
+          "label": 0,
+          "milliseconds": 234.377625,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 8,
+          "label": 1,
+          "milliseconds": 237.606292,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 9,
+          "label": 1,
+          "milliseconds": 234.179458,
+          "verified": 8
+        },
+        {
+          "warmup": false,
+          "pair": 9,
+          "label": 0,
+          "milliseconds": 238.314333,
+          "verified": 8
+        }
+      ],
+      "summary": [
+        {
+          "count": 10,
+          "min": 231.497416,
+          "median": 234.40112499999998,
+          "p95_nearest_rank": 240.217584,
+          "max": 240.217584
+        },
+        {
+          "count": 10,
+          "min": 225.476583,
+          "median": 234.130271,
+          "p95_nearest_rank": 238.561167,
+          "max": 238.561167
+        }
+      ],
+      "median_change_percent": -0.11555149319355529,
+      "paired": {
+        "percent_changes": [
+          1.9900596156308996,
+          -1.2912378209001585,
+          -2.554559036777251,
+          1.4010176783709887,
+          1.2999304334963229,
+          -3.8170230623169337,
+          -0.4076361925772724,
+          0.9734812763525696,
+          1.3775491581160964,
+          -1.7350509085829906
+        ],
+        "median_percent": 0.28292254188764865,
+        "bootstrap_median_95_percent_interval": [
+          -1.9228984288387045,
+          1.3775491581160964
+        ],
+        "bootstrap_seed": 44,
+        "resamples": 20000
+      }
+    }
+  ],
+  "verification_totals": {
+    "observations": 96,
+    "svg_png_hashes": 83040,
+    "window_frames": 384,
+    "svg_sources_unchanged": true
+  },
+  "assessment": "No stable material application timing regression identified. Both alternating-pair median-change 95% descriptive bootstrap intervals include zero and overlap identical-current controls. Small whole-process median decreases do not establish an isolated cleanup speedup. All observations and tails retained.",
+  "artifact_note": "Metal manifests change with recorded progressive/glass source bytes and compiled artifacts. Native ABI declarations remain unchanged; backend-free manifest is exact. Actual HLSL compilation is unavailable on this host.",
+  "temporary_measurement_code_removed": true,
+  "source_review": {
+    "original_svg_lines": 2087,
+    "current_entry_lines": 226,
+    "largest_new_production_module_lines": 470,
+    "function_body_comparison": "Only intended lowering functions changed; other drawing, clipping, paint/image and geometry bodies match after whitespace/visibility normalization."
+  }
+}

@@ -1,0 +1,98 @@
+use super::*;
+pub(super) struct Output {
+    buffer: Object<dyn MTLBuffer>,
+    row: usize,
+    pitch: usize,
+    rows: usize,
+}
+impl Output {
+    /// Copy already-completed shared memory; allocation and GPU errors are
+    /// handled during recording and completion, before these bytes are read.
+    pub fn read(&self) -> Vec<u8> {
+        // Frame is retired only after this command buffer completes;
+        // the shared readback allocation has exactly pitch*rows copied bytes.
+        let mut result = Vec::with_capacity(self.row * self.rows);
+        for index in 0..self.rows {
+            // Padding is not written by texture copies. Never construct or read
+            // a byte slice spanning those undefined bytes, even temporarily.
+            // SAFETY: Completion has retired this command; each row lies within the shared pitch*rows allocation and excludes unwritten padding.
+            let row = unsafe {
+                std::slice::from_raw_parts(
+                    self.buffer
+                        .contents()
+                        .as_ptr()
+                        .cast::<u8>()
+                        .add(index * self.pitch),
+                    self.row,
+                )
+            };
+            result.extend_from_slice(row);
+        }
+        result
+    }
+}
+pub(super) fn record(
+    device: &objc2::runtime::ProtocolObject<dyn MTLDevice>,
+    command: &objc2::runtime::ProtocolObject<dyn MTLCommandBuffer>,
+    batch: &ComputeBatch,
+    resources: &[Resource],
+) -> Result<Vec<Output>> {
+    // Target rendering has no CPU outputs. Completion and external event signals
+    // belong to the command buffer and need no empty transfer encoder.
+    if batch.outputs().is_empty() {
+        return Ok(Vec::new());
+    }
+    let encoder = command
+        .blitCommandEncoder()
+        .ok_or("Metal readback encoder failed")?;
+    let encoding = Encoding(objc2::runtime::ProtocolObject::from_ref(&*encoder));
+    let mut outputs = Vec::new();
+    for id in batch.outputs() {
+        let resource = &resources[id.index()];
+        let (row, pitch, rows) = match resource {
+            Resource::Texture(texture) => {
+                let crate::native::runtime::compute::Resource::Texture(input) =
+                    &batch.resources()[id.index()]
+                else {
+                    unreachable!()
+                };
+                let row = texture.width() * input.format.bytes_per_pixel();
+                (
+                    row,
+                    row.next_multiple_of(256),
+                    texture.height() * texture.arrayLength(),
+                )
+            }
+            Resource::Buffer(buffer) => (buffer.length(), buffer.length(), 1),
+            // Readback validation excludes descriptors; inline classification
+            // excludes all output buffers, preserving their allocation identity.
+            _ => unreachable!(),
+        };
+        let buffer = memory::buffer(device, pitch * rows, MTLResourceOptions::StorageModeShared)?;
+        // SAFETY: allocation dimensions and texture row pitch were computed
+        // above from the actual Metal objects, and copies cover defined regions.
+        unsafe {
+            match resource {
+                Resource::Buffer(source) => encoder
+                    .copyFromBuffer_sourceOffset_toBuffer_destinationOffset_size(
+                        source, 0, &buffer, 0, row,
+                    ),
+                Resource::Texture(source) => {
+                    let image = pitch * source.height();
+                    for layer in 0..source.arrayLength() {
+                        encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toBuffer_destinationOffset_destinationBytesPerRow_destinationBytesPerImage(source,layer,0,memory::origin([0,0]),MTLSize{width:source.width(),height:source.height(),depth:1},&buffer,layer*image,pitch,image);
+                    }
+                }
+                _ => unreachable!(),
+            }
+        }
+        outputs.push(Output {
+            buffer,
+            row,
+            pitch,
+            rows,
+        });
+    }
+    drop(encoding);
+    Ok(outputs)
+}

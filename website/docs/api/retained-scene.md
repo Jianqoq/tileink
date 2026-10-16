@@ -23,6 +23,7 @@ RetainedParent::mask(node)
 | 方法 | 说明 |
 |---|---|
 | `RetainedScene::new(width, height, scale, root_id)` | 创建 root group |
+| `RetainedScene::with_surface(surface, root_id)` / `surface()` | 使用或读取精确的 `CanvasSurface`；空物理尺寸被拒绝 |
 | `version()` | 当前 commit version |
 | `root()` | root ID |
 | `logical_size()` / `physical_size()` | scene extent |
@@ -34,6 +35,8 @@ Render 接受 `&RetainedScene`，transaction 持有 `&mut RetainedScene`，类�
 ## Transaction mutations
 
 所有 mutation 返回 `&mut Self`，可以链式调用；只有 `commit()` 改变 scene。
+
+Group 和 Layer 可以拥有 Content 子节点；`insert_scene` 创建的 Canvas leaf 没有 retained 子分支，不能用作 parent。只有 mask layer 可以拥有 Mask 子节点。`before: Some(id)` 必须指向同一分支中已有的 sibling，即使该分支为空也会验证；`None` 表示追加。`move_before(id, id)` 仅对已有节点是 no-op。非法分支错误中的 ID 指向实际请求的 parent。
 
 | 方法 | 语义与复杂度 |
 |---|---|
@@ -47,6 +50,7 @@ Render 接受 `&RetainedScene`，transaction 持有 `&mut RetainedScene`，类�
 | `move_before(id, sibling)` | 同 parent reorder |
 | `remove_subtree(id)` | 删除 node 和 descendants |
 | `resize(width, height, scale)` | 更新 surface；scale 必须与 live child Canvas 相容 |
+| `set_surface(surface)` | 原子更新已校验的 viewport，保留小数逻辑尺寸与精确物理尺寸；scale 必须与 live child Canvas 相容 |
 | `invalidate_rect(rect)` | raster-only damage |
 | `invalidate_all()` | full raster damage，不强制重建未变 scene data |
 | `commit()` | 原子验证、应用并返回新 `SceneVersion` |

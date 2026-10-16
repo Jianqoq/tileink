@@ -4,8 +4,6 @@
 //! rasterization, outline extraction, and atlas preparation can evolve
 //! independently.
 
-#[cfg(feature = "bench-internals")]
-mod benchmark;
 mod context;
 mod layout;
 mod options;
@@ -14,8 +12,6 @@ mod prepared;
 mod raster;
 mod scaler;
 
-#[cfg(feature = "bench-internals")]
-pub use benchmark::PreparedTextBenchmark;
 pub use context::TextContext;
 pub use layout::TextLayout;
 pub use options::{TextCompositeMode, TextLayoutOptions, TextRasterOptions, TextSubpixelMode};
@@ -27,9 +23,9 @@ pub(crate) use layout::{
 };
 #[cfg(test)]
 pub(crate) use prepared::PreparedGlyphImage;
-pub(crate) use prepared::{
-    AtlasSignature, PreparedGlyphContent, PreparedTextChanges, PreparedTextData,
-};
+pub(crate) use prepared::{AtlasSignature, PreparedTextChanges, PreparedTextData};
+
+pub(crate) use raster::GlyphContent;
 
 #[cfg(test)]
 mod tests;

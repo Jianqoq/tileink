@@ -1,0 +1,2422 @@
+{
+  "baseline_commit": "9afea5de6808ab47e7a1603d6f8bb3c4f0e77305",
+  "gpu": "Apple M5",
+  "registry_id": "0000000100000575",
+  "scope": "Remove repeated coarse stack validity branches after proving the closed typed producers and all emitter acceptance paths; preserve coverage, clip elision, ordering, capacity and ownership semantics.",
+  "tests": {
+    "passed": 1134,
+    "failed": 0,
+    "ignored": 0,
+    "test_binaries": 43,
+    "release": true,
+    "test_threads": 1,
+    "rayon_threads": 1,
+    "focused_coarse": 49,
+    "focused_producer": 1
+  },
+  "clippy_warnings": {
+    "library": 1,
+    "library_test": 8,
+    "new": 0
+  },
+  "validation": {
+    "commands": {
+      "fmt": {
+        "command": [
+          "cargo",
+          "fmt"
+        ],
+        "exit_code": 0,
+        "seconds": 0.6807849169999827,
+        "log": "target/cleanup-audit/stack-fmt.log"
+      },
+      "focused-coarse": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--lib",
+          "coarse",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 17.415024584013736,
+        "log": "target/cleanup-audit/stack-focused-coarse.log"
+      },
+      "focused-producer": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--lib",
+          "fused_stack_producers",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 0.07164583299891092,
+        "log": "target/cleanup-audit/stack-focused-producer.log"
+      },
+      "release-all": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets",
+          "--no-fail-fast",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 42.82747083398863,
+        "log": "target/cleanup-audit/stack-release-all.log"
+      },
+      "clippy": {
+        "command": [
+          "cargo",
+          "clippy",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets"
+        ],
+        "exit_code": 0,
+        "seconds": 3.2939928749983665,
+        "log": "target/cleanup-audit/stack-clippy.log"
+      },
+      "backend-free": {
+        "command": [
+          "cargo",
+          "check",
+          "--release",
+          "--no-default-features",
+          "--lib"
+        ],
+        "exit_code": 0,
+        "seconds": 0.12760791601613164,
+        "log": "target/cleanup-audit/stack-backend-free.log"
+      },
+      "build-after": {
+        "command": [
+          "cargo",
+          "build",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--examples"
+        ],
+        "exit_code": 0,
+        "seconds": 0.09803508399636485,
+        "log": "target/cleanup-audit/stack-build-after.log"
+      },
+      "windows-dx12": {
+        "command": [
+          "cargo",
+          "check",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "dx12",
+          "--target",
+          "x86_64-pc-windows-gnu",
+          "--all-targets"
+        ],
+        "exit_code": 0,
+        "seconds": 0.16930683402461,
+        "log": "target/cleanup-audit/stack-windows-dx12.log"
+      },
+      "windows-vulkan": {
+        "command": [
+          "cargo",
+          "check",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "vulkan",
+          "--target",
+          "x86_64-pc-windows-gnu",
+          "--all-targets"
+        ],
+        "exit_code": 0,
+        "seconds": 0.12235970899928361,
+        "log": "target/cleanup-audit/stack-windows-vulkan.log"
+      },
+      "fmt-check": {
+        "command": [
+          "cargo",
+          "fmt",
+          "--check"
+        ],
+        "exit_code": 0,
+        "seconds": 0.6071242080070078,
+        "log": "target/cleanup-audit/stack-fmt-check.log"
+      },
+      "svg": {
+        "command": [
+          "target/cleanup-audit/stack-svg-after",
+          "target/cleanup-audit/stack-svg"
+        ],
+        "exit_code": 0,
+        "seconds": 6.282950667024124,
+        "log": "target/cleanup-audit/stack-svg.log"
+      },
+      "mesh-gradient": {
+        "command": [
+          "target/release/examples/mesh_gradient",
+          "target/cleanup-audit/stack-mesh-gradient.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.4808906670077704,
+        "log": "target/cleanup-audit/stack-mesh-gradient.log"
+      },
+      "program-brush": {
+        "command": [
+          "target/release/examples/program_brush",
+          "target/cleanup-audit/stack-program-brush.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5058022920275107,
+        "log": "target/cleanup-audit/stack-program-brush.log"
+      },
+      "program-glass": {
+        "command": [
+          "target/release/examples/program_glass",
+          "target/cleanup-audit/stack-program-glass.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.435950416023843,
+        "log": "target/cleanup-audit/stack-program-glass.log"
+      },
+      "shader-pipeline": {
+        "command": [
+          "target/release/examples/shader_pipeline",
+          "target/cleanup-audit/stack-shader-pipeline.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.43459129199618474,
+        "log": "target/cleanup-audit/stack-shader-pipeline.log"
+      },
+      "shader-graph": {
+        "command": [
+          "target/release/examples/shader_graph",
+          "target/cleanup-audit/stack-shader-graph.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.4437239170074463,
+        "log": "target/cleanup-audit/stack-shader-graph.log"
+      },
+      "progressive-balanced": {
+        "command": [
+          "target/release/examples/progressive_blur",
+          "target/cleanup-audit/stack-progressive-balanced.png",
+          "balanced"
+        ],
+        "exit_code": 0,
+        "seconds": 0.4630672500061337,
+        "log": "target/cleanup-audit/stack-progressive-balanced.log"
+      },
+      "progressive-high": {
+        "command": [
+          "target/release/examples/progressive_blur",
+          "target/cleanup-audit/stack-progressive-high.png",
+          "high"
+        ],
+        "exit_code": 0,
+        "seconds": 0.06086083300760947,
+        "log": "target/cleanup-audit/stack-progressive-high.log"
+      },
+      "window": {
+        "command": [
+          "target/cleanup-audit/stack-window-after",
+          "metal",
+          "--smoke"
+        ],
+        "exit_code": 0,
+        "seconds": 0.6797272910189349,
+        "log": "target/cleanup-audit/stack-window.log"
+      },
+      "app": {
+        "command": [
+          "target/cleanup-audit/stack-app-after",
+          "target/cleanup-audit/stack-app-images"
+        ],
+        "exit_code": 0,
+        "seconds": 0.4136903330218047,
+        "log": "target/cleanup-audit/stack-app.log"
+      }
+    },
+    "render": {
+      "svg": {
+        "png_count": 1730,
+        "exact_baseline": true,
+        "sources_unchanged": true
+      },
+      "mesh-gradient": {
+        "exact_baseline": true,
+        "sha256": "b441ab07fa794d197930974308e74ccf02eb6790ea39c2ddfdda556c31afa91b"
+      },
+      "program-brush": {
+        "exact_baseline": true,
+        "sha256": "e43f483170f77abeecfd10698aeddcd2b56c3cd6bd69f46a1b0522b5d332a5be"
+      },
+      "program-glass": {
+        "exact_baseline": true,
+        "sha256": "90115ade795808c3b5b3b3aeb229ba98bbb8d33d2cc65fd02755bbcbbb9e341e"
+      },
+      "shader-pipeline": {
+        "exact_baseline": true,
+        "sha256": "b5518d0badb099847172803ea06892212d864ac4a023be365b19741042e161cb"
+      },
+      "shader-graph": {
+        "exact_baseline": true,
+        "sha256": "4a2ad67381fdad4f44ad88a324f16a092bdd8c7bf43adf36e3e7799730bc06d8"
+      },
+      "progressive-balanced": {
+        "exact_baseline": true,
+        "sha256": "79b56db9b658c240324aa6ea06a6e463795aa98c43ac010e402878c95d44d0cf"
+      },
+      "progressive-high": {
+        "exact_baseline": true,
+        "sha256": "5b100f5ce99634323890e2a49a0d4984ffe62082fa3dcabc67651999c46d1d7d"
+      },
+      "window": {
+        "frames": 8,
+        "physical_sizes": [
+          [
+            640,
+            360
+          ],
+          [
+            480,
+            270
+          ]
+        ]
+      },
+      "app": {
+        "frames": 48,
+        "png_count": 9,
+        "exact_baseline": true
+      }
+    },
+    "final_executables": {
+      "svg": {
+        "path": "target/release/examples/svg_fixture_render",
+        "sha256": "bafe4d960b7f16b8a03a5a12c8588ead731d49c3713a05b2b80e74b2de4fdae6",
+        "matches_timed_after": true,
+        "temporary": false
+      },
+      "window": {
+        "path": "target/release/examples/native_present",
+        "sha256": "5b89eb5d632a5cced4371a5cbd5bd2534c5f20307e1882db7c984402cb4070f2",
+        "matches_timed_after": true,
+        "temporary": false
+      },
+      "app": {
+        "path": "target/release/examples/cleanup_coarse_stacks",
+        "sha256": "3f4b1a5550045972a09891684ada9d784b513c100b7862f4d559f71b2c3b8eea",
+        "matches_timed_after": true,
+        "temporary": true
+      }
+    }
+  },
+  "timing": {
+    "method": {
+      "clock": "time.perf_counter full subprocess wall time; timer stopped before output and image verification",
+      "execution": "Sequential workloads; no concurrent cargo/test/GPU jobs; alternating pair order; control interleaved after each comparison",
+      "warmups_per_label": 2,
+      "labels": [
+        "before",
+        "after",
+        "current_a",
+        "current_b"
+      ],
+      "pairs_per_comparison": 10,
+      "api_validation_for_correctness": true,
+      "api_validation_for_timing": false,
+      "rayon_threads": 1,
+      "gpu_registry_id": "0000000100000575",
+      "bootstrap": "20,000 seeded resamples of ten paired ratios; median percentile interval is descriptive, not a causal significance claim",
+      "included_costs": [
+        "process startup",
+        "scene construction",
+        "renderer setup",
+        "GPU completion",
+        "readback",
+        "PNG/file IO where present"
+      ],
+      "all_observations_and_tails_retained": true,
+      "adapter_selection": {
+        "app": "explicit registry ID 0000000100000575",
+        "window": "TILEINK_NATIVE_GPU consumed by the Metal window host",
+        "svg": "NativeContextOptions::default selects the system default; this host has one Apple M5 GPU",
+        "raw_coarse_unit_routes": "default Metal device; explicit-pin harness policy pending"
+      },
+      "hardware_inventory": {
+        "tool": "system_profiler SPDisplaysDataType -json",
+        "gpu_count": 1,
+        "model": "Apple M5",
+        "cores": 10
+      }
+    },
+    "observations": [
+      {
+        "workload": "svg",
+        "label": "before",
+        "pair": 0,
+        "warmup": true,
+        "seconds": 6.072403708007187,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-before-0-warm.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "pair": 0,
+        "warmup": true,
+        "seconds": 4.674094832997071,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-after-0-warm.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "pair": 0,
+        "warmup": true,
+        "seconds": 4.335337208991405,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_a-0-warm.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "pair": 0,
+        "warmup": true,
+        "seconds": 4.272402709000744,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_b-0-warm.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "pair": 1,
+        "warmup": true,
+        "seconds": 4.268972999998368,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-before-1-warm.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "pair": 1,
+        "warmup": true,
+        "seconds": 4.280224457994336,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-after-1-warm.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "pair": 1,
+        "warmup": true,
+        "seconds": 4.445236375002423,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_a-1-warm.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "pair": 1,
+        "warmup": true,
+        "seconds": 4.503731666016392,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_b-1-warm.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "pair": 0,
+        "warmup": true,
+        "seconds": 0.26591091699083336,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-before-0-warm.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "pair": 0,
+        "warmup": true,
+        "seconds": 0.2897568750195205,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-after-0-warm.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "pair": 0,
+        "warmup": true,
+        "seconds": 0.28267554100602865,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_a-0-warm.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "pair": 0,
+        "warmup": true,
+        "seconds": 0.25552991600125097,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_b-0-warm.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "pair": 1,
+        "warmup": true,
+        "seconds": 0.2556260410055984,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-before-1-warm.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "pair": 1,
+        "warmup": true,
+        "seconds": 0.25932112499140203,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-after-1-warm.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "pair": 1,
+        "warmup": true,
+        "seconds": 0.25669745801133104,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_a-1-warm.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "pair": 1,
+        "warmup": true,
+        "seconds": 0.25969350000377744,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_b-1-warm.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "pair": 0,
+        "warmup": true,
+        "seconds": 1.7007317910029087,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-before-0-warm.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "pair": 0,
+        "warmup": true,
+        "seconds": 0.2314044999948237,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-after-0-warm.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "pair": 0,
+        "warmup": true,
+        "seconds": 0.22858741600066423,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_a-0-warm.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "pair": 0,
+        "warmup": true,
+        "seconds": 0.23903999998583458,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_b-0-warm.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "pair": 1,
+        "warmup": true,
+        "seconds": 0.24533033301122487,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-before-1-warm.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "pair": 1,
+        "warmup": true,
+        "seconds": 0.23770379202323966,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-after-1-warm.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "pair": 1,
+        "warmup": true,
+        "seconds": 0.2370000410010107,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_a-1-warm.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "pair": 1,
+        "warmup": true,
+        "seconds": 0.2376460419909563,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_b-1-warm.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "pair": 0,
+        "warmup": false,
+        "seconds": 4.317526541999541,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-before-0-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "pair": 0,
+        "warmup": false,
+        "seconds": 4.287424667010782,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-after-0-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "pair": 0,
+        "warmup": false,
+        "seconds": 4.3642940830031876,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_a-0-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "pair": 0,
+        "warmup": false,
+        "seconds": 4.318776208005147,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_b-0-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "pair": 0,
+        "warmup": false,
+        "seconds": 0.2624169170157984,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-before-0-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "pair": 0,
+        "warmup": false,
+        "seconds": 0.25632837499142624,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-after-0-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "pair": 0,
+        "warmup": false,
+        "seconds": 0.2525789579958655,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_a-0-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "pair": 0,
+        "warmup": false,
+        "seconds": 0.25140983299934305,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_b-0-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "pair": 0,
+        "warmup": false,
+        "seconds": 0.2217804999963846,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-before-0-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "pair": 0,
+        "warmup": false,
+        "seconds": 0.23874104200513102,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-after-0-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "pair": 0,
+        "warmup": false,
+        "seconds": 0.2365657500049565,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_a-0-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "pair": 0,
+        "warmup": false,
+        "seconds": 0.23287425001035444,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_b-0-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "pair": 1,
+        "warmup": false,
+        "seconds": 4.50000491598621,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-after-1-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "pair": 1,
+        "warmup": false,
+        "seconds": 4.264617916982388,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-before-1-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "pair": 1,
+        "warmup": false,
+        "seconds": 4.249620999995386,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_b-1-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "pair": 1,
+        "warmup": false,
+        "seconds": 4.267126083985204,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_a-1-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "pair": 1,
+        "warmup": false,
+        "seconds": 0.26065645800554194,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-after-1-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "pair": 1,
+        "warmup": false,
+        "seconds": 0.25428070800262503,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-before-1-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "pair": 1,
+        "warmup": false,
+        "seconds": 0.255025749997003,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_b-1-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "pair": 1,
+        "warmup": false,
+        "seconds": 0.255004792008549,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_a-1-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "pair": 1,
+        "warmup": false,
+        "seconds": 0.22169287499855272,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-after-1-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "pair": 1,
+        "warmup": false,
+        "seconds": 0.23322162497788668,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-before-1-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "pair": 1,
+        "warmup": false,
+        "seconds": 0.2351297919813078,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_b-1-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "pair": 1,
+        "warmup": false,
+        "seconds": 0.23484683298738673,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_a-1-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "pair": 2,
+        "warmup": false,
+        "seconds": 4.343423916987376,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-before-2-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "pair": 2,
+        "warmup": false,
+        "seconds": 4.562077040987788,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-after-2-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "pair": 2,
+        "warmup": false,
+        "seconds": 4.257077667018166,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_a-2-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "pair": 2,
+        "warmup": false,
+        "seconds": 4.252669874986168,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_b-2-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "pair": 2,
+        "warmup": false,
+        "seconds": 0.2704352909931913,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-before-2-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "pair": 2,
+        "warmup": false,
+        "seconds": 0.25459604201023467,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-after-2-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "pair": 2,
+        "warmup": false,
+        "seconds": 0.25259662501048297,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_a-2-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "pair": 2,
+        "warmup": false,
+        "seconds": 0.2520249579974916,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_b-2-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "pair": 2,
+        "warmup": false,
+        "seconds": 0.22526933398330584,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-before-2-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "pair": 2,
+        "warmup": false,
+        "seconds": 0.23545850001391955,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-after-2-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "pair": 2,
+        "warmup": false,
+        "seconds": 0.23750745799043216,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_a-2-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "pair": 2,
+        "warmup": false,
+        "seconds": 0.23528633298701607,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_b-2-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "pair": 3,
+        "warmup": false,
+        "seconds": 4.312544208019972,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-after-3-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "pair": 3,
+        "warmup": false,
+        "seconds": 4.292898250016151,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-before-3-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "pair": 3,
+        "warmup": false,
+        "seconds": 4.261713500018232,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_b-3-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "pair": 3,
+        "warmup": false,
+        "seconds": 4.259785375004867,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_a-3-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "pair": 3,
+        "warmup": false,
+        "seconds": 0.2638790839991998,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-after-3-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "pair": 3,
+        "warmup": false,
+        "seconds": 0.2556762080057524,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-before-3-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "pair": 3,
+        "warmup": false,
+        "seconds": 0.25518462498439476,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_b-3-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "pair": 3,
+        "warmup": false,
+        "seconds": 0.273363790998701,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_a-3-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "pair": 3,
+        "warmup": false,
+        "seconds": 0.2236260420177132,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-after-3-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "pair": 3,
+        "warmup": false,
+        "seconds": 0.23207133301184513,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-before-3-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "pair": 3,
+        "warmup": false,
+        "seconds": 0.2352977090049535,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_b-3-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "pair": 3,
+        "warmup": false,
+        "seconds": 0.23334287499892525,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_a-3-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "pair": 4,
+        "warmup": false,
+        "seconds": 4.372039374982705,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-before-4-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "pair": 4,
+        "warmup": false,
+        "seconds": 4.259649500017986,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-after-4-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "pair": 4,
+        "warmup": false,
+        "seconds": 4.257760499982396,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_a-4-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "pair": 4,
+        "warmup": false,
+        "seconds": 4.368008332996396,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_b-4-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "pair": 4,
+        "warmup": false,
+        "seconds": 0.25910675001796335,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-before-4-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "pair": 4,
+        "warmup": false,
+        "seconds": 0.25719554198440164,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-after-4-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "pair": 4,
+        "warmup": false,
+        "seconds": 0.2564937499992084,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_a-4-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "pair": 4,
+        "warmup": false,
+        "seconds": 0.25205224999808706,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_b-4-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "pair": 4,
+        "warmup": false,
+        "seconds": 0.22116320801433176,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-before-4-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "pair": 4,
+        "warmup": false,
+        "seconds": 0.23841858300147578,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-after-4-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "pair": 4,
+        "warmup": false,
+        "seconds": 0.23407870798837394,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_a-4-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "pair": 4,
+        "warmup": false,
+        "seconds": 0.2313667499984149,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_b-4-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "pair": 5,
+        "warmup": false,
+        "seconds": 4.298901083006058,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-after-5-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "pair": 5,
+        "warmup": false,
+        "seconds": 4.2731745000055525,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-before-5-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "pair": 5,
+        "warmup": false,
+        "seconds": 4.260867083998164,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_b-5-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "pair": 5,
+        "warmup": false,
+        "seconds": 4.5040501250186935,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_a-5-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "pair": 5,
+        "warmup": false,
+        "seconds": 0.2629724169964902,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-after-5-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "pair": 5,
+        "warmup": false,
+        "seconds": 0.27200358401751146,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-before-5-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "pair": 5,
+        "warmup": false,
+        "seconds": 0.3205203330144286,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_b-5-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "pair": 5,
+        "warmup": false,
+        "seconds": 0.257913917012047,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_a-5-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "pair": 5,
+        "warmup": false,
+        "seconds": 0.22406070798751898,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-after-5-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "pair": 5,
+        "warmup": false,
+        "seconds": 0.23971862500184216,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-before-5-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "pair": 5,
+        "warmup": false,
+        "seconds": 0.2347481669858098,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_b-5-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "pair": 5,
+        "warmup": false,
+        "seconds": 0.23775100000784732,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_a-5-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "pair": 6,
+        "warmup": false,
+        "seconds": 4.289794666983653,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-before-6-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "pair": 6,
+        "warmup": false,
+        "seconds": 4.313512666005408,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-after-6-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "pair": 6,
+        "warmup": false,
+        "seconds": 4.3064713749918155,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_a-6-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "pair": 6,
+        "warmup": false,
+        "seconds": 4.3099667909846175,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_b-6-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "pair": 6,
+        "warmup": false,
+        "seconds": 0.32572412499575876,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-before-6-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "pair": 6,
+        "warmup": false,
+        "seconds": 0.2611353329848498,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-after-6-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "pair": 6,
+        "warmup": false,
+        "seconds": 0.2810449999815319,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_a-6-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "pair": 6,
+        "warmup": false,
+        "seconds": 0.2801500829809811,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_b-6-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "pair": 6,
+        "warmup": false,
+        "seconds": 0.2400398750032764,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-before-6-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "pair": 6,
+        "warmup": false,
+        "seconds": 0.2396969999826979,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-after-6-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "pair": 6,
+        "warmup": false,
+        "seconds": 0.23341133299982175,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_a-6-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "pair": 6,
+        "warmup": false,
+        "seconds": 0.23488283299957402,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_b-6-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "pair": 7,
+        "warmup": false,
+        "seconds": 4.375786749995314,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-after-7-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "pair": 7,
+        "warmup": false,
+        "seconds": 4.250860416999785,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-before-7-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "pair": 7,
+        "warmup": false,
+        "seconds": 4.260347500006901,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_b-7-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "pair": 7,
+        "warmup": false,
+        "seconds": 4.245235291979043,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_a-7-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "pair": 7,
+        "warmup": false,
+        "seconds": 0.2575771250121761,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-after-7-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "pair": 7,
+        "warmup": false,
+        "seconds": 0.25552783301100135,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-before-7-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "pair": 7,
+        "warmup": false,
+        "seconds": 0.25286620800034143,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_b-7-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "pair": 7,
+        "warmup": false,
+        "seconds": 0.258506167010637,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_a-7-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "pair": 7,
+        "warmup": false,
+        "seconds": 0.2239304999820888,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-after-7-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "pair": 7,
+        "warmup": false,
+        "seconds": 0.23743725000531413,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-before-7-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "pair": 7,
+        "warmup": false,
+        "seconds": 0.23807408401626162,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_b-7-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "pair": 7,
+        "warmup": false,
+        "seconds": 0.23365525002009235,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_a-7-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "pair": 8,
+        "warmup": false,
+        "seconds": 4.298159915982978,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-before-8-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "pair": 8,
+        "warmup": false,
+        "seconds": 4.25888541599852,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-after-8-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "pair": 8,
+        "warmup": false,
+        "seconds": 4.270607459009625,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_a-8-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "pair": 8,
+        "warmup": false,
+        "seconds": 4.265096291986993,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_b-8-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "pair": 8,
+        "warmup": false,
+        "seconds": 0.26329287499538623,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-before-8-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "pair": 8,
+        "warmup": false,
+        "seconds": 0.254445416998351,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-after-8-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "pair": 8,
+        "warmup": false,
+        "seconds": 0.2550760420272127,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_a-8-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "pair": 8,
+        "warmup": false,
+        "seconds": 0.25167737499577925,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_b-8-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "pair": 8,
+        "warmup": false,
+        "seconds": 0.22224433399969712,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-before-8-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "pair": 8,
+        "warmup": false,
+        "seconds": 0.2322782920091413,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-after-8-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "pair": 8,
+        "warmup": false,
+        "seconds": 0.23278525000205263,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_a-8-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "pair": 8,
+        "warmup": false,
+        "seconds": 0.23425487498752773,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_b-8-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "pair": 9,
+        "warmup": false,
+        "seconds": 4.287493707990507,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-after-9-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "pair": 9,
+        "warmup": false,
+        "seconds": 4.416650708008092,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-before-9-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_b",
+        "pair": 9,
+        "warmup": false,
+        "seconds": 4.315271416009637,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_b-9-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "current_a",
+        "pair": 9,
+        "warmup": false,
+        "seconds": 4.274424083007034,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-svg-current_a-9-measured.log",
+        "output_tail": ""
+      },
+      {
+        "workload": "app",
+        "label": "after",
+        "pair": 9,
+        "warmup": false,
+        "seconds": 0.26105924998410046,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-after-9-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "before",
+        "pair": 9,
+        "warmup": false,
+        "seconds": 0.2585740829817951,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-before-9-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_b",
+        "pair": 9,
+        "warmup": false,
+        "seconds": 0.2506040839944035,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_b-9-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "app",
+        "label": "current_a",
+        "pair": 9,
+        "warmup": false,
+        "seconds": 0.2531230830063578,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-app-current_a-9-measured.log",
+        "output_tail": "48 frames; 48 cards with four mixed clips and fused opacity/blend; three phases\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "pair": 9,
+        "warmup": false,
+        "seconds": 0.22291354200569913,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-after-9-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "pair": 9,
+        "warmup": false,
+        "seconds": 0.2372943749942351,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-before-9-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_b",
+        "pair": 9,
+        "warmup": false,
+        "seconds": 0.2335353340022266,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_b-9-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "current_a",
+        "pair": 9,
+        "warmup": false,
+        "seconds": 0.23900783399585634,
+        "exit_code": 0,
+        "log": "target/cleanup-audit/stack-time-window-current_a-9-measured.log",
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      }
+    ],
+    "summary": {
+      "svg": {
+        "comparison": {
+          "before_label": "before",
+          "after_label": "after",
+          "pairs": 10,
+          "before_median_ms": 4295.529082999565,
+          "after_median_ms": 4305.722645513015,
+          "median_change_pct": 0.23730633215341967,
+          "before_p95_ms": 4416.650708008092,
+          "after_p95_ms": 4562.077040987788,
+          "paired_median_change_pct": 0.5052660697996036,
+          "paired_changes_pct": [
+            -0.6972018514753153,
+            5.519533134878829,
+            5.034118892822015,
+            0.45763856629368327,
+            -2.570651024046744,
+            0.6020485004876841,
+            0.552893573305524,
+            2.9388481563857205,
+            -0.9137514832431748,
+            -2.9243200007508685
+          ],
+          "paired_median_descriptive_bootstrap_95_pct": [
+            -1.6339264377610296,
+            2.9388481563857205
+          ]
+        },
+        "identical_current_control": {
+          "before_label": "current_a",
+          "after_label": "current_b",
+          "pairs": 10,
+          "before_median_ms": 4268.866771497414,
+          "after_median_ms": 4263.404896002612,
+          "median_change_pct": -0.12794673123251998,
+          "before_p95_ms": 4504.0501250186935,
+          "after_p95_ms": 4368.008332996396,
+          "paired_median_change_pct": -0.02913844677288613,
+          "paired_changes_pct": [
+            -1.0429607659875773,
+            -0.4102312339800629,
+            -0.10354032453171458,
+            0.04526343098594232,
+            2.5893385270133518,
+            -5.399208140906742,
+            0.08116659065935394,
+            0.3559804578184611,
+            -0.12904878464082836,
+            0.9556219085745665
+          ],
+          "paired_median_descriptive_bootstrap_95_pct": [
+            -0.5860047753142028,
+            0.5183942496169602
+          ]
+        }
+      },
+      "app": {
+        "comparison": {
+          "before_label": "before",
+          "after_label": "after",
+          "pairs": 10,
+          "before_median_ms": 260.76183351688087,
+          "after_median_ms": 259.116791508859,
+          "median_change_pct": -0.6308599636055789,
+          "before_p95_ms": 325.72412499575876,
+          "after_p95_ms": 263.8790839991998,
+          "paired_median_change_pct": -1.5288965378293884,
+          "paired_changes_pct": [
+            -2.320178932673611,
+            2.507366780987219,
+            -5.8569460090752035,
+            3.208306340832001,
+            -0.7376141429851657,
+            -3.320238243787199,
+            -19.8292932744082,
+            0.8019838688517966,
+            -3.360310451693871,
+            0.9611044438975647
+          ],
+          "paired_median_descriptive_bootstrap_95_pct": [
+            -4.588592126431202,
+            1.6546753249195079
+          ]
+        },
+        "identical_current_control": {
+          "before_label": "current_a",
+          "after_label": "current_b",
+          "pairs": 10,
+          "before_median_ms": 255.78489601321053,
+          "after_median_ms": 252.45922899921425,
+          "median_change_pct": -1.3001811544902653,
+          "before_p95_ms": 281.0449999815319,
+          "after_p95_ms": 320.5203330144286,
+          "paired_median_change_pct": -0.7290213487440134,
+          "paired_changes_pct": [
+            -0.46287505728864753,
+            0.00821866455487097,
+            -0.2263161722638407,
+            -6.65017336344762,
+            -1.7316211413085147,
+            24.27415190606301,
+            -0.31842480763207837,
+            -2.181750275251071,
+            -1.3324132695578084,
+            -0.9951676401993792
+          ],
+          "paired_median_descriptive_bootstrap_95_pct": [
+            -1.7570817724044396,
+            -0.1551030715386037
+          ]
+        }
+      },
+      "window": {
+        "comparison": {
+          "before_label": "before",
+          "after_label": "after",
+          "pairs": 10,
+          "before_median_ms": 232.6464789948659,
+          "after_median_ms": 228.16949999833014,
+          "median_change_pct": -1.9243699779503465,
+          "before_p95_ms": 240.0398750032764,
+          "after_p95_ms": 239.6969999826979,
+          "paired_median_change_pct": -1.8909667917478001,
+          "paired_changes_pct": [
+            7.6474451130838395,
+            -4.943259434208591,
+            4.5231038998716055,
+            -3.6390927240034787,
+            7.802100151317148,
+            -6.531789932552323,
+            -0.14284085949212155,
+            -5.68855561750442,
+            4.514831864940971,
+            -6.060334548126289
+          ],
+          "paired_median_descriptive_bootstrap_95_pct": [
+            -5.68855561750442,
+            6.081138489012405
+          ]
+        },
+        "identical_current_control": {
+          "before_label": "current_a",
+          "after_label": "current_b",
+          "pairs": 10,
+          "before_median_ms": 234.46277048788033,
+          "after_median_ms": 234.8154999926919,
+          "median_change_pct": 0.15044158357320203,
+          "before_p95_ms": 239.00783399585634,
+          "after_p95_ms": 238.07408401626162,
+          "paired_median_change_pct": -0.4073472742553208,
+          "paired_changes_pct": [
+            -1.5604541209049527,
+            0.12048661262391569,
+            -0.9351811611345573,
+            0.8377517445249838,
+            -1.1585667117120835,
+            -1.2630159376567973,
+            0.6304321134884106,
+            1.8911768495633252,
+            0.6313222102612315,
+            -2.2896738998624766
+          ],
+          "paired_median_descriptive_bootstrap_95_pct": [
+            -1.359510416308518,
+            0.7340919290066972
+          ]
+        }
+      }
+    },
+    "verification_totals": {
+      "svg_pngs": 83040,
+      "app_pngs": 432,
+      "app_frames": 2304,
+      "window_frames": 384
+    },
+    "svg_sources_unchanged": true
+  },
+  "executables": {
+    "before": {
+      "svg": {
+        "path": "target/cleanup-audit/stack-svg-before",
+        "sha256": "3af897f7530862b356fd001cc175bcbef5d6946af06c9ab473e2e7f48bf70e3f"
+      },
+      "window": {
+        "path": "target/cleanup-audit/stack-window-before",
+        "sha256": "c8926ddc8ac4222bbdb883616731405e1c4aa793a3b627cd3d9ee01b53067fd4"
+      },
+      "app": {
+        "path": "target/cleanup-audit/stack-app-before",
+        "sha256": "079533d2220f3d5b203967bf3746be0f5adbda3b38ae84638f705ec52f99e7e0"
+      }
+    },
+    "after": {
+      "svg": {
+        "path": "target/cleanup-audit/stack-svg-after",
+        "sha256": "bafe4d960b7f16b8a03a5a12c8588ead731d49c3713a05b2b80e74b2de4fdae6"
+      },
+      "window": {
+        "path": "target/cleanup-audit/stack-window-after",
+        "sha256": "5b89eb5d632a5cced4371a5cbd5bd2534c5f20307e1882db7c984402cb4070f2"
+      },
+      "app": {
+        "path": "target/cleanup-audit/stack-app-after",
+        "sha256": "3f4b1a5550045972a09891684ada9d784b513c100b7862f4d559f71b2c3b8eea"
+      }
+    }
+  },
+  "verification_totals": {
+    "svg_pngs": 83040,
+    "app_pngs": 432,
+    "app_frames": 2304,
+    "window_frames": 384
+  },
+  "workload": {
+    "canvas": [
+      1280,
+      720
+    ],
+    "frames": 48,
+    "cards": 48,
+    "clips_per_card": [
+      "full rectangle SDF",
+      "rounded rectangle SDF",
+      "fractional transformed EvenOdd path",
+      "circle SDF"
+    ],
+    "groups": [
+      "opacity at 0.5 / 0.75 / 1",
+      "Screen with SrcOver"
+    ],
+    "content": "three overlapping opaque/translucent rectangles per card",
+    "routes": [
+      "plain translated append",
+      "translated affine append",
+      "scaled affine append",
+      "retained scene leaf replacement"
+    ],
+    "saved_pngs": 9,
+    "readback": "every frame"
+  },
+  "producer_and_caller_proof": {
+    "producer": "Closed LayerStackEntry has Clip/Opacity/Blend only. Exhaustive GPU conversion and sole full/partial upload producer preserve tags. Opacity/blend constructors always encode paths without SDF/shadow; public draw mutations edit brushes only. Append preserves path/SDF category; offscreen remaps draw identity without changing kind.",
+    "caller": "All scalar/parallel/chunk emitter callers accept wrapper count for the same immutable input buffers. Writes target separate coarse_work; invalid path backdrop and empty coverage are rejected before emission. Full coverage clip elision remains semantic work.",
+    "fixture_correction": "Opaque fixture replaced all draws with SDF paint records, inadvertently turning its layer boundary into an impossible SDF opacity. Preserve a dedicated path boundary outside the paint list. Particle oracle remains unchanged. Obsolete unsupported-tag active fixture becomes an empty path clip; outside-active-range sentinel stays.",
+    "new_tests": "Typed producer and six mixed-stack cases passed before production edits. Initial test development corrected oracle assumptions about encoded SDF length (at least 9, actual17) and per-chunk class (SDF2, wrappers handled later). These are not production bug red regressions.",
+    "pending_test_harness_policy": "Metal raw coarse Routes::new uses validation=true and default adapter rather than explicitly enforcing TILEINK_TEST_GPU despite ignored-test text. Host has one M5; temporary workload explicitly pins it. Add focused policy regression before changing harness in future.",
+    "preserved": "Coverage/bounds rejection, launch/capacity/ownership validation and precise SDF proof constraints remain. No public API compatibility shim."
+  },
+  "toolchain": {
+    "source_tag": "v1.8.2502",
+    "source_commit": "b4711839eb9a87da7c3436d9b212e0492359fbbd",
+    "version": "libdxcompiler.dylib: 1.8(dev;1-b4711839); libdxil.dylib: 1.8",
+    "files": {
+      "target/toolchains/dxc-build-v1.8.2502/bin/dxc": "00db2a5e0f32d8a2714c5801a73ac7525d6f03d1ac319f7712fccd0458ed4a17",
+      "target/toolchains/dxc-build-v1.8.2502/lib/libdxcompiler.dylib": "47ab8a70f988293a979a157552322d55680ef2bd2f76394202a3e59f06f97df9",
+      "target/toolchains/dxc-build-v1.8.2502/lib/libdxil.dylib": "c0f3abf46cea2e0ad8ceeed0dd181dd9c71b3030d61349f27a6335e517bf0396"
+    }
+  },
+  "manifests": {
+    "metal_and_backend_free": {
+      "target/release/build/tileink-693345b8f8240684/out/tileink_native_artifacts.json": {
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "previous_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "changed": false,
+        "families": 0,
+        "artifacts": {}
+      },
+      "target/release/build/tileink-24048925a7656d71/out/tileink_native_artifacts.json": {
+        "sha256": "f10e91fb051e5a77a7a313fc37ace626bc8ea2d97175b9343f3e87856f37c840",
+        "previous_sha256": "a9498b48fd779f43cd2b47503c87fd31e0bbd1c0fb9c0ed0d080a8e24cdf2d2b",
+        "changed": true,
+        "families": 40,
+        "artifacts": {
+          "probe": "1c73f68b3331afe2455df09fc2d61851f213542bacff721cb84924ea45343aa7",
+          "range-scatter": "430c36d4bd4f4cf3afd5689130cf1c3a61dfc0912401ea08ca8068b91d3ce14e",
+          "cumsum": "e0f8b566810e418c15efd72e7aed894c5a5955d2cf14c847bb76b86d90a1d26b",
+          "filter-basic": "b0b6dbc61f311b21c51aba5db923db2460f0f99263acd30f6916f3912824d5f7",
+          "filter-glass": "cf16dc0672af8c820ca431e51c97e496cdc503801f75ed8b4e09383d6e5d7a30",
+          "filter-turbulence": "49833053f75c22b2a93e50e275e8f4d44d28c110c76cbe56fc2b29489a9a8053",
+          "filter-lighting": "e503680a53ab6b69d14c26bee5a6fc0ee549306fd84c75cddf81d7b7dc1a41f8",
+          "filter-convolve": "adb42329ada446d2d8596d8f53ac2924295f8f2fff7c66083985eeadc6ead017",
+          "filter-stack": "cb7ba2df10e22238c96fde3e2ac38a72a023e84e5299d96d3ccfed7a60992415",
+          "filter-path-mask": "3ebd4ba9dcf2ef441e5f96f780e3d353ef1f407731f2ac61046080059d3f2f00",
+          "filter-surface": "5696b9a9c35c445bbf83cad23c9cd4aaaf2e2e2c460a9dd08becc65723580c1f",
+          "filter-brush": "81e4669e46cc8525bca13b629b63b0614704485941e710980d9dd5dc9b1baf26",
+          "filter-layer": "8ed98fcec477bd3908c19ff01269f8ec65786e78bdb582a00f99dc833b7954b7",
+          "filter-rectangle": "1081b89eeb1cc7b011bb29f531874f5dfe9b861cc361c95921ae71e81f63c271",
+          "filter-blur": "ccb0c32dbeb3b01dee4230b21f23eeeece3e6dad045c201e50d906a89ecb0b1e",
+          "filter-progressive": "f9070972dc47164188e584da11239e4f8cbaed1cd353d8fe872502cc2b1e774e",
+          "filter-blur-shared": "526671229ab7f551cefa03e7ae34b4d4f8de93a5b82a19df4638aad8a5ebfd1f",
+          "filter-resample": "f9c804979fe5a6271d2e11e0a63a3bcf6ff0abcaf5ecb71aa966621d0c459b57",
+          "filter-displacement": "6879bfbc44dad73ba2c695408089e305828182d315f92a9441cb32cc9c77333b",
+          "filter-inputs": "4e6a6c4ed61338d294c006cb64518bd8cbe350c9c4e152a9031b2209c15deea8",
+          "filter-morphology": "53c6dfca8943245bbd7094dec3dfe44af87dedb3d72ec5c708fa3a03cfd4bed2",
+          "filter-transfer": "85106cbc83c831048962c0c4f3fe7f8abf04d8009efc998c11dcf509351313f3",
+          "sdf-coverage": "6e40c780894e176460f7d334385d1daf70b57657f61412c97d275a13c717e1b4",
+          "fine-main": "b84c7363dbebc4b8e4732694f15f601ce9f1478a7d723c868cb0e6a22e9c6eee",
+          "fine-brush": "425e2da9c967fa748f64273617211cf64b78c6111bf5ada155566223f1acb4fb",
+          "scan-clear": "59d2e83400b794e705bd20cbcf395d0bda6441a0bbb7944f96eadf8ae044c967",
+          "scan-count": "aad86b06d174469a44d6cdb7fcea9dc069dae76a56799314a6947b7026731878",
+          "scan-prefix-chunks": "21ffb87e487df92ab5d807a7fea5ba08b1e632ac86353fc04059968e2913e409",
+          "scan-chunk-offsets": "1b14779a0712d9723c25f9d512ff325c3185e15a171507758da90a3bdd7cbe37",
+          "scan-apply-chunk-offsets": "8b294940e2c81dd7ee7b5036fd15c4c3a6b81755831fe60d298e64938b1b3d55",
+          "scan-emit": "33d47be2fb036cbae74d499316b979aaee25229f279d6fae9c088a2cb5514edf",
+          "coarse-prefix": "a7d4e10836aef0dd34220e398649ef1ea644df5459b420315eddd97da2524ac8",
+          "coarse-count": "b36a567d221ff978ce75bf34455ecc4511022e9030d83c5d7e06d107eccfec81",
+          "coarse-emit": "286ea4f0ab19c4ae8e8044bdb5f9ce002399f241c58b790ff9fa8b3dcb93b571",
+          "coarse-emit-chunks": "57f0756660247761b19b347cd22e56186608e886b3a26320ede53238dcab38d0",
+          "coarse-particle-counts": "2c89469a0fa1d0f68eb23024007845d90b871cf51b5195699b9424fb121b20a8",
+          "coarse-tile-counts": "206df24238701d841b423a6729072b56229ddb3e17c97e48e39ccc060018a570",
+          "coarse-tile-kinds": "732a05e485890ec3d9d0ea1496957aa22d119e27ce47f4211d105c11d5bb98e4",
+          "coarse-emit-allocation": "0e12a3ded733390c5ebcdb47f47360964fccb205a3f9d909b5b765daad8e2d15",
+          "coarse-emit-offsets": "1013cfd6158bfbdc6e90038cf3318fbb6dd45ddb6138eb47868047459eb7acad"
+        }
+      },
+      "target/release/build/tileink-02c1122da65b8cf5/out/tileink_native_artifacts.json": {
+        "sha256": "f10e91fb051e5a77a7a313fc37ace626bc8ea2d97175b9343f3e87856f37c840",
+        "previous_sha256": "a9498b48fd779f43cd2b47503c87fd31e0bbd1c0fb9c0ed0d080a8e24cdf2d2b",
+        "changed": true,
+        "families": 40,
+        "artifacts": {
+          "probe": "1c73f68b3331afe2455df09fc2d61851f213542bacff721cb84924ea45343aa7",
+          "range-scatter": "430c36d4bd4f4cf3afd5689130cf1c3a61dfc0912401ea08ca8068b91d3ce14e",
+          "cumsum": "e0f8b566810e418c15efd72e7aed894c5a5955d2cf14c847bb76b86d90a1d26b",
+          "filter-basic": "b0b6dbc61f311b21c51aba5db923db2460f0f99263acd30f6916f3912824d5f7",
+          "filter-glass": "cf16dc0672af8c820ca431e51c97e496cdc503801f75ed8b4e09383d6e5d7a30",
+          "filter-turbulence": "49833053f75c22b2a93e50e275e8f4d44d28c110c76cbe56fc2b29489a9a8053",
+          "filter-lighting": "e503680a53ab6b69d14c26bee5a6fc0ee549306fd84c75cddf81d7b7dc1a41f8",
+          "filter-convolve": "adb42329ada446d2d8596d8f53ac2924295f8f2fff7c66083985eeadc6ead017",
+          "filter-stack": "cb7ba2df10e22238c96fde3e2ac38a72a023e84e5299d96d3ccfed7a60992415",
+          "filter-path-mask": "3ebd4ba9dcf2ef441e5f96f780e3d353ef1f407731f2ac61046080059d3f2f00",
+          "filter-surface": "5696b9a9c35c445bbf83cad23c9cd4aaaf2e2e2c460a9dd08becc65723580c1f",
+          "filter-brush": "81e4669e46cc8525bca13b629b63b0614704485941e710980d9dd5dc9b1baf26",
+          "filter-layer": "8ed98fcec477bd3908c19ff01269f8ec65786e78bdb582a00f99dc833b7954b7",
+          "filter-rectangle": "1081b89eeb1cc7b011bb29f531874f5dfe9b861cc361c95921ae71e81f63c271",
+          "filter-blur": "ccb0c32dbeb3b01dee4230b21f23eeeece3e6dad045c201e50d906a89ecb0b1e",
+          "filter-progressive": "f9070972dc47164188e584da11239e4f8cbaed1cd353d8fe872502cc2b1e774e",
+          "filter-blur-shared": "526671229ab7f551cefa03e7ae34b4d4f8de93a5b82a19df4638aad8a5ebfd1f",
+          "filter-resample": "f9c804979fe5a6271d2e11e0a63a3bcf6ff0abcaf5ecb71aa966621d0c459b57",
+          "filter-displacement": "6879bfbc44dad73ba2c695408089e305828182d315f92a9441cb32cc9c77333b",
+          "filter-inputs": "4e6a6c4ed61338d294c006cb64518bd8cbe350c9c4e152a9031b2209c15deea8",
+          "filter-morphology": "53c6dfca8943245bbd7094dec3dfe44af87dedb3d72ec5c708fa3a03cfd4bed2",
+          "filter-transfer": "85106cbc83c831048962c0c4f3fe7f8abf04d8009efc998c11dcf509351313f3",
+          "sdf-coverage": "6e40c780894e176460f7d334385d1daf70b57657f61412c97d275a13c717e1b4",
+          "fine-main": "b84c7363dbebc4b8e4732694f15f601ce9f1478a7d723c868cb0e6a22e9c6eee",
+          "fine-brush": "425e2da9c967fa748f64273617211cf64b78c6111bf5ada155566223f1acb4fb",
+          "scan-clear": "59d2e83400b794e705bd20cbcf395d0bda6441a0bbb7944f96eadf8ae044c967",
+          "scan-count": "aad86b06d174469a44d6cdb7fcea9dc069dae76a56799314a6947b7026731878",
+          "scan-prefix-chunks": "21ffb87e487df92ab5d807a7fea5ba08b1e632ac86353fc04059968e2913e409",
+          "scan-chunk-offsets": "1b14779a0712d9723c25f9d512ff325c3185e15a171507758da90a3bdd7cbe37",
+          "scan-apply-chunk-offsets": "8b294940e2c81dd7ee7b5036fd15c4c3a6b81755831fe60d298e64938b1b3d55",
+          "scan-emit": "33d47be2fb036cbae74d499316b979aaee25229f279d6fae9c088a2cb5514edf",
+          "coarse-prefix": "a7d4e10836aef0dd34220e398649ef1ea644df5459b420315eddd97da2524ac8",
+          "coarse-count": "b36a567d221ff978ce75bf34455ecc4511022e9030d83c5d7e06d107eccfec81",
+          "coarse-emit": "286ea4f0ab19c4ae8e8044bdb5f9ce002399f241c58b790ff9fa8b3dcb93b571",
+          "coarse-emit-chunks": "57f0756660247761b19b347cd22e56186608e886b3a26320ede53238dcab38d0",
+          "coarse-particle-counts": "2c89469a0fa1d0f68eb23024007845d90b871cf51b5195699b9424fb121b20a8",
+          "coarse-tile-counts": "206df24238701d841b423a6729072b56229ddb3e17c97e48e39ccc060018a570",
+          "coarse-tile-kinds": "732a05e485890ec3d9d0ea1496957aa22d119e27ce47f4211d105c11d5bb98e4",
+          "coarse-emit-allocation": "0e12a3ded733390c5ebcdb47f47360964fccb205a3f9d909b5b765daad8e2d15",
+          "coarse-emit-offsets": "1013cfd6158bfbdc6e90038cf3318fbb6dd45ddb6138eb47868047459eb7acad"
+        }
+      }
+    },
+    "windows_cross_compilation": {
+      "spirv": {
+        "manifest": "target/x86_64-pc-windows-gnu/release/build/tileink-95d6824c51a05705/out/tileink_native_artifacts.json",
+        "sha256": "59a559183b1d9dd3ada03a5b6b863cc4ef70523c900aebe0cd15f3f18b14d54f",
+        "entries": 84,
+        "changed_entries": [
+          "coarse_emit_chunk_particle_counts",
+          "coarse_emit_chunk_tile_kinds",
+          "coarse_tile_counts_from_emit_chunks",
+          "coarse_emit_chunks",
+          "coarse_emit",
+          "coarse_emit_bins",
+          "coarse_count",
+          "coarse_count_bins"
+        ],
+        "unchanged_entries": 76,
+        "artifact_hashes": {
+          "coarse_emit_chunk_particle_counts": "d685e044b32bccd779ab61ec40265e7a34d468429cb1108c9b629715686fe124",
+          "coarse_emit_chunk_tile_kinds": "a5db253f8254f1cf0ad162e1859fd0e530b8169ca35b3df26ff1044aac1788c2",
+          "coarse_tile_counts_from_emit_chunks": "94039cd48af4f34a801778499cb86a82cbf256ec84da3bcaa2798e7866d4c20a",
+          "coarse_emit_chunks": "090078c7a9334fcecb81d74f19051d9ca564b7d5056c275115e420252254de00",
+          "coarse_emit": "fa48e96f4c252c2318171ded7c4f9a16eae6a2918334e9b4ffbbf4daf8a4b82f",
+          "coarse_emit_bins": "f4343dd6740f6d86a478a37b1a00508b06c41790ceca4d0da69f0706c9cc49c5",
+          "coarse_count": "becdc50ca44fbcae83e2c42e7a5a6628f05dd788f95ccc0d622dd397e17b7d8e",
+          "coarse_count_bins": "820718d7bc70f99b70ecd6119c68301b3bbbd3656fb9c0d9c3337029e215d728",
+          "coarse_emit_apply_chunk_offsets": "95c111b2377f49af7dccfff659847e16c6670e80e32c60ac82a997446354c742",
+          "coarse_emit_chunk_counts": "c6828d8aa3441217bf3df5a746097a3ccf94e8c1f02ee918c53965848d852353",
+          "coarse_emit_chunk_particle_offsets": "99fc6e8b060956f5a127c9826ee3898293cd1ebb32d8141c68e1665315c11fbe",
+          "coarse_emit_fill_refs": "d4ec7a6a3ea97a506b76e76e73ddc71ae95f20bbb30282ee2ca1e005d8499e09",
+          "coarse_emit_prefix_chunks": "0cca33257ed7283775515c2a8187f955cecceb221d78d9165fba71f59759bf8c",
+          "coarse_emit_chunk_offsets": "a707f7062b7ea6a589582d4f7f7d1e55d0a1811f7ed796eb7570f8feebe98302",
+          "coarse_apply_chunk_offsets": "ea45fc48eb363f50c24280688b7da92881e954f85baf09d3a2360f23a8d54584",
+          "coarse_chunk_offsets": "6ecad16d46f37f0b9f849116e5f715aadc462be7b1093e533652e12b3ada758d",
+          "coarse_prefix_chunks": "cc0906415cdf9f04a1a3a78c41766cf05ca0f829f6978a0be3d0bd5f08267417",
+          "filter_clear_region": "a810140a814c8f3b567fd0cf5ed0b7b1bb7a001485d9609a5847ca1729917caf",
+          "filter_color_matrix_region": "e646071f1a3e840b6e783c91e24c9dc4565100ab27b6f526f95d9062f7f8f68d",
+          "filter_color_region": "5f28e26202c805813a72f0c3b21ce9b9a63aa5fecb9c6f6e0b4737fed4013e95",
+          "filter_copy_region": "4106c9c79ce937b535981ff348931f48199648d8b77847a6160724a619a4653f",
+          "filter_drop_shadow_mask_region": "b7349ac062397636a66e61b88db1cf61a645eb1284ca0e1b359052c29aa8d6ae",
+          "filter_offset_region": "993861c5ae4b9d898561843df476c6a6d27ab5955f20e72efcf52ca90ccf94f3",
+          "filter_source_alpha_region": "8a2d474c7c963f42027888859a30dbc11dbf81e2b781e4309381dcd6f5d7584d",
+          "filter_source_over_region": "19b221c0f88126955ce0bfd36f025f4807cd1d64da5352e73d0f090820804c5f",
+          "filter_svg_mask_coverage_region": "99c76d74564a4ee609c8936a4f4717ebd1dfdf69c36c6cf95c7987733edbd67b",
+          "filter_tile_region": "3ccfe53a6bd4f30ba1629dd4e900a8b2a276cc827f214b8cd98bc400377b1e34",
+          "filter_apply_region_mask": "f0d54b275731dd251dba4b5090cc1811e3f324d9286929ebc77ea836df068526",
+          "filter_blend_region": "1b0539847e17765084bcd799a4b653d38686d358cf872950d8bc4b1cda950a2c",
+          "filter_composite_inputs_region": "095665d27b3c748f223498adbc7b67f82e33f60c15af87c803ad533ef847478b",
+          "filter_morphology_axis_region": "9c12ec5128056602357a4961f852a66eca76760dd0c3cf9cc10df296209fecef",
+          "filter_displacement_map_region": "f905c420c0bcc995954731820f01c184602558f2d052c03d7249d806d9d0cce7",
+          "filter_component_transfer_region": "4c2c2b5f46a2cb5d4c0a6556a8a7f4498ce5d923a88b3c92fec15d6a46fa6b11",
+          "filter_convolve_matrix_region": "42004dd5d03523b65efac3bf3f86397549092daa83a95d1a9be9837f043164c3",
+          "filter_downsample_region": "e9e78267a092b304a1829eee21d43b75ea7c21ca8c4c87f0401e06698347cda9",
+          "filter_upsample_region": "f807e5f3a8bd4e0c18a52020e70040061a162273e188b9b6a366c8c244c15d4e",
+          "filter_blur_region": "74ec3e750b29e2c7a32ac10171ae0e06dc701e8ad4f8ae9e751383061ba41c9b",
+          "progressive_blur_reduce": "189e90afb94dd9e3bf6bd36056611cacc8e61489636db460f53b1988657c566a",
+          "progressive_blur_resolve": "8121699cf6c4fd6abae897b086699e8e5fc0e0dc3542ce09005c8a48f7588cb7",
+          "filter_lighting_region": "42d8c3bc6440d9b9fc42b4561d585086eb777aa514e2a1be0a6d8254341dd997",
+          "filter_composite_direct_region": "5ce0b80f6f22ec1ad69876f534432355e8d835d68a6ea823b2f17b9d716124d0",
+          "filter_composite_rect_direct_region": "a7e6d8f99ffa14bc4e89b37af3d26c4e8760899cfa8c84993346ba16664fd7fe",
+          "filter_rect_mask_region": "9668693c47e25b6d9a10a7a00e91e9ccc8164ff2b7e0d9de4dbe2df7853d55c7",
+          "filter_upsample_rect_composite_region": "330c7846f342561f111be9dadb329fe4f6dc6af43b3aa9a4ee3cc8fb18373d3f",
+          "filter_path_mask_region": "c14b01c05ab749ebac8b5ec76912c50d04b4e90be4470623436be6896498c5ef",
+          "filter_turbulence_region": "8ceae454a4b16f9e7a7008b5afdaeddeba665976fc8fafa2db90705b898612d1",
+          "filter_composite_surface_direct_region": "96e3fb0f8385fb4b6d5dc36b29fbea43f231d037aed07b76484ee48edbaf929d",
+          "filter_layer_mask_region": "118cd0acb93e0ed332295578d8f1fca09452eb3f294c79755468beb0a3348621",
+          "filter_composite_blend_stack_region": "98847870f9147423c2efbd6a8bd17dd52f3a153630b4e8f71de06bda471e26eb",
+          "filter_composite_stack_region": "8059b8b6907dbb79e7e45d311cb47e9b23c26c7b2b377071c9d3a2f153a67877",
+          "filter_composite_surface_stack_region": "39d1030265a2d49d6003a0ac2b79717667c4c3b47f10e9658f012697a3022d11",
+          "filter_liquid_glass_rect_composite_region": "57c92ed4737d552cef2c0c507a54970a722ca6b32618084c162b711029ff87d4",
+          "filter_liquid_glass_region": "0c64be9f7ae4cd28899ef5a3ee3638239b9b01a53325f57921d03fd3c33c4b62",
+          "filter_composite_drop_shadow_region": "3414689bbb66707003c7fbbb70efee3c74bae9e0656b9dfc6a1ce8f8848c72ea",
+          "filter_flood_region": "3929bc31f8aff282144826951535629960aaca53c0d8f31681b5098a6b77c370",
+          "sdf_coverage_words": "a7704e3ce5cafef105cfceff75cca08a53bcd0a86748ca4593efa5d633936463",
+          "filter_blur_shared_region": "ee088d3ad547b60c43104c07feb5ebf6edd8fcdf8b2f2dc45a9368c31bf23ffc",
+          "gradient_words": "de4674c32f81c9d8dd29f91b14f18d07263d4b8a749670c05cbe7123374bf073",
+          "pattern_words": "ba14933e74a22935229ed217ac4ce2939aa97218912d596d012b8e53f8a8afaf",
+          "fine_tile_main": "baab8ce77d693f6e76727987970d745753e738f0b2621474d2e92268e43bce2f",
+          "text_words": "d1026ab738edba210d05ade9ea538e509ff21be1b2b8093a25a4118e8d0b6b91",
+          "brush_words": "417cf1be491c6415a9e6fb5fc70b8ff639e7f90c28f9d390ca97a16e3fc97123",
+          "texture_flip": "37fa0e6b7a10fbb785a1a0266507ad24e8418cc5865d3f22a952955ef69a3f09",
+          "texture_layer": "a4f08d857d9c10ad308fd7ea76c100fa83f7baf8f88b110e8b285e1a1215c541",
+          "texture_table_words": "24f2be987626a3ff4cce8c77f582e6fc87e1b58f6df29e5d13926b58a51ea580",
+          "sampler_words": "a0a789410cbbfe4512dc354e93c81b5dbf8929e67dcb383e95b13a134e6feb94",
+          "blend_math_words": "8eedd1a5d5ecfbc4183199f6e43ac511ed02570eaa7f4de376272f20f9afc391",
+          "fill_coverage_words": "9e4ae54bfb1b2d090dffc386a8fe94baff44010f7d071e9cb857f2c16111ea43",
+          "geometry_math_words": "bff0140c7162cca38555a125397bbc4aa2cd15b6474386cc294118f99fd42dac",
+          "pixel_math_words": "fedc42b4ed61ab1946af0f1ee51d2ef66ed53b87bb6c29e5c2abe73a6e4d187d",
+          "clear_words": "c8a3c8d704ae1efb3405677d3cb327fd11cf6a7b401ae656fbf57f5492cf2e11",
+          "copy_words": "a5d3578080ac3d39aebc98130083e6e27de5f499fffcfbbdd73e2ee2adca08ca",
+          "layout_words": "7625bdce8f57f1671879d656ea222b579d6852942e20e5bd3a3bc27383f88094",
+          "sample_words": "388ca5a999bb81d79f97470ded7a905a5862e8bffbffa4448d1bf77b6f26a5c7",
+          "range_scatter": "8430569876dbc882b9f26cc19f261640c04ac53f55d7ea08725c913959b826f0",
+          "cumsum_apply_chunk_offsets": "b263171b64ba329e51dc802a7d6984d72cb9996305a9e019dc54a3a894ecc226",
+          "cumsum_chunk_offsets": "5843532454c1b48f6c1ad31b2e28dac025364cc245881383faab2059b63d4994",
+          "cumsum_prefix_chunks": "c4401c4176c4fa6057765b20cdf946d27094fe40ab770f3c5c8ce4fbef0034fd",
+          "scan_prefix_chunks": "d750bc4d459496557c5b76554d166bc916167124feea6dfe9559cdb5fd15af01",
+          "scan_chunk_offsets": "b8853485a3fb7096fecaff276e138863f652aadfe7b4ccfbae0758b456b518db",
+          "scan_apply_chunk_offsets": "7cff88cbc03e1c1d1f874acb08fb1188f962a8d5f2825ad445778cce7390dcc9",
+          "scan_clear": "ff5709d46395f84f5e7474b760417ea0419d15e5c63d059f9035ad1e686e46bd",
+          "scan_count": "524696cc505eea11e8fc92380634ff511a2e2d7ee62b1efe287326a31b787abe",
+          "scan_emit": "d3188ec9300bd8a899bc48c78e789a4860085d5330143f2c22518591b0e5bb05"
+        },
+        "resource_abi_validation": "actual DXC output validated by build/native.rs during Windows all-target release check"
+      },
+      "dxil": {
+        "manifest": "target/x86_64-pc-windows-gnu/release/build/tileink-24a97e89b99363c5/out/tileink_native_artifacts.json",
+        "sha256": "29b092a9dc39bc2d3a697b51fe73c83dd29033c5a3462a1606d67c98f26a82ce",
+        "entries": 84,
+        "changed_entries": [
+          "coarse_emit_chunk_particle_counts",
+          "coarse_emit_chunk_tile_kinds",
+          "coarse_tile_counts_from_emit_chunks",
+          "coarse_emit_chunks",
+          "coarse_emit",
+          "coarse_emit_bins",
+          "coarse_count",
+          "coarse_count_bins"
+        ],
+        "unchanged_entries": 76,
+        "artifact_hashes": {
+          "coarse_emit_chunk_particle_counts": "a7ca002109225c6dc359e9610d37d9294440935a8aa0364e5cbb1b888e1893c8",
+          "coarse_emit_chunk_tile_kinds": "9ede5a891cec037948cbcaf5908b570e6bffd447b9c2514da0948571e4ab05cb",
+          "coarse_tile_counts_from_emit_chunks": "8d27f87fd4a1f26fcebdef8e160e37ba821640dec97ee6fc4d9068608a553286",
+          "coarse_emit_chunks": "2a6f9b1478978bd8847102727fee5fa296f913b41d69575ae43ebe38f1ab365e",
+          "coarse_emit": "c060748c531fb0cb495ab44f4c83c24ee0bb1d3c8ed982b4ca2f6df6aebf1188",
+          "coarse_emit_bins": "70a01d0a75e642c7f54b49cdb7293845e7f2b67096c04805315172d767547161",
+          "coarse_count": "e096503003d0f2a5273f1563e117801cd33645f95ab5b101034444ad7cd1d9a3",
+          "coarse_count_bins": "6d151973afb905fa18b577bae16c2d80490855d3602507c64e612af19a860677",
+          "coarse_emit_apply_chunk_offsets": "dbf0196d32f65e148b2af7c7a6ede54a8d45ffb5e2f5fb0686cbb2f1cbcaa9b7",
+          "coarse_emit_chunk_counts": "f4850495f0808dabd091a6e2e3f9a7619f978e139f3df6cb08339f06d19174c8",
+          "coarse_emit_chunk_particle_offsets": "a76db579e043f6230c33352b732e6dc353475dca015c32c95dda45bb476467ed",
+          "coarse_emit_fill_refs": "320909e3855c4c7db8d92f200f541e4d068e3ed633a0928c9246ac796c50ece9",
+          "coarse_emit_prefix_chunks": "f825aa2fa24d0b1b4679a63c90678d487d76baa1421003bc18ec872a8b232379",
+          "coarse_emit_chunk_offsets": "16de6ae78e9bda98774c8e35c606b287a4c138cc35995a39b553caf61dae8c30",
+          "coarse_apply_chunk_offsets": "e3206e5e067b55a5cf8b513db6851c5205dfe2c96d614d2a0d63a408578fb73b",
+          "coarse_chunk_offsets": "5b8d177df8c0bdd01fa739d85212e60404528e8cb02b0f6b97ab76e69d220d62",
+          "coarse_prefix_chunks": "92d7a16060b7977cb5907371315c5835d4f293e560472d4dc64ca30a57a8ae75",
+          "filter_clear_region": "38bd3160f742d793599a88f8b00e81dc24f1b016de0bacaa7b66360ed7c456c0",
+          "filter_color_matrix_region": "cb2ef45eca9411beb78d6703ad31ede3d0e3af45628bfc59f4c202fca971e0d5",
+          "filter_color_region": "9580d289b8d8b78168c8af53e7cd44954e5927cda83be3f726d7426257dfc429",
+          "filter_copy_region": "f34886d6de8a5484109f1d658ea29a06373a620e129bb17fea9d3a5044f41570",
+          "filter_drop_shadow_mask_region": "f49a97f2d16518bae3c2175b30d4e20e051b57b6dc27571e604ff6b16b4f722e",
+          "filter_offset_region": "fb8cad8609841f40f3e4afe96f418e1d5e2fc2ad48943f8c5a840c158ef93fa0",
+          "filter_source_alpha_region": "cc454340f41bff1f7429880f2ebfa0c612465ffd6bd7c48150e4476f699f27f1",
+          "filter_source_over_region": "4ce0d3fbe2a99fc373423581e40dcd0ce1db2354064fd6fea15a6568355fa28f",
+          "filter_svg_mask_coverage_region": "e3f4f92108a22b79f248e8bc2ade934d5460db2b9c91f28f7edf03c15e4802a1",
+          "filter_tile_region": "622f5aeb6d475c0fb1843b1c367641bc4466e933209791a463488de2d3ca0bb5",
+          "filter_apply_region_mask": "de8921f7e673d0ed48428a8c15b1aabc8136be1a29060f2e20ac044242a5ab2b",
+          "filter_blend_region": "d9e877cec2aa442e50547619d9f5914b053b80eb10bb5673d00bef698dc91bc8",
+          "filter_composite_inputs_region": "8a67da4ed651ae3adc65b830c61ac57e63214d730750d5bb56a54add491c29c6",
+          "filter_morphology_axis_region": "d83dcf12dae38b05a4b95ecf79ded67803e66d826f3af3e51c0e42ceb024e1b4",
+          "filter_displacement_map_region": "97f52496d21cf95896323018b319c10626d4a145be211f068eea88fbe355ba74",
+          "filter_component_transfer_region": "7128852ed6e2148ec452cf42310458007cc24ef9cc1a9ac1ad6da74fb49edb84",
+          "filter_convolve_matrix_region": "a9e34c3df9e528b6f5ce2fb622b6b0f2a76dac94a80cd8ac2708c74edea76624",
+          "filter_downsample_region": "3124dc359b267813c2be14fd0b95be4db4172f0a48ad9b8c6b220cdbd786500c",
+          "filter_upsample_region": "ff062a76ce1645e6eef24fc1b7880cfa668a99121329dfeec21fda1bc7972118",
+          "filter_blur_region": "6ecaa796382e3abf46d4c0e6ad63f19ecc853ed992d26fd503d9b45be9713b6a",
+          "progressive_blur_reduce": "da1d084d4e62cb769e53f4be110af4ef21307dcd609374af1398092dab2c563c",
+          "progressive_blur_resolve": "f2a84f8e876acf6e0a1b371c3dbc2ae38d377d101f0a88c857ce8f5ebec43812",
+          "filter_lighting_region": "9413b5dcd3c76c9124eecd2524f3da20dee31cc168694c638bb123bad1aa1022",
+          "filter_composite_direct_region": "acb7b1f40a122cca46fb35d283b18a5bc6232d0453525896b13c58e45b2f67a9",
+          "filter_composite_rect_direct_region": "e7849e4b2690f381fd7dd99380596a01d2d9064c80f7b42a9e678a7f480c8c24",
+          "filter_rect_mask_region": "b7e92c7e9c441661a8daf500dfdfa7a085ce0d0c7d1a20e9ece0294309f4d805",
+          "filter_upsample_rect_composite_region": "9a1b10fd0d7cdc1f86cd7ef732ea253bb143417a7e8c7614f70a687d1845ef25",
+          "filter_path_mask_region": "a27a05439b4b42e431466e470972799f1d15e27b41c952b288a12d7b2a74bc74",
+          "filter_turbulence_region": "238982947535c23e23889a841a5bf12ee311e3476691d33fef3238497d3db943",
+          "filter_composite_surface_direct_region": "0b27ed1d4884d0f4df3e3d2ee64256c1479389488e13d65f44dc1caa2ed3221f",
+          "filter_layer_mask_region": "22774dccf83817d2db20d79ddb35d87108a6ea436d5cc03bfdd5e3046e97e452",
+          "filter_composite_blend_stack_region": "8907fdcbc549dd07365bdd82091f92b1ad07f7fdafd370d1914cc5e1d4d6d1db",
+          "filter_composite_stack_region": "9855292c63334ec2957dbb6d7284cb1e7571ac3976b450b2a5f26363e44c25e5",
+          "filter_composite_surface_stack_region": "af60abb55042accb79ceb70ac0d68f926ec0a73783033d75b8c1775b319a258d",
+          "filter_liquid_glass_rect_composite_region": "bf4070806fbcd444eb36ad949b0da958220ef6ad711329cd40ddf712334c1f9d",
+          "filter_liquid_glass_region": "8e5e7a256a3bf4c6125add50baeee013ee683b3d86c0bf77c150c3cabf19c46b",
+          "filter_composite_drop_shadow_region": "e0c318b8764b68eef8616cff974da92b2b5e3d3331fa06e1c312a402d72779c9",
+          "filter_flood_region": "b766b66249b35c1c1700a1feebb79256a56d1b5d3e99dc9d666d70e71904a8c9",
+          "sdf_coverage_words": "7b1ea300cce59cd0cab24898a657b5f32a38aa4fc24575321899af0d279d352b",
+          "filter_blur_shared_region": "c03639aa442e7e70c95278a8cc97e48f81c2129fb56831afedfcfd7b70f10b6e",
+          "gradient_words": "75360b673cfffd4876a3c57f175990eb5533ab57500b37c22ab162982030574c",
+          "pattern_words": "98f7990e72b921736549451221a51d73ec300c3630cfe81d6b118410be2e213b",
+          "fine_tile_main": "c335641bf23d8b436d113efafd4891eb826d8a7b9bb294531fe33787211c15b0",
+          "text_words": "8136b727d7d3eef701408d95d0a51d1b83ebdf1deeccbe4a8e71c51034cd2d47",
+          "brush_words": "660d6133b8c23e0dc895709f22d90a207f5c9bace0edf2d7929f03431585467a",
+          "texture_flip": "246ecaf5a08bb5c9060f83e802f5902d89d4c09e80dfafe96c96e4160210897b",
+          "texture_layer": "789346fcc5d2bf60f62e23990a832eab2aeea51c10bbdfb06c85a50744d75b4f",
+          "texture_table_words": "dc2509789f5b7b0eaff703efa782a276eef3b8f85c2b551dc31a155d8a1c6638",
+          "sampler_words": "c115594af8cf8cc0c8e1ea6d31761c16e1f2036af5d0ae636e363ea0a9e35911",
+          "blend_math_words": "3a3ad29c8e1ee52ecadf30739cbd6d671be4618da972cc16a5863b7b0b217edc",
+          "fill_coverage_words": "3b16167a6e482c564f219c89707a12c54f15513a24e7ff212fe0133e4a2c5011",
+          "geometry_math_words": "3448156a37f998d6590216debed8134de3f5386fa4a1b2b682cf46ad73a05a25",
+          "pixel_math_words": "3af13772cb06afb03dd4accc2aede1fd13fea1e6a714ff19fbe4ff2d34f4d108",
+          "clear_words": "32b487b8f6cfd22c18c59b7a08500b249c241537fbd8c2efc3b6826ff4664749",
+          "copy_words": "591645b1f7bae3b6d042fe1f37f3f568fe3681da11cfaec941091539049994d9",
+          "layout_words": "e7cc4300ca4fa49ac7fab33d4360c8d1b878cbd5eb4ce901b51ce749bb0ee1c5",
+          "sample_words": "0d9229d3342ccfb8e3a1c8fe5ef020f998d2356e7eae978fae35cb79e5946b3a",
+          "range_scatter": "2910800af7a06ff8094b1379231a4353532f4689859e37ba36a33c84eaf184b6",
+          "cumsum_apply_chunk_offsets": "289f73e29c655b37b04f635634ff828b225d721622d3e0065c603a869b7d43eb",
+          "cumsum_chunk_offsets": "537f57f25eb12549daa6dd72145702d4a19570c5062dffd8257902cc8cfed908",
+          "cumsum_prefix_chunks": "4417bd7f36a0ae93808494171d5eebbcc2f3c18fb45debeeb8c0b2bc073ffcd6",
+          "scan_prefix_chunks": "b3eed9661c4fd896441b9c083a1fa250c789c0d72c71b69ae4f727d9f1165eb5",
+          "scan_chunk_offsets": "ffb9f1b5461cb39696617c0270d71adc5b76d9b94b91d88870e66481d5085ce9",
+          "scan_apply_chunk_offsets": "790517633f40197e375aec4366906d6d6a1c52fa508015c81abedde9f00b7fbb",
+          "scan_clear": "92801ec344c11f3f9512c588013ac23c1a2e66c9034dcfad23c79ba07c9acd62",
+          "scan_count": "b1e5acf2c5f0a26b341430da9d92b2122af53b010ad23e750a24893fecc89e88",
+          "scan_emit": "15a3096178431dc575a3428b46d290c29c36a660bb17bdaa6cc0b20555a29a33"
+        },
+        "resource_abi_validation": "actual DXC output validated by build/native.rs during Windows all-target release check"
+      }
+    }
+  },
+  "conclusion": "No stable material regression or attributable speedup in these full-process workloads; all comparison descriptive paired intervals include zero and identical-current controls also vary.",
+  "platform_limit": "Actual DXC compilation, reflection and Windows Rust checks pass; DX12/Vulkan GPU execution and the real ShaderTools server remain unavailable on this macOS host.",
+  "semantic_test_before_after": "Producer and mixed-stack semantic cases passed with unchanged production before shader edits and pass again after cleanup. Raw invalid-tag and impossible SDF-opacity fixtures are corrected without relaxing particle expectations.",
+  "temporary_measurement_cleanup_complete": true,
+  "temporary_artifacts_removed": [
+    "target/cleanup-audit/stack-svg-before",
+    "target/cleanup-audit/stack-window-before",
+    "target/cleanup-audit/stack-app-before",
+    "target/cleanup-audit/stack-svg-after",
+    "target/cleanup-audit/stack-window-after",
+    "target/cleanup-audit/stack-app-after",
+    "examples/cleanup_coarse_stacks.rs",
+    "target/release/.fingerprint/tileink-3d77c909ba77549e",
+    "target/release/.fingerprint/tileink-b446fc0bc7fd8ac5",
+    "target/release/.fingerprint/tileink-f80c5b909af4fda0",
+    "target/release/examples/cleanup_coarse_stacks-3d77c909ba77549e.d",
+    "target/release/examples/cleanup_coarse_stacks-f80c5b909af4fda0.d",
+    "target/release/examples/libcleanup_coarse_stacks-f80c5b909af4fda0.rmeta",
+    "target/release/examples/cleanup_coarse_stacks.d",
+    "target/release/examples/cleanup_coarse_stacks-b446fc0bc7fd8ac5",
+    "target/release/examples/cleanup_coarse_stacks",
+    "target/release/examples/cleanup_coarse_stacks-b446fc0bc7fd8ac5.d",
+    "target/release/examples/cleanup_coarse_stacks-3d77c909ba77549e",
+    "target/x86_64-pc-windows-gnu/release/.fingerprint/tileink-0268ef462a30df16",
+    "target/x86_64-pc-windows-gnu/release/.fingerprint/tileink-a68206b217a1465d",
+    "target/x86_64-pc-windows-gnu/release/examples/cleanup_coarse_stacks-a68206b217a1465d.d",
+    "target/x86_64-pc-windows-gnu/release/examples/libcleanup_coarse_stacks-a68206b217a1465d.rmeta",
+    "target/x86_64-pc-windows-gnu/release/examples/cleanup_coarse_stacks-0268ef462a30df16.d",
+    "target/x86_64-pc-windows-gnu/release/examples/libcleanup_coarse_stacks-0268ef462a30df16.rmeta"
+  ]
+}

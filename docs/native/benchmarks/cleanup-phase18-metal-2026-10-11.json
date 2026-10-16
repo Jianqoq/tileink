@@ -1,0 +1,112 @@
+{
+  "date": "2026-10-11",
+  "baseline_commit": "8c276c901f76ea3a50a4ef3c7be3f538a977f26c",
+  "after": "Phase 18 explicit example initialization/shutdown/errors and owned Git input pipe",
+  "hardware": {
+    "gpu": "Apple M5",
+    "registry": "0000000100000575"
+  },
+  "protocol": {
+    "release": true,
+    "rayon_threads": 1,
+    "validation": false,
+    "pair_order": "alternates before/after each pair",
+    "no_competing_builds_or_gpu_jobs": true,
+    "metric": "whole process wall time including startup, actual work and shutdown; not isolated GPU frame throughput",
+    "percentiles": "median and nearest-rank p95",
+    "png_workload": "Real repository comparison against baseline commit; all 3442 tracked PNGs read through git cat-file and decoded/compared. One warmup pair and six timed pairs. Every report identical and PASS.",
+    "window_workload": "Real Metal host, separate rendering/presentation queues, eight retained frames, 640x360 -> 480x270 window resize, explicit completion and process shutdown. Two warmup pairs and ten timed pairs. Every run completes eight frames and reports both sizes.",
+    "limits": "Windows shader compilation, GPU execution and the three new Win32 geometry tests were not executed on this macOS host. Windows DX12/Vulkan Rust types were checked separately."
+  },
+  "results": [
+    {
+      "case": "png_repository_comparison",
+      "warmup_pairs": 1,
+      "sample_pairs": 6,
+      "before_ns": [
+        1681450333,
+        1677002958,
+        1683005917,
+        1682237916,
+        1679343583,
+        1686192875
+      ],
+      "after_ns": [
+        1687567792,
+        1696378625,
+        1685159250,
+        1692653458,
+        1687276000,
+        1687453500
+      ],
+      "before": {
+        "p50_ms": 1681.8441245,
+        "p95_ms": 1686.192875
+      },
+      "after": {
+        "p50_ms": 1687.510646,
+        "p95_ms": 1696.378625
+      },
+      "p50_change_percent": 0.3369231082389845,
+      "stdout_sha256": "1f927ebc2da65690e14b833d5e7480a1018b0502525a35572501c1645a225c19",
+      "result": "Summary: 3442 PNGs; 3442 byte-identical; 0 pixel-identical with different encoding/metadata; 0 failed\nResult: PASS"
+    },
+    {
+      "case": "metal_window_eight_frames_resize_shutdown",
+      "warmup_pairs": 2,
+      "sample_pairs": 10,
+      "before_ns": [
+        233906792,
+        232284125,
+        228295667,
+        233014666,
+        235415750,
+        232862541,
+        233277083,
+        237562625,
+        247440000,
+        233753834
+      ],
+      "after_ns": [
+        229029875,
+        238043042,
+        238765916,
+        231165958,
+        232846833,
+        234243791,
+        238173750,
+        243905791,
+        233250916,
+        232535458
+      ],
+      "before": {
+        "p50_ms": 233.5154585,
+        "p95_ms": 247.44
+      },
+      "after": {
+        "p50_ms": 233.7473535,
+        "p95_ms": 243.905791
+      },
+      "p50_change_percent": 0.09930605943160309,
+      "stdout_sha256": "22f741e8bd793f00e51f815be1e28b2810d79784c757c3470498f008535c8776",
+      "result": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+    }
+  ],
+  "binary_sha256": {
+    "before-native_present": "249edc97830fa739308451f94122c1c15691a16c45292f492218e53e7d4c40d6",
+    "before-compare_png_pixels": "7a2d3c3c008159d16cb4cef170fab1bd3c433de841131f82e3db2f3058202aac",
+    "after-native_present": "bc1e0981f19681fa51eaffbce661821397a7bd7e000529e44f49a54fbe57c3f8",
+    "after-compare_png_pixels": "3e8328a6ca785e3d6ade46ae2a5ac03c20e73a214da08096fc71e4623cda0374"
+  },
+  "source_sha256": {
+    "examples/compare_png_pixels/git.rs": "59c389573172b29efb3f35484175cf736f63812d913b29ebb73791d32f4159e1",
+    "examples/compare_png_pixels/main.rs": "ebc8c71fa3b1951697dd784102fe8a3c1f236900c94de633eae08a1b33e4dfd6",
+    "examples/native_window/app.rs": "8c19da417eb57666be5fc50bf04c299740d9d4404496a16e0ffafd964e0afba9",
+    "examples/native_window/main.rs": "3a1f7b11f7236af5b13642014f51ae48bb0702542f5e95f9f3978ae9b5dc5ea0",
+    "examples/native_window/dx12.rs": "c0625a996b442f9fef9adf8481f1d606f03be5b8cc5fad19924e3b5a73c0216c",
+    "examples/native_window/vulkan.rs": "f280786bbf983857dd562fa4c3fc58da6210bae5ac2381e00b413ffa12b2e408",
+    "examples/native_window/platform/macos.rs": "f197a5fa0a5b3638931792bc493de20034a5555b5f0958bc2d244940dc8c809e",
+    "examples/native_window/platform/win32.rs": "05814109f30c8d719dc0966a41bf2bf2d73e85b9929585d609f3dc3600af6358"
+  },
+  "interpretation": "Whole-process p50 changes of +0.337% and +0.099% do not identify a material regression or establish a speedup."
+}

@@ -19,10 +19,12 @@ Retained raster 只有在目标像素历史可信时才能只更新 dirty tiles�
 
 | `IncrementalOutputMode` | 含义 |
 |---|---|
-| `InternalHistory` | renderer-owned texture 保存历史，再复制到 transient output |
+| `InternalHistory` | renderer-owned texture 保存历史，按需复制到外部输出 |
 | `ExternalHistory` | caller 保证外部 texture 内容持续有效 |
-| `DirectTransient` | 直接完整渲染 transient target，不维护 history |
-| `RebuildHistory` | 从 direct 模式重新建立内部 history |
+
+Transient output 和非零 origin 的输出通过内部纹理渲染，再复制画布范围；
+直接渲染到调用方纹理时记录为 `ExternalHistory`。统计中的
+`history_copied_to_output` 表示本帧是否复制了输出。
 
 外部 texture 被重新创建或被其他代码修改时，必须换新的 `ExternalTextureHistoryId`。错误复用 ID 会让 renderer 把未知像素当作有效历史。
 
@@ -33,3 +35,14 @@ Retained raster 只有在目标像素历史可信时才能只更新 dirty tiles�
 ## ForceFull
 
 `IncrementalRenderMode::ForceFull` 是正确性 oracle 和性能对照。它强制完整 raster，但 retained materialization、chunk reuse 和 dirty upload 仍按正常语义运行。
+
+## Scoped Backdrop 与结构更新
+
+局部输入域中的损伤历史独立于可裁剪的节点状态，最多保存 256 次版本转换。
+连续且完整的版本保持局部绘制；真正缺失的历史显式恢复。删除或移动节点时，先在
+旧命令树中解析旧输入，再在新命令树中解析新输入，只合并最终根坐标和脏 Backdrop
+标识，避免重复应用外层滤镜。Group 的实际后代参与变化，Mask 的两个输入分支各自解析。
+
+部分绘制期间，尚未访问的旧 Backdrop 输入必须保留到它的绘制顺序位置。缓存压力可
+淘汰普通复用结果；若只能淘汰这些旧输入才能容纳新缓存，则不保存新条目，保持预算。
+最终画面的干净 tile 不能替代滤镜之前的旧输入，因为它可能包含后续前景。

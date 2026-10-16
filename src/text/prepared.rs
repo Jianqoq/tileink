@@ -3,17 +3,15 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-#[cfg(test)]
-use cosmic_text::SwashImage;
-use cosmic_text::{CacheKey, FontSystem, SwashContent};
+use cosmic_text::{CacheKey, FontSystem};
 
 use crate::shared::bounds::Bounds;
 
 use super::{
     context::TextContext,
-    layout::{CanvasGlyph, TextRun},
+    layout::{CanvasGlyph, TextRun, glyph_image_bounds},
     options::{TextCompositeMode, TextRasterOptions},
-    raster::GlyphRasterImage,
+    raster::{GlyphContent, GlyphRasterImage},
 };
 
 mod reconcile;
@@ -21,6 +19,7 @@ pub(crate) use reconcile::PreparedTextChanges;
 
 #[derive(Clone, Debug)]
 pub(crate) struct PreparedTextData {
+    pub(crate) materialization: Option<crate::canvas::MaterializationStamp>,
     runs: Vec<TextRun>,
     glyphs: Vec<PreparedGlyph>,
     images: Vec<PreparedGlyphImage>,
@@ -73,6 +72,7 @@ impl PreparedTextData {
         atlas_hasher.write_u64(cache_generation);
 
         Self {
+            materialization: None,
             runs: runs.to_vec(),
             glyphs: prepared_glyphs,
             images,
@@ -119,7 +119,14 @@ impl PreparedTextData {
     pub(crate) fn glyph_bounds(&self, glyph_id: u32) -> Option<Bounds> {
         let glyph = self.glyph(glyph_id)?;
         let image = self.image(glyph.image?)?;
-        Some(glyph.bounds(image))
+        Some(glyph_image_bounds(
+            glyph.x,
+            glyph.y,
+            image.left,
+            image.top,
+            image.width,
+            image.height,
+        ))
     }
 
     pub(crate) fn image(&self, image_id: u32) -> Option<&PreparedGlyphImage> {
@@ -134,12 +141,12 @@ impl PreparedTextData {
         &self.images
     }
 
-    pub(crate) fn atlas_signature(&self) -> AtlasSignature {
+    pub(crate) const fn atlas_signature(&self) -> AtlasSignature {
         self.atlas_signature
     }
 
     #[cfg(test)]
-    pub(super) fn cache_generation(&self) -> u64 {
+    pub(super) const fn cache_generation(&self) -> u64 {
         self.cache_generation
     }
 }
@@ -171,21 +178,21 @@ struct StableAtlasHasher {
 }
 
 impl StableAtlasHasher {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
             a: 0xcbf2_9ce4_8422_2325,
             b: 0x9e37_79b9_7f4a_7c15,
         }
     }
 
-    fn finish128(self) -> (u64, u64) {
+    const fn finish128(self) -> (u64, u64) {
         (avalanche64(self.a), avalanche64(self.b))
     }
 
     fn mix_byte(&mut self, byte: u8) {
-        self.a ^= byte as u64;
+        self.a ^= u64::from(byte);
         self.a = self.a.wrapping_mul(0x0000_0100_0000_01b3);
-        self.b ^= (byte as u64).wrapping_add(0x9e37_79b9_7f4a_7c15);
+        self.b ^= u64::from(byte).wrapping_add(0x9e37_79b9_7f4a_7c15);
         self.b = self.b.rotate_left(27).wrapping_mul(0x3c79_ac49_2ba7_b653);
     }
 }
@@ -242,7 +249,7 @@ impl Hasher for StableAtlasHasher {
     }
 }
 
-fn avalanche64(mut value: u64) -> u64 {
+const fn avalanche64(mut value: u64) -> u64 {
     value ^= value >> 33;
     value = value.wrapping_mul(0xff51_afd7_ed55_8ccd);
     value ^= value >> 33;
@@ -258,17 +265,9 @@ pub(crate) struct PreparedGlyph {
     pub(crate) y: i32,
 }
 
-impl PreparedGlyph {
-    fn bounds(&self, image: &PreparedGlyphImage) -> Bounds {
-        let x0 = self.x + image.left;
-        let y0 = self.y - image.top;
-        Bounds::new(x0, y0, x0 + image.width as i32, y0 + image.height as i32)
-    }
-}
-
 #[derive(Clone, Debug)]
 pub(crate) struct PreparedGlyphImage {
-    pub(crate) content: PreparedGlyphContent,
+    pub(crate) content: GlyphContent,
     pub(crate) composite_mode: TextCompositeMode,
     pub(crate) left: i32,
     pub(crate) top: i32,
@@ -279,82 +278,14 @@ pub(crate) struct PreparedGlyphImage {
 
 impl PreparedGlyphImage {
     pub(super) fn from_raster(image: &GlyphRasterImage, raster_options: TextRasterOptions) -> Self {
-        let content = match image.content {
-            SwashContent::Mask => PreparedGlyphContent::Mask,
-            SwashContent::Color => PreparedGlyphContent::Color,
-            SwashContent::SubpixelMask => PreparedGlyphContent::SubpixelMask,
-        };
-        let pixels = prepared_glyph_image_data(content, image);
         Self {
-            content,
+            content: image.content,
             composite_mode: raster_options.composite_mode,
-            left: pixels.left,
+            left: image.placement.left,
             top: image.placement.top,
-            width: pixels.width,
+            width: image.placement.width,
             height: image.placement.height,
-            data: pixels.data,
+            data: image.data.clone(),
         }
     }
-
-    #[cfg(test)]
-    pub(super) fn from_swash(image: &SwashImage, raster_options: TextRasterOptions) -> Self {
-        Self::from_raster(&GlyphRasterImage::from_swash(image.clone()), raster_options)
-    }
-}
-
-struct PreparedGlyphPixels {
-    left: i32,
-    width: u32,
-    data: Vec<u8>,
-}
-
-fn prepared_glyph_image_data(
-    content: PreparedGlyphContent,
-    image: &GlyphRasterImage,
-) -> PreparedGlyphPixels {
-    if content != PreparedGlyphContent::SubpixelMask {
-        return PreparedGlyphPixels {
-            left: image.placement.left,
-            width: image.placement.width,
-            data: image.data.clone(),
-        };
-    }
-
-    let pixel_count = image.placement.width as usize * image.placement.height as usize;
-    let data = if image.data.len() == pixel_count * 4 {
-        let mut data = Vec::with_capacity(pixel_count * 3);
-        for pixel in image.data.as_chunks::<4>().0 {
-            data.extend_from_slice(&pixel[..3]);
-        }
-        data
-    } else if image.data.len() == pixel_count * 3 {
-        image.data.clone()
-    } else {
-        return PreparedGlyphPixels {
-            left: image.placement.left,
-            width: image.placement.width,
-            data: image.data.clone(),
-        };
-    };
-
-    if image.placement.width == 0 || image.placement.height == 0 {
-        return PreparedGlyphPixels {
-            left: image.placement.left,
-            width: image.placement.width,
-            data,
-        };
-    }
-
-    PreparedGlyphPixels {
-        left: image.placement.left,
-        width: image.placement.width,
-        data,
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum PreparedGlyphContent {
-    Mask,
-    Color,
-    SubpixelMask,
 }

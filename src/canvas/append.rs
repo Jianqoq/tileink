@@ -8,12 +8,12 @@ impl Canvas {
     /// current command list. It deliberately does not add a child-canvas clip;
     /// callers that need clipping can open a clip layer around the append.
     /// The borrowed child canvas is not mutated and remains reusable.
-    pub fn append(&mut self, other: &Canvas, pos: impl Into<Point>) {
+    pub fn append(&mut self, other: &Self, pos: impl Into<Point>) {
         self.prepare_append(other);
         self.append_translation_prepared(other, pos.into());
     }
 
-    fn append_translation_prepared(&mut self, other: &Canvas, pos: Point) {
+    fn append_translation_prepared(&mut self, other: &Self, pos: Point) {
         let offset = SceneOffset::new(self.physical_point(pos));
         if offset.is_zero() || other.native_translation_is_safe() {
             self.append_scene_ref_unchecked(other, SceneAppendMode::MergeCurrent, offset);
@@ -28,7 +28,10 @@ impl Canvas {
     ///
     /// Geometry and paint remain in the child's local buffers. The scan and fine shaders apply
     /// the transform, so rotation, scale, and shear do not require a CPU pass over path lines.
-    pub fn append_transformed(&mut self, other: &Canvas, transform: Affine) {
+    ///
+    /// # Panics
+    /// Panics if the append transform is nonfinite or singular.
+    pub fn append_transformed(&mut self, other: &Self, transform: Affine) {
         let coefficients = transform.as_coeffs();
         assert!(
             coefficients.iter().all(|value| value.is_finite())
@@ -45,14 +48,13 @@ impl Canvas {
         self.append_transformed_prepared(other, transform);
     }
 
-    fn prepare_append(&mut self, other: &Canvas) {
-        self.ensure_command_root();
+    fn prepare_append(&self, other: &Self) {
         assert!(
-            other.command_stack.len() == 1 && other.layer_stack.is_empty(),
+            other.is_closed_for_append(),
             "cannot append a canvas with unclosed layers"
         );
         assert!(
-            (self.scale_factor - other.scale_factor).abs() <= f32::EPSILON,
+            (self.scale_factor() - other.scale_factor()).abs() <= f32::EPSILON,
             "cannot append canvases with different scale factors"
         );
     }
@@ -73,11 +75,11 @@ impl Canvas {
                 .all(|record| has_identity_linear_part(record.transform))
     }
 
-    fn append_transformed_prepared(&mut self, other: &Canvas, transform: Affine) {
-        let transform = GpuAffine::from_logical(transform, self.scale_factor);
+    fn append_transformed_prepared(&mut self, other: &Self, transform: Affine) {
+        let transform = GpuAffine::from_logical(transform, self.scale_factor());
         let command_offset =
             if [transform.a, transform.b, transform.c, transform.d] == [1.0, 0.0, 0.0, 1.0] {
-                SceneOffset::new(Point::new(transform.e as f64, transform.f as f64))
+                SceneOffset::new(Point::new(f64::from(transform.e), f64::from(transform.f)))
             } else {
                 SceneOffset::new(Point::ZERO)
             };
@@ -85,7 +87,7 @@ impl Canvas {
         // copied every path, draw, glyph, brush, and command twice for each transformed icon.
         self.append_scene_ref_to_list_transformed_unchecked(
             other,
-            self.current_command_list_id(),
+            self.current_commands,
             SceneAppendMode::MergeCurrent,
             SceneOffset::new(Point::ZERO),
             command_offset,
@@ -95,16 +97,16 @@ impl Canvas {
 
     pub(super) fn append_scene_ref_unchecked(
         &mut self,
-        other: &Canvas,
+        other: &Self,
         mode: SceneAppendMode,
         offset: SceneOffset,
     ) -> Option<CommandListId> {
-        self.append_scene_ref_to_list_unchecked(other, self.current_command_list_id(), mode, offset)
+        self.append_scene_ref_to_list_unchecked(other, self.current_commands, mode, offset)
     }
 
     pub(super) fn append_scene_ref_to_list_unchecked(
         &mut self,
-        other: &Canvas,
+        other: &Self,
         target_commands: CommandListId,
         mode: SceneAppendMode,
         offset: SceneOffset,
@@ -121,7 +123,7 @@ impl Canvas {
 
     fn append_scene_ref_to_list_transformed_unchecked(
         &mut self,
-        other: &Canvas,
+        other: &Self,
         target_commands: CommandListId,
         mode: SceneAppendMode,
         data_offset: SceneOffset,
@@ -130,14 +132,10 @@ impl Canvas {
     ) -> Option<CommandListId> {
         let draw_offset = self.append_scene_data(other, data_offset, transform);
         let command_list_offset = self.command_lists.len();
-        let root_commands = other.root_commands;
         match mode {
             SceneAppendMode::MergeCurrent => {
-                let child_list_offset = command_list_offset.saturating_sub(1);
-                for (list_ix, list) in other.command_lists.iter().enumerate() {
-                    if list_ix == root_commands {
-                        continue;
-                    }
+                let child_list_offset = command_list_offset - 1;
+                for list in other.command_lists.iter().skip(1) {
                     self.command_lists
                         .push(Self::translated_remapped_command_list(
                             list,
@@ -149,8 +147,8 @@ impl Canvas {
 
                 self.command_lists[target_commands]
                     .commands
-                    .reserve(other.command_lists[root_commands].commands.len());
-                for command in &other.command_lists[root_commands].commands {
+                    .reserve(other.command_lists[ROOT_COMMAND_LIST_ID].commands.len());
+                for command in &other.command_lists[ROOT_COMMAND_LIST_ID].commands {
                     let command = Self::translated_remapped_command(
                         command,
                         draw_offset,
@@ -171,18 +169,21 @@ impl Canvas {
                             command_offset,
                         ));
                 }
-                Some(command_list_offset + root_commands)
+                Some(command_list_offset)
             }
         }
     }
 
     pub(super) fn translate_draw_for_append(draw: &mut DrawRecord, offset: SceneOffset) {
         if !draw.has_analytic_geometry() {
+            // Lines and glyph positions move in local storage. Preserve that
+            // same local bound for any later retained or nested affine placement.
+            draw.local_pixel_bounds = offset.pixel_bounds(draw.local_pixel_bounds);
             draw.pixel_bounds = offset.pixel_bounds(draw.pixel_bounds);
         }
     }
 
-    pub(super) fn pixel_bounds_from_bounds(bounds: Bounds) -> PixelBounds {
+    pub(super) const fn pixel_bounds_from_bounds(bounds: Bounds) -> PixelBounds {
         PixelBounds {
             x0: bounds.x0,
             y0: bounds.y0,
@@ -191,15 +192,7 @@ impl Canvas {
         }
     }
 
-    pub(super) fn path_pixel_bounds(&self, path_ix: usize) -> PixelBounds {
-        let Some(record) = self.path_records.get(path_ix) else {
-            return PixelBounds {
-                x0: 0,
-                y0: 0,
-                x1: 0,
-                y1: 0,
-            };
-        };
+    fn path_pixel_bounds(&self, record: &PathRecord) -> PixelBounds {
         let lines = &self.lines
             [record.line_start as usize..(record.line_start + record.line_count) as usize];
         if lines.is_empty() {
@@ -233,8 +226,6 @@ impl Canvas {
         &self,
         record: &PathRecord,
         tile_bbox: crate::shared::bounds::TileBbox,
-        width_in_tiles: u32,
-        height_in_tiles: u32,
     ) -> u32 {
         if record.transform != GpuAffine::IDENTITY {
             // A transformed line can visit at most every row and column in its clipped path box.
@@ -249,17 +240,17 @@ impl Canvas {
         self.lines[record.line_start as usize..(record.line_start + record.line_count) as usize]
             .iter()
             .fold(0u32, |capacity, &line| {
-                capacity.saturating_add(line_scanned_tile_count(
-                    line,
-                    tile_bbox,
-                    (width_in_tiles, height_in_tiles),
-                ))
+                capacity.saturating_add(line_scanned_tile_count(line, tile_bbox))
             })
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Append validation guarantees the transform contract and command-list structure before recording"
+    )]
     pub(super) fn append_scene_data(
         &mut self,
-        other: &Canvas,
+        other: &Self,
         offset: SceneOffset,
         transform: Option<GpuAffine>,
     ) -> usize {
@@ -318,7 +309,7 @@ impl Canvas {
                 } else {
                     offset.brush(brush)
                 };
-                (draw.brush_offset, draw.brush_len) = self.push_physical_brush(brush);
+                (draw.brush_offset, draw.brush_len) = self.push_physical_brush(&brush);
             } else {
                 draw.brush_offset = DrawRecord::NONE;
                 draw.brush_len = 0;
@@ -420,15 +411,11 @@ impl Canvas {
                 .filter(|draw| draw.path_id == record.path_id)
                 .map(|draw| draw.pixel_bounds)
                 .reduce(PixelBounds::union)
-                .unwrap_or_else(|| self.path_pixel_bounds(path_ix));
+                // The path was already resolved above. No missing-index default is needed.
+                .unwrap_or_else(|| self.path_pixel_bounds(&record));
             let tile_bbox = pixel_bounds.tile_bbox(width_in_tiles, height_in_tiles);
             let data_len = tile_bbox.tile_count();
-            let segment_capacity = self.segment_capacity_for_path_record(
-                &record,
-                tile_bbox,
-                width_in_tiles,
-                height_in_tiles,
-            );
+            let segment_capacity = self.segment_capacity_for_path_record(&record, tile_bbox);
             let record = &mut self.path_records[path_ix];
             record.data_offset = data_offset;
             record.data_len = data_len;
@@ -457,21 +444,19 @@ impl Canvas {
             Command::MaterializedRetainedScene {
                 id,
                 revision,
-                children,
+                fragment,
             } => Command::MaterializedRetainedScene {
                 id,
                 revision,
-                children: children + child_list_offset,
+                fragment: fragment.start + child_list_offset..fragment.end + child_list_offset,
             },
             Command::Layer {
                 retained,
-                draw,
                 layer,
                 children,
             } => Command::Layer {
                 retained,
-                draw: draw + draw_offset,
-                layer,
+                layer: layer.remap_draw(draw_offset),
                 children: children + child_list_offset,
             },
             Command::MaskLayer {
@@ -516,14 +501,20 @@ impl Canvas {
         child_list_offset: usize,
         offset: SceneOffset,
     ) -> Command {
-        let mut command = command.clone();
-        if !offset.is_zero() {
-            offset.command(&mut command);
-        }
+        let command = command.clone();
+        let command = if offset.is_zero() {
+            command
+        } else {
+            offset.command(command)
+        };
         Self::remap_command(command, draw_offset, child_list_offset)
     }
 
-    pub(super) fn append_scene_as_command_list(&mut self, other: &Canvas) -> CommandListId {
+    #[allow(
+        clippy::expect_used,
+        reason = "Append validation guarantees the transform contract and command-list structure before recording"
+    )]
+    pub(super) fn append_scene_as_command_list(&mut self, other: &Self) -> CommandListId {
         self.append_scene_ref_unchecked(
             other,
             SceneAppendMode::AppendAsCommandList,

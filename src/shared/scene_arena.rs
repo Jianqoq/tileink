@@ -4,11 +4,6 @@ use std::{
     ops::Range,
 };
 
-#[cfg(feature = "bench-internals")]
-mod benchmark;
-#[cfg(feature = "bench-internals")]
-pub use benchmark::{SceneArenaDirtyBenchmark, SceneArenaFillBenchmark};
-
 const COMPACTION_THRESHOLD: f32 = 0.30;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -114,6 +109,10 @@ impl<T: Copy> SceneArena<T> {
 
     /// Changes an allocation's logical length without copying temporary local-index records.
     /// Callers that remap cross-arena offsets can then write the final physical records once.
+    #[allow(
+        clippy::expect_used,
+        reason = "Live allocation handles and synchronized free-range indices are internal arena invariants"
+    )]
     pub(crate) fn resize(&mut self, id: ArenaAllocation, len: usize) -> bool {
         let old = self.allocations[&id];
         if old.len == len {
@@ -170,17 +169,19 @@ impl<T: Copy> SceneArena<T> {
         self.mark_dirty(allocation.start..allocation.start + allocation.len);
     }
 
-    pub(crate) fn remove(&mut self, id: ArenaAllocation) -> bool {
-        let Some(allocation) = self.allocations.remove(&id) else {
-            return false;
-        };
+    /// Releases a live allocation exactly once, like resize/write require a live owner.
+    #[allow(
+        clippy::expect_used,
+        reason = "Live allocation handles and synchronized free-range indices are internal arena invariants"
+    )]
+    pub(crate) fn remove(&mut self, id: ArenaAllocation) {
+        let allocation = self.allocations.remove(&id).expect("live arena allocation");
         self.live_len -= allocation.len;
         self.values[allocation.start..allocation.start + allocation.capacity].fill(self.vacant);
         // GPU consumers address the arena's physical high-water range. Clearing only the logical
         // length leaves stale records in the released padding until that capacity is reused.
         self.mark_dirty(allocation.start..allocation.start + allocation.capacity);
         self.release_range(allocation.start..allocation.start + allocation.capacity);
-        true
     }
 
     pub(crate) fn range(&self, id: ArenaAllocation) -> Range<usize> {
@@ -192,7 +193,7 @@ impl<T: Copy> SceneArena<T> {
         &self.values
     }
 
-    pub(crate) fn live_len(&self) -> usize {
+    pub(crate) const fn live_len(&self) -> usize {
         self.live_len
     }
 
@@ -204,7 +205,7 @@ impl<T: Copy> SceneArena<T> {
         }
     }
 
-    pub(crate) fn compactions(&self) -> u64 {
+    pub(crate) const fn compactions(&self) -> u64 {
         self.compactions
     }
 
@@ -317,6 +318,10 @@ impl<T: Copy> SceneArena<T> {
         self.free_len += len;
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "Live allocation handles and synchronized free-range indices are internal arena invariants"
+    )]
     fn remove_free(&mut self, start: usize) -> usize {
         let end = self
             .free_by_start
@@ -391,11 +396,28 @@ mod tests {
         let removed = arena.insert(&[1, 2, 3, 4]);
         let survivor = arena.insert(&[5]);
         let range = arena.range(removed);
-        assert!(arena.remove(removed));
+        arena.remove(removed);
         assert_eq!(&arena.values()[range.clone()], &[0, 0, 0, 0]);
         let reused = arena.insert(&[7, 8, 9]);
         assert_eq!(arena.range(reused).start, range.start);
         assert_eq!(&arena.values()[arena.range(survivor)], &[5]);
+    }
+
+    #[test]
+    fn releasing_an_allocation_twice_is_an_ownership_error() {
+        for data in [&[][..], &[1, 2][..]] {
+            let mut arena = SceneArena::new(0u32);
+            let allocation = arena.insert(data);
+            arena.remove(allocation);
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                arena.remove(allocation);
+            }));
+            assert!(
+                result.is_err(),
+                "a released allocation cannot be released again"
+            );
+            assert_eq!(arena.live_len(), 0);
+        }
     }
 
     #[test]
@@ -472,7 +494,7 @@ mod tests {
         let removed = arena.insert(&[9; 4]);
         let range = arena.range(removed);
         let _ = take_dirty_ranges(&mut arena);
-        assert!(arena.remove(removed));
+        arena.remove(removed);
         let _ = take_dirty_ranges(&mut arena);
 
         let allocation = arena.insert_filled(4, 0);

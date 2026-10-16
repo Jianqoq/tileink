@@ -36,7 +36,7 @@ impl BoundsTileIter {
         }
     }
 
-    fn remaining(&self) -> usize {
+    const fn remaining(&self) -> usize {
         if self.y >= self.y1 {
             return 0;
         }

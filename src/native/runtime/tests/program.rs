@@ -1,0 +1,154 @@
+use super::Probe as Dispatch;
+use super::*;
+
+fn command() -> Dispatch {
+    Dispatch {
+        entry: "copy_words",
+        params: Params {
+            count: 1,
+            source_offset: 0,
+            destination_offset: 0,
+            stride: 4,
+            value: [0; 4],
+        },
+        source: vec![0; 4],
+        destination: vec![0; 4],
+    }
+}
+
+#[test]
+fn bounds_and_alignment_are_checked_before_native_recording() {
+    assert!(command().validate().is_ok());
+    let mut c = command();
+    c.params.count = 0;
+    assert!(c.validate().is_ok());
+    for c in [
+        Dispatch {
+            entry: "missing",
+            ..command()
+        },
+        Dispatch {
+            source: vec![],
+            ..command()
+        },
+        Dispatch {
+            destination: vec![0; 3],
+            ..command()
+        },
+    ] {
+        assert!(c.validate().is_err());
+    }
+    let mut c = command();
+    c.params.count = 2;
+    assert!(c.validate().is_err());
+    let mut c = command();
+    c.params.source_offset = 1;
+    assert!(c.validate().is_err());
+    let mut c = command();
+    c.params.destination_offset = u32::MAX - 3;
+    assert!(c.validate().is_err());
+    let mut c = command();
+    c.params.count = u32::MAX;
+    assert!(c.validate().is_err());
+    let mut c = command();
+    c.entry = "layout_words";
+    c.params.stride = 12;
+    assert!(c.validate().is_err());
+    assert!(validate_batch(&[]).is_err());
+    assert!(validate_batch(&vec![command().into(); 4097]).is_err());
+}
+
+#[test]
+fn sampling_rejects_nonfinite_overflow_and_missing_texels() {
+    let mut c = command();
+    c.entry = "sample_words";
+    c.params.value = [0, 0, 1, 0];
+    assert!(c.validate().is_ok());
+    for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, f32::MAX] {
+        let mut bad = c.clone();
+        bad.params.value[0] = value.to_bits();
+        assert!(bad.validate().is_err());
+        let mut bad = c.clone();
+        bad.params.value[1] = value.to_bits();
+        assert!(bad.validate().is_err());
+    }
+    for width in [0, 2, u32::MAX] {
+        let mut bad = c.clone();
+        bad.params.value[2] = width;
+        assert!(bad.validate().is_err());
+    }
+}
+
+#[test]
+fn fixed_coordinates_reject_signed_minimum_and_overflowing_products() {
+    let mut c = command();
+    c.entry = "sample_words";
+    c.params.value = [(-32768.0f32).to_bits(), 0, 1, 0];
+    assert!(c.validate().is_err()); // Never negate i32::MIN in HLSL/MSL.
+    for origin in [f32::from_bits(0x46ff_ffff), -f32::from_bits(0x46ff_ffff)] {
+        c.params.value[0] = origin.to_bits();
+        assert!(c.validate().is_ok());
+    }
+    c.params.count = 2;
+    c.destination.resize(8, 0);
+    c.params.value = [0, 32768.0f32.to_bits(), 1, 0];
+    assert!(c.validate().is_err());
+    c.params.count = 3;
+    c.destination.resize(12, 0);
+    c.params.value = [0, 16384.0f32.to_bits(), 1, 0];
+    assert!(c.validate().is_err());
+    c.params.value = [16384.0f32.to_bits(), 8192.0f32.to_bits(), 1, 0];
+    assert!(c.validate().is_err());
+}
+
+#[test]
+fn verification_programs_have_complete_per_entry_compute_layouts() {
+    use crate::native::shaders::BindingKind;
+    for artifact in crate::NATIVE_SHADER_ARTIFACTS {
+        let expected: &[(u32, BindingKind, u32)] = match artifact.entry {
+            "clear_words" | "layout_words" => {
+                &[(0, BindingKind::Write, 4), (2, BindingKind::Uniform, 32)]
+            }
+            "copy_words" => &[
+                (0, BindingKind::Write, 4),
+                (1, BindingKind::Read, 4),
+                (2, BindingKind::Uniform, 32),
+            ],
+            "sample_words" => &[
+                (0, BindingKind::Write, 4),
+                (1, BindingKind::Read, 4),
+                (2, BindingKind::Uniform, 32),
+                (3, BindingKind::Texture, 4),
+            ],
+            "range_scatter" => &[(0, BindingKind::Write, 4), (1, BindingKind::Read, 4)],
+            _ => continue,
+        };
+        let actual: Vec<_> = artifact
+            .bindings
+            .iter()
+            .map(|b| (b.slot, b.kind, b.size))
+            .collect();
+        assert_eq!(actual, expected, "{}/{}", artifact.format, artifact.entry);
+        assert!(
+            artifact
+                .bindings
+                .iter()
+                .all(|b| b.count == 1 && !b.internal)
+        );
+    }
+}
+
+#[test]
+fn recording_rejects_invalid_later_commands_and_preserves_zero_work_outputs() {
+    let mut bad = command();
+    bad.params.count = 2;
+    assert!(record_batch(&[command().into(), bad.into()]).is_err());
+    let empty = Scatter::new(bytemuck::cast_slice(&[4u32, 0, 0, 0]).to_vec(), vec![9; 4]).unwrap();
+    let batch = record_batch(&[empty.into()]).unwrap();
+    assert!(batch.passes().is_empty());
+    assert_eq!(batch.outputs().len(), 1);
+    let output = batch.outputs()[0];
+    assert!(
+        matches!(&batch.resources()[output.index()], super::super::compute::Resource::Buffer(bytes) if bytes == &[9; 4])
+    );
+}

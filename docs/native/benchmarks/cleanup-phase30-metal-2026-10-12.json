@@ -1,0 +1,473 @@
+{
+  "baseline_commit": "17661d520d10b961b38e23d18e662482a7751002",
+  "gpu": "Apple M5, registry 0000000100000575",
+  "workload": "Existing svg_fixture_render application renders and saves all 1730 SVG fixtures at 300px. Whole-process wall time includes native initialization, SVG loading, CPU planning, GPU submission/completion, readback, PNG writes and teardown. This does not isolate GPU frame time.",
+  "validation": "MTL_DEBUG_LAYER unset during timing; separate validation enabled for tests and final renders",
+  "warmups_per_label": 2,
+  "timed_pairs": 10,
+  "order": "Alternating A/B and B/A per pair",
+  "baseline_executable_sha256": "f571f293546b1cbb0789c33117af4048f98e7c7b466232d12d612826420dd3ce",
+  "current_executable_sha256": "9370f0decef2818102a6427ea98a0d13dcdb20b9d7c45af2441f7fd525d8b82b",
+  "series": [
+    {
+      "mode": "baseline-current",
+      "label": "A",
+      "warmup": true,
+      "pair": 0,
+      "milliseconds": 4817.003292002482,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "baseline-current",
+      "label": "B",
+      "warmup": true,
+      "pair": 0,
+      "milliseconds": 4198.128832998918,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "baseline-current",
+      "label": "A",
+      "warmup": true,
+      "pair": 1,
+      "milliseconds": 4209.238458017353,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "baseline-current",
+      "label": "B",
+      "warmup": true,
+      "pair": 1,
+      "milliseconds": 4402.7979579987,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "baseline-current",
+      "label": "A",
+      "warmup": false,
+      "pair": 0,
+      "milliseconds": 4305.937834025826,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "baseline-current",
+      "label": "B",
+      "warmup": false,
+      "pair": 0,
+      "milliseconds": 4274.160375003703,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "baseline-current",
+      "label": "B",
+      "warmup": false,
+      "pair": 1,
+      "milliseconds": 4454.863374994602,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "baseline-current",
+      "label": "A",
+      "warmup": false,
+      "pair": 1,
+      "milliseconds": 4304.480708990013,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "baseline-current",
+      "label": "A",
+      "warmup": false,
+      "pair": 2,
+      "milliseconds": 4321.960916975513,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "baseline-current",
+      "label": "B",
+      "warmup": false,
+      "pair": 2,
+      "milliseconds": 4255.5113330017775,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "baseline-current",
+      "label": "B",
+      "warmup": false,
+      "pair": 3,
+      "milliseconds": 4286.501833004877,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "baseline-current",
+      "label": "A",
+      "warmup": false,
+      "pair": 3,
+      "milliseconds": 4249.998124985723,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "baseline-current",
+      "label": "A",
+      "warmup": false,
+      "pair": 4,
+      "milliseconds": 4290.163458994357,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "baseline-current",
+      "label": "B",
+      "warmup": false,
+      "pair": 4,
+      "milliseconds": 4250.370333000319,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "baseline-current",
+      "label": "B",
+      "warmup": false,
+      "pair": 5,
+      "milliseconds": 4271.496291010408,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "baseline-current",
+      "label": "A",
+      "warmup": false,
+      "pair": 5,
+      "milliseconds": 4430.574208003236,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "baseline-current",
+      "label": "A",
+      "warmup": false,
+      "pair": 6,
+      "milliseconds": 4280.822708009509,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "baseline-current",
+      "label": "B",
+      "warmup": false,
+      "pair": 6,
+      "milliseconds": 4335.780124994926,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "baseline-current",
+      "label": "B",
+      "warmup": false,
+      "pair": 7,
+      "milliseconds": 4245.430540991947,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "baseline-current",
+      "label": "A",
+      "warmup": false,
+      "pair": 7,
+      "milliseconds": 4229.346000007354,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "baseline-current",
+      "label": "A",
+      "warmup": false,
+      "pair": 8,
+      "milliseconds": 4262.470500019845,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "baseline-current",
+      "label": "B",
+      "warmup": false,
+      "pair": 8,
+      "milliseconds": 4213.6989580176305,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "baseline-current",
+      "label": "B",
+      "warmup": false,
+      "pair": 9,
+      "milliseconds": 4238.799666985869,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "baseline-current",
+      "label": "A",
+      "warmup": false,
+      "pair": 9,
+      "milliseconds": 4233.208416990237,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "A",
+      "warmup": true,
+      "pair": 0,
+      "milliseconds": 4264.407791983103,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "B",
+      "warmup": true,
+      "pair": 0,
+      "milliseconds": 4263.607457978651,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "A",
+      "warmup": true,
+      "pair": 1,
+      "milliseconds": 4275.057874998311,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "B",
+      "warmup": true,
+      "pair": 1,
+      "milliseconds": 4268.537916999776,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "A",
+      "warmup": false,
+      "pair": 0,
+      "milliseconds": 4223.390083992854,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "B",
+      "warmup": false,
+      "pair": 0,
+      "milliseconds": 4285.074374987744,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "B",
+      "warmup": false,
+      "pair": 1,
+      "milliseconds": 4211.7673750035465,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "A",
+      "warmup": false,
+      "pair": 1,
+      "milliseconds": 4235.914916003821,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "A",
+      "warmup": false,
+      "pair": 2,
+      "milliseconds": 4235.410916997353,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "B",
+      "warmup": false,
+      "pair": 2,
+      "milliseconds": 4252.15266700252,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "B",
+      "warmup": false,
+      "pair": 3,
+      "milliseconds": 4299.706541991327,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "A",
+      "warmup": false,
+      "pair": 3,
+      "milliseconds": 4653.554125019582,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "A",
+      "warmup": false,
+      "pair": 4,
+      "milliseconds": 4229.03012498864,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "B",
+      "warmup": false,
+      "pair": 4,
+      "milliseconds": 4250.272416014923,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "B",
+      "warmup": false,
+      "pair": 5,
+      "milliseconds": 4446.348750003381,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "A",
+      "warmup": false,
+      "pair": 5,
+      "milliseconds": 4260.119333979674,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "A",
+      "warmup": false,
+      "pair": 6,
+      "milliseconds": 4313.3742089848965,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "B",
+      "warmup": false,
+      "pair": 6,
+      "milliseconds": 4297.648915991886,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "B",
+      "warmup": false,
+      "pair": 7,
+      "milliseconds": 4233.256249979604,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "A",
+      "warmup": false,
+      "pair": 7,
+      "milliseconds": 4262.045541981934,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "A",
+      "warmup": false,
+      "pair": 8,
+      "milliseconds": 4584.5479169802275,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "B",
+      "warmup": false,
+      "pair": 8,
+      "milliseconds": 4398.48020800855,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "B",
+      "warmup": false,
+      "pair": 9,
+      "milliseconds": 4248.576209007297,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    },
+    {
+      "mode": "identical-current-control",
+      "label": "A",
+      "warmup": false,
+      "pair": 9,
+      "milliseconds": 4231.916332995752,
+      "exit_code": 0,
+      "exact_pngs": 1730
+    }
+  ],
+  "summaries": {
+    "baseline-current": {
+      "median_ms": {
+        "A": 4285.493083501933,
+        "B": 4263.503812006093
+      },
+      "median_change_percent": -0.5131094851253848,
+      "nearest_rank_p95_ms": {
+        "A": 4430.574208003236,
+        "B": 4454.863374994602
+      },
+      "p95_change_percent": 0.5482171350948306
+    },
+    "identical-current-control": {
+      "median_ms": {
+        "A": 4248.017124991748,
+        "B": 4268.613520995132
+      },
+      "median_change_percent": 0.48484729221576206,
+      "nearest_rank_p95_ms": {
+        "A": 4653.554125019582,
+        "B": 4446.348750003381
+      },
+      "p95_change_percent": -4.452626303456375
+    }
+  },
+  "conclusion": "The whole SVG application workload preserves measured performance. The median change (-0.51%) is comparable to the identical-current control (+0.48%). No isolated GPU or per-frame improvement is claimed.",
+  "cleanup": "The copied baseline executable and temporary measurement scripts are removed after measurement. No Rust measurement program or instrumentation was added."
+}

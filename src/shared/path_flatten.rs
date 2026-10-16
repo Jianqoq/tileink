@@ -9,7 +9,7 @@ pub struct PathFlatten<'a> {
 }
 
 impl<'a> PathFlatten<'a> {
-    pub fn new(path: &'a BezPath, tolerance: f32, path_id: u32) -> Self {
+    pub const fn new(path: &'a BezPath, tolerance: f32, path_id: u32) -> Self {
         Self {
             path,
             tolerance,
@@ -17,12 +17,12 @@ impl<'a> PathFlatten<'a> {
         }
     }
 
-    pub fn flatten(&mut self, out: &mut Vec<Line>) {
+    pub fn flatten(&self, out: &mut Vec<Line>) {
         let mut contour_start: Option<Point> = None;
         let mut last: Option<Point> = None;
         // Kurbo's flatten uses a curve-aware subdivision estimate, so it keeps
         // the same tolerance contract without over-splitting long SVG curves.
-        flatten(self.path.iter(), self.tolerance as f64, |el| match el {
+        flatten(self.path.iter(), f64::from(self.tolerance), |el| match el {
             PathEl::MoveTo(point) => {
                 if let (Some(start_pt), Some(end_pt)) = (contour_start, last)
                     && is_open_contour_close(start_pt, end_pt)
@@ -62,14 +62,8 @@ fn is_open_contour_close(start: Point, end: Point) -> bool {
     dx * dx + dy * dy > 1.0e-6 * 1.0e-6
 }
 
+// One emission boundary applies the degenerate-edge rule to every flattened segment.
 fn push_line_segment(out: &mut Vec<Line>, path_id: u32, p0: Point, p1: Point) {
-    if !is_non_degenerate_line(p0, p1) {
-        return;
-    }
-    push_flat_line(out, path_id, p0, p1);
-}
-
-fn push_flat_line(out: &mut Vec<Line>, path_id: u32, p0: Point, p1: Point) {
     if !is_non_degenerate_line(p0, p1) {
         return;
     }
@@ -143,18 +137,21 @@ mod tests {
     }
 
     #[test]
-    fn open_horizontal_line_closes() {
+    fn duplicate_points_and_repeated_close_preserve_only_real_edges() {
         let path = BezPath::from_vec(vec![
             PathEl::MoveTo((0.0, 0.0).into()),
-            PathEl::LineTo((100.0, 0.0).into()),
+            PathEl::LineTo((0.0, 0.0).into()),
+            PathEl::LineTo((10.0, 0.0).into()),
+            PathEl::LineTo((10.0, 0.0).into()),
+            PathEl::ClosePath,
+            PathEl::ClosePath,
         ]);
         let mut lines = Vec::new();
-
-        PathFlatten::new(&path, 0.1, 0).flatten(&mut lines);
-
+        PathFlatten::new(&path, 0.1, 7).flatten(&mut lines);
         assert_eq!(lines.len(), 2);
-        assert_eq!(lines[1].p0, [100.0, 0.0]);
-        assert_eq!(lines[1].p1, [0.0, 0.0]);
+        assert_eq!((lines[0].p0, lines[0].p1), ([0.0, 0.0], [10.0, 0.0]));
+        assert_eq!((lines[1].p0, lines[1].p1), ([10.0, 0.0], [0.0, 0.0]));
+        assert!(lines.iter().all(|line| line.path_id == 7));
     }
 
     #[test]

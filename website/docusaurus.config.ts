@@ -4,7 +4,7 @@ import {themes as prismThemes} from 'prism-react-renderer';
 
 const config: Config = {
   title: 'Tileink',
-  tagline: 'Tile-based vector rendering for Rust and WGPU',
+  tagline: 'Tile-based vector rendering for Rust with native GPU backends',
   favicon: 'img/favicon.svg',
   url: 'http://localhost',
   baseUrl: '/',
