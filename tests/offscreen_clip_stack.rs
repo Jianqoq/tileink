@@ -137,3 +137,34 @@ fn deep_offscreen_clips_preserve_filter_mask_and_group_pixels() {
         }
     }
 }
+
+#[test]
+#[ignore = "requires pinned TILEINK_TEST_GPU; run each backend separately"]
+fn group_opacity_is_applied_once_across_child_clip_batches() {
+    use peniko::{
+        Color,
+        kurbo::{Affine, Rect, Shape},
+    };
+    use tileink::{Canvas, Radius};
+    let mut gpu = backend::Gpu::new();
+    let target = gpu.target(32, 32);
+    let full = Rect::new(0.0, 0.0, 32.0, 32.0);
+    let mut canvas = Canvas::new(32, 32, 1.0);
+    canvas.push_opacity_layer(full.to_path(0.1), Affine::IDENTITY, 0.1, 0.5);
+    canvas.push_rect(full, Radius::ZERO, Color::WHITE);
+    canvas.push_clip_sdf_rect_layer(Rect::new(4.0, 4.0, 28.0, 28.0), Radius::ZERO);
+    canvas.push_rect(Rect::new(8.0, 8.0, 24.0, 24.0), Radius::ZERO, Color::BLACK);
+    canvas.pop_layer();
+    canvas.pop_layer();
+    gpu.render_immediate(&canvas, &target);
+    let image = gpu.image_target(&target);
+    for (x, y, expected) in [(2, 2, 0x8080_8080u32), (16, 16, 0x8000_0000)] {
+        let pixel = image.pixels[y * 32 + x];
+        for channel in 0..4 {
+            assert!(
+                ((pixel >> (channel * 8)) & 255).abs_diff((expected >> (channel * 8)) & 255) <= 1,
+                "group alpha must apply to the composited subtree, ({x},{y}): {pixel:08x} != {expected:08x}"
+            );
+        }
+    }
+}

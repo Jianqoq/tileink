@@ -186,7 +186,7 @@ fn compile_lowers_clip_blend_batches_in_user_order() {
 }
 
 #[test]
-fn compile_keeps_opacity_group_alive_across_nested_batches() {
+fn compile_isolates_opacity_across_nested_batches() {
     let mut canvas = test_scene();
     canvas.push_opacity_layer(rect_path(0.0, 0.0, 32.0, 32.0), Affine::IDENTITY, 0.25, 0.5);
     canvas.push_path(
@@ -221,61 +221,27 @@ fn compile_keeps_opacity_group_alive_across_nested_batches() {
     canvas.pop_layer();
 
     let plan = canvas.compile(ROOT_COMMAND_LIST_ID);
-    assert_eq!(plan.ops.len(), 3, "{:#?}", plan.ops);
-
-    match &plan.ops[0] {
-        ExecOp::DrawBatch {
-            draws, layer_stack, ..
-        } => {
-            assert_eq!(draws.as_ref().clone(), (1..2).collect::<Vec<_>>());
-            assert_layer_stack(
-                &plan,
-                layer_stack.clone(),
-                &[LayerStackEntry::Opacity {
-                    draw: 0,
-                    opacity: 0.5,
-                }],
-            );
-        }
-        op => panic!("expected first DrawBatch, got {op:#?}"),
-    }
-    match &plan.ops[1] {
-        ExecOp::DrawBatch {
-            draws, layer_stack, ..
-        } => {
-            assert_eq!(draws.as_ref().clone(), (3..4).collect::<Vec<_>>());
-            assert_layer_stack(
-                &plan,
-                layer_stack.clone(),
-                &[
-                    LayerStackEntry::Opacity {
-                        draw: 0,
-                        opacity: 0.5,
-                    },
-                    LayerStackEntry::Blend {
-                        draw: 2,
-                        mode: BlendMode::new(Mix::Screen, Compose::SrcOver),
-                    },
-                ],
-            );
-        }
-        op => panic!("expected second DrawBatch, got {op:#?}"),
-    }
-    match &plan.ops[2] {
-        ExecOp::DrawBatch {
-            draws, layer_stack, ..
-        } => {
-            assert_eq!(draws.as_ref().clone(), (4..5).collect::<Vec<_>>());
-            assert_layer_stack(
-                &plan,
-                layer_stack.clone(),
-                &[LayerStackEntry::Opacity {
-                    draw: 0,
-                    opacity: 0.5,
-                }],
-            );
-        }
-        op => panic!("expected third DrawBatch, got {op:#?}"),
+    let [
+        ExecOp::OffscreenLayer {
+            layer: OffscreenLayer::Opacity { opacity, .. },
+            children,
+            ..
+        },
+    ] = plan.ops.as_slice()
+    else {
+        panic!("opacity must enclose all child batches: {:#?}", plan.ops);
+    };
+    assert_eq!(*opacity, 0.5);
+    assert_eq!(children.len(), 3);
+    for op in children {
+        let ExecOp::DrawBatch { layer_stack, .. } = op else {
+            panic!("expected draw batch: {op:#?}")
+        };
+        assert!(
+            plan.layer_stack_data[layer_stack.clone()]
+                .iter()
+                .all(|entry| !matches!(entry, LayerStackEntry::Opacity { .. }))
+        );
     }
 }
 

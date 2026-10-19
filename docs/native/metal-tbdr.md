@@ -114,6 +114,15 @@ reuse bounded disjoint particle slots, requiring only emission instead of
 recounting and reallocating each batch. Mixed group/opacity schedules and text
 retain regular allocation where those slots cannot preserve semantics.
 
+Group opacity and blend may fuse only when every actual draw has the same effective layer
+stack. Empty nested groups and flat retained fragments do not split it; a nested clip with
+painted siblings does. Each raster batch opens and closes its own fused stack, so applying a
+shared group to several batches fades the background and text separately. Such a group must
+composite its complete subtree into one surface before applying alpha/blend. This fixes the
+root cause of popup text darkening during fades: a 50% group previously produced 75% alpha
+where clipped foreground overlapped its background. GPU pixel regressions and compile-plan
+tests cover this distinction; text rasterization and font weight are unchanged.
+
 Planning regressions previously excluded Metal now run on it. GPU checks compare
 reused slots against regular allocation, including rejected tiles, reused EMPTY
 classifications, small/large emitter schedules, and nested clip spill depths.

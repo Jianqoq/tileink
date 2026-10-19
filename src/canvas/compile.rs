@@ -341,37 +341,40 @@ impl Canvas {
     pub(crate) fn can_fuse(&self, layer: &Layer, children: CommandListId) -> bool {
         match layer {
             Layer::Clip { .. } | Layer::ClipSdf { .. } => true,
-            // Group opacity and blend must wrap the composited child subtree.
-            // If a child opens its own offscreen layer, keeping the group fused
-            // would apply it to separate fragments before they are combined.
+            // Fine rasterization opens/closes a fused group per draw batch. A nested layer
+            // changes the stack and splits batches, so the group must isolate the entire
+            // composited subtree instead of applying alpha/blend to each fragment separately.
             Layer::Opacity { .. } | Layer::Blend { .. } => {
-                !self.command_list_contains_offscreen(children)
+                self.command_list_has_single_stack(children, children, &mut None)
             }
             _ => false,
         }
     }
 
-    pub(super) fn command_list_contains_offscreen(&self, list_id: CommandListId) -> bool {
-        self.command_lists[list_id]
+    fn command_list_has_single_stack(
+        &self,
+        list: CommandListId,
+        stack: CommandListId,
+        first: &mut Option<CommandListId>,
+    ) -> bool {
+        self.command_lists[list]
             .commands
             .iter()
-            .any(|command| match command {
-                Command::Draw(_) => false,
+            .all(|command| match command {
+                Command::Draw(_) => *first.get_or_insert(stack) == stack,
                 Command::MaterializedRetainedScene { fragment, .. } => {
-                    self.command_list_contains_offscreen(fragment.start)
+                    self.command_list_has_single_stack(fragment.start, stack, first)
                 }
                 Command::Layer {
-                    layer, children, ..
-                } => {
-                    !matches!(
-                        layer,
+                    layer:
                         Layer::Clip { .. }
-                            | Layer::ClipSdf { .. }
-                            | Layer::Opacity { .. }
-                            | Layer::Blend { .. }
-                    ) || self.command_list_contains_offscreen(*children)
-                }
-                Command::MaskLayer { .. } => true,
+                        | Layer::ClipSdf { .. }
+                        | Layer::Opacity { .. }
+                        | Layer::Blend { .. },
+                    children,
+                    ..
+                } => self.command_list_has_single_stack(*children, *children, first),
+                Command::Layer { .. } | Command::MaskLayer { .. } => false,
             })
     }
 }
