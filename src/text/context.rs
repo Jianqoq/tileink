@@ -4,18 +4,23 @@ use cosmic_text::{Buffer, CacheKey, FontSystem, Metrics, Shaping, SubpixelBin};
 use peniko::kurbo::{BezPath, Point};
 use swash::scale::ScaleContext;
 
+use self::glyph::CachedGlyph;
+
 use crate::shared::bounds::Bounds;
 
 use super::{
     layout::{CanvasGlyph, TextGlyph, TextLayout},
     options::{TextLayoutOptions, TextRasterOptions},
     outline::{append_outline_path, outline_cache_key, outline_glyph_path},
-    raster::{GlyphRasterImage, RasterGlyphKey, raster_glyph_image},
+    raster::RasterGlyphKey,
 };
+
+mod glyph;
+mod ink;
 
 pub struct TextContext {
     scale_context: ScaleContext,
-    image_cache: HashMap<RasterGlyphKey, Option<GlyphRasterImage>>,
+    image_cache: HashMap<RasterGlyphKey, Option<CachedGlyph>>,
     outline_cache: HashMap<CacheKey, Option<BezPath>>,
     raster_options: TextRasterOptions,
     cache_generation: u64,
@@ -131,30 +136,6 @@ impl TextContext {
         }
         let bounds = self.raster_bounds(font_system, &glyphs);
         TextLayout { glyphs, bounds }
-    }
-
-    pub(crate) fn glyph_image(
-        &mut self,
-        font_system: &mut FontSystem,
-        cache_key: CacheKey,
-    ) -> Option<&GlyphRasterImage> {
-        let key = RasterGlyphKey {
-            cache_key,
-            subpixel_mode: self.raster_options.subpixel_mode,
-            embolden_bits: self.raster_options.mask_embolden().to_bits(),
-        };
-        self.image_cache
-            .entry(key)
-            .or_insert_with(|| {
-                raster_glyph_image(
-                    font_system,
-                    &mut self.scale_context,
-                    cache_key,
-                    key.subpixel_mode,
-                    f32::from_bits(key.embolden_bits),
-                )
-            })
-            .as_ref()
     }
 
     /// Builds a vector path for every scalable glyph in `layout`.
