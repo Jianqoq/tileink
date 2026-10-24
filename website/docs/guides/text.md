@@ -9,7 +9,7 @@ Tileink 使用 cosmic-text 做 shaping/layout，使用 `TextContext` 管理 layo
 
 ```rust
 use peniko::{Color, kurbo::Point};
-use tileink::{Canvas, TextContext, TextFontSystem, TextLayoutOptions, WgpuRenderer};
+use tileink::{Canvas, TextContext, TextFontSystem, TextLayoutOptions, NativeRenderer};
 
 let mut fonts = TextFontSystem::new();
 let mut text = TextContext::new();
@@ -21,7 +21,7 @@ let layout = text.layout(
 let mut canvas = Canvas::new(640, 160, 1.0);
 canvas.push_text_layout(&layout, Point::new(24.0, 52.0), Color::WHITE);
 
-renderer.render_with_text(&canvas, &mut fonts, &mut text);
+renderer.render_with_text(&canvas, &mut fonts, &mut text)?.wait()?;
 ```
 
 如果应用已经为测量或编辑保留了 `cosmic_text::Buffer`，使用
@@ -34,9 +34,21 @@ buffer 必须由同一个 font system 创建。
 - `push_text_layout`：保留 glyph/run records，由 GPU text path 渲染；必须调用 `render_with_text*`。
 - `push_text_layout_as_path`：把 glyph outline 记录为普通 path；不依赖 text renderer，但失去 bitmap/color emoji 与 text-specific caching。
 
+位图文本的平移与 DPI 换算使用宽精度，字形锚点和最终范围限制在 `i32` 像素坐标域内。
+大坐标不会回绕到另一侧，范围计算在完成缩放和 padding 后才限制端点。
+`push_text_layout` 和 `push_text_layout_clipped` 对非有限原点或坐标域外的空范围返回 `None`，不记录空 glyph/run。
+
 ## Raster options
 
 `TextRasterOptions` 控制 composite/subpixel 策略。`TextSubpixelMode` 可选择 none、RGB/BGR 等模式；`TextCompositeMode` 控制 coverage 如何应用到颜色。窗口目标与字体 atlas 参数变化会使相关资源重新准备。
+
+RGB/BGR 对普通轮廓字形使用 Harmony LCD 覆盖率；`None` 使用单通道 alpha。
+彩色字体仍优先使用其彩色轮廓或位图，切换 subpixel 模式不会将彩色 emoji 转成单色。
+
+LCD 的三个颜色通道覆盖率只在不透明目标像素上分别合成。透明目标（包括动画的离屏透明图层）
+使用通道平均覆盖率表示一个 alpha；单个 RGBA alpha 无法保留三个独立的透射率。
+原先使用最大通道作为 alpha 会在图层覆盖到背景时加重字形边缘，这里修复的是合成根因。
+图层插入、透明度变化与小数位移都必须保持字形覆盖一致，不能靠改变字重补偿。
 
 ## 扁平 Canvas 的 prepared text 复用
 
@@ -52,3 +64,6 @@ range 会直接传给 GPU text upload，因此无需重建未变化的 text reco
 ## Retained text
 
 把包含 text runs 的 Canvas 放入 `RetainedScene`，使用 `render_retained_with_text*`。替换文本时创建新的 `Rc<Canvas>` 并 `replace_scene`；仅移动文本时只调用 `set_transform`。
+
+经过仿射变换的字形位图采用双线性采样，字形外部按透明像素处理。整数位移保持原始像素，
+小数位移不会将动画文字吸附到物理整数像素。各原生后端的粗粒度字形边界均包含插值范围。

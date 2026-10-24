@@ -52,10 +52,12 @@ pub enum SdfShadow {
 
 impl Sdf {
     /// Creates analytic coverage for alternating cells inside `rect`.
+    #[must_use]
     pub fn checkerboard(rect: peniko::kurbo::Rect, cell_size: f32) -> Self {
         Self::Checkerboard(Checkerboard::new(rect, cell_size))
     }
 
+    #[must_use]
     pub fn bounds(self) -> Bounds {
         match self {
             Self::Rect(rect) => rect.bounds(),
@@ -96,6 +98,7 @@ impl Sdf {
 }
 
 impl SdfShadow {
+    #[must_use]
     pub fn bounds(self) -> Bounds {
         match self {
             Self::Rect(shadow) => shadow.bounds(),

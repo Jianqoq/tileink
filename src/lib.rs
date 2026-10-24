@@ -1,47 +1,56 @@
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "Test setup and assertions abort on failure; production builds are checked separately"
+    )
+)]
 mod canvas;
-mod debug;
+mod canvas_surface;
+#[path = "../build/hex.rs"]
+mod hex;
+mod pixel_grid;
+mod render;
 mod retained_scene;
 mod shared;
 mod svg;
 mod text;
-mod wgpu;
 
-pub const TILE_SIZE: u32 = 16;
+pub use shared::gpu_constants::TILE_SIZE;
+pub use shared::shader::{
+    ProgramBrush, ShaderBinding, ShaderBindingKind, ShaderConfig, ShaderConfigDescriptor,
+    ShaderDispatch, ShaderError, ShaderExtent, ShaderInput, ShaderKernel, ShaderPass,
+    ShaderPipeline, ShaderProgram, ShaderResource, ShaderResourceKind, ShaderSampler,
+    ShaderSources, ShaderTextureFormat,
+};
 pub const TILE_SCALE: f32 = 1.0 / TILE_SIZE as f32;
 pub const BLOCK_SIZE: u32 = 16 * 16;
 
-pub use crate::wgpu::{
-    CoarseBinningMode, ExternalTextureHistoryId, FullRedrawReason, IncrementalOutputMode,
-    IncrementalRenderConfig, IncrementalRenderMode, IncrementalRenderStats, Renderer,
-    Renderer as WgpuRenderer, RendererOptions, RendererOptions as WgpuRendererOptions,
-    WgpuRenderProfile, WgpuRenderProfileEntry, WgpuRenderProfileEventSummary,
-    WgpuRenderProfileReport, WgpuTextureRenderError,
-};
 pub use canvas::{Canvas, DrawId, RetainedNodeId};
-pub(crate) use canvas::{NodeGeneration, PersistentLayerKey};
+pub(crate) use canvas::{NodeRevision, PersistentLayerKey};
+pub use canvas_surface::{CanvasSurface, InvalidCanvasSurface};
 pub use cosmic_text::{
     Align as TextAlign, Attrs as TextAttrs, CacheKeyFlags as TextCacheKeyFlags,
     Family as TextFamily, FontSystem as TextFontSystem, Stretch as TextStretch, Style as TextStyle,
     Weight as TextWeight, Wrap as TextWrap,
 };
-pub use debug::{
-    DebugLineSegment, DebugTileDump, DebugTilePath, DebugTilePathSummary, DebugTileSummary,
-    RenderDebugCapture, RenderDebugImage, RenderDebugOptions, RenderDebugText, RenderOptions,
-    TileOverlayOptions, debug_capture_json,
+pub use pixel_grid::{PixelGrid, uniform_axis_scale};
+pub use render::incremental::{
+    FullRedrawReason, IncrementalOutputMode, IncrementalRenderConfig, IncrementalRenderMode,
+    IncrementalRenderStats,
 };
-#[cfg(feature = "bench-internals")]
-pub use retained_scene::RetainedMaterializerBenchmark;
+pub use render::output::ExternalTextureHistoryId;
 pub use retained_scene::{
     RetainedChildBranch, RetainedLayerDescriptor, RetainedParent, RetainedScene,
     RetainedSceneError, RetainedSceneTransaction, SceneVersion,
 };
-#[cfg(feature = "bench-internals")]
-pub use shared::gpu_plan::{GpuDirtyRangesBenchmark, TileDrawBinsBenchmark};
-#[cfg(feature = "bench-internals")]
-pub use shared::scene_arena::{SceneArenaDirtyBenchmark, SceneArenaFillBenchmark};
 pub use shared::{
     bounds::Bounds,
-    brush::{Brush, PatternBrush, PatternSampling},
+    brush::{
+        Brush, MeshGradient, MeshGradientError, MeshInterpolation, PatternBrush, PatternSampling,
+    },
     fill::FillRule,
     image::{Image, ImageSaveError},
     image_resource::ImageKey,
@@ -49,13 +58,12 @@ pub use shared::{
         filter::{
             BlurDownsampleFilter, BlurSampling, BlurUpsampleFilter, CompositeOperator,
             ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, Filter, FilterInput,
-            FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator, RectLiquidGlass,
-            SpecularLighting,
+            FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator, ProgressiveBlur,
+            ProgressiveBlurQuality, RectLiquidGlass, SpecularLighting,
         },
         mask::{Mask, MaskKind},
         region::Region,
     },
-    pixel::TextCoverageParams,
     sdf::{
         Sdf, SdfShadow,
         arc::{ArcShadow as SdfArcShadow, Rc as SdfArc},
@@ -74,8 +82,8 @@ pub use shared::{
             LineShadow as SdfLineShadow,
         },
         rect::{
-            Radius, Rect as SdfRect, RectShadow as SdfRectShadow, RectShadowOptions,
-            RectStroke as SdfRectStroke, StrokeWidths,
+            Radius, Rect as SdfRect, RectShadow as SdfRectShadow, RectStroke as SdfRectStroke,
+            StrokeWidths,
         },
         shadow::ShadowOptions,
         star::{Star as SdfStar, StarStroke as SdfStarStroke},
@@ -83,13 +91,28 @@ pub use shared::{
     },
 };
 pub use svg::{SvgError, SvgOptions};
-#[cfg(feature = "bench-internals")]
-pub use text::PreparedTextBenchmark;
 pub use text::{
     TextCompositeMode, TextContext, TextLayout, TextLayoutOptions, TextRasterOptions,
     TextSubpixelMode,
 };
-#[cfg(feature = "bench-internals")]
-pub use wgpu::{DamageTilesBenchmark, GlyphCapacityBenchmark, GlyphCapacityBenchmarkCase};
-#[cfg(feature = "bench-internals")]
-pub use wgpu::{FrameDiffBenchmark, FrameDiffBenchmarkCase};
+
+#[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
+mod native;
+#[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
+pub use native::{
+    BackendUnavailable, BackendUnavailableReason, NativeBackend, NativeContext,
+    NativeContextOptions, NativeError, NativeImageSubmission, NativeRenderTarget, NativeRenderer,
+    NativeShaderArtifact, NativeSubmission, NativeTexture,
+    SHADER_ARTIFACTS as NATIVE_SHADER_ARTIFACTS,
+};
+
+#[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
+pub use native::interop as native_interop;
+
+#[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
+pub use native::{NativeTargetState, NativeTargetSubmission, NativeTargetUse};
+
+mod backend_features;
+
+#[cfg(tileink_native_runtime)]
+pub use native::{NativeShaderBatch, NativeShaderResource};

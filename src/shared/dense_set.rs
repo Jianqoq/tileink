@@ -59,11 +59,11 @@ impl DenseIndexSet {
         self.bits[index / 64] & (1 << (index % 64)) != 0
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    pub(crate) const fn is_empty(&self) -> bool {
         self.indices.is_empty()
     }
 
-    pub(crate) fn len(&self) -> usize {
+    pub(crate) const fn len(&self) -> usize {
         self.indices.len()
     }
 

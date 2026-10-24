@@ -1,8 +1,27 @@
 use super::*;
 
+#[cfg(test)]
+mod tests;
+
 impl Canvas {
+    /// Creates an empty canvas for an authored logical surface.
+    ///
+    /// # Panics
+    /// Panics if the scale is nonpositive/nonfinite or the resulting surface extent is unrepresentable.
+    #[must_use]
+    #[allow(
+        clippy::expect_used,
+        reason = "The infallible authored constructor requires a representable canvas surface"
+    )]
     pub fn new(logical_width: u32, logical_height: u32, scale_factor: f32) -> Self {
-        let scale = valid_scale_factor(scale_factor);
+        Self::with_surface(
+            CanvasSurface::from_logical((logical_width, logical_height), scale_factor)
+                .expect("valid canvas surface"),
+        )
+    }
+
+    #[must_use]
+    pub fn with_surface(surface: CanvasSurface) -> Self {
         Self {
             lines: Vec::new(),
             path_records: Vec::new(),
@@ -14,60 +33,59 @@ impl Canvas {
             text_runs: Vec::new(),
             scene_images: ImageResourceStore::default(),
             command_lists: vec![CommandList::default()],
-            root_commands: ROOT_COMMAND_LIST_ID,
-            command_stack: vec![ROOT_COMMAND_LIST_ID],
+            current_commands: ROOT_COMMAND_LIST_ID,
             layer_stack: Vec::new(),
             path_cnt: 0,
             backdrop_pool_capacity: 0,
             tile_cnt: 0,
-            logical_width,
-            logical_height,
-            scale_factor: scale,
+            surface,
             draw_generation: 0,
             persistent_root: None,
             invalidated_bounds: Vec::new(),
             invalidate_all: false,
             buffer_changes: None,
             plan_cache_key: None,
+            materialization_key: None,
             compiled_plan: None,
             persistent_frame: None,
-            painter_keys: None,
-            stable_batch_ids: None,
-            stable_batch_counts: None,
+            painter: PainterMetadata::default(),
             retained_transform: GpuAffine::IDENTITY,
         }
     }
 
     /// Creates the internal materialized target owned by one persistent scene.
-    pub(crate) fn new_persistent(
-        logical_width: u32,
-        logical_height: u32,
-        scale_factor: f32,
-        root_id: RetainedNodeId,
-    ) -> Self {
-        let mut canvas = Self::new(logical_width, logical_height, scale_factor);
+    pub(crate) fn new_persistent(surface: CanvasSurface, root_id: RetainedNodeId) -> Self {
+        let mut canvas = Self::with_surface(surface);
         canvas.persistent_root = Some(root_id);
         canvas
     }
-    pub fn scale_factor(&self) -> f32 {
-        self.scale_factor
+    #[must_use]
+    pub const fn scale_factor(&self) -> f32 {
+        self.surface.scale_factor()
     }
 
-    pub fn physical_size(&self) -> (u32, u32) {
+    #[must_use]
+    pub const fn physical_size(&self) -> (u32, u32) {
         (self.physical_width(), self.physical_height())
     }
 
-    pub fn logical_size(&self) -> (u32, u32) {
-        (self.logical_width, self.logical_height)
+    #[must_use]
+    pub const fn logical_size(&self) -> (f64, f64) {
+        self.surface.logical_size()
+    }
+
+    #[must_use]
+    pub const fn surface(&self) -> CanvasSurface {
+        self.surface
     }
 
     /// Changes only the viewport extent and rebuilds path allocations clipped to that viewport.
     /// Geometry, commands, brushes, images, and text remain valid when scale is unchanged.
-    pub(crate) fn resize_surface(&mut self, logical_width: u32, logical_height: u32) {
-        if (self.logical_width, self.logical_height) == (logical_width, logical_height) {
+    pub(crate) fn resize_surface(&mut self, surface: CanvasSurface) {
+        if self.surface == surface {
             return;
         }
-        self.set_surface_extent(logical_width, logical_height);
+        self.set_surface_extent(surface);
         self.backdrop_pool_capacity = 0;
         self.tile_cnt = 0;
         self.append_path_backdrops_for_paths(
@@ -78,9 +96,8 @@ impl Canvas {
         );
     }
 
-    pub(crate) fn set_surface_extent(&mut self, logical_width: u32, logical_height: u32) {
-        self.logical_width = logical_width;
-        self.logical_height = logical_height;
+    pub(crate) const fn set_surface_extent(&mut self, surface: CanvasSurface) {
+        self.surface = surface;
     }
 
     /// Installs a retained node transform without rewriting local geometry or paint blobs.
@@ -88,8 +105,12 @@ impl Canvas {
     /// Scan transforms path lines on the GPU; fine rendering maps device samples back into local
     /// brush, SDF, image, and glyph coordinates. CPU work is limited to record bounds and scan
     /// allocation metadata needed by damage and tile binning.
+    #[allow(
+        clippy::expect_used,
+        reason = "Retained scene validation guarantees installed transforms are invertible"
+    )]
     pub(crate) fn set_retained_transform(&mut self, logical_transform: Affine) {
-        let transform = GpuAffine::from_logical(logical_transform, self.scale_factor);
+        let transform = GpuAffine::from_logical(logical_transform, self.scale_factor());
         let inverse = transform
             .inverse()
             .expect("validated retained transforms are invertible");
@@ -105,14 +126,15 @@ impl Canvas {
             && previous.d == transform.d
         {
             let offset = SceneOffset {
-                dx: (transform.e - previous.e) as f64,
-                dy: (transform.f - previous.f) as f64,
+                dx: f64::from(transform.e - previous.e),
+                dy: f64::from(transform.f - previous.f),
             };
             if !offset.is_zero() {
                 for list in &mut self.command_lists {
-                    for command in &mut list.commands {
-                        offset.command(command);
-                    }
+                    list.commands = std::mem::take(&mut list.commands)
+                        .into_iter()
+                        .map(|command| offset.command(command))
+                        .collect();
                 }
             }
         }
@@ -149,24 +171,27 @@ impl Canvas {
 
     /// Returns whether every layer and command list opened while recording has been closed.
     /// Only a closed canvas can be appended or installed as a retained scene leaf.
-    pub fn is_closed_for_append(&self) -> bool {
-        self.command_stack.len() == 1 && self.layer_stack.is_empty()
+    #[must_use]
+    pub const fn is_closed_for_append(&self) -> bool {
+        self.layer_stack.is_empty()
     }
 
-    pub fn physical_width(&self) -> u32 {
-        scaled_canvas_extent(self.logical_width, self.scale_factor)
+    #[must_use]
+    pub const fn physical_width(&self) -> u32 {
+        self.surface.physical_size().0
     }
 
-    pub fn physical_height(&self) -> u32 {
-        scaled_canvas_extent(self.logical_height, self.scale_factor)
+    #[must_use]
+    pub const fn physical_height(&self) -> u32 {
+        self.surface.physical_size().1
     }
 
     pub(super) fn scale_f64(&self) -> f64 {
-        f64::from(self.scale_factor)
+        f64::from(self.scale_factor())
     }
 
-    pub(super) fn scale_f32(&self) -> f32 {
-        self.scale_factor
+    pub(super) const fn scale_f32(&self) -> f32 {
+        self.scale_factor()
     }
 
     pub(super) fn device_transform(&self) -> Affine {
@@ -221,9 +246,9 @@ impl Canvas {
         }
     }
 
-    pub(super) fn physical_shadow_options(&self, options: RectShadowOptions) -> RectShadowOptions {
+    pub(super) fn physical_shadow_options(&self, options: ShadowOptions) -> ShadowOptions {
         let scale = self.scale_f32();
-        RectShadowOptions {
+        ShadowOptions {
             offset_x: options.offset_x * scale,
             offset_y: options.offset_y * scale,
             expand: options.expand * scale,
@@ -254,11 +279,13 @@ impl Canvas {
                         input: primitive.input,
                         input2: primitive.input2,
                         region: self.physical_bounds(primitive.region),
+                        linear_rgb: primitive.linear_rgb,
                         kind: self.physical_filter_primitive_kind(primitive.kind),
                     })
                     .collect(),
                 fixed_region,
             },
+            Filter::ProgressiveBlur(blur) => Filter::ProgressiveBlur(blur.scaled(f64::from(scale))),
             Filter::RectLiquidGlass(mut glass) => {
                 glass.blur_radius = ((glass.blur_radius as f32) * scale).round().max(1.0) as u32;
                 glass.refraction_thickness *= scale;
@@ -275,6 +302,10 @@ impl Canvas {
                 std_dev_y: std_dev_y * scale,
                 sampling,
             },
+            Filter::ShaderPipeline(mut pipeline) => {
+                pipeline.transform = scale_brush_transform(pipeline.transform, 1.0 / scale);
+                Filter::ShaderPipeline(pipeline)
+            }
             Filter::Flood { brush } => Filter::Flood {
                 brush: self.physical_brush(brush),
             },
@@ -312,6 +343,13 @@ impl Canvas {
     ) -> FilterPrimitiveKind {
         let scale = self.scale_f32();
         match kind {
+            FilterPrimitiveKind::ShaderPipeline {
+                mut pipeline,
+                inputs,
+            } => {
+                pipeline.transform = scale_brush_transform(pipeline.transform, 1.0 / scale);
+                FilterPrimitiveKind::ShaderPipeline { pipeline, inputs }
+            }
             FilterPrimitiveKind::Filter(filter) => {
                 FilterPrimitiveKind::Filter(Box::new(self.physical_filter(*filter)))
             }
@@ -390,6 +428,14 @@ impl Canvas {
                 gradient.bounds[2] *= scale;
                 gradient.bounds[3] *= scale;
                 Brush::FourCorner(gradient)
+            }
+            Brush::Mesh(mut gradient) => {
+                gradient.transform = scale_brush_transform(gradient.transform, inv_scale);
+                Brush::Mesh(gradient)
+            }
+            Brush::Program(mut program) => {
+                program.0.transform = scale_brush_transform(program.0.transform, inv_scale);
+                Brush::Program(program)
             }
             Brush::Pattern(mut pattern) => {
                 pattern.transform = scale_brush_transform(pattern.transform, inv_scale);

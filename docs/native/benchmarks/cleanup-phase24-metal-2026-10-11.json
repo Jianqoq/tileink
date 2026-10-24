@@ -1,0 +1,54 @@
+{
+  "recorded_at_utc": "2026-10-11T14:55:43.699682+00:00",
+  "baseline_commit": "3a823b1fdf09a891334fa841307ac8eb15844e07",
+  "backend": "Metal",
+  "adapter": "Apple M5 (0000000100000575)",
+  "workload": "Actual program_brush example: 960x640 procedural paint, ordinary and scanline-filtered rounded panels; complete process including native shader/cache loading, resource creation, render, GPU readback and PNG output. Every measured image is compared with the baseline pixels.",
+  "warmup_pairs": 2,
+  "timed_pairs": 10,
+  "order": "alternating before/after, after/before",
+  "percentile_method": "nearest rank; p95 is the maximum of ten samples",
+  "validation_layer_in_timed_runs": false,
+  "shader_cache": "warmed by two complete warmup pairs; this does not measure cold compilation",
+  "concurrency": "no competing builds or GPU jobs",
+  "executables": {
+    "before": "bda1e888bdd118709de09e11aa3db9dac6bf296c07f5120efc5f409c774480e9",
+    "after": "eb1d202fa0e12d5c3ed4a6ce61bd3d363ecce28ad36e78f3eddedc8cb73ce130"
+  },
+  "results": {
+    "before": {
+      "samples_ms": [
+        95.298917,
+        102.299708,
+        96.734125,
+        101.553084,
+        96.533583,
+        106.217792,
+        97.082792,
+        96.524416,
+        99.837833,
+        97.009583
+      ],
+      "p50_ms": 97.0461875,
+      "p95_ms": 106.217792
+    },
+    "after": {
+      "samples_ms": [
+        94.777792,
+        101.78775,
+        95.546708,
+        97.60175,
+        95.993834,
+        100.020875,
+        95.638917,
+        100.7505,
+        102.304125,
+        96.914209
+      ],
+      "p50_ms": 97.2579795,
+      "p95_ms": 102.304125
+    }
+  },
+  "interpretation": "Dead application-shader helpers, bindings and unused coordinate calculations are removed. No live shader math or renderer code changes. This actual application wall-time check includes PNG I/O and initialization; it neither isolates shader parsing nor measures GPU throughput. No runtime speedup is claimed.",
+  "p50_change_percent": 0.21823835171268513
+}

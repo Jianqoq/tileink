@@ -1,0 +1,507 @@
+{
+  "baseline_commit": "2a8e2b9caa4c002a542776e7e017794359f4a707",
+  "scope": "Delete DX12 poisoned creation-state recovery and impossible missing packed-uniform handles; enforce explicit GPU identity in Metal unit test harnesses.",
+  "tests": {
+    "passed": 1138,
+    "failed": 0,
+    "ignored": 0,
+    "test_binaries": 44,
+    "release": true,
+    "test_threads": 1,
+    "rayon_threads": 1,
+    "focused_creation_gate": 2,
+    "focused_gpu_selection": {
+      "tests": 1,
+      "subprocess_cases": [
+        "missing",
+        "empty",
+        "unavailable"
+      ],
+      "each_child_executes_one_test": true
+    },
+    "focused_uniforms": 4,
+    "focused_coarse": 50
+  },
+  "regressions_before_fix": {
+    "fmt": {
+      "command": [
+        "cargo",
+        "fmt"
+      ],
+      "exit_code": 0,
+      "seconds": 0.6144145409925841,
+      "log": "target/cleanup-audit/policy-fmt.log"
+    },
+    "red-poison": {
+      "command": [
+        "cargo",
+        "test",
+        "--release",
+        "--no-default-features",
+        "--features",
+        "metal",
+        "--test",
+        "native_device_creation",
+        "--",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "seconds": 1.8640798330015969,
+      "log": "target/cleanup-audit/policy-red-poison.log"
+    },
+    "red-gpu": {
+      "command": [
+        "cargo",
+        "test",
+        "--release",
+        "--no-default-features",
+        "--features",
+        "metal",
+        "--lib",
+        "explicit_gpu_selection",
+        "--",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "seconds": 16.467393999977503,
+      "log": "target/cleanup-audit/policy-red-gpu.log"
+    },
+    "producer-before": {
+      "command": [
+        "cargo",
+        "test",
+        "--release",
+        "--no-default-features",
+        "--features",
+        "metal",
+        "--lib",
+        "packed_offsets_always",
+        "--",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "seconds": 0.07545149998622946,
+      "log": "target/cleanup-audit/policy-producer-before.log"
+    }
+  },
+  "validation": {
+    "commands": {
+      "fmt": {
+        "command": [
+          "cargo",
+          "fmt"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5790962499740999,
+        "log": "target/cleanup-audit/policy-fmt.log"
+      },
+      "focused-poison": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--test",
+          "native_device_creation",
+          "--",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "seconds": 0.06920833300682716,
+        "log": "target/cleanup-audit/policy-focused-poison.log"
+      },
+      "focused-gpu": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--lib",
+          "explicit_gpu_selection",
+          "--",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "seconds": 14.916419790999498,
+        "log": "target/cleanup-audit/policy-focused-gpu.log"
+      },
+      "focused-uniforms": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--lib",
+          "uniforms::tests",
+          "--",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "seconds": 0.07554937500390224,
+        "log": "target/cleanup-audit/policy-focused-uniforms.log"
+      },
+      "focused-coarse": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--lib",
+          "coarse",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 16.68459587500547,
+        "log": "target/cleanup-audit/policy-focused-coarse.log"
+      },
+      "release-all": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets",
+          "--no-fail-fast",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 41.84903045799001,
+        "log": "target/cleanup-audit/policy-release-all.log"
+      },
+      "clippy": {
+        "command": [
+          "cargo",
+          "clippy",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets"
+        ],
+        "exit_code": 0,
+        "seconds": 3.5488860000041313,
+        "log": "target/cleanup-audit/policy-clippy.log"
+      },
+      "backend-free": {
+        "command": [
+          "cargo",
+          "check",
+          "--release",
+          "--no-default-features",
+          "--lib"
+        ],
+        "exit_code": 0,
+        "seconds": 0.12880854198010638,
+        "log": "target/cleanup-audit/policy-backend-free.log"
+      },
+      "build-after": {
+        "command": [
+          "cargo",
+          "build",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--examples"
+        ],
+        "exit_code": 0,
+        "seconds": 0.15900862502167,
+        "log": "target/cleanup-audit/policy-build-after.log"
+      },
+      "windows-dx12": {
+        "command": [
+          "cargo",
+          "check",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "dx12",
+          "--target",
+          "x86_64-pc-windows-gnu",
+          "--all-targets"
+        ],
+        "exit_code": 0,
+        "seconds": 3.1291799579921644,
+        "log": "target/cleanup-audit/policy-windows-dx12.log"
+      },
+      "windows-vulkan": {
+        "command": [
+          "cargo",
+          "check",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "vulkan",
+          "--target",
+          "x86_64-pc-windows-gnu",
+          "--all-targets"
+        ],
+        "exit_code": 0,
+        "seconds": 0.13057570799719542,
+        "log": "target/cleanup-audit/policy-windows-vulkan.log"
+      },
+      "fmt-check": {
+        "command": [
+          "cargo",
+          "fmt",
+          "--check"
+        ],
+        "exit_code": 0,
+        "seconds": 0.6213025409961119,
+        "log": "target/cleanup-audit/policy-fmt-check.log"
+      },
+      "svg": {
+        "command": [
+          "target/cleanup-audit/policy-svg-after",
+          "target/cleanup-audit/stack-svg"
+        ],
+        "exit_code": 0,
+        "seconds": 6.823039583017817,
+        "log": "target/cleanup-audit/policy-svg.log"
+      },
+      "mesh-gradient": {
+        "command": [
+          "target/release/examples/mesh_gradient",
+          "target/cleanup-audit/policy-mesh-gradient.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.48875225000665523,
+        "log": "target/cleanup-audit/policy-mesh-gradient.log"
+      },
+      "program-brush": {
+        "command": [
+          "target/release/examples/program_brush",
+          "target/cleanup-audit/policy-program-brush.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5047613340138923,
+        "log": "target/cleanup-audit/policy-program-brush.log"
+      },
+      "program-glass": {
+        "command": [
+          "target/release/examples/program_glass",
+          "target/cleanup-audit/policy-program-glass.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.4418507079826668,
+        "log": "target/cleanup-audit/policy-program-glass.log"
+      },
+      "shader-pipeline": {
+        "command": [
+          "target/release/examples/shader_pipeline",
+          "target/cleanup-audit/policy-shader-pipeline.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.4358985419967212,
+        "log": "target/cleanup-audit/policy-shader-pipeline.log"
+      },
+      "shader-graph": {
+        "command": [
+          "target/release/examples/shader_graph",
+          "target/cleanup-audit/policy-shader-graph.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.39600612499634735,
+        "log": "target/cleanup-audit/policy-shader-graph.log"
+      },
+      "progressive-balanced": {
+        "command": [
+          "target/release/examples/progressive_blur",
+          "target/cleanup-audit/policy-progressive-balanced.png",
+          "balanced"
+        ],
+        "exit_code": 0,
+        "seconds": 0.45856041699880734,
+        "log": "target/cleanup-audit/policy-progressive-balanced.log"
+      },
+      "progressive-high": {
+        "command": [
+          "target/release/examples/progressive_blur",
+          "target/cleanup-audit/policy-progressive-high.png",
+          "high"
+        ],
+        "exit_code": 0,
+        "seconds": 0.061265208991244435,
+        "log": "target/cleanup-audit/policy-progressive-high.log"
+      },
+      "window": {
+        "command": [
+          "target/cleanup-audit/policy-window-after",
+          "metal",
+          "--smoke"
+        ],
+        "exit_code": 0,
+        "seconds": 0.8247570419916883,
+        "log": "target/cleanup-audit/policy-window.log"
+      }
+    },
+    "render": {
+      "svg": {
+        "png_count": 1730,
+        "exact_baseline": true,
+        "all_outputs_fresh": true,
+        "sources_unchanged": true
+      },
+      "mesh-gradient": {
+        "exact_baseline": true,
+        "sha256": "b441ab07fa794d197930974308e74ccf02eb6790ea39c2ddfdda556c31afa91b"
+      },
+      "program-brush": {
+        "exact_baseline": true,
+        "sha256": "e43f483170f77abeecfd10698aeddcd2b56c3cd6bd69f46a1b0522b5d332a5be"
+      },
+      "program-glass": {
+        "exact_baseline": true,
+        "sha256": "90115ade795808c3b5b3b3aeb229ba98bbb8d33d2cc65fd02755bbcbbb9e341e"
+      },
+      "shader-pipeline": {
+        "exact_baseline": true,
+        "sha256": "b5518d0badb099847172803ea06892212d864ac4a023be365b19741042e161cb"
+      },
+      "shader-graph": {
+        "exact_baseline": true,
+        "sha256": "4a2ad67381fdad4f44ad88a324f16a092bdd8c7bf43adf36e3e7799730bc06d8"
+      },
+      "progressive-balanced": {
+        "exact_baseline": true,
+        "sha256": "79b56db9b658c240324aa6ea06a6e463795aa98c43ac010e402878c95d44d0cf"
+      },
+      "progressive-high": {
+        "exact_baseline": true,
+        "sha256": "5b100f5ce99634323890e2a49a0d4984ffe62082fa3dcabc67651999c46d1d7d"
+      },
+      "window": {
+        "frames": 8,
+        "physical_sizes": [
+          [
+            640,
+            360
+          ],
+          [
+            480,
+            270
+          ]
+        ]
+      }
+    },
+    "final_executables": {
+      "svg": {
+        "path": "target/release/examples/svg_fixture_render",
+        "sha256": "bafe4d960b7f16b8a03a5a12c8588ead731d49c3713a05b2b80e74b2de4fdae6",
+        "matches_before_and_after": true
+      },
+      "window": {
+        "path": "target/release/examples/native_present",
+        "sha256": "5b89eb5d632a5cced4371a5cbd5bd2534c5f20307e1882db7c984402cb4070f2",
+        "matches_before_and_after": true
+      }
+    }
+  },
+  "clippy_warnings": {
+    "library": 1,
+    "library_test": 8,
+    "new": 0
+  },
+  "producer_and_policy_proofs": {
+    "creation_gate": "Both process-wide DX12 entry points call the same actual creation::lock before any D3D12 action; poison returns a stable error and is never cleared. The state/gate extraction initially preserves original recovery semantics for a genuine red portable regression.",
+    "gpu_selection": "All raw Metal test constructors in tests.rs/scan_tests.rs/coarse_tests.rs/coarse_routes.rs use shared gpu_support::options; NativeContextOptions::default remains None for valid public selection. Unit tests require TILEINK_NATIVE_GPU; integration Gpu helper separately requires TILEINK_TEST_GPU. No alias or default substitution added.",
+    "gpu_regression_development": "The first child invocation included the crate prefix and ran zero tests, producing an invalid green. Saved in policy-gpu-harness-zero-case.log. Corrected exact name and asserted one executed test before accepting red reproduction. Corrected test fails with the old default selection, and passes missing/empty/unavailable cases after fix.",
+    "uniform_producer": "Resource::Buffer has one production constructor, ComputeBatch::buffer, which rejects empty/non-word-aligned bytes; resources() returns immutable slice. immutable_uniforms excludes storage aliases/readbacks. Uniforms::new reserves/pads/writes nonempty data before assigning Some(offset). Resources::record builds the upload from the same arena before consuming offsets. A Some offset thus owns a required upload resource.",
+    "required_optional_semantics": "Sampler/table handle absence is valid; storage/readback-alias constants bind their own buffer from zero. Vulkan diagnostic Vec recovery preserves FFI non-unwinding/message/teardown reporting semantics, not mutable native creation state.",
+    "scope": "Permanent error/ownership/test configuration cleanup; no shader or Metal production path changes; no rendering speed claim. Actual DX12 GPU execution/performance remains platform-limited."
+  },
+  "artifact_identity": {
+    "manifests": {
+      "target/release/build/tileink-693345b8f8240684/out/tileink_native_artifacts.json": {
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "entries": 0,
+        "same_as_phase51": true
+      },
+      "target/release/build/tileink-24048925a7656d71/out/tileink_native_artifacts.json": {
+        "sha256": "f10e91fb051e5a77a7a313fc37ace626bc8ea2d97175b9343f3e87856f37c840",
+        "entries": 40,
+        "same_as_phase51": true
+      },
+      "target/release/build/tileink-02c1122da65b8cf5/out/tileink_native_artifacts.json": {
+        "sha256": "f10e91fb051e5a77a7a313fc37ace626bc8ea2d97175b9343f3e87856f37c840",
+        "entries": 40,
+        "same_as_phase51": true
+      },
+      "target/x86_64-pc-windows-gnu/release/build/tileink-95d6824c51a05705/out/tileink_native_artifacts.json": {
+        "sha256": "59a559183b1d9dd3ada03a5b6b863cc4ef70523c900aebe0cd15f3f18b14d54f",
+        "entries": 84,
+        "target": "spirv",
+        "same_as_phase51": true
+      },
+      "target/x86_64-pc-windows-gnu/release/build/tileink-24a97e89b99363c5/out/tileink_native_artifacts.json": {
+        "sha256": "29b092a9dc39bc2d3a697b51fe73c83dd29033c5a3462a1606d67c98f26a82ce",
+        "entries": 84,
+        "target": "dxil",
+        "same_as_phase51": true
+      }
+    },
+    "toolchain": {
+      "source_tag": "v1.8.2502",
+      "source_commit": "b4711839eb9a87da7c3436d9b212e0492359fbbd",
+      "version": "libdxcompiler.dylib: 1.8(dev;1-b4711839); libdxil.dylib: 1.8",
+      "files": {
+        "target/toolchains/dxc-build-v1.8.2502/bin/dxc": "00db2a5e0f32d8a2714c5801a73ac7525d6f03d1ac319f7712fccd0458ed4a17",
+        "target/toolchains/dxc-build-v1.8.2502/lib/libdxcompiler.dylib": "47ab8a70f988293a979a157552322d55680ef2bd2f76394202a3e59f06f97df9",
+        "target/toolchains/dxc-build-v1.8.2502/lib/libdxil.dylib": "c0f3abf46cea2e0ad8ceeed0dd181dd9c71b3030d61349f27a6335e517bf0396"
+      }
+    },
+    "all_unchanged_from_phase51": true,
+    "prior_report": "docs/native/benchmarks/cleanup-phase51-metal-2026-10-12.json"
+  },
+  "executable_identity": {
+    "before": {
+      "svg": {
+        "path": "target/cleanup-audit/policy-svg-before",
+        "sha256": "bafe4d960b7f16b8a03a5a12c8588ead731d49c3713a05b2b80e74b2de4fdae6"
+      },
+      "window": {
+        "path": "target/cleanup-audit/policy-window-before",
+        "sha256": "5b89eb5d632a5cced4371a5cbd5bd2534c5f20307e1882db7c984402cb4070f2"
+      }
+    },
+    "after": {
+      "svg": {
+        "path": "target/cleanup-audit/policy-svg-after",
+        "sha256": "bafe4d960b7f16b8a03a5a12c8588ead731d49c3713a05b2b80e74b2de4fdae6"
+      },
+      "window": {
+        "path": "target/cleanup-audit/policy-window-after",
+        "sha256": "5b89eb5d632a5cced4371a5cbd5bd2534c5f20307e1882db7c984402cb4070f2"
+      }
+    },
+    "metal_renderer_and_window_byte_identical": true
+  },
+  "measurement_scope": "Correctness application executions only, with API validation enabled. Command durations are full-process wall times, not before/after benchmark samples. No rendering speed claim. Metal production binaries and all shader artifacts are byte-identical.",
+  "gpu_selection_scope": "Raw Metal unit tests now explicitly require TILEINK_NATIVE_GPU=0000000100000575 on this Apple M5 host; window consumes the same pin. SVG fixture CLI legitimately selects the default API device on this single-GPU host.",
+  "platform_limits": [
+    "Portable creation-gate tests execute the actual shared production lock policy without D3D12; Windows call sites compile.",
+    "DX12 resource execution/performance, Vulkan driver execution, real ShaderTools and Win32 native runtime checks still need their supported platforms."
+  ],
+  "temporary_verification_cleanup_complete": true,
+  "temporary_rust_workload_introduced": false,
+  "temporary_artifacts_removed": [
+    "target/cleanup-audit/policy-svg-before",
+    "target/cleanup-audit/policy-window-before",
+    "target/cleanup-audit/policy-svg-after",
+    "target/cleanup-audit/policy-window-after"
+  ]
+}

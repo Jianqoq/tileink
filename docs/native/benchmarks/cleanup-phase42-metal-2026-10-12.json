@@ -1,0 +1,1270 @@
+{
+  "baseline_commit": "87f4405b41a5c33f6c864caaa90b72d2e4326f31",
+  "gpu": "Apple M5",
+  "device_selection": {
+    "window": "Explicit registry ID 0000000100000575",
+    "svg": "System default device on freshly verified single-GPU host"
+  },
+  "validation": {
+    "commands": {
+      "fmt": {
+        "command": [
+          "cargo",
+          "fmt"
+        ],
+        "exit_code": 0,
+        "seconds": 0.672063917
+      },
+      "release-all": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets",
+          "--no-fail-fast",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 101,
+        "seconds": null,
+        "timing_note": "Completed first invocation successfully except the three known failures. Elapsed timing was not persisted before the temporary summary parser failed on unqualified integration-test names; the completed log was reused, with no correctness rerun needed."
+      },
+      "build-examples": {
+        "command": [
+          "cargo",
+          "build",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--examples"
+        ],
+        "exit_code": 0,
+        "seconds": 2.053384083
+      },
+      "clippy": {
+        "command": [
+          "cargo",
+          "clippy",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets"
+        ],
+        "exit_code": 0,
+        "seconds": 3.498119959
+      },
+      "backend-free": {
+        "command": [
+          "cargo",
+          "check",
+          "--release",
+          "--no-default-features",
+          "--lib"
+        ],
+        "exit_code": 0,
+        "seconds": 0.118255833
+      },
+      "fmt-check": {
+        "command": [
+          "cargo",
+          "fmt",
+          "--check"
+        ],
+        "exit_code": 0,
+        "seconds": 0.593706583
+      },
+      "fmt-final": {
+        "command": [
+          "cargo",
+          "fmt"
+        ],
+        "exit_code": 0,
+        "seconds": 0.609938042005524
+      },
+      "frame-final": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--lib",
+          "metal::frame::",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 17.292860666988418
+      },
+      "clippy-final": {
+        "command": [
+          "cargo",
+          "clippy",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets"
+        ],
+        "exit_code": 0,
+        "seconds": 3.489431333000539
+      },
+      "fmt-check-final": {
+        "command": [
+          "cargo",
+          "fmt",
+          "--check"
+        ],
+        "exit_code": 0,
+        "seconds": 0.6893388749740552
+      }
+    },
+    "tests": {
+      "passed": 1091,
+      "failed": 3,
+      "ignored": 0,
+      "failures": [
+        "every_hlsl_header_compiles_without_callers_globals",
+        "pinned_dxc_reports_invalid_source_for_both_targets",
+        "scaled_turbulence_matches_canonical_rgba"
+      ],
+      "log": "target/cleanup-audit/encode-release-all.log"
+    },
+    "gpu_inventory": {
+      "SPDisplaysDataType": [
+        {
+          "_name": "Apple M5",
+          "spdisplays_mtlgpufamilysupport": "spdisplays_metal4",
+          "spdisplays_ndrvs": [
+            {
+              "_name": "Color LCD",
+              "_spdisplays_display-product-id": "a065",
+              "_spdisplays_display-serial-number": "fd626d62",
+              "_spdisplays_display-vendor-id": "610",
+              "_spdisplays_display-week": "0",
+              "_spdisplays_display-year": "0",
+              "_spdisplays_displayID": "1",
+              "_spdisplays_pixels": "3420 x 2214",
+              "_spdisplays_resolution": "1710 x 1107 @ 60.00Hz",
+              "spdisplays_ambient_brightness": "spdisplays_yes",
+              "spdisplays_connection_type": "spdisplays_internal",
+              "spdisplays_display_type": "spdisplays_built-in-liquid-retina",
+              "spdisplays_main": "spdisplays_yes",
+              "spdisplays_mirror": "spdisplays_off",
+              "spdisplays_online": "spdisplays_yes",
+              "spdisplays_pixelresolution": "spdisplays_2880x1864Retina"
+            }
+          ],
+          "spdisplays_vendor": "sppci_vendor_Apple",
+          "sppci_bus": "spdisplays_builtin",
+          "sppci_cores": "10",
+          "sppci_device_type": "spdisplays_gpu",
+          "sppci_model": "Apple M5"
+        }
+      ]
+    },
+    "render": {
+      "svg": {
+        "count": 1730,
+        "diffs": [],
+        "seconds": 8.565530791
+      },
+      "examples": [
+        {
+          "name": "mesh-gradient",
+          "exact_png_and_pixels": true,
+          "sha256": "b441ab07fa794d197930974308e74ccf02eb6790ea39c2ddfdda556c31afa91b",
+          "seconds": 0.487534416
+        },
+        {
+          "name": "program-brush",
+          "exact_png_and_pixels": true,
+          "sha256": "e43f483170f77abeecfd10698aeddcd2b56c3cd6bd69f46a1b0522b5d332a5be",
+          "seconds": 0.505734459
+        },
+        {
+          "name": "program-glass",
+          "exact_png_and_pixels": true,
+          "sha256": "90115ade795808c3b5b3b3aeb229ba98bbb8d33d2cc65fd02755bbcbbb9e341e",
+          "seconds": 0.450824916
+        },
+        {
+          "name": "shader-pipeline",
+          "exact_png_and_pixels": true,
+          "sha256": "b5518d0badb099847172803ea06892212d864ac4a023be365b19741042e161cb",
+          "seconds": 0.47279525
+        },
+        {
+          "name": "shader-graph",
+          "exact_png_and_pixels": true,
+          "sha256": "4a2ad67381fdad4f44ad88a324f16a092bdd8c7bf43adf36e3e7799730bc06d8",
+          "seconds": 0.463796709
+        },
+        {
+          "name": "progressive-balanced",
+          "exact_png_and_pixels": true,
+          "sha256": "79b56db9b658c240324aa6ea06a6e463795aa98c43ac010e402878c95d44d0cf",
+          "seconds": 0.518674833
+        },
+        {
+          "name": "progressive-high",
+          "exact_png_and_pixels": true,
+          "sha256": "5b100f5ce99634323890e2a49a0d4984ffe62082fa3dcabc67651999c46d1d7d",
+          "seconds": 0.067712417
+        }
+      ],
+      "window": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n2026-10-12 03:32:48.830 encode-window-after[85195:4860112] Metal API Validation Enabled\n",
+      "manifests": [
+        {
+          "path": "target/release/build/tileink-693345b8f8240684/out/tileink_native_artifacts.json",
+          "before_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "after_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        {
+          "path": "target/release/build/tileink-24048925a7656d71/out/tileink_native_artifacts.json",
+          "before_sha256": "dbe277ec7af54dc1ae1e9d6d0f1ccb6607269c648a12f371126a65676d75085b",
+          "after_sha256": "dbe277ec7af54dc1ae1e9d6d0f1ccb6607269c648a12f371126a65676d75085b"
+        },
+        {
+          "path": "target/release/build/tileink-02c1122da65b8cf5/out/tileink_native_artifacts.json",
+          "before_sha256": "dbe277ec7af54dc1ae1e9d6d0f1ccb6607269c648a12f371126a65676d75085b",
+          "after_sha256": "dbe277ec7af54dc1ae1e9d6d0f1ccb6607269c648a12f371126a65676d75085b"
+        }
+      ]
+    },
+    "focused_before": {
+      "passed": 12,
+      "failed": 0,
+      "log": "target/cleanup-audit/encode-before-tests.log"
+    },
+    "focused_after": {
+      "passed": 67,
+      "failed": 0,
+      "log": "target/cleanup-audit/encode-focused-tests.log"
+    },
+    "benchmark_report": "docs/native/benchmarks/cleanup-phase42-metal-2026-10-12.json",
+    "application_conclusion": "Observed whole-process medians: SVG -1.06% (identical-current control +2.31%); native window -0.45% (control +0.51%). No material central timing regression was observed in these applications. Changes are within observed repeatability noise and do not establish an isolated encoder speedup or performance for every workload; raw tails are retained.",
+    "focused_final": {
+      "passed": 12,
+      "failed": 0,
+      "log": "target/cleanup-audit/encode-frame-final.log",
+      "note": "After changing only the new test shader literal to readable raw-string formatting."
+    },
+    "removed_temporary_files": [
+      "target/cleanup-audit/encode-svg-before",
+      "target/cleanup-audit/encode-svg-after",
+      "target/cleanup-audit/encode-window-before",
+      "target/cleanup-audit/encode-window-after",
+      "target/cleanup-audit/encode-validate.py"
+    ]
+  },
+  "executables": {
+    "svg": {
+      "baseline": {
+        "path": "target/cleanup-audit/encode-svg-before",
+        "sha256": "4dd649b0106afd2da40ef34f8fd13e38a0e40fdbefa9585494668ccf26cc979a"
+      },
+      "current": {
+        "path": "target/cleanup-audit/encode-svg-after",
+        "sha256": "1657cddabbb8f3b83738683c513458d208a8ea6a5812173c06ba616961fe8158"
+      }
+    },
+    "window": {
+      "baseline": {
+        "path": "target/cleanup-audit/encode-window-before",
+        "sha256": "777d8098989204a81429b74addd40250602191988a45f948f8c2cdbe1af5fee3"
+      },
+      "current": {
+        "path": "target/cleanup-audit/encode-window-after",
+        "sha256": "61cfd710d2af99986dca6c8ece31904bdffbf5715a2efa832207e2d3695e71cd"
+      }
+    }
+  },
+  "warmups_per_label": 2,
+  "timed_pairs": 10,
+  "timing_scope": "Whole process including setup, completion and teardown. SVG includes parsing, readback and PNG saving. Verification follows the stopped timer. Metal validation disabled during timing. Ten-sample nearest-rank p95 equals maximum; raw tails retained.",
+  "observations": [
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": true,
+      "pair": 0,
+      "milliseconds": 5068.393625,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": true,
+      "pair": 0,
+      "milliseconds": 4572.511458,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": true,
+      "pair": 1,
+      "milliseconds": 4827.2302500000005,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": true,
+      "pair": 1,
+      "milliseconds": 5312.663,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 0,
+      "milliseconds": 4628.370416,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 0,
+      "milliseconds": 4664.114,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 1,
+      "milliseconds": 4475.647875,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 1,
+      "milliseconds": 4578.217000000001,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 2,
+      "milliseconds": 4823.345542,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 2,
+      "milliseconds": 4554.29525,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 3,
+      "milliseconds": 4669.131334000001,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 3,
+      "milliseconds": 4576.703792,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 4,
+      "milliseconds": 4513.182208,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 4,
+      "milliseconds": 4554.942459,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 5,
+      "milliseconds": 4475.741249999999,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 5,
+      "milliseconds": 4509.451167,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 6,
+      "milliseconds": 4856.119291,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 6,
+      "milliseconds": 4731.6873749999995,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 7,
+      "milliseconds": 4784.419083000001,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 7,
+      "milliseconds": 5443.469875,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 8,
+      "milliseconds": 4652.671959,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 8,
+      "milliseconds": 4508.163292,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 9,
+      "milliseconds": 4543.638166,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 9,
+      "milliseconds": 4505.9042500000005,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": true,
+      "pair": 0,
+      "milliseconds": 4526.565208,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": true,
+      "pair": 0,
+      "milliseconds": 4454.4178329999995,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": true,
+      "pair": 1,
+      "milliseconds": 4607.644125,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": true,
+      "pair": 1,
+      "milliseconds": 4570.098584,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 0,
+      "milliseconds": 4553.394208000001,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 0,
+      "milliseconds": 5501.646958,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 1,
+      "milliseconds": 4914.099166,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 1,
+      "milliseconds": 4563.930583,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 2,
+      "milliseconds": 4490.188040999999,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 2,
+      "milliseconds": 4531.941625,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 3,
+      "milliseconds": 4613.552833,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 3,
+      "milliseconds": 4494.295291,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 4,
+      "milliseconds": 4536.182792,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 4,
+      "milliseconds": 4682.891125,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 5,
+      "milliseconds": 4503.187584,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 5,
+      "milliseconds": 4793.052875,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 6,
+      "milliseconds": 4483.980917,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 6,
+      "milliseconds": 4547.935791,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 7,
+      "milliseconds": 4645.133333000001,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 7,
+      "milliseconds": 4570.034709,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 8,
+      "milliseconds": 4712.861,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 8,
+      "milliseconds": 5380.067542,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 9,
+      "milliseconds": 4897.101417,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 9,
+      "milliseconds": 4585.187999999999,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": true,
+      "pair": 0,
+      "milliseconds": 1301.628625,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": true,
+      "pair": 0,
+      "milliseconds": 256.45970800000003,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": true,
+      "pair": 1,
+      "milliseconds": 237.826792,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": true,
+      "pair": 1,
+      "milliseconds": 249.5935,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 0,
+      "milliseconds": 246.087,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 0,
+      "milliseconds": 233.772792,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 1,
+      "milliseconds": 234.068667,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 1,
+      "milliseconds": 236.561125,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 2,
+      "milliseconds": 260.525458,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 2,
+      "milliseconds": 254.08820799999998,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 3,
+      "milliseconds": 245.463083,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 3,
+      "milliseconds": 248.08070800000002,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 4,
+      "milliseconds": 251.992542,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 4,
+      "milliseconds": 249.376833,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 5,
+      "milliseconds": 248.014,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 5,
+      "milliseconds": 247.64975,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 6,
+      "milliseconds": 241.108208,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 6,
+      "milliseconds": 244.934708,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 7,
+      "milliseconds": 251.928625,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 7,
+      "milliseconds": 249.129,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 8,
+      "milliseconds": 245.852583,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 8,
+      "milliseconds": 236.420667,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 9,
+      "milliseconds": 248.594125,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 9,
+      "milliseconds": 250.08075000000002,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": true,
+      "pair": 0,
+      "milliseconds": 247.543292,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": true,
+      "pair": 0,
+      "milliseconds": 247.127292,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": true,
+      "pair": 1,
+      "milliseconds": 249.31916700000002,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": true,
+      "pair": 1,
+      "milliseconds": 251.444916,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 0,
+      "milliseconds": 265.73658300000005,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 0,
+      "milliseconds": 250.53470900000002,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 1,
+      "milliseconds": 248.19291600000003,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 1,
+      "milliseconds": 255.343875,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 2,
+      "milliseconds": 242.354042,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 2,
+      "milliseconds": 250.66979099999998,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 3,
+      "milliseconds": 247.734542,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 3,
+      "milliseconds": 234.601167,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 4,
+      "milliseconds": 245.881,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 4,
+      "milliseconds": 246.757959,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 5,
+      "milliseconds": 253.244625,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 5,
+      "milliseconds": 249.377209,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 6,
+      "milliseconds": 244.038125,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 6,
+      "milliseconds": 240.681917,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 7,
+      "milliseconds": 248.439875,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 7,
+      "milliseconds": 250.69579199999998,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 8,
+      "milliseconds": 244.632292,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 8,
+      "milliseconds": 237.308667,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 9,
+      "milliseconds": 250.35687499999997,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 9,
+      "milliseconds": 248.251292,
+      "output_verified": true
+    }
+  ],
+  "summaries": [
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "labels": [
+        "baseline",
+        "current"
+      ],
+      "first": {
+        "median_ms": 4603.293708,
+        "mean_ms": 4708.74355,
+        "min_ms": 4505.9042500000005,
+        "p95_ms": 5443.469875,
+        "max_ms": 5443.469875
+      },
+      "second": {
+        "median_ms": 4554.6188545,
+        "mean_ms": 4596.1780084,
+        "min_ms": 4475.647875,
+        "p95_ms": 4784.419083000001,
+        "max_ms": 4784.419083000001
+      },
+      "median_change_percent": -1.0573918717245556
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current-control",
+      "labels": [
+        "current-a",
+        "current-b"
+      ],
+      "first": {
+        "median_ms": 4558.6623955000005,
+        "mean_ms": 4578.3108416,
+        "min_ms": 4483.980917,
+        "p95_ms": 4793.052875,
+        "max_ms": 4793.052875
+      },
+      "second": {
+        "median_ms": 4664.012229,
+        "mean_ms": 4821.7557374,
+        "min_ms": 4503.187584,
+        "p95_ms": 5501.646958,
+        "max_ms": 5501.646958
+      },
+      "median_change_percent": 2.310981256343836
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "labels": [
+        "baseline",
+        "current"
+      ],
+      "first": {
+        "median_ms": 247.865229,
+        "mean_ms": 247.70671240000001,
+        "min_ms": 236.561125,
+        "p95_ms": 260.525458,
+        "max_ms": 260.525458
+      },
+      "second": {
+        "median_ms": 246.7385415,
+        "mean_ms": 244.6661708,
+        "min_ms": 233.772792,
+        "p95_ms": 254.08820799999998,
+        "max_ms": 254.08820799999998
+      },
+      "median_change_percent": -0.45455649610296467
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current-control",
+      "labels": [
+        "current-a",
+        "current-b"
+      ],
+      "first": {
+        "median_ms": 247.066146,
+        "mean_ms": 248.0911377,
+        "min_ms": 234.601167,
+        "p95_ms": 265.73658300000005,
+        "max_ms": 265.73658300000005
+      },
+      "second": {
+        "median_ms": 248.3163955,
+        "mean_ms": 247.3921876,
+        "min_ms": 237.308667,
+        "p95_ms": 253.244625,
+        "max_ms": 253.244625
+      },
+      "median_change_percent": 0.5060383707932159
+    }
+  ],
+  "checked_png_hashes": 83040,
+  "completed_window_frames": 384,
+  "svg_source_manifest": {
+    "count": 1730,
+    "sha256": "76c855b05307f91d23afbf3bd888699aedca9c179c8c6a0af0dd16038d0353f8",
+    "unchanged": true
+  },
+  "conclusion": "Observed whole-process medians: SVG -1.06% (identical-current control +2.31%); native window -0.45% (control +0.51%). No material central timing regression was observed in these applications. Changes are within observed repeatability noise and do not establish an isolated encoder speedup or performance for every workload; raw tails are retained.",
+  "cleanup": [
+    "target/cleanup-audit/encode-svg-before",
+    "target/cleanup-audit/encode-svg-after",
+    "target/cleanup-audit/encode-window-before",
+    "target/cleanup-audit/encode-window-after",
+    "target/cleanup-audit/encode-validate.py"
+  ],
+  "cleanup_verified": true
+}

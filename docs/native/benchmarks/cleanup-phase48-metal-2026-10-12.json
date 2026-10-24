@@ -1,0 +1,1483 @@
+{
+  "baseline_commit": "650a1087948bda00be6eb858fc8eedcfe605ab81",
+  "gpu": "Apple M5",
+  "registry_id": "0000000100000575",
+  "validation": {
+    "commands": {
+      "focused-offset": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--lib",
+          "hlsl_tile_record_offsets_match_host_fields",
+          "--",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "seconds": 36.55857420898974,
+        "log": "target/cleanup-audit/failures-focused-offset.log"
+      },
+      "focused": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--test",
+          "native_shader_compiler",
+          "--test",
+          "native_user_shader_compiler",
+          "--test",
+          "scaled_turbulence",
+          "--",
+          "--test-threads=1",
+          "--include-ignored",
+          "--nocapture"
+        ],
+        "exit_code": 0,
+        "seconds": 28.09586687499541,
+        "log": "target/cleanup-audit/failures-focused.log"
+      },
+      "build-after": {
+        "command": [
+          "cargo",
+          "build",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--examples"
+        ],
+        "exit_code": 0,
+        "seconds": 2.1638037500088103,
+        "log": "target/cleanup-audit/failures-build-after.log"
+      },
+      "release-all": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets",
+          "--no-fail-fast",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 62.47834641599911,
+        "log": "target/cleanup-audit/failures-release-all.log"
+      },
+      "clippy": {
+        "command": [
+          "cargo",
+          "clippy",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets"
+        ],
+        "exit_code": 0,
+        "seconds": 22.63443320800434,
+        "log": "target/cleanup-audit/failures-clippy.log"
+      },
+      "backend-free": {
+        "command": [
+          "cargo",
+          "check",
+          "--release",
+          "--no-default-features",
+          "--lib"
+        ],
+        "exit_code": 0,
+        "seconds": 0.19508612499339506,
+        "log": "target/cleanup-audit/failures-backend-free.log"
+      },
+      "fmt-check": {
+        "command": [
+          "cargo",
+          "fmt",
+          "--check"
+        ],
+        "exit_code": 0,
+        "seconds": 0.6574745409889147,
+        "log": "target/cleanup-audit/failures-fmt-check.log"
+      },
+      "svg": {
+        "command": [
+          "target/cleanup-audit/failures-svg-after",
+          "target/cleanup-audit/failures-svg"
+        ],
+        "exit_code": 0,
+        "seconds": 5.683217500016326,
+        "log": "target/cleanup-audit/failures-svg.log"
+      },
+      "mesh-gradient": {
+        "command": [
+          "target/release/examples/mesh_gradient",
+          "target/cleanup-audit/failures-mesh-gradient.png"
+        ],
+        "exit_code": 0,
+        "seconds": 2.6831964589946438,
+        "log": "target/cleanup-audit/failures-mesh-gradient.log"
+      },
+      "program-brush": {
+        "command": [
+          "target/release/examples/program_brush",
+          "target/cleanup-audit/failures-program-brush.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5116625420050696,
+        "log": "target/cleanup-audit/failures-program-brush.log"
+      },
+      "program-glass": {
+        "command": [
+          "target/release/examples/program_glass",
+          "target/cleanup-audit/failures-program-glass.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.4350436670065392,
+        "log": "target/cleanup-audit/failures-program-glass.log"
+      },
+      "shader-pipeline": {
+        "command": [
+          "target/release/examples/shader_pipeline",
+          "target/cleanup-audit/failures-shader-pipeline.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.43548662500688806,
+        "log": "target/cleanup-audit/failures-shader-pipeline.log"
+      },
+      "shader-graph": {
+        "command": [
+          "target/release/examples/shader_graph",
+          "target/cleanup-audit/failures-shader-graph.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5130414169980213,
+        "log": "target/cleanup-audit/failures-shader-graph.log"
+      },
+      "progressive-balanced": {
+        "command": [
+          "target/release/examples/progressive_blur",
+          "target/cleanup-audit/failures-progressive-balanced.png",
+          "balanced"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5361817909870297,
+        "log": "target/cleanup-audit/failures-progressive-balanced.log"
+      },
+      "progressive-high": {
+        "command": [
+          "target/release/examples/progressive_blur",
+          "target/cleanup-audit/failures-progressive-high.png",
+          "high"
+        ],
+        "exit_code": 0,
+        "seconds": 0.06046566599979997,
+        "log": "target/cleanup-audit/failures-progressive-high.log"
+      },
+      "window": {
+        "command": [
+          "target/cleanup-audit/failures-window-after",
+          "metal",
+          "--smoke"
+        ],
+        "exit_code": 0,
+        "seconds": 0.6000783329945989,
+        "log": "target/cleanup-audit/failures-window.log"
+      },
+      "turbulence": {
+        "command": [
+          "target/cleanup-audit/failures-turbulence-after",
+          "target/cleanup-audit/failures-turbulence-current"
+        ],
+        "exit_code": 0,
+        "seconds": 0.4783416249847505,
+        "log": "target/cleanup-audit/failures-turbulence.log"
+      }
+    },
+    "render": {
+      "svg": {
+        "exact_pngs": 1730
+      },
+      "mesh-gradient": {
+        "exact_png": true,
+        "sha256": "b441ab07fa794d197930974308e74ccf02eb6790ea39c2ddfdda556c31afa91b"
+      },
+      "program-brush": {
+        "exact_png": true,
+        "sha256": "e43f483170f77abeecfd10698aeddcd2b56c3cd6bd69f46a1b0522b5d332a5be"
+      },
+      "program-glass": {
+        "exact_png": true,
+        "sha256": "90115ade795808c3b5b3b3aeb229ba98bbb8d33d2cc65fd02755bbcbbb9e341e"
+      },
+      "shader-pipeline": {
+        "exact_png": true,
+        "sha256": "b5518d0badb099847172803ea06892212d864ac4a023be365b19741042e161cb"
+      },
+      "shader-graph": {
+        "exact_png": true,
+        "sha256": "4a2ad67381fdad4f44ad88a324f16a092bdd8c7bf43adf36e3e7799730bc06d8"
+      },
+      "progressive-balanced": {
+        "exact_png": true,
+        "sha256": "79b56db9b658c240324aa6ea06a6e463795aa98c43ac010e402878c95d44d0cf"
+      },
+      "progressive-high": {
+        "exact_png": true,
+        "sha256": "5b100f5ce99634323890e2a49a0d4984ffe62082fa3dcabc67651999c46d1d7d"
+      },
+      "window": {
+        "frames": 8,
+        "sizes": [
+          [
+            640,
+            360
+          ],
+          [
+            480,
+            270
+          ]
+        ]
+      },
+      "turbulence": {
+        "exact_pngs": 2,
+        "exact_rgba": 2,
+        "frames": 32
+      }
+    },
+    "executables": {
+      "svg": {
+        "path": "target/cleanup-audit/failures-svg-after",
+        "sha256": "1630f48cb6d483a1769144c5c756f76be04509cd4c47e8088b5d8237eed8abff"
+      },
+      "window": {
+        "path": "target/cleanup-audit/failures-window-after",
+        "sha256": "80177f433ac72800c82e0c6dd4ae2cf0116748b2d3d52f76d203fe3fcb57d590"
+      },
+      "turbulence": {
+        "path": "target/cleanup-audit/failures-turbulence-after",
+        "sha256": "96a913168479ee2cc28107fc255ac044568aa95ffb66ab9e6b3df561c7d5863f"
+      }
+    }
+  },
+  "timing": {
+    "method": "Sequential whole-process timings, API validation off, two warmups per label and ten alternating pairs per workload. Verification after each stopped timer. Before/after binaries have identical SHA-256, so this comparison is itself an identical-code control.",
+    "observations": [
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": true,
+        "pair": 0,
+        "milliseconds": 4862.939042010112,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": true,
+        "pair": 0,
+        "milliseconds": 4436.447582993424,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": true,
+        "pair": 1,
+        "milliseconds": 4552.919833018677,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": true,
+        "pair": 1,
+        "milliseconds": 4515.687959006755,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": false,
+        "pair": 0,
+        "milliseconds": 4474.282290990232,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": false,
+        "pair": 0,
+        "milliseconds": 4465.805791987805,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": false,
+        "pair": 1,
+        "milliseconds": 4623.582874977728,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": false,
+        "pair": 1,
+        "milliseconds": 5211.8963329994585,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": false,
+        "pair": 2,
+        "milliseconds": 4981.997750001028,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": false,
+        "pair": 2,
+        "milliseconds": 4655.604792002123,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": false,
+        "pair": 3,
+        "milliseconds": 4823.455167002976,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": false,
+        "pair": 3,
+        "milliseconds": 4617.301582999062,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": false,
+        "pair": 4,
+        "milliseconds": 4590.861125005176,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": false,
+        "pair": 4,
+        "milliseconds": 4925.169542024378,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": false,
+        "pair": 5,
+        "milliseconds": 4639.62224998977,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": false,
+        "pair": 5,
+        "milliseconds": 4647.177875012858,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": false,
+        "pair": 6,
+        "milliseconds": 4573.869665997336,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": false,
+        "pair": 6,
+        "milliseconds": 4631.073166005081,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": false,
+        "pair": 7,
+        "milliseconds": 4675.0867500086315,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": false,
+        "pair": 7,
+        "milliseconds": 5020.680417015683,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": false,
+        "pair": 8,
+        "milliseconds": 5270.844874990871,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": false,
+        "pair": 8,
+        "milliseconds": 4657.571709016338,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "after",
+        "warmup": false,
+        "pair": 9,
+        "milliseconds": 4744.500375003554,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "svg",
+        "label": "before",
+        "warmup": false,
+        "pair": 9,
+        "milliseconds": 4588.658249995206,
+        "verified": {
+          "exact_pngs": 1730
+        },
+        "output_tail": ""
+      },
+      {
+        "workload": "turbulence",
+        "label": "before",
+        "warmup": true,
+        "pair": 0,
+        "milliseconds": 315.95262498012744,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "turbulence",
+        "label": "after",
+        "warmup": true,
+        "pair": 0,
+        "milliseconds": 297.455500025535,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "turbulence",
+        "label": "before",
+        "warmup": true,
+        "pair": 1,
+        "milliseconds": 275.7693330058828,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "turbulence",
+        "label": "after",
+        "warmup": true,
+        "pair": 1,
+        "milliseconds": 281.4329589891713,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "turbulence",
+        "label": "before",
+        "warmup": false,
+        "pair": 0,
+        "milliseconds": 279.0277090098243,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "turbulence",
+        "label": "after",
+        "warmup": false,
+        "pair": 0,
+        "milliseconds": 280.3031670046039,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "turbulence",
+        "label": "after",
+        "warmup": false,
+        "pair": 1,
+        "milliseconds": 278.24183300253935,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "turbulence",
+        "label": "before",
+        "warmup": false,
+        "pair": 1,
+        "milliseconds": 270.8803749992512,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "turbulence",
+        "label": "before",
+        "warmup": false,
+        "pair": 2,
+        "milliseconds": 274.42987498943694,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "turbulence",
+        "label": "after",
+        "warmup": false,
+        "pair": 2,
+        "milliseconds": 275.83604099345393,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "turbulence",
+        "label": "after",
+        "warmup": false,
+        "pair": 3,
+        "milliseconds": 280.0560829928145,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "turbulence",
+        "label": "before",
+        "warmup": false,
+        "pair": 3,
+        "milliseconds": 277.83974999329075,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "turbulence",
+        "label": "before",
+        "warmup": false,
+        "pair": 4,
+        "milliseconds": 272.8522499965038,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "turbulence",
+        "label": "after",
+        "warmup": false,
+        "pair": 4,
+        "milliseconds": 278.1343749957159,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "turbulence",
+        "label": "after",
+        "warmup": false,
+        "pair": 5,
+        "milliseconds": 281.37129099923186,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "turbulence",
+        "label": "before",
+        "warmup": false,
+        "pair": 5,
+        "milliseconds": 279.67099999659695,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "turbulence",
+        "label": "before",
+        "warmup": false,
+        "pair": 6,
+        "milliseconds": 276.184624992311,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "turbulence",
+        "label": "after",
+        "warmup": false,
+        "pair": 6,
+        "milliseconds": 324.47920899721794,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "turbulence",
+        "label": "after",
+        "warmup": false,
+        "pair": 7,
+        "milliseconds": 283.4899579756893,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "turbulence",
+        "label": "before",
+        "warmup": false,
+        "pair": 7,
+        "milliseconds": 276.2420839862898,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "turbulence",
+        "label": "before",
+        "warmup": false,
+        "pair": 8,
+        "milliseconds": 270.813665993046,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "turbulence",
+        "label": "after",
+        "warmup": false,
+        "pair": 8,
+        "milliseconds": 278.7282920035068,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "turbulence",
+        "label": "after",
+        "warmup": false,
+        "pair": 9,
+        "milliseconds": 332.81058399006724,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "turbulence",
+        "label": "before",
+        "warmup": false,
+        "pair": 9,
+        "milliseconds": 294.8373340186663,
+        "verified": {
+          "exact_pngs": 2,
+          "exact_rgba": 2,
+          "frames": 32
+        },
+        "output_tail": "32 frames\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": true,
+        "pair": 0,
+        "milliseconds": 1197.3665410187095,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": true,
+        "pair": 0,
+        "milliseconds": 238.7893340201117,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": true,
+        "pair": 1,
+        "milliseconds": 228.49595799925737,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": true,
+        "pair": 1,
+        "milliseconds": 232.30920798960142,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": false,
+        "pair": 0,
+        "milliseconds": 228.66041702218354,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": false,
+        "pair": 0,
+        "milliseconds": 229.19091599760577,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": false,
+        "pair": 1,
+        "milliseconds": 225.1395840139594,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": false,
+        "pair": 1,
+        "milliseconds": 227.60162499616854,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": false,
+        "pair": 2,
+        "milliseconds": 228.93387501244433,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": false,
+        "pair": 2,
+        "milliseconds": 232.01770900050178,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": false,
+        "pair": 3,
+        "milliseconds": 230.82458399585448,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": false,
+        "pair": 3,
+        "milliseconds": 233.51058299886063,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": false,
+        "pair": 4,
+        "milliseconds": 227.66750000300817,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": false,
+        "pair": 4,
+        "milliseconds": 228.3602499810513,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": false,
+        "pair": 5,
+        "milliseconds": 226.84904199559242,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": false,
+        "pair": 5,
+        "milliseconds": 232.88320799474604,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": false,
+        "pair": 6,
+        "milliseconds": 231.59545799717307,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": false,
+        "pair": 6,
+        "milliseconds": 226.64508398156613,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": false,
+        "pair": 7,
+        "milliseconds": 226.2934580212459,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": false,
+        "pair": 7,
+        "milliseconds": 224.24537502229214,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": false,
+        "pair": 8,
+        "milliseconds": 228.99533400777727,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": false,
+        "pair": 8,
+        "milliseconds": 228.85695900185965,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "after",
+        "warmup": false,
+        "pair": 9,
+        "milliseconds": 226.18274998967536,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      },
+      {
+        "workload": "window",
+        "label": "before",
+        "warmup": false,
+        "pair": 9,
+        "milliseconds": 225.97079200204462,
+        "verified": {
+          "frames": 8,
+          "sizes": [
+            [
+              640,
+              360
+            ],
+            [
+              480,
+              270
+            ]
+          ]
+        },
+        "output_tail": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      }
+    ],
+    "summary": {
+      "svg": {
+        "before_median_ms": 4632.23972900596,
+        "after_median_ms": 4656.58825050923,
+        "median_change_percent": 0.525631723047626,
+        "before_p95_ms": 5270.844874990871,
+        "after_p95_ms": 4925.169542024378,
+        "paired_median_change_percent": -0.17601729519112763,
+        "paired_median_descriptive_bootstrap_95_percent": [
+          -8.919671854223289,
+          3.3962460596953736
+        ]
+      },
+      "turbulence": {
+        "before_median_ms": 276.2133544893004,
+        "after_median_ms": 280.1796249987092,
+        "median_change_percent": 1.4359445135236681,
+        "before_p95_ms": 294.8373340186663,
+        "after_p95_ms": 332.81058399006724,
+        "paired_median_change_percent": 2.2798160101748843,
+        "paired_median_descriptive_bootstrap_95_percent": [
+          0.607961141003388,
+          7.798497362928424
+        ]
+      },
+      "window": {
+        "before_median_ms": 228.79714601731393,
+        "after_median_ms": 227.60464598832186,
+        "median_change_percent": -0.5212040664623663,
+        "before_p95_ms": 233.51058299886063,
+        "after_p95_ms": 232.01770900050178,
+        "paired_median_change_percent": 0.0166859223226401,
+        "paired_median_descriptive_bootstrap_95_percent": [
+          -1.6096208569821135,
+          0.5726626346767238
+        ]
+      }
+    },
+    "svg_sources_unchanged": 1730
+  },
+  "executables": {
+    "svg": {
+      "before": "1630f48cb6d483a1769144c5c756f76be04509cd4c47e8088b5d8237eed8abff",
+      "after": "1630f48cb6d483a1769144c5c756f76be04509cd4c47e8088b5d8237eed8abff"
+    },
+    "window": {
+      "before": "80177f433ac72800c82e0c6dd4ae2cf0116748b2d3d52f76d203fe3fcb57d590",
+      "after": "80177f433ac72800c82e0c6dd4ae2cf0116748b2d3d52f76d203fe3fcb57d590"
+    },
+    "turbulence": {
+      "before": "96a913168479ee2cc28107fc255ac044568aa95ffb66ab9e6b3df561c7d5863f",
+      "after": "96a913168479ee2cc28107fc255ac044568aa95ffb66ab9e6b3df561c7d5863f"
+    }
+  },
+  "toolchain": {
+    "source_tag": "v1.8.2502",
+    "source_commit": "b4711839eb9a87da7c3436d9b212e0492359fbbd",
+    "version": "libdxcompiler.dylib: 1.8(dev;1-b4711839); libdxil.dylib: 1.8",
+    "files": {
+      "target/toolchains/dxc-build-v1.8.2502/bin/dxc": "00db2a5e0f32d8a2714c5801a73ac7525d6f03d1ac319f7712fccd0458ed4a17",
+      "target/toolchains/dxc-build-v1.8.2502/lib/libdxcompiler.dylib": "47ab8a70f988293a979a157552322d55680ef2bd2f76394202a3e59f06f97df9",
+      "target/toolchains/dxc-build-v1.8.2502/lib/libdxil.dylib": "c0f3abf46cea2e0ad8ceeed0dd181dd9c71b3030d61349f27a6335e517bf0396"
+    }
+  },
+  "tests": {
+    "passed": 1122,
+    "failed": 0,
+    "ignored": 0,
+    "hlsl_entry_target_pairs": 168,
+    "hlsl_headers_per_target": 108,
+    "dxil_reflection_checked": true,
+    "spirv_container_checked": true,
+    "actual_dx12_vulkan_execution": false
+  },
+  "clippy_warnings": {
+    "library": 1,
+    "library_test": 8
+  },
+  "resolution": {
+    "compiler_failures": [
+      "every_hlsl_header_compiles_without_callers_globals",
+      "pinned_dxc_reports_invalid_source_for_both_targets"
+    ],
+    "compiler_changes": [
+      "Pinned real DXC configured; macOS compiler library identity corrected",
+      "Validator library contents and presence included in Unix cache identity",
+      "Missing HLSL COARSE_TILE_PTCL_END fixed to match host offset 8",
+      "Mesh Gradient HLSL vector constructor given two explicit components"
+    ],
+    "turbulence": {
+      "original_test": "scaled_turbulence_matches_canonical_rgba",
+      "replacement_test": "scaled_turbulence_matches_svg_noise_semantics",
+      "kind": "Independent mathematical test oracle; production Metal output unchanged",
+      "archived_1600_rgba_sha256": "759888711bfa14070fd01c6640d6be0ac41d65b96942784475110034506caf82",
+      "unchanged_actual_1600_rgba_sha256": "ba95370899224599efa0bbd4d3d3915eb2bf9e4ed189a94553fecde0302231b2",
+      "max_channel_delta": 1,
+      "oracle_diff_pixels": {
+        "300": 2526,
+        "1600": 70963
+      },
+      "noise_region_pixels": {
+        "300": 32400,
+        "1600": 921600
+      },
+      "same_backend_repeat_exact": true,
+      "archived_hash_match_claimed": false
+    }
+  },
+  "verification_totals": {
+    "timing_svg_png_hashes": 41520,
+    "timing_noise_png_hashes": 48,
+    "timing_noise_rgba_hashes": 48,
+    "timing_noise_frames": 768,
+    "timing_window_frames": 192
+  },
+  "temporary_measurement_cleanup_complete": true,
+  "manifests": {
+    "unchanged": true,
+    "sha256": {
+      "target/release/build/tileink-693345b8f8240684/out/tileink_native_artifacts.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "target/release/build/tileink-24048925a7656d71/out/tileink_native_artifacts.json": "a9498b48fd779f43cd2b47503c87fd31e0bbd1c0fb9c0ed0d080a8e24cdf2d2b",
+      "target/release/build/tileink-02c1122da65b8cf5/out/tileink_native_artifacts.json": "a9498b48fd779f43cd2b47503c87fd31e0bbd1c0fb9c0ed0d080a8e24cdf2d2b"
+    }
+  }
+}

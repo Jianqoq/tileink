@@ -12,12 +12,20 @@ title: Canvas API
 | 方法 | 说明 |
 |---|---|
 | `Canvas::new(width, height, scale_factor)` | 创建 logical-size scene；尺寸和 scale 必须有效 |
+| `Canvas::with_surface(surface)` | 使用已经校验的 `CanvasSurface`，保留原生窗口的精确物理尺寸 |
 | `scale_factor()` | 返回 logical→physical scale |
-| `logical_size()` | `(logical_width, logical_height)` |
+| `logical_size()` | `(f64, f64)` 逻辑尺寸，保留小数 |
 | `physical_size()` / `physical_width()` / `physical_height()` | scale 后的物理输出尺寸 |
 | `is_closed_for_append()` | 所有 layer 是否已 pop，可否 append/retain |
 | `reset()` | 清空 scene 数据并保留 Canvas 对象供复用 |
 | `reset_for_surface(width, height, scale_factor)` | 校验正数有限 scale 后，清空内容、保留分配容量并切换到新的 logical surface；校验失败不改变 Canvas |
+| `surface()` / `reset_to_surface(surface)` | 读取或切换精确 viewport；切换时清空绘制内容并保留分配容量 |
+
+原生窗口使用 `CanvasSurface::from_physical((width, height), scale)?`：13×7 像素在 2× DPR
+下为 6.5×3.5 逻辑单位，物理尺寸始终保持 13×7。不要先取整逻辑尺寸再乘回 DPR。
+应用指定整数逻辑尺寸时使用 `from_logical` 或 `Canvas::new`，物理分配向外取整。
+两个 `CanvasSurface` 构造函数均拒绝无效 scale 或无法表示的尺寸；`Canvas::new` 和
+`reset_for_surface` 对这类编程错误 panic，后者在校验成功前不改变画布。
 
 ## Scene composition
 
@@ -44,7 +52,7 @@ pub fn append_transformed(&mut self, other: &Canvas, transform: Affine);
 
 ## Layer stack
 
-每次 push layer 后必须 `pop_layer()`；返回的 `LayerKind` 可用于检查关闭顺序。
+每次 push layer 后必须 `pop_layer()`；返回的 `LayerKind` 可用于检查关闭顺序。根画布不属于可关闭的层；没有打开的层时返回 `None`。`reset()` 会清除未关闭的层，后续绘制从根画布开始。
 
 | 方法 | 语义 |
 |---|---|
@@ -84,6 +92,10 @@ pub fn append_transformed(&mut self, other: &Canvas, transform: Affine);
 | `push_line(line, brush)` | `Option<DrawId>` | solid analytic line |
 | `push_dash_line(line, brush)` | `Option<DrawId>` | dashed line |
 | `push_line_shadow(line, options, brush)` | `Option<DrawId>` | line shadow |
+
+`SdfTriangle::new` 要求有限顶点、有限且非零的 `f64` 面积，以及有限、非负的圆角半径。
+正面积三角形不会因固定 epsilon 被判空。Metal/HLSL 的短边距离和法线计算在平方溢出或
+下溢时使用缩放运算，并按实际变换后的梯度长度计算抗锯齿覆盖率。
 
 ## Kurbo paths
 

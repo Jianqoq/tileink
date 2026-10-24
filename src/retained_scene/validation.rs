@@ -1,19 +1,15 @@
 use super::model::*;
 use super::prelude::*;
 
-pub(super) fn validate_size(width: u32, height: u32, scale: f32) -> Result<(), RetainedSceneError> {
-    (width > 0 && height > 0 && scale.is_finite() && scale > 0.0)
-        .then_some(())
-        .ok_or(RetainedSceneError::InvalidSize)
-}
-
-pub(super) fn validate_transform(transform: Affine) -> Result<(), RetainedSceneError> {
-    let coefficients = transform.as_coeffs();
-    (coefficients.iter().all(|value| value.is_finite())
-        && (coefficients[0] * coefficients[3] - coefficients[1] * coefficients[2]).abs()
-            > f64::EPSILON)
-        .then_some(())
-        .ok_or(RetainedSceneError::InvalidTransform)
+pub(super) fn validate_transform(transform: Affine, scale: f32) -> Result<(), RetainedSceneError> {
+    // Validate the same physical f32 representation the materializer will install, rather than
+    // accepting a f64 matrix that becomes singular or nonfinite on the GPU (root-cause fix).
+    (transform.as_coeffs().into_iter().all(f64::is_finite)
+        && crate::shared::affine::GpuAffine::from_logical(transform, scale)
+            .inverse()
+            .is_some())
+    .then_some(())
+    .ok_or(RetainedSceneError::InvalidTransform)
 }
 
 pub(super) fn affine_linear_part_eq(left: Affine, right: Affine) -> bool {
@@ -48,18 +44,21 @@ pub(super) fn validate_kind(kind: &NodeKind, scale: f32) -> Result<(), RetainedS
             translation_damage,
         } => {
             validate_canvas(canvas, scale)?;
-            validate_transform(*transform)?;
+            validate_transform(*transform, scale)?;
             if let Some(damage) = translation_damage {
                 validate_damage_rect(*damage)?;
             }
             Ok(())
         }
-        NodeKind::Layer(layer) => validate_layer(layer),
+        NodeKind::Layer(layer) => validate_layer(layer, scale),
         NodeKind::Group => Ok(()),
     }
 }
 
-pub(super) fn validate_layer(layer: &RetainedLayerDescriptor) -> Result<(), RetainedSceneError> {
+pub(super) fn validate_layer(
+    layer: &RetainedLayerDescriptor,
+    scale: f32,
+) -> Result<(), RetainedSceneError> {
     match layer {
         RetainedLayerDescriptor::ClipPath {
             path,
@@ -103,7 +102,7 @@ pub(super) fn validate_layer(layer: &RetainedLayerDescriptor) -> Result<(), Reta
         RetainedLayerDescriptor::Mask(mask) => validate_region(&mask.region),
         RetainedLayerDescriptor::ClipSdf { sdf, transform } => {
             validate_sdf(*sdf)?;
-            validate_transform(*transform)
+            validate_transform(*transform, scale)
         }
     }
 }

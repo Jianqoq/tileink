@@ -23,7 +23,7 @@
 - Everytime you fix a bug or implement a new feature, document the code and mention why you make this change, mention if the fix/implementation did fix the real issue or just a temp solution
 - No minimal change, no need to capatible with old code, code must designed in long term develop perspective (maintainable, readable, organized, clear code logic)
 - one file can't contains too much code, split them
-- When optimize performance, you must write benchmark for this secenario with criterion framework.
+- When optimizing performance, measure the affected real application workload and remove temporary measurement code afterward.
 
 ## Testing policy
 
@@ -52,5 +52,5 @@ After each feature or bug fix:
 7. In svg, resvg reference png are not 100% correct, small pixels difference is acceptable, ask developer to confirm before consider the change failed.
 8. Every change related to rendering, must run full svg tests and examples, if there are diff in pngs, make sure the change make sense and reviewed by human
 9. Review your changes, do they make sense
-10. After benchmark running, Criterion must shows performance no change/noise or improved.
+10. Confirm that any performance change improves or preserves the measured application workload.
 11. Update website docs if needed

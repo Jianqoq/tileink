@@ -1,40 +1,20 @@
 ---
-sidebar_position: 4
 title: GPU pipeline
 ---
 
 # GPU pipeline
 
-```mermaid
-flowchart LR
-  Records[Scene records] --> Scan[Path scan]
-  Scan --> Prefix[Prefix / cumsum]
-  Prefix --> Segments[Emit segments]
-  Segments --> Coarse[Coarse tile particles]
-  Coarse --> Fine[Fine 16x16 raster]
-  Fine --> Layers[Layer stacks]
-  Layers --> Offscreen[Filters / masks / backdrop]
-  Offscreen --> Target[RGBA8 target]
-```
+The renderer prepares paths, brushes, layers, text, and images from the same scene model for each native API. A path scan and prefix pass calculate work, coarse binning assigns draws to 16×16 tiles, and fine rasterization resolves coverage and blending. Filter passes use intermediate surfaces as needed. Retained frames reuse unchanged scene records and output history. Image readback is explicit through `NativeImageSubmission::readback`; host targets use submission receipts to coordinate presentation.
 
-Paths flatten to line records; scan computes tile/row crossings and allocates segment output. Analytic SDFs avoid CPU tessellation and carry affine data to GPU evaluation. Coarse work visits per-tile draw references rather than the entire draw table. Fine workgroups composite coverage, brushes, text, clips, opacity, and blend state. Non-fusible filters and masks become offscreen ExecPlan operations with stable retained surface identities.
 
-Native and portable WGPU paths share scene formats and most shader semantics; the repository compares their output pixel-for-pixel in examples and SVG tests.
+CPU tile binning first proves complete tile coverage by solid opaque SDF rectangles, then removes covered draw references within the same raster batch. This reduces GPU coarse counting, particle emission and fine shading. Rounded corners, antialiasing edges and tiles without complete clip coverage remain; uncertain brushes and transforms defer to the existing GPU proof. CPU spatial membership retains all source content so movement, opacity edits and filter localization can recover the required draws. Single-batch retained indices can update each tile's visible start without rewriting the complete index arena on opacity changes.
 
-For plans containing only fused root layers, portable fine uses one frame-wide ping-pong sequence: a full redraw copies into the intermediate textures once and copies the final result out once. A partial redraw also seeds the second intermediate texture so inactive pixels survive alternation. Recursive offscreen/filter plans keep the conservative per-target path. `IncrementalRenderStats::portable_texture_copies` reports the copies that were actually encoded.
+CPU tile memberships and GPU draw references use separate contiguous arenas. Each tile stores an offset and its actual length; local edits reuse free ranges and upload only changed references. The GPU's 256-item workgroup no longer determines storage page size. Fragmentation triggers compaction and offset updates, while complete source membership remains available for spatial queries and occlusion recovery.
 
-## Build-time DXIL on DX12
+Retained path scan preserves successfully submitted backdrops, tile segment ranges and edges. The geometry journal selects changed paths together with all their edges, scan chunks and cumsum rows; paint edits skip scan. Reuse requires matching physical storage identity, contiguous versions and sufficient buffer capacity. Version gaps, abandoned batches and output-buffer growth rebuild complete results. Cumsum never accumulates unchanged rows a second time.
 
-Windows builds precompile the four primary portable-fine compute entry points to Shader Model 6.0
-DXIL and embed the blobs in the library. Cargo invalidates those artifacts when the WGSL, shader
-patch, binding manifest, build logic, DXC discovery environment, Windows SDK bin directory, DXC
-executable, or its adjacent `dxcompiler.dll`/`dxil.dll` changes. At runtime Tileink uses a blob only
-when the actual D3D12 device supports Shader Model 6.0 and `PASSTHROUGH_SHADERS`, the DX12 backend,
-portable textures, the 64-entry image texture table, and the entry point all match; every other
-device, backend, or layout falls back to the existing WGSL path.
+A version gap invalidates every scene journal together: draw, paint, text, layer and batch inputs, tile memberships and glyph capacities refresh from current complete data. Rescanning paths alone could retain a missed color or placement edit. Refresh preserves reusable CPU/GPU capacity. CPU text preparation tracks its own processed version because it can advance before GPU submission; a discontinuous journal reconciles complete glyph and run data.
 
-DXIL is independent of GPU vendor and model, while the PSO or machine code generated from it is
-still adapter- and driver-specific. `Renderer::precompiled_dxil_pipeline_count` makes the selected
-pipeline source observable so output-equivalent WGSL cannot be mistaken for a cache hit.
-`TILEINK_DXC_PATH` selects the build-time compiler and `TILEINK_DXIL_PRECOMPILE=0` intentionally
-builds the fallback path.
+Coarse still records the last solid-color particle proven to cover the complete tile with alpha 255 so Fine can skip earlier particles. This proof preserves particle allocations and glyph indices and supplements conservative CPU culling. Fused opacity/blend wrappers, filters and backdrop dependencies retain their execution order. Occlusion culling itself does not skip scene preparation, path scan or source uploads; geometry reuse follows the independent incremental rules above. Metal and HLSL consume the same CPU tile references and execution boundaries.
+
+The fused stack encodes typed clip, opacity, and blend entries. Only clips can carry SDF geometry; opacity and blend boundaries use paths. Each emitter first counts the current tile's valid wrappers, rejecting uncovered path or SDF bounds and eliding clips proven to cover the whole tile. It then emits begins in nesting order and ends in reverse order using the same immutable scene inputs. Metal and HLSL share this contract, so emission does not repeat handling for unknown stack kinds or rejected paths.

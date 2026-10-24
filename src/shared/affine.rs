@@ -41,26 +41,37 @@ impl GpuAffine {
     }
 
     pub(crate) fn inverse(self) -> Option<Self> {
-        let determinant = self.a * self.d - self.b * self.c;
-        if !determinant.is_finite() || determinant.abs() <= f32::EPSILON {
+        // A small determinant is not singular: animation scales can legitimately approach zero.
+        // Use f64 intermediates to avoid f32 determinant underflow/overflow, then require the
+        // actual GPU coefficients and inverse to be representable (root-cause fix).
+        let coefficients = [self.a, self.b, self.c, self.d, self.e, self.f];
+        if !coefficients.into_iter().all(f32::is_finite) {
             return None;
         }
-        let inverse = determinant.recip();
-        let a = self.d * inverse;
-        let b = -self.b * inverse;
-        let c = -self.c * inverse;
-        let d = self.a * inverse;
-        Some(Self {
-            a,
-            b,
-            c,
-            d,
-            e: -(a * self.e + c * self.f),
-            f: -(b * self.e + d * self.f),
-        })
+        let [a, b, c, d, e, f] = coefficients.map(f64::from);
+        let determinant = a * d - b * c;
+        if determinant == 0.0 {
+            return None;
+        }
+        let result = Self {
+            a: (d / determinant) as f32,
+            b: (-b / determinant) as f32,
+            c: (-c / determinant) as f32,
+            d: (a / determinant) as f32,
+            e: ((c * f - d * e) / determinant) as f32,
+            f: ((b * e - a * f) / determinant) as f32,
+        };
+        [result.a, result.b, result.c, result.d, result.e, result.f]
+            .into_iter()
+            .all(f32::is_finite)
+            .then_some(result)
     }
 
     /// Matrix composition with kurbo semantics: `self * rhs` applies `rhs` first.
+    #[allow(
+        clippy::suspicious_operation_groupings,
+        reason = "Affine composition multiplies matrix rows by columns, including cross-component products"
+    )]
     pub(crate) fn compose(self, rhs: Self) -> Self {
         Self {
             a: self.a * rhs.a + self.c * rhs.b,
@@ -110,5 +121,41 @@ impl GpuAffine {
 impl Default for GpuAffine {
     fn default() -> Self {
         Self::IDENTITY
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inverse_handles_small_large_and_reflected_gpu_scales() {
+        for scale in [1e-30, 1e-12, 1e-4, 1.0, 1e20, f64::from(f32::MAX)] {
+            for sign in [-1.0, 1.0] {
+                let transform =
+                    GpuAffine::from_logical(Affine::scale_non_uniform(scale, sign * scale), 1.0);
+                let inverse = transform.inverse().unwrap();
+                let product = inverse.compose(transform);
+                assert!((product.a - 1.0).abs() < 1e-6, "scale={scale}");
+                assert!((product.d - 1.0).abs() < 1e-6, "scale={scale}");
+                assert_eq!(
+                    (product.b, product.c, product.e, product.f),
+                    (0.0, 0.0, 0.0, 0.0)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn inverse_rejects_nonfinite_singular_and_unrepresentable_results() {
+        for transform in [
+            Affine::scale(0.0),
+            Affine::scale(1e-40),
+            Affine::new([1.0, 1.0, 1.0, 1.0, 0.0, 0.0]),
+            Affine::translate((f64::INFINITY, 0.0)),
+            Affine::new([f64::NAN, 0.0, 0.0, 1.0, 0.0, 0.0]),
+        ] {
+            assert!(GpuAffine::from_logical(transform, 1.0).inverse().is_none());
+        }
     }
 }

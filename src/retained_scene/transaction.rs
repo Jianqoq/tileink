@@ -39,6 +39,7 @@ pub(crate) enum Mutation {
         height: u32,
         scale: f32,
     },
+    SetSurface(CanvasSurface),
     InvalidateRect(Rect),
     InvalidateAll,
 }
@@ -67,7 +68,7 @@ pub(crate) enum UndoMutation {
         parent_key: u128,
         nodes: Vec<(RetainedNodeId, SceneNode)>,
     },
-    Resize((u32, u32, f32)),
+    Resize(CanvasSurface),
 }
 
 pub struct RetainedSceneTransaction<'a> {
@@ -228,6 +229,12 @@ impl RetainedSceneTransaction<'_> {
         self
     }
 
+    /// Replaces the viewport without rounding a native surface through logical integers.
+    pub fn set_surface(&mut self, surface: CanvasSurface) -> &mut Self {
+        self.mutations.push(Mutation::SetSurface(surface));
+        self
+    }
+
     pub fn invalidate_rect(&mut self, rect: Rect) -> &mut Self {
         self.mutations.push(Mutation::InvalidateRect(rect));
         self
@@ -238,6 +245,9 @@ impl RetainedSceneTransaction<'_> {
         self
     }
 
+    ///
+    /// # Errors
+    /// Returns an error for invalid geometry, resources, node/parent references, ordering, or topology. Failed transactions roll back all scene mutations.
     pub fn commit(&mut self) -> Result<SceneVersion, RetainedSceneError> {
         self.scene
             .commit_mutations(std::mem::take(&mut self.mutations))

@@ -7,7 +7,7 @@ title: Paint、Geometry 与 Filter
 
 ## Brush
 
-`Brush` variants：solid、linear、radial、sweep、four-corner 与 pattern。常用 constructors：
+`Brush` variants：solid、linear、radial、sweep、four-corner、mesh、program 与 pattern。常用 constructors：
 
 | 方法 | 说明 |
 |---|---|
@@ -18,13 +18,29 @@ title: Paint、Geometry 与 Filter
 | `Brush::from_gradient(&Gradient)` | 默认 ramp size |
 | `Brush::from_gradient_with_ramp_size(...)` | 显式 ramp resolution |
 | `Brush::four_corner(bounds, [Color; 4])` | 四角插值 |
-| `Brush::for_origin_resource(...)` | 调整 resource brush 到 local origin |
+| `MeshGradient::new(columns, rows, positions, colors)` | 验证并编译可移动控制点网格；可直接传给绘制 API |
+| `MeshGradient::with_interpolation(...)` | `Smooth`（默认）或 `Bilinear` |
+| `ShaderProgram::new(sources, entry, input, uniform_words)` | 按原文编译用户提供的 Metal／HLSL 完整源码 |
+| `ShaderProgram::brush(uniforms)` / `filter(uniforms)` | 创建程序化 Brush 或 Filter |
+| `ShaderInput::{None, Current, Sampled { radius }}` | 声明输入依赖；采样范围用于背景捕获和 retained 刷新 |
+| `ShaderProgram::samples_input()` / `sample_radius()` | 查询采样声明及最大每轴逻辑位移 |
+| `ProgramBrush::with_uniforms(...)` / `ShaderPipeline::with_resource(...)` | 共享原生程序，只替换参数 |
+| `ShaderKernel::new(...)` / `ShaderPipeline::new(...)` | 用户原生源码、动态资源、多 pass 与多分辨率调度 |
+| `ShaderKernel::precompiled(...)` | 用同一公开接口加载构建时编译的原生 kernel |
+| `ShaderResource::Uniform(...)` / `External { index, kind }` | 任意常量块或按调用绑定的 GPU 资源 |
+| `NativeShaderBatch::record(...)` / `submit()` | 绑定原生资源并提交同一管线，支持纹理数组和纹理表 |
+| `ShaderPipeline::with_resource(...)` / `with_input_radius(...)` | 更新资源快照或声明完整管线的采样范围 |
+| `ShaderPipeline::with_output_outset(...)` | 声明逻辑输出外扩，与输入采样范围独立，参与 DPI、离屏及 retained 处理 |
+| `ShaderResource::Input(index)` / `ShaderPipeline::input_count()` | 从 0 连续编号的动态图像输入及调用所需数量 |
+| `FilterPrimitiveKind::ShaderPipeline { pipeline, inputs }` | 直接绑定多个 GPU 图节点、SourceGraphic／SourceAlpha；region 裁剪输出 |
 
 `DEFAULT_GRADIENT_RAMP_SIZE` 为 4096。`PatternSampling` 决定 nearest/linear 等采样策略。
 
 ## Bounds
 
 `Bounds::new(x0, y0, x1, y1)` 创建整数像素范围，`Bounds::canvas(width, height)` 创建完整画布范围。`intersect`、`union` 与 `outset` 分别计算交集、并集与向外扩张；`is_empty` 检查空范围。Bounds 使用半开区间，`x1`/`y1` 不属于范围。
+
+`outset(amount: u32)` 接受非负像素距离，可覆盖完整的 `i32` 坐标跨度；扩张后的端点限制在 `i32` 范围内。宽高使用宽整数计算，因此横跨正负坐标极限的非空范围不会因溢出变成零。
 
 ## Image
 
@@ -54,6 +70,10 @@ title: Paint、Geometry 与 Filter
 | `CandleStick::new(...)` | candlestick；width 可用 validation helpers 检查 |
 
 Circle/Rect/stroke/shadow structs 同时公开字段，适合 struct literal；详细字段运行 `cargo doc --open` 查看。
+
+解析图元按实际零值判空：零长 butt 线、零角度圆弧为空，正的短线、虚线间隔和圆角不再被固定的逻辑像素阈值删除。圆弧只有达到 `TAU` 才视为整圆；接近整圆时保留缺口。Callout 尾部没有最小逻辑尺寸，放大前的圆角路径仍保留曲线。CPU、Metal 与 HLSL 使用相同的几何规则。
+
+矩形、圆形、圆弧、线和 callout 阴影统一使用 `ShadowOptions`，分别设置偏移、衰减距离和强度。
 
 ## Region 与 Mask
 

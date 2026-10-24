@@ -1,17 +1,10 @@
 use super::*;
 
+#[cfg(test)]
+mod tests;
+
 impl Canvas {
     pub fn push_clip_layer(
-        &mut self,
-        path: BezPath,
-        transform: Affine,
-        rule: FillRule,
-        tolerance: f64,
-    ) {
-        self.push_clip_layer_inner(path, transform, rule, tolerance);
-    }
-
-    pub(super) fn push_clip_layer_inner(
         &mut self,
         path: BezPath,
         transform: Affine,
@@ -27,12 +20,11 @@ impl Canvas {
         if let Some(rect) = axis_aligned_rect_path(&path, transform)
             && self.rect_has_pixel_aligned_edges(rect)
         {
-            self.push_clip_sdf_rect_layer_inner(rect, Radius::ZERO);
+            self.push_clip_sdf_rect_layer(rect, Radius::ZERO);
             return;
         }
-        self.ensure_command_root();
         let draw = self.push_layer_path(DrawTag::Clip, path, transform, rule, tolerance);
-        self.push_layer_command(draw, Layer::Clip, LayerKind::Clip);
+        self.push_layer_command(Layer::Clip { draw });
     }
 
     /// Adds a rounded/sharp rectangle clip that is rasterized directly from an SDF.
@@ -40,11 +32,7 @@ impl Canvas {
     /// This avoids flattening simple rounded clips into path segments while keeping
     /// the SDF geometry as the source of truth until render time.
     pub fn push_clip_sdf_rect_layer(&mut self, rect: Rect, radius: Radius) {
-        self.push_clip_sdf_rect_layer_inner(rect, radius);
-    }
-
-    pub(super) fn push_clip_sdf_rect_layer_inner(&mut self, rect: Rect, radius: Radius) {
-        self.push_clip_sdf_layer_inner(Sdf::Rect(SdfRect {
+        self.push_clip_sdf_layer(Sdf::Rect(SdfRect {
             start: Point::new(rect.x0, rect.y0),
             end: Point::new(rect.x1, rect.y1),
             radius,
@@ -59,7 +47,7 @@ impl Canvas {
     }
 
     pub fn push_clip_sdf_circle_layer(&mut self, circle: Circle) {
-        self.push_clip_sdf_layer_inner(Sdf::Circle(SdfCircle {
+        self.push_clip_sdf_layer(Sdf::Circle(SdfCircle {
             center: circle.center,
             radius: circle.radius as f32,
         }));
@@ -79,7 +67,14 @@ impl Canvas {
     /// or per-tile segments. The renderer rasterizes the mask directly from the
     /// SDF bounds, so future SDF primitives automatically work as clip layers.
     pub fn push_clip_sdf_layer(&mut self, sdf: Sdf) {
-        self.push_clip_sdf_layer_inner(sdf);
+        let sdf = self.physical_sdf(sdf);
+        let draw = self.push_physical_sdf_record(
+            sdf,
+            &Brush::Solid(Color::TRANSPARENT),
+            DrawTag::Clip,
+            false,
+        );
+        self.push_layer_command(Layer::ClipSdf { draw });
     }
 
     /// Adds an affine-transformed clip while preserving the SDF as local GPU geometry.
@@ -88,15 +83,14 @@ impl Canvas {
     /// rectangles instead of depending on a CPU-flattened path approximation. Returns `false`
     /// for a non-invertible transform without mutating the canvas.
     pub fn push_clip_sdf_layer_transformed(&mut self, sdf: Sdf, transform: Affine) -> bool {
-        let transform = GpuAffine::from_logical(transform, self.scale_factor);
+        let transform = GpuAffine::from_logical(transform, self.scale_factor());
         let Some(inverse_transform) = transform.inverse() else {
             return false;
         };
-        self.ensure_command_root();
         let sdf = self.physical_sdf(sdf);
         let draw = self.push_physical_sdf_record(
             sdf,
-            Brush::Solid(Color::TRANSPARENT),
+            &Brush::Solid(Color::TRANSPARENT),
             DrawTag::Clip,
             false,
         );
@@ -104,30 +98,8 @@ impl Canvas {
         record.transform = transform;
         record.inverse_transform = inverse_transform;
         record.pixel_bounds = transform.transform_bounds(record.local_pixel_bounds);
-        let bounds = record.pixel_bounds;
-        self.push_layer_command(
-            draw,
-            Layer::ClipSdf {
-                bounds: Bounds::new(bounds.x0, bounds.y0, bounds.x1, bounds.y1),
-                sdf,
-            },
-            LayerKind::ClipSdf,
-        );
+        self.push_layer_command(Layer::ClipSdf { draw });
         true
-    }
-
-    pub(super) fn push_clip_sdf_layer_inner(&mut self, sdf: Sdf) {
-        self.ensure_command_root();
-        let sdf = self.physical_sdf(sdf);
-        let bounds = sdf.bounds();
-        let draw = self.push_physical_sdf_record(
-            sdf,
-            Brush::Solid(Color::TRANSPARENT),
-            DrawTag::Clip,
-            false,
-        );
-        let layer = Layer::ClipSdf { bounds, sdf };
-        self.push_layer_command(draw, layer, LayerKind::ClipSdf);
     }
 
     /// Starts an isolated source-over group.
@@ -137,16 +109,6 @@ impl Canvas {
     /// transparent offscreen buffer first, then the group is composited back
     /// through the supplied layer path and any outer clips.
     pub fn push_isolate_layer(&mut self, path: BezPath, transform: Affine, tolerance: f64) {
-        self.push_isolate_layer_inner(path, transform, tolerance);
-    }
-
-    pub(super) fn push_isolate_layer_inner(
-        &mut self,
-        path: BezPath,
-        transform: Affine,
-        tolerance: f64,
-    ) {
-        self.ensure_command_root();
         let draw = self.push_layer_path(
             DrawTag::Isolate,
             path,
@@ -154,7 +116,7 @@ impl Canvas {
             FillRule::NonZero,
             tolerance,
         );
-        self.push_layer_command(draw, Layer::Isolate, LayerKind::Isolate);
+        self.push_layer_command(Layer::Isolate { draw });
     }
 
     pub fn push_opacity_layer(
@@ -164,17 +126,6 @@ impl Canvas {
         tolerance: f64,
         opacity: f32,
     ) {
-        self.push_opacity_layer_inner(path, transform, tolerance, opacity);
-    }
-
-    pub(super) fn push_opacity_layer_inner(
-        &mut self,
-        path: BezPath,
-        transform: Affine,
-        tolerance: f64,
-        opacity: f32,
-    ) {
-        self.ensure_command_root();
         let draw = self.push_layer_path(
             DrawTag::Opacity,
             path,
@@ -182,37 +133,7 @@ impl Canvas {
             FillRule::NonZero,
             tolerance,
         );
-        let layer = Layer::Opacity(Opacity { opacity });
-        self.push_layer_command(draw, layer, LayerKind::Opacity);
-    }
-
-    pub(crate) fn push_blend_layer_inner(
-        &mut self,
-        path: BezPath,
-        transform: Affine,
-        tolerance: f64,
-        blend: Blend,
-    ) {
-        self.push_blend_layer_inner_impl(path, transform, tolerance, blend);
-    }
-
-    pub(super) fn push_blend_layer_inner_impl(
-        &mut self,
-        path: BezPath,
-        transform: Affine,
-        tolerance: f64,
-        blend: Blend,
-    ) {
-        self.ensure_command_root();
-        let draw = self.push_layer_path(
-            DrawTag::Blend,
-            path,
-            transform,
-            FillRule::NonZero,
-            tolerance,
-        );
-        let layer = Layer::Blend(Blend { mode: blend.mode });
-        self.push_layer_command(draw, layer, LayerKind::Blend);
+        self.push_layer_command(Layer::Opacity { draw, opacity });
     }
 
     pub fn push_blend_layer(
@@ -223,7 +144,17 @@ impl Canvas {
         mix: Mix,
         compose: Compose,
     ) {
-        self.push_blend_layer_inner(path, transform, tolerance, Blend::new(mix, compose));
+        let draw = self.push_layer_path(
+            DrawTag::Blend,
+            path,
+            transform,
+            FillRule::NonZero,
+            tolerance,
+        );
+        self.push_layer_command(Layer::Blend {
+            draw,
+            mode: BlendMode::new(mix, compose),
+        });
     }
 
     /// Starts a masked group using `mask_scene` as the mask source.
@@ -231,14 +162,16 @@ impl Canvas {
     /// The mask source is rendered isolated, converted to either alpha or
     /// luminance coverage, clipped to `mask.region`, then applied to this
     /// layer's content before compositing through any outer clips.
-    pub fn push_mask_layer(&mut self, mask_scene: Canvas, mask: Mask) {
-        self.push_mask_layer_inner(mask_scene, mask);
-    }
-
-    pub(super) fn push_mask_layer_inner(&mut self, mask_scene: Canvas, mask: Mask) {
-        self.ensure_command_root();
+    ///
+    /// # Panics
+    /// Panics if the mask and destination use different scale factors.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "Recording consumes the temporary mask scene and releases its source storage after appending"
+    )]
+    pub fn push_mask_layer(&mut self, mask_scene: Self, mask: Mask) {
         assert!(
-            (self.scale_factor - mask_scene.scale_factor).abs() <= f32::EPSILON,
+            (self.scale_factor() - mask_scene.scale_factor()).abs() <= f32::EPSILON,
             "cannot use a mask canvas with a different scale factor"
         );
         let mask_commands = self.append_scene_as_command_list(&mask_scene);
@@ -250,26 +183,20 @@ impl Canvas {
     /// Filters derive their final output bounds from this region. Blur and
     /// drop-shadow expand it internally so their output is not clipped back to
     /// the original geometry.
+    ///
+    /// # Panics
+    /// Panics if the filter contains a rectangular liquid-glass backdrop effect. Use `push_backdrop_layer` for that effect.
     pub fn push_filter_layer(&mut self, filter: Filter, sample_region: Region) {
-        self.push_filter_layer_inner(filter, sample_region);
-    }
-
-    pub(super) fn push_filter_layer_inner(&mut self, filter: Filter, sample_region: Region) {
-        self.ensure_command_root();
         let filter = self.physical_filter(filter);
         let sample_region = self.physical_region(sample_region);
         assert!(
             !filter.contains_rect_liquid_glass(),
             "RectLiquidGlass is a rounded-rectangle backdrop effect; use push_backdrop_layer with Region::Rect"
         );
-        self.push_layer_command(
-            0,
-            Layer::Filter {
-                filter,
-                sample_region,
-            },
-            LayerKind::Filter,
-        );
+        self.push_layer_command(Layer::Filter {
+            filter,
+            sample_region,
+        });
     }
 
     /// Adds a backdrop filter group sampled from the already-rendered target.
@@ -277,12 +204,10 @@ impl Canvas {
     /// The filter samples pixels behind this layer from `sample_region`, clips
     /// the filtered backdrop back to that region, then renders this layer's
     /// children normally on top.
+    ///
+    /// # Panics
+    /// Panics if a rectangular liquid-glass effect is supplied with a nonrectangular region.
     pub fn push_backdrop_layer(&mut self, filter: Filter, sample_region: Region) {
-        self.push_backdrop_layer_inner(filter, sample_region);
-    }
-
-    pub(super) fn push_backdrop_layer_inner(&mut self, filter: Filter, sample_region: Region) {
-        self.ensure_command_root();
         let filter = self.physical_filter(filter);
         let sample_region = self.physical_region(sample_region);
         if filter.contains_rect_liquid_glass() {
@@ -291,23 +216,16 @@ impl Canvas {
                 "RectLiquidGlass requires Region::Rect because it uses rounded-rectangle SDF normals"
             );
         }
-        self.push_layer_command(
-            0,
-            Layer::Backdrop {
-                filter,
-                sample_region,
-            },
-            LayerKind::Backdrop,
-        );
+        self.push_layer_command(Layer::Backdrop {
+            filter,
+            sample_region,
+        });
     }
 
     pub fn pop_layer(&mut self) -> Option<LayerKind> {
-        self.ensure_command_root();
-        let layer_kind = self.layer_stack.pop()?;
-        if self.command_stack.len() > 1 {
-            self.command_stack.pop();
-        }
-        Some(layer_kind)
+        let layer = self.layer_stack.pop()?;
+        self.current_commands = layer.parent;
+        Some(layer.kind)
     }
 }
 fn axis_aligned_rect_path(path: &BezPath, transform: Affine) -> Option<Rect> {
@@ -331,25 +249,15 @@ fn axis_aligned_rect_path(path: &BezPath, transform: Affine) -> Option<Rect> {
     {
         return None;
     }
-    let min_x = points
-        .iter()
-        .map(|point| point.x)
-        .fold(f64::INFINITY, f64::min);
-    let min_y = points
-        .iter()
-        .map(|point| point.y)
-        .fold(f64::INFINITY, f64::min);
-    let max_x = points
-        .iter()
-        .map(|point| point.x)
-        .fold(f64::NEG_INFINITY, f64::max);
-    let max_y = points
-        .iter()
-        .map(|point| point.y)
-        .fold(f64::NEG_INFINITY, f64::max);
+    // Only the four corners define the clip. A near-duplicate closing endpoint
+    // contributes to the recognition tolerance, but must not expand the rectangle.
+    let rect = Rect::from_points(points[0], points[1])
+        .union_pt(points[2])
+        .union_pt(points[3]);
+    let extent = points.get(4).map_or(rect, |point| rect.union_pt(*point));
     // Base tolerance on shape extent, not world-space translation. A large
     // translation must not make a slightly rotated quadrilateral look axial.
-    let epsilon = (max_x - min_x).max(max_y - min_y).max(1.0) * 1.0e-12;
+    let epsilon = extent.width().max(extent.height()).max(1.0) * 1.0e-12;
     let same = |a: Point, b: Point| (a.x - b.x).abs() <= epsilon && (a.y - b.y).abs() <= epsilon;
     if points.len() == 5 && same(points[0], points[4]) {
         points.pop();
@@ -358,22 +266,7 @@ fn axis_aligned_rect_path(path: &BezPath, transform: Affine) -> Option<Rect> {
         return None;
     }
 
-    let x0 = points
-        .iter()
-        .map(|point| point.x)
-        .fold(f64::INFINITY, f64::min);
-    let y0 = points
-        .iter()
-        .map(|point| point.y)
-        .fold(f64::INFINITY, f64::min);
-    let x1 = points
-        .iter()
-        .map(|point| point.x)
-        .fold(f64::NEG_INFINITY, f64::max);
-    let y1 = points
-        .iter()
-        .map(|point| point.y)
-        .fold(f64::NEG_INFINITY, f64::max);
+    let Rect { x0, y0, x1, y1 } = rect;
     if x1 - x0 <= epsilon || y1 - y0 <= epsilon {
         return None;
     }

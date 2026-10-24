@@ -1,0 +1,248 @@
+{
+  "baseline_commit": "ff1bef43f08b98ede151c3499949908290e958be",
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "cpu": "Apple M5",
+  "gpu_registry": "0000000100000575",
+  "threads": 1,
+  "validation": false,
+  "protocol": "Alternating before/after process order, no competing build or GPU jobs during timed samples. Build measurement runs the actual release build.rs executables against the complete 40-family Metal catalog and warm shared shader cache; it excludes Cargo/rustc compilation. Presentation measurement runs actual native_present release executables, startup + eight frames + resize + shutdown, not GPU frame throughput.",
+  "workloads": {
+    "native_shader_build": {
+      "warmup_pairs": 3,
+      "timed_pairs": 12,
+      "before": {
+        "samples_ms": [
+          1860.770083,
+          1760.347375,
+          2481.010292,
+          2689.872834,
+          3186.05,
+          3112.970833,
+          2873.929292,
+          2990.368667,
+          2812.857625,
+          1790.456125,
+          1948.357709,
+          1897.678625
+        ],
+        "p50_ms": 2585.441563,
+        "p95_ms": 3112.970833
+      },
+      "after": {
+        "samples_ms": [
+          2208.980916,
+          1812.325625,
+          2777.696042,
+          1783.538583,
+          1845.084375,
+          1751.030292,
+          1835.916209,
+          2951.411542,
+          1799.660625,
+          2717.265167,
+          1965.827334,
+          1870.040792
+        ],
+        "p50_ms": 1857.5625835,
+        "p95_ms": 2777.696042
+      },
+      "p50_change_percent": -28.15298515799407
+    },
+    "native_presentation": {
+      "warmup_pairs": 2,
+      "timed_pairs": 10,
+      "before": {
+        "samples_ms": [
+          245.403791,
+          233.639042,
+          237.981875,
+          234.998708,
+          233.151542,
+          232.309542,
+          235.126958,
+          247.415708,
+          231.600666,
+          246.947583
+        ],
+        "p50_ms": 235.062833,
+        "p95_ms": 246.947583
+      },
+      "after": {
+        "samples_ms": [
+          234.737542,
+          235.021708,
+          240.286667,
+          232.448791,
+          233.196209,
+          232.557167,
+          232.342875,
+          238.777334,
+          230.168167,
+          241.344083
+        ],
+        "p50_ms": 233.96687550000001,
+        "p95_ms": 240.286667
+      },
+      "p50_change_percent": -0.46624023288275307
+    }
+  },
+  "executables": {
+    "native_shader_build_before": "3b65b97b574314efc48a3f9fd2d40dde231fe907b560963f428c0dc2fb0002e6",
+    "native_shader_build_after": "8a1d5f81edad6130e0c5318eee94549a9ae9ede955911c5376e6aa84b4f7db5e",
+    "native_presentation_before": "bc1e0981f19681fa51eaffbce661821397a7bd7e000529e44f49a54fbe57c3f8",
+    "native_presentation_after": "bc1e0981f19681fa51eaffbce661821397a7bd7e000529e44f49a54fbe57c3f8"
+  },
+  "source_hashes": {
+    "build.rs": "d8427b83c218f1d66af5b2864cfc09a40d419f6049bfc1b04cb71046061de5f1",
+    "build/native.rs": "a9a751a433b4ce41101f1046764a41d395a24440f8ceaea6f745c5a24feed368",
+    "build/native/abi.rs": "d51582852e3c510863080917859ae89b3b1fed4c1e1fc10f5f3d4646c805241c",
+    "build/native/interfaces.rs": "8638013086cb589abb93a58112fad39bd6b6d7f80206932ca6071bea45bdd3de",
+    "build/native/interfaces/validation.rs": "7e4fd8a922a258d865fa1299a08da302bbec18fe78901528b0771d56b9677632",
+    "build/native/interfaces/texture.rs": "ba6c2668fbea578d7a588e3dc647f5e06639326721e950c1b7bfe561d913b7e9",
+    "build/native/interfaces/filter.rs": "df6e89791335a47d9d05c31cfa63009dcd10b4b6d778c3dea25ca5aef26375eb",
+    "build/native/interfaces/scan.rs": "8106d3496db9c89c0db3318a8dd9191f3e954b755faf25e4043f65c1aa5d61a8",
+    "build/native/interfaces/progressive.rs": "b1e9241facb6ec04f0497b1af5031acb47a116a821a7b61ceb68c63ba3a25ecc",
+    "build/native/interfaces/fine.rs": "9f813087f4a43076860e08ae47d34322c75325a8f0dfbaf01d5920c8d4f1d14b",
+    "build/native/interfaces/coarse.rs": "c55bf5d7da34342d73372834924a4fd68e59ea18f436a23d79d6f8530f64196e"
+  },
+  "identical_build_outputs": {
+    "tileink_native_artifacts.json": "ee7b6cbdc2225ed61513a9781df04ceca10633d772d26958f9906806b309cf82",
+    "tileink_gpu_constants.rs": "4bd5ef19056d44aa29bc3bcc75e75216f4b83cabf0831424bc12af702b18498f",
+    "tileink_native_test_constants.rs": "84e2e716823a6257b064885f8507285e2278d8e464275286ea5464eb58f3de58",
+    "native-filter-surface.metallib": "5696b9a9c35c445bbf83cad23c9cd4aaaf2e2e2c460a9dd08becc65723580c1f",
+    "native-filter-displacement.metallib": "6879bfbc44dad73ba2c695408089e305828182d315f92a9441cb32cc9c77333b",
+    "native-coarse-prefix.metallib": "a7d4e10836aef0dd34220e398649ef1ea644df5459b420315eddd97da2524ac8",
+    "native-scan-count.metallib": "aad86b06d174469a44d6cdb7fcea9dc069dae76a56799314a6947b7026731878",
+    "native-sdf-coverage.metallib": "6e40c780894e176460f7d334385d1daf70b57657f61412c97d275a13c717e1b4",
+    "native-filter-basic.metallib": "b0b6dbc61f311b21c51aba5db923db2460f0f99263acd30f6916f3912824d5f7",
+    "native-coarse-emit-allocation.metallib": "0e12a3ded733390c5ebcdb47f47360964fccb205a3f9d909b5b765daad8e2d15",
+    "native-fine-main.metallib": "b52dca882293ba9767f8df0fe52bf86e2b21e8f2ddf545f072f2383746fe2f06",
+    "native-fine-brush.metallib": "63cc54ad7b8d771f98d9aaba2c217cbaea8a506699465dc6d9138373626e736d",
+    "native-scan-chunk-offsets.metallib": "1b14779a0712d9723c25f9d512ff325c3185e15a171507758da90a3bdd7cbe37",
+    "native-filter-resample.metallib": "f9c804979fe5a6271d2e11e0a63a3bcf6ff0abcaf5ecb71aa966621d0c459b57",
+    "native-filter-brush.metallib": "93c99aa381dc1efd60dbff6cb58fa7b17ad279f5a0a46be98b20873b913f1176",
+    "native-filter-layer.metallib": "8ed98fcec477bd3908c19ff01269f8ec65786e78bdb582a00f99dc833b7954b7",
+    "native-filter-blur.metallib": "ccb0c32dbeb3b01dee4230b21f23eeeece3e6dad045c201e50d906a89ecb0b1e",
+    "native-scan-clear.metallib": "59d2e83400b794e705bd20cbcf395d0bda6441a0bbb7944f96eadf8ae044c967",
+    "native-coarse-tile-kinds.metallib": "c83434f2abafcff995fb0ffbcef73ae7414f60d9e9428a55768722a56c1f96d2",
+    "native-coarse-tile-counts.metallib": "9e8c6811ecc65dba6f33508663ac731279c852a476e8fd588e77333fda896cdc",
+    "native-filter-progressive.metallib": "c6f17924655244d99db99c0559b4b294b9b7631e143f610a0d53d09f076d7544",
+    "native-coarse-particle-counts.metallib": "88e972b4d3bba3cea4cf4e5c43402359e1ca7669e4772ba8b05665778c25b1d9",
+    "native-coarse-emit.metallib": "0a5b37252c68d64bc8468c13109e4724961700cca6a5666c71bf5605752ea705",
+    "native-filter-glass.metallib": "efef4c662dbdfabd7aa612e5564bf6f06c23741fb8cc141d764d30d09da35764",
+    "native-filter-path-mask.metallib": "3ebd4ba9dcf2ef441e5f96f780e3d353ef1f407731f2ac61046080059d3f2f00",
+    "native-filter-stack.metallib": "8d27a07b508ff941b0e0b40c964bbac91bf78761b1e0c8272f4a31fa8462130f",
+    "native-filter-blur-shared.metallib": "526671229ab7f551cefa03e7ae34b4d4f8de93a5b82a19df4638aad8a5ebfd1f",
+    "native-filter-convolve.metallib": "adb42329ada446d2d8596d8f53ac2924295f8f2fff7c66083985eeadc6ead017",
+    "native-coarse-emit-offsets.metallib": "1013cfd6158bfbdc6e90038cf3318fbb6dd45ddb6138eb47868047459eb7acad",
+    "native-filter-morphology.metallib": "53c6dfca8943245bbd7094dec3dfe44af87dedb3d72ec5c708fa3a03cfd4bed2",
+    "native-coarse-emit-chunks.metallib": "83c1dd0ff0b4d272b33aec6d4c55b5b2773d3ec29c0ed06c34af3ab78004877a",
+    "native-filter-turbulence.metallib": "49833053f75c22b2a93e50e275e8f4d44d28c110c76cbe56fc2b29489a9a8053",
+    "native-range-scatter.metallib": "430c36d4bd4f4cf3afd5689130cf1c3a61dfc0912401ea08ca8068b91d3ce14e",
+    "native-scan-apply-chunk-offsets.metallib": "8b294940e2c81dd7ee7b5036fd15c4c3a6b81755831fe60d298e64938b1b3d55",
+    "native-filter-transfer.metallib": "85106cbc83c831048962c0c4f3fe7f8abf04d8009efc998c11dcf509351313f3",
+    "native-scan-prefix-chunks.metallib": "21ffb87e487df92ab5d807a7fea5ba08b1e632ac86353fc04059968e2913e409",
+    "native-cumsum.metallib": "e0f8b566810e418c15efd72e7aed894c5a5955d2cf14c847bb76b86d90a1d26b",
+    "native-probe.metallib": "1c73f68b3331afe2455df09fc2d61851f213542bacff721cb84924ea45343aa7",
+    "native-filter-lighting.metallib": "e503680a53ab6b69d14c26bee5a6fc0ee549306fd84c75cddf81d7b7dc1a41f8",
+    "native-filter-rectangle.metallib": "1081b89eeb1cc7b011bb29f531874f5dfe9b861cc361c95921ae71e81f63c271",
+    "native-coarse-count.metallib": "0ad9896ed56596110fdf0945537e21f3d47c3b300600e0290cdeebeda4d49683",
+    "native-filter-inputs.metallib": "4e6a6c4ed61338d294c006cb64518bd8cbe350c9c4e152a9031b2209c15deea8",
+    "native-scan-emit.metallib": "33d47be2fb036cbae74d499316b979aaee25229f279d6fae9c088a2cb5514edf"
+  },
+  "presentation_reports": {
+    "before": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n",
+    "after": "Metal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+  },
+  "warmup_note": "A standalone diagnostic catalog binary compiled during the first warmup; it completed before timed samples. All timed rounds and controls run without competing builds or GPU jobs.",
+  "build_controls": {
+    "reverse_order": {
+      "warmup_pairs": 2,
+      "timed_pairs": 8,
+      "executables": {
+        "before": "3b65b97b574314efc48a3f9fd2d40dde231fe907b560963f428c0dc2fb0002e6",
+        "after": "8a1d5f81edad6130e0c5318eee94549a9ae9ede955911c5376e6aa84b4f7db5e"
+      },
+      "before": {
+        "samples_ms": [
+          2598.14525,
+          2860.414667,
+          2513.491584,
+          1818.514583,
+          2939.204209,
+          2411.01925,
+          1853.78325,
+          1844.302625
+        ],
+        "p50_ms": 2462.255417
+      },
+      "after": {
+        "samples_ms": [
+          1799.375542,
+          2992.397958,
+          1693.316167,
+          2473.349625,
+          3101.1065,
+          1864.029625,
+          1794.834541,
+          1810.984125
+        ],
+        "p50_ms": 1837.506875
+      },
+      "p50_change_percent": -25.373019293067102
+    },
+    "same_version_control": {
+      "warmup_pairs": 2,
+      "timed_pairs": 8,
+      "executables": {
+        "before": "3b65b97b574314efc48a3f9fd2d40dde231fe907b560963f428c0dc2fb0002e6",
+        "after": "3b65b97b574314efc48a3f9fd2d40dde231fe907b560963f428c0dc2fb0002e6"
+      },
+      "before": {
+        "samples_ms": [
+          1779.43175,
+          1827.532458,
+          1856.024708,
+          1857.656292,
+          4092.676625,
+          3067.625292,
+          3093.329833,
+          3302.402041
+        ],
+        "p50_ms": 2462.640792
+      },
+      "after": {
+        "samples_ms": [
+          2625.554667,
+          1828.706625,
+          1816.328958,
+          2833.459875,
+          3764.4485,
+          3320.01475,
+          2308.636667,
+          2189.041208
+        ],
+        "p50_ms": 2467.095667
+      },
+      "p50_change_percent": 0.1808982866876807
+    }
+  },
+  "abi_catalog": {
+    "families": 51,
+    "entries": 84,
+    "before_sha256": "ba47524fac589aaa010ea6267792ee63df3324041290e6e3275c7edc5bcbc260",
+    "after_sha256": "ba47524fac589aaa010ea6267792ee63df3324041290e6e3275c7edc5bcbc260",
+    "identical": true
+  },
+  "actual_application_manifest_identical": true,
+  "normalized_native_artifact_declarations_identical": true,
+  "temporary_measurement_source_hashes": {
+    "target/cleanup-audit/measure-catalog.py": "a3ebef04710331b0c48639f21f04a3c25086f04c6f5b3e6b8934f64a9daa6d5a",
+    "target/cleanup-audit/measure-catalog-controls.py": "39075c1c1adbbce82d69496fb72f307be546484196865bb00058689be5071a4f",
+    "target/cleanup-audit/catalog-probe/Cargo.toml": "307b0b03d7b8abccaaafd531717f107f23bdb015cada02aa7450a1fd43b91066",
+    "target/cleanup-audit/catalog-probe/src/main.rs": "f5473ff01bb71b464dbec804ebf527ce1f2fa03041e68f1c82d557862d30db38",
+    "target/cleanup-audit/catalog-build-probe/Cargo.toml": "8a81f8fc78ad85204b6775f842f5a70c188b5366d4cba545fa025e2dbab4c74d",
+    "target/cleanup-audit/catalog-before-source/build.rs": "d8427b83c218f1d66af5b2864cfc09a40d419f6049bfc1b04cb71046061de5f1"
+  },
+  "interpretation": "Both complete warm-cache shader-build rounds have lower medians; the same-version control changes +0.18%. Individual tool/hash/process timings vary substantially. This is not Cargo/rustc total build time or GPU throughput, and it does not isolate the cost of constant parsing. Presentation before/after executables are byte-identical; no runtime speedup or material regression is claimed."
+}

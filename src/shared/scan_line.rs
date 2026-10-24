@@ -3,17 +3,18 @@ use crate::{
     shared::{bounds::TileBbox, line::Line},
 };
 
-pub(crate) struct ScanLinePlan {
-    pub(crate) a: f32,
-    pub(crate) b: f32,
-    pub(crate) x0: f32,
-    pub(crate) sign: f32,
-    pub(crate) y0: f32,
-    pub(crate) imin: u32,
-    pub(crate) imax: u32,
+struct ScanLinePlan {
+    a: f32,
+    b: f32,
+    x0: f32,
+    sign: f32,
+    y0: f32,
+    imin: u32,
+    imax: u32,
 }
 
-pub(crate) fn line_scanned_tile_count(line: Line, bbox: TileBbox, _tiles_size: (u32, u32)) -> u32 {
+/// The already-clipped bbox owns the scan domain; canvas dimensions are unnecessary.
+pub(crate) fn line_scanned_tile_count(line: Line, bbox: TileBbox) -> u32 {
     let Some(plan) = plan_scan_line(line, bbox) else {
         return 0;
     };
@@ -29,6 +30,10 @@ pub(crate) fn line_scanned_tile_count(line: Line, bbox: TileBbox, _tiles_size: (
     count
 }
 
+#[allow(
+    clippy::useless_let_if_seq,
+    reason = "Keep Y and X clipping as sequential updates to the same scan interval"
+)]
 fn plan_scan_line(line: Line, bbox: TileBbox) -> Option<ScanLinePlan> {
     let p0 = line.p0;
     let p1 = line.p1;
@@ -76,22 +81,24 @@ fn plan_scan_line(line: Line, bbox: TileBbox) -> Option<ScanLinePlan> {
         return None;
     }
 
-    let mut imin = 0u32;
-    if s0.1 < bbox.y0 as f32 {
+    let mut imin = if s0.1 < bbox.y0 as f32 {
         let mut iminf = ((bbox.y0 as f32 - y0 + b - a) / (1.0 - a)).round() - 1.0;
         if y0 + iminf - (a * iminf + b).floor() < bbox.y0 as f32 {
             iminf += 1.0;
         }
-        imin = iminf as u32;
-    }
-    let mut imax = count;
-    if s1.1 > bbox.y1 as f32 {
+        iminf as u32
+    } else {
+        0
+    };
+    let mut imax = if s1.1 > bbox.y1 as f32 {
         let mut imaxf = ((bbox.y1 as f32 - y0 + b - a) / (1.0 - a)).round() - 1.0;
         if y0 + imaxf - (a * imaxf + b).floor() < bbox.y1 as f32 {
             imaxf += 1.0;
         }
-        imax = imaxf as u32;
-    }
+        imaxf as u32
+    } else {
+        count
+    };
 
     if s0.0.max(s1.0) < bbox.x0 as f32 {
         imax = imin;
@@ -141,4 +148,4 @@ fn span(a: f32, b: f32) -> u32 {
     (hi - lo).max(1.0) as u32
 }
 
-pub(crate) const TOP_TOUCH_EPSILON: f32 = 1.0e-12;
+const TOP_TOUCH_EPSILON: f32 = 1.0e-12;

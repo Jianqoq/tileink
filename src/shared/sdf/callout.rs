@@ -18,12 +18,13 @@ impl CalloutSide {
         self as u32 as f32
     }
 
-    pub(crate) const fn from_value(value: f32) -> Self {
-        match value as u32 {
-            value if value == Self::Top as u32 => Self::Top,
-            value if value == Self::Right as u32 => Self::Right,
-            value if value == Self::Left as u32 => Self::Left,
-            _ => Self::Bottom,
+    pub(crate) const fn from_value(value: f32) -> Option<Self> {
+        match value {
+            0.0 => Some(Self::Top),
+            1.0 => Some(Self::Right),
+            2.0 => Some(Self::Bottom),
+            3.0 => Some(Self::Left),
+            _ => None,
         }
     }
 }
@@ -46,6 +47,10 @@ pub struct CalloutTail {
 }
 
 impl CalloutTail {
+    #[must_use]
+    ///
+    /// # Panics
+    /// Panics if tail metrics are nonfinite, width/length are nonpositive, or radius is negative.
     pub fn new(side: CalloutSide, offset: f32, width: f32, length: f32, radius: f32) -> Self {
         let tail = Self {
             visible: true,
@@ -63,6 +68,7 @@ impl CalloutTail {
     }
 
     /// Hide the tail while preserving the callout body, stroke, and shadow semantics.
+    #[must_use]
     pub const fn hidden() -> Self {
         Self {
             visible: false,
@@ -100,6 +106,10 @@ pub struct Callout {
 }
 
 impl Callout {
+    #[must_use]
+    ///
+    /// # Panics
+    /// Panics if the body is nonfinite/empty, body radius is nonfinite/negative, or tail geometry is invalid.
     pub fn new(body: Rect, body_radius: f32, tail: CalloutTail) -> Self {
         let callout = Self {
             start: Point::new(body.x0, body.y0),
@@ -124,7 +134,7 @@ impl Callout {
             || self.tail.is_empty()
     }
 
-    pub(crate) fn axis_bounds(self) -> (f64, f64, f64, f64) {
+    pub(crate) const fn axis_bounds(self) -> (f64, f64, f64, f64) {
         (
             self.start.x.min(self.end.x),
             self.start.y.min(self.end.y),
@@ -191,6 +201,10 @@ pub struct CalloutStroke {
 }
 
 impl CalloutStroke {
+    #[must_use]
+    ///
+    /// # Panics
+    /// Panics if the callout is invalid or stroke width is nonfinite/nonpositive.
     pub fn new(callout: Callout, width: f32) -> Self {
         let stroke = Self {
             callout,

@@ -18,28 +18,32 @@ pub struct RetainedNodeId {
 impl RetainedNodeId {
     pub const DEFAULT_SLOT: u32 = 0;
 
+    #[must_use]
     pub const fn new(owner: u64, slot: u32) -> Self {
         Self { owner, slot }
     }
 
+    #[must_use]
     pub const fn for_owner(owner: u64) -> Self {
         Self::new(owner, Self::DEFAULT_SLOT)
     }
 }
 
-/// Internal generation attached to persistent materialized commands and surfaces.
+/// Instance identity and local generation form one materialized revision.
+/// A reused node ID may restart its generation; damage and surface caches must
+/// still distinguish that new instance from the retired node's content.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub(crate) struct NodeGeneration(u64);
-
-impl NodeGeneration {
-    pub const fn new(value: u64) -> Self {
-        Self(value)
-    }
+pub(crate) struct NodeRevision {
+    instance: u64,
+    generation: u64,
 }
 
-impl From<u64> for NodeGeneration {
-    fn from(value: u64) -> Self {
-        Self(value)
+impl NodeRevision {
+    pub const fn new(instance: u64, generation: u64) -> Self {
+        Self {
+            instance,
+            generation,
+        }
     }
 }
 
@@ -47,11 +51,11 @@ impl From<u64> for NodeGeneration {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct PersistentLayerKey {
     pub(crate) id: RetainedNodeId,
-    pub(crate) revision: NodeGeneration,
+    pub(crate) revision: NodeRevision,
 }
 
 impl PersistentLayerKey {
-    pub const fn new(id: RetainedNodeId, revision: NodeGeneration) -> Self {
+    pub const fn new(id: RetainedNodeId, revision: NodeRevision) -> Self {
         Self { id, revision }
     }
 }
@@ -77,11 +81,9 @@ pub(crate) enum RetainedNodeKind {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct RetainedNodeState {
     pub(crate) id: RetainedNodeId,
-    pub(crate) revision: NodeGeneration,
+    pub(crate) revision: NodeRevision,
     pub(crate) bounds: Bounds,
-    pub(crate) order: u32,
     pub(crate) kind: RetainedNodeKind,
-    pub(crate) placement_bits: Option<(u64, u64)>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -116,7 +118,7 @@ pub(crate) struct RetainedFrameDelta {
     pub(crate) from_version: u64,
     pub(crate) to_version: u64,
     pub(crate) patches: Rc<[RetainedNodePatch]>,
-    pub(crate) previous: Option<Rc<RetainedFrameDelta>>,
+    pub(crate) previous: Option<Rc<Self>>,
     pub(crate) depth: u16,
     pub(crate) damage: Rc<[(RetainedNodeId, Bounds)]>,
     /// Backdrops affected by this persistent journal delta. When complete, the renderer can skip
@@ -129,7 +131,7 @@ pub(crate) struct RetainedFrameDelta {
 #[derive(Clone, Debug)]
 pub(crate) struct RetainedFrame {
     pub(crate) root: RetainedNodeId,
-    pub(crate) logical_size: (u32, u32),
+    pub(crate) logical_size: (f64, f64),
     pub(crate) physical_size: (u32, u32),
     pub(crate) scale_bits: u32,
     pub(crate) nodes: Rc<[RetainedNodeState]>,
@@ -139,12 +141,10 @@ pub(crate) struct RetainedFrame {
     pub(crate) state_pages: Rc<HashMap<usize, Rc<[RetainedNodeState]>>>,
     pub(crate) invalidated_bounds: Vec<Bounds>,
     pub(crate) invalidate_all: bool,
-    pub(crate) incremental_complete: bool,
-    /// Persistent-scene version and immutable journal overlay.
-    pub(crate) version: Option<u64>,
+    /// Every retained frame comes from a complete, versioned persistent scene.
+    pub(crate) version: u64,
     pub(crate) delta: Option<Rc<RetainedFrameDelta>>,
-    /// No layer/filter/mask can propagate leaf damage outside the changed node bounds.
-    pub(crate) dependency_free: bool,
+    pub(crate) damage_history: crate::canvas::damage_history::DamageHistory,
     /// Backdrops require walking command ancestry after retained diffing to discover changed
     /// sampled background. Filter descendants already carry filter-expanded frame bounds; manual
     /// invalidation is handled separately because it has no retained node attribution.

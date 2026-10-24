@@ -9,7 +9,14 @@ Create identity with `RetainedNodeId::new(owner, slot)` or `for_owner(owner)`. S
 
 `RetainedScene::new`, `version`, `root`, `logical_size`, `physical_size`, `scale_factor`, and `transaction` form the scene API.
 
+For native viewports, use `RetainedScene::with_surface(CanvasSurface::from_physical(size, scale)?, root)`.
+`surface()` returns the exact record and transaction `set_surface(surface)` changes it atomically,
+including fractional logical dimensions. An empty physical extent is rejected; scale must remain
+compatible with live child canvases. `logical_size()` returns `(f64, f64)`.
+
 Transaction methods chain and mutate only on `commit()`:
+
+Groups and layers can own content children. A Canvas leaf created by `insert_scene` has no retained child branches and cannot be a parent. Only mask layers can own mask children. `before: Some(id)` must identify an existing sibling in the same branch, including when that branch is empty; `None` appends. `move_before(id, id)` is a no-op only for an existing node. Invalid-branch errors identify the requested parent.
 
 | Method | Purpose |
 |---|---|
@@ -27,3 +34,12 @@ Transaction methods chain and mutate only on `commit()`:
 `RetainedLayerDescriptor` covers ClipPath, ClipSdf, Isolate, Opacity, Blend, Filter, Backdrop, and Mask. Only mask layers accept mask-branch children.
 
 Validation errors include duplicate/missing nodes, invalid parent/sibling/branch, cycles, root removal, scale mismatch, unclosed Canvas, invalid position/transform, and invalid size. Failed commits leave no partial state.
+
+Scene placements and `ClipSdf` transforms must remain finite and invertible after conversion
+into GPU `f32` coordinates at the current surface scale, with a representable inverse.
+Small nonzero scales are accepted without a fixed determinant epsilon. Inversion uses `f64`
+intermediates to avoid determinant underflow/overflow. Matrices that become singular after
+conversion, overflow their physical translation, or have an unrepresentable inverse return
+`InvalidTransform` and roll back the complete commit. The same rule covers insertion,
+placement/layer updates, and surface scale changes. This fixes the root cause of materializer
+panics on validated small animation scales.

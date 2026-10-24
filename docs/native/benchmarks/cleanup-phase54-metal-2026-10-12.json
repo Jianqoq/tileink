@@ -1,0 +1,1296 @@
+{
+  "baseline_commit": "13ed62364fd0f8ff03e91a640bbe520dbba3c912",
+  "scope": "Permanent retained root command/plan publication, reorder ownership and insertion-boundary repairs; remove impossible root fragment retry substitutes after producer proof.",
+  "recorded_at": "2026-10-12T00:10:40.058471+00:00",
+  "tests": {
+    "passed": 1159,
+    "failed": 0,
+    "ignored": 0,
+    "test_binaries": 44
+  },
+  "test_policy": {
+    "profile": "release",
+    "test_threads": 1,
+    "rayon_threads": 1,
+    "include_ignored": true,
+    "physical_gpu": "Apple M5, registry 0000000100000575",
+    "api_validation_for_correctness": true
+  },
+  "regressions_before_fix": [
+    {
+      "log": "target/cleanup-audit/roots-red-contracts.log",
+      "sha256": "9d0de5170cde26f0c5707fc4eb22ba83cf5fa3121cb098b5fa6ef3b91edee802",
+      "stage": "Pristine phase53 production code; three new CPU contracts fail.",
+      "summary": [
+        "test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 1018 filtered out; finished in 0.00s"
+      ],
+      "failing_tests": [
+        "retained_scene::materializer::plan::root_contracts::inserting_a_root_layer_in_the_middle_keeps_authoritative_command_order",
+        "retained_scene::materializer::plan::root_contracts::root_reorder_and_parameter_update_preserve_the_new_filter",
+        "retained_scene::materializer::plan::root_contracts::root_reorder_preserves_fragment_ranges_and_unrelated_draw_storage_on_removal"
+      ]
+    },
+    {
+      "log": "target/cleanup-audit/roots-red-gpu.log",
+      "sha256": "324c3461053dc23b7a5f582674b9043294b8e6a0d474032535de2150df9d40aa",
+      "stage": "Pristine phase53 production code; both new Metal regressions fail.",
+      "summary": [
+        "test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 1021 filtered out; finished in 0.08s"
+      ],
+      "failing_tests": [
+        "native::renderer::gpu_tests::root_order::middle_root_insertion_keeps_order_after_a_later_full_compilation",
+        "native::renderer::gpu_tests::root_order::root_reorder_with_parameter_and_kind_updates_matches_fresh_pixels"
+      ]
+    },
+    {
+      "log": "target/cleanup-audit/roots-focused.log",
+      "sha256": "5bb968135092dc82e0d3d6ccec35c88841d28a4c9723f370697191951de51df3",
+      "stage": "After initial edits, removing the missing-plan substitute exposes an existing scoped-damage regression; the command/plan publication producer is repaired afterward.",
+      "summary": [
+        "test result: FAILED. 27 passed; 1 failed; 0 ignored; 0 measured; 995 filtered out; finished in 0.17s"
+      ],
+      "failing_tests": [
+        "retained_scene::materializer::scoped_damage::tests::root_dependency_order_tracks_moves_removal_and_journal_recovery"
+      ]
+    },
+    {
+      "log": "target/cleanup-audit/roots-review-red-split.log",
+      "sha256": "5e241914c1897021e6d0d46e6c1fa18909114cb9517fb0fec6c55891da8806bd",
+      "stage": "After initial root fixes, an aggregate insertion-edge regression fails before the corresponding boundary/ownership repair; subsequently split into three permanent tests.",
+      "summary": [
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1023 filtered out; finished in 0.05s"
+      ],
+      "failing_tests": [
+        "native::renderer::gpu_tests::root_order::root_insertions_respect_grouped_layers_and_split_execution_runs"
+      ]
+    },
+    {
+      "log": "target/cleanup-audit/roots-review-red-ownership.log",
+      "sha256": "4e3c98bf474160fc6fc665d669b9369c044d9ceb65c5c4059b633452f999af0e",
+      "stage": "Before the command-publication and insertion-boundary repairs: three split Metal edge regressions, the new published-plan contract and the existing scoped-damage regression fail; earlier root fixes already pass.",
+      "summary": [
+        "test result: FAILED. 27 passed; 5 failed; 0 ignored; 0 measured; 995 filtered out; finished in 0.20s"
+      ],
+      "failing_tests": [
+        "native::renderer::gpu_tests::root_insertions::root_insertion_before_a_grouped_clip_preserves_its_stack",
+        "native::renderer::gpu_tests::root_insertions::root_insertion_before_a_multibatch_scene_preserves_operation_order",
+        "native::renderer::gpu_tests::root_insertions::root_insertion_does_not_move_plain_leaves_across_a_later_layer",
+        "retained_scene::materializer::plan::root_contracts::promoting_an_offscreen_child_to_root_publishes_a_current_compiled_plan",
+        "retained_scene::materializer::scoped_damage::tests::root_dependency_order_tracks_moves_removal_and_journal_recovery"
+      ]
+    }
+  ],
+  "semantic_coverage": {
+    "new_permanent_tests": 10,
+    "new_cpu_tests": 5,
+    "new_gpu_tests": 5,
+    "layer_kind_pairs": 64,
+    "fresh_renderer_pixel_comparisons": 20,
+    "root_kinds": [
+      "path clip",
+      "SDF clip",
+      "opacity",
+      "blend",
+      "isolate",
+      "filter",
+      "backdrop",
+      "mask"
+    ],
+    "focused_root_tests": 33,
+    "focused_retained_tests": 192
+  },
+  "producer_and_algorithm_review": [
+    "Mixed root reordering and parameter/kind changes previously reused stale operations. Pure reorder is now selected only with unchanged chunks and surface-dependent descriptors; a complete operation permutation is prepared before mutation.",
+    "Root reordering previously discarded fragment ownership, forcing later removal to recompile unrelated subtrees. The selected permutation now updates existing ranges and command locations while preserving subtree and draw storage.",
+    "Middle root insertion previously appended its authoritative command out of painter order. Command and execution order now move together and affected suffix locations are refreshed.",
+    "Removing missing-plan substitutes exposed a real producer flaw: command reconstruction after painter compilation cleared the plan while leaving plan_compiled_during_update true. Structural commands are now finalized before plan/painter compilation, and any late flat-command rebuild clears that flag.",
+    "Root fragment indexing now follows actual root command scope, including layers flattened through Groups. Inserted plain draws cannot cross the next command-scope layer, and a following multibatch Scene chooses structural compilation before mutation.",
+    "Proven missing-plan, invalid root-range, duplicate parent-list and second command-identity-map retry paths are removed. Root mutation methods now return unit; actual fused/offscreen shape eligibility, nested ancestry and replacement-shape checks remain because they select different valid execution structures.",
+    "Five CPU contracts and five Metal regressions cover 64 pairs of eight layer kinds, immutable prior plans, published plan presence, unchanged draw-storage sharing, mixed updates, grouped clips, multibatch Scene boundaries and later full compilation/removal. GPU regressions compare 20 outputs with fresh renderers and include independent analytic pixel checks.",
+    "The aggregate insertion diagnostic was replaced by three focused permanent regressions. A missing import in an initial focused build was corrected before running its tests; that compiler error is not counted as a semantic regression.",
+    "Final review found no remaining specific likely bug within the changed root-edit contracts. Flat command synchronization and nested offscreen eligibility still need broader producer/caller tracing; platform runtime work remains separate."
+  ],
+  "validation": {
+    "commands": {
+      "fmt": {
+        "command": [
+          "cargo",
+          "fmt"
+        ],
+        "exit_code": 0,
+        "seconds": 0.7646191250241827,
+        "log": "target/cleanup-audit/roots-fmt.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "focused-root": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--lib",
+          "root_",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 0.37845633301185444,
+        "log": "target/cleanup-audit/roots-focused-root.log",
+        "log_sha256": "009e9483bc695c9aab0bfd5bd08426265c484b679c8b8d6caf9df47b9a733cab"
+      },
+      "focused-retained": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--lib",
+          "retained",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 0.6510507499915548,
+        "log": "target/cleanup-audit/roots-focused-retained.log",
+        "log_sha256": "4889434c7a128c8bb41ce90b92dacbe867f3bc70818f3e7e66a27c08ba988074"
+      },
+      "release-all": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets",
+          "--no-fail-fast",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 0,
+        "seconds": 66.96489995799493,
+        "log": "target/cleanup-audit/roots-release-all.log",
+        "log_sha256": "4b697f09dec4c0967cf0907dde008f993e58c53553cfff943f89c29b7b192336"
+      },
+      "clippy": {
+        "command": [
+          "cargo",
+          "clippy",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets"
+        ],
+        "exit_code": 0,
+        "seconds": 3.640801083005499,
+        "log": "target/cleanup-audit/roots-clippy.log",
+        "log_sha256": "d976a3c76a90c7f69971330828f0eec459b2de9742f976f3c68e9ac3e2c3438a"
+      },
+      "backend-free": {
+        "command": [
+          "cargo",
+          "check",
+          "--release",
+          "--no-default-features",
+          "--lib"
+        ],
+        "exit_code": 0,
+        "seconds": 1.0281280409835745,
+        "log": "target/cleanup-audit/roots-backend-free.log",
+        "log_sha256": "c6af62c0e147c1e9ef982032feb0c9ead5dffe62eeabf82f2d1e6b64002826b2"
+      },
+      "build-examples": {
+        "command": [
+          "cargo",
+          "build",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--examples"
+        ],
+        "exit_code": 0,
+        "seconds": 1.9468240410205908,
+        "log": "target/cleanup-audit/roots-build-examples.log",
+        "log_sha256": "808d239c923476e91d12035cc2fefd1646b6ac7a9d3aab409ea44f60e62dd847"
+      },
+      "windows-dx12": {
+        "command": [
+          "cargo",
+          "check",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "dx12",
+          "--target",
+          "x86_64-pc-windows-gnu",
+          "--all-targets"
+        ],
+        "exit_code": 0,
+        "seconds": 3.165127416024916,
+        "log": "target/cleanup-audit/roots-windows-dx12.log",
+        "log_sha256": "3a3182a798f60b9aaa7e98022aba4dd09c707c3db6ea3a7399129dd25fa8bc23"
+      },
+      "windows-vulkan": {
+        "command": [
+          "cargo",
+          "check",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "vulkan",
+          "--target",
+          "x86_64-pc-windows-gnu",
+          "--all-targets"
+        ],
+        "exit_code": 0,
+        "seconds": 3.114470375003293,
+        "log": "target/cleanup-audit/roots-windows-vulkan.log",
+        "log_sha256": "623d41897a2e378ddcd402cacd3b87309e299321c0493ecf4309b27d7ae2cd79"
+      },
+      "fmt-check": {
+        "command": [
+          "cargo",
+          "fmt",
+          "--check"
+        ],
+        "exit_code": 0,
+        "seconds": 0.6158533749985509,
+        "log": "target/cleanup-audit/roots-fmt-check.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "svg": {
+        "command": [
+          "target/release/examples/svg_fixture_render",
+          "target/cleanup-audit/stack-svg"
+        ],
+        "exit_code": 0,
+        "seconds": 6.2717336250061635,
+        "log": "target/cleanup-audit/roots-svg.log",
+        "log_sha256": "ff08f02d48d98d94e72e879644d25487e28fe0a92893393d8b546b1e302aaa26"
+      },
+      "mesh-gradient": {
+        "command": [
+          "target/release/examples/mesh_gradient",
+          "target/cleanup-audit/roots-mesh-gradient.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5286572500190232,
+        "log": "target/cleanup-audit/roots-mesh-gradient.log",
+        "log_sha256": "6a8d90ddbcd7f57625dedc48376fc37bd18960497d55f834d85c9421bc7c508f"
+      },
+      "program-brush": {
+        "command": [
+          "target/release/examples/program_brush",
+          "target/cleanup-audit/roots-program-brush.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5146069590118714,
+        "log": "target/cleanup-audit/roots-program-brush.log",
+        "log_sha256": "21ef034a38101b24562153b7849516e2f5cf3fd8fdaf05d78a589a7d2dfe713b"
+      },
+      "program-glass": {
+        "command": [
+          "target/release/examples/program_glass",
+          "target/cleanup-audit/roots-program-glass.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.45421516700298525,
+        "log": "target/cleanup-audit/roots-program-glass.log",
+        "log_sha256": "a71c89828d62df9bafe3963f5e937750079d5c9b6c15588cb2cd8be1ac8fa58e"
+      },
+      "shader-pipeline": {
+        "command": [
+          "target/release/examples/shader_pipeline",
+          "target/cleanup-audit/roots-shader-pipeline.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.49139133299468085,
+        "log": "target/cleanup-audit/roots-shader-pipeline.log",
+        "log_sha256": "98e398a24e02270a9c8d491d7bf23fa287f8f1f09bf4b84e4a840dff95ca82a1"
+      },
+      "shader-graph": {
+        "command": [
+          "target/release/examples/shader_graph",
+          "target/cleanup-audit/roots-shader-graph.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5034815830003936,
+        "log": "target/cleanup-audit/roots-shader-graph.log",
+        "log_sha256": "9242a4032f71023425526c57b71a3f656f7825bf55d57200e3759471bc0a39fd"
+      },
+      "progressive-balanced": {
+        "command": [
+          "target/release/examples/progressive_blur",
+          "target/cleanup-audit/roots-progressive-balanced.png",
+          "balanced"
+        ],
+        "exit_code": 0,
+        "seconds": 0.49467837502015755,
+        "log": "target/cleanup-audit/roots-progressive-balanced.log",
+        "log_sha256": "f9067dd221921aae4e58b2da6b0d17c8dc1a5bb20209d9342ca7cfb11335ce89"
+      },
+      "progressive-high": {
+        "command": [
+          "target/release/examples/progressive_blur",
+          "target/cleanup-audit/roots-progressive-high.png",
+          "high"
+        ],
+        "exit_code": 0,
+        "seconds": 0.059520249982597306,
+        "log": "target/cleanup-audit/roots-progressive-high.log",
+        "log_sha256": "f1bb414b1222bd9832fa6014f8e39d4b2f15e02960df123700fd8e5fec906cbe"
+      },
+      "window": {
+        "command": [
+          "target/release/examples/native_present",
+          "metal",
+          "--smoke"
+        ],
+        "exit_code": 0,
+        "seconds": 0.6493880419875495,
+        "log": "target/cleanup-audit/roots-window.log",
+        "log_sha256": "95a5d69a72a323dd70788ccbfb18775c863c9fc64cb1f3c3725af6d62cb6f5aa"
+      }
+    },
+    "render": {
+      "svg": {
+        "png_count": 1730,
+        "exact_baseline": true,
+        "all_outputs_fresh": true,
+        "sources_unchanged": true
+      },
+      "mesh-gradient": {
+        "exact_baseline": true,
+        "sha256": "b441ab07fa794d197930974308e74ccf02eb6790ea39c2ddfdda556c31afa91b"
+      },
+      "program-brush": {
+        "exact_baseline": true,
+        "sha256": "e43f483170f77abeecfd10698aeddcd2b56c3cd6bd69f46a1b0522b5d332a5be"
+      },
+      "program-glass": {
+        "exact_baseline": true,
+        "sha256": "90115ade795808c3b5b3b3aeb229ba98bbb8d33d2cc65fd02755bbcbbb9e341e"
+      },
+      "shader-pipeline": {
+        "exact_baseline": true,
+        "sha256": "b5518d0badb099847172803ea06892212d864ac4a023be365b19741042e161cb"
+      },
+      "shader-graph": {
+        "exact_baseline": true,
+        "sha256": "4a2ad67381fdad4f44ad88a324f16a092bdd8c7bf43adf36e3e7799730bc06d8"
+      },
+      "progressive-balanced": {
+        "exact_baseline": true,
+        "sha256": "79b56db9b658c240324aa6ea06a6e463795aa98c43ac010e402878c95d44d0cf"
+      },
+      "progressive-high": {
+        "exact_baseline": true,
+        "sha256": "5b100f5ce99634323890e2a49a0d4984ffe62082fa3dcabc67651999c46d1d7d"
+      },
+      "window": {
+        "frames": 8,
+        "physical_sizes": [
+          [
+            640,
+            360
+          ],
+          [
+            480,
+            270
+          ]
+        ]
+      }
+    },
+    "final_executables": {
+      "svg": {
+        "path": "target/release/examples/svg_fixture_render",
+        "sha256": "ca298814b599aa70baeaa3eba2830e26218ce6209300041f88cf080cbdf3e853",
+        "matches_before": false
+      },
+      "window": {
+        "path": "target/release/examples/native_present",
+        "sha256": "9aec921411d96379fae39ba6b21c68cfe59622fe865f271d1ee8072be2347d33",
+        "matches_before": false
+      }
+    }
+  },
+  "clippy_warnings": {
+    "library": 1,
+    "library_test": 8,
+    "new": 0
+  },
+  "artifact_identity": {
+    "manifests": {
+      "target/release/build/tileink-693345b8f8240684/out/tileink_native_artifacts.json": {
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "entries": 0,
+        "same_as_phase53": true
+      },
+      "target/release/build/tileink-24048925a7656d71/out/tileink_native_artifacts.json": {
+        "sha256": "f10e91fb051e5a77a7a313fc37ace626bc8ea2d97175b9343f3e87856f37c840",
+        "entries": 40,
+        "same_as_phase53": true
+      },
+      "target/release/build/tileink-02c1122da65b8cf5/out/tileink_native_artifacts.json": {
+        "sha256": "f10e91fb051e5a77a7a313fc37ace626bc8ea2d97175b9343f3e87856f37c840",
+        "entries": 40,
+        "same_as_phase53": true
+      },
+      "target/x86_64-pc-windows-gnu/release/build/tileink-95d6824c51a05705/out/tileink_native_artifacts.json": {
+        "sha256": "59a559183b1d9dd3ada03a5b6b863cc4ef70523c900aebe0cd15f3f18b14d54f",
+        "entries": 84,
+        "same_as_phase53": true
+      },
+      "target/x86_64-pc-windows-gnu/release/build/tileink-24a97e89b99363c5/out/tileink_native_artifacts.json": {
+        "sha256": "29b092a9dc39bc2d3a697b51fe73c83dd29033c5a3462a1606d67c98f26a82ce",
+        "entries": 84,
+        "same_as_phase53": true
+      }
+    },
+    "toolchain": {
+      "source_tag": "v1.8.2502",
+      "source_commit": "b4711839eb9a87da7c3436d9b212e0492359fbbd",
+      "version": "libdxcompiler.dylib: 1.8(dev;1-b4711839); libdxil.dylib: 1.8",
+      "files": {
+        "target/toolchains/dxc-build-v1.8.2502/bin/dxc": "00db2a5e0f32d8a2714c5801a73ac7525d6f03d1ac319f7712fccd0458ed4a17",
+        "target/toolchains/dxc-build-v1.8.2502/lib/libdxcompiler.dylib": "47ab8a70f988293a979a157552322d55680ef2bd2f76394202a3e59f06f97df9",
+        "target/toolchains/dxc-build-v1.8.2502/lib/libdxil.dylib": "c0f3abf46cea2e0ad8ceeed0dd181dd9c71b3030d61349f27a6335e517bf0396"
+      }
+    },
+    "all_unchanged_from_phase53": true
+  },
+  "performance": {
+    "baseline_commit": "13ed62364fd0f8ff03e91a640bbe520dbba3c912",
+    "recorded_at": "2026-10-12T00:04:23.305790+00:00",
+    "adapter": "Apple M5, registry 0000000100000575",
+    "api_validation": false,
+    "workload": {
+      "source": "examples/cleanup_roots.rs",
+      "sha256": "c8ad58f4778da76b3be1d08c2e73b91ab57d8e394a0d4f18272c5349225b0a5a",
+      "size": [
+        1280,
+        800
+      ],
+      "root_cards": 32,
+      "draws_per_card": 13,
+      "warmup_frames": 25,
+      "measured_frames": 75,
+      "initial_frames": 3,
+      "reorder_frames": 24,
+      "remove_frames": 24,
+      "insert_frames": 24,
+      "description": "Retained dashboard cards with opacity filters and chart bars; repeated root reorder, removal and reinsertion, with unchanged surrounding cards."
+    },
+    "executables": {
+      "before": {
+        "path": "target/cleanup-audit/roots-app-before",
+        "sha256": "c4e15dc373f120922bdd281ea4797f49875faf37e1642df042a5217c2a581648"
+      },
+      "after": {
+        "path": "target/cleanup-audit/roots-app-after",
+        "sha256": "e6d3f5543ffd5a898d01661ae6dd268fe9d43fefcc3014350b2f917955e3a817"
+      }
+    },
+    "observations": [
+      {
+        "observation": 0,
+        "mode": "comparison",
+        "pair": 0,
+        "label": "before",
+        "process_ms": 216.52891699341126,
+        "log": "target/cleanup-audit/roots-perf-comparison-00-before.log",
+        "initial_ms": 16.777874666666666,
+        "insert_ms": 0.9590226249999999,
+        "measured_frames": 75,
+        "remove_ms": 1.0677170833333334,
+        "reorder_ms": 1.3277448333333333,
+        "total_ms": 130.841253,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 1,
+        "mode": "comparison",
+        "pair": 0,
+        "label": "after",
+        "process_ms": 170.2655419940129,
+        "log": "target/cleanup-audit/roots-perf-comparison-00-after.log",
+        "initial_ms": 14.957639,
+        "insert_ms": 0.812460125,
+        "measured_frames": 75,
+        "remove_ms": 0.552765625,
+        "reorder_ms": 0.9215747083333333,
+        "total_ms": 99.756128,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 2,
+        "mode": "identical_current_control",
+        "pair": 0,
+        "label": "current_a",
+        "process_ms": 151.89354098401964,
+        "log": "target/cleanup-audit/roots-perf-identical_current_control-00-current_a.log",
+        "initial_ms": 13.072305666666667,
+        "insert_ms": 0.8080310833333334,
+        "measured_frames": 75,
+        "remove_ms": 0.48442349999999995,
+        "reorder_ms": 0.8797917083333333,
+        "total_ms": 91.350828,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 3,
+        "mode": "identical_current_control",
+        "pair": 0,
+        "label": "current_b",
+        "process_ms": 151.50770801119506,
+        "log": "target/cleanup-audit/roots-perf-identical_current_control-00-current_b.log",
+        "initial_ms": 13.035389,
+        "insert_ms": 0.7476145,
+        "measured_frames": 75,
+        "remove_ms": 0.48551579166666664,
+        "reorder_ms": 0.8911144583333334,
+        "total_ms": 90.08804099999999,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 4,
+        "mode": "identical_current_control",
+        "pair": 1,
+        "label": "current_b",
+        "process_ms": 154.92295802687295,
+        "log": "target/cleanup-audit/roots-perf-identical_current_control-01-current_b.log",
+        "initial_ms": 13.208875,
+        "insert_ms": 0.7696093749999999,
+        "measured_frames": 75,
+        "remove_ms": 0.5496840833333334,
+        "reorder_ms": 0.8876580416666666,
+        "total_ms": 92.593461,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 5,
+        "mode": "identical_current_control",
+        "pair": 1,
+        "label": "current_a",
+        "process_ms": 152.92783398763277,
+        "log": "target/cleanup-audit/roots-perf-identical_current_control-01-current_a.log",
+        "initial_ms": 13.206972333333333,
+        "insert_ms": 0.7469477083333333,
+        "measured_frames": 75,
+        "remove_ms": 0.490152875,
+        "reorder_ms": 0.8909809999999999,
+        "total_ms": 90.69487499999998,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 6,
+        "mode": "comparison",
+        "pair": 1,
+        "label": "after",
+        "process_ms": 157.90633301367052,
+        "log": "target/cleanup-audit/roots-perf-comparison-01-after.log",
+        "initial_ms": 13.564347333333332,
+        "insert_ms": 0.7922239583333334,
+        "measured_frames": 75,
+        "remove_ms": 0.5094600833333334,
+        "reorder_ms": 1.0061389166666668,
+        "total_ms": 96.08079299999999,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 7,
+        "mode": "comparison",
+        "pair": 1,
+        "label": "before",
+        "process_ms": 166.56404099194333,
+        "log": "target/cleanup-audit/roots-perf-comparison-01-before.log",
+        "initial_ms": 13.734583666666666,
+        "insert_ms": 0.7475087083333335,
+        "measured_frames": 75,
+        "remove_ms": 0.6786319583333333,
+        "reorder_ms": 0.8869912083333334,
+        "total_ms": 96.71891600000001,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 8,
+        "mode": "comparison",
+        "pair": 2,
+        "label": "before",
+        "process_ms": 158.89258301467635,
+        "log": "target/cleanup-audit/roots-perf-comparison-02-before.log",
+        "initial_ms": 13.124305999999999,
+        "insert_ms": 0.7829773750000001,
+        "measured_frames": 75,
+        "remove_ms": 0.6773577916666668,
+        "reorder_ms": 0.9191856666666666,
+        "total_ms": 96.48141800000002,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 9,
+        "mode": "comparison",
+        "pair": 2,
+        "label": "after",
+        "process_ms": 152.70841598976403,
+        "log": "target/cleanup-audit/roots-perf-comparison-02-after.log",
+        "initial_ms": 13.191639333333335,
+        "insert_ms": 0.7795955000000001,
+        "measured_frames": 75,
+        "remove_ms": 0.4889375,
+        "reorder_ms": 0.8808853333333335,
+        "total_ms": 91.16095800000002,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 10,
+        "mode": "identical_current_control",
+        "pair": 2,
+        "label": "current_a",
+        "process_ms": 152.42654099711217,
+        "log": "target/cleanup-audit/roots-perf-identical_current_control-02-current_a.log",
+        "initial_ms": 13.203152666666668,
+        "insert_ms": 0.7482934166666667,
+        "measured_frames": 75,
+        "remove_ms": 0.48610933333333334,
+        "reorder_ms": 0.880340375,
+        "total_ms": 90.363293,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 11,
+        "mode": "identical_current_control",
+        "pair": 2,
+        "label": "current_b",
+        "process_ms": 151.21737497975118,
+        "log": "target/cleanup-audit/roots-perf-identical_current_control-02-current_b.log",
+        "initial_ms": 13.185499666666667,
+        "insert_ms": 0.7689599583333333,
+        "measured_frames": 75,
+        "remove_ms": 0.5181908333333333,
+        "reorder_ms": 0.8940086666666668,
+        "total_ms": 91.904326,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 12,
+        "mode": "identical_current_control",
+        "pair": 3,
+        "label": "current_b",
+        "process_ms": 151.14341699518263,
+        "log": "target/cleanup-audit/roots-perf-identical_current_control-03-current_b.log",
+        "initial_ms": 13.177347666666668,
+        "insert_ms": 0.7443125,
+        "measured_frames": 75,
+        "remove_ms": 0.486614625,
+        "reorder_ms": 0.879897625,
+        "total_ms": 90.191837,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 13,
+        "mode": "identical_current_control",
+        "pair": 3,
+        "label": "current_a",
+        "process_ms": 153.36662501795217,
+        "log": "target/cleanup-audit/roots-perf-identical_current_control-03-current_a.log",
+        "initial_ms": 13.190666333333333,
+        "insert_ms": 0.755297,
+        "measured_frames": 75,
+        "remove_ms": 0.5521250416666666,
+        "reorder_ms": 0.8975415416666667,
+        "total_ms": 92.491125,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 14,
+        "mode": "comparison",
+        "pair": 3,
+        "label": "after",
+        "process_ms": 177.13537500821985,
+        "log": "target/cleanup-audit/roots-perf-comparison-03-after.log",
+        "initial_ms": 14.877750333333333,
+        "insert_ms": 1.1101457916666666,
+        "measured_frames": 75,
+        "remove_ms": 0.6464202083333334,
+        "reorder_ms": 1.2038941250000001,
+        "total_ms": 115.684294,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 15,
+        "mode": "comparison",
+        "pair": 3,
+        "label": "before",
+        "process_ms": 176.38308301684447,
+        "log": "target/cleanup-audit/roots-perf-comparison-03-before.log",
+        "initial_ms": 14.907138666666667,
+        "insert_ms": 0.7969166666666666,
+        "measured_frames": 75,
+        "remove_ms": 0.7168525,
+        "reorder_ms": 0.9360502916666666,
+        "total_ms": 103.51708299999999,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 16,
+        "mode": "comparison",
+        "pair": 4,
+        "label": "before",
+        "process_ms": 158.89966700342484,
+        "log": "target/cleanup-audit/roots-perf-comparison-04-before.log",
+        "initial_ms": 13.346138666666667,
+        "insert_ms": 0.7582882916666667,
+        "measured_frames": 75,
+        "remove_ms": 0.678762125,
+        "reorder_ms": 0.8922882499999999,
+        "total_ms": 95.942544,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 17,
+        "mode": "comparison",
+        "pair": 4,
+        "label": "after",
+        "process_ms": 151.93724998971447,
+        "log": "target/cleanup-audit/roots-perf-comparison-04-after.log",
+        "initial_ms": 13.119680666666667,
+        "insert_ms": 0.8111318750000001,
+        "measured_frames": 75,
+        "remove_ms": 0.5138089583333333,
+        "reorder_ms": 0.8771805416666666,
+        "total_ms": 92.20995500000001,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 18,
+        "mode": "identical_current_control",
+        "pair": 4,
+        "label": "current_a",
+        "process_ms": 150.24362501571886,
+        "log": "target/cleanup-audit/roots-perf-identical_current_control-04-current_a.log",
+        "initial_ms": 13.233889,
+        "insert_ms": 0.7618385833333333,
+        "measured_frames": 75,
+        "remove_ms": 0.4933470833333333,
+        "reorder_ms": 0.8900017916666666,
+        "total_ms": 91.186166,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 19,
+        "mode": "identical_current_control",
+        "pair": 4,
+        "label": "current_b",
+        "process_ms": 158.32508300081827,
+        "log": "target/cleanup-audit/roots-perf-identical_current_control-04-current_b.log",
+        "initial_ms": 13.196638666666667,
+        "insert_ms": 0.76283325,
+        "measured_frames": 75,
+        "remove_ms": 0.48503291666666665,
+        "reorder_ms": 0.8857257500000001,
+        "total_ms": 90.796122,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 20,
+        "mode": "identical_current_control",
+        "pair": 5,
+        "label": "current_b",
+        "process_ms": 154.22799999942072,
+        "log": "target/cleanup-audit/roots-perf-identical_current_control-05-current_b.log",
+        "initial_ms": 13.098416666666665,
+        "insert_ms": 0.74663375,
+        "measured_frames": 75,
+        "remove_ms": 0.54856775,
+        "reorder_ms": 0.8828125833333332,
+        "total_ms": 91.567588,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 21,
+        "mode": "identical_current_control",
+        "pair": 5,
+        "label": "current_a",
+        "process_ms": 149.0230000053998,
+        "log": "target/cleanup-audit/roots-perf-identical_current_control-05-current_a.log",
+        "initial_ms": 13.253722333333334,
+        "insert_ms": 0.7482985416666668,
+        "measured_frames": 75,
+        "remove_ms": 0.48613720833333335,
+        "reorder_ms": 0.8829689166666667,
+        "total_ms": 90.578879,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 22,
+        "mode": "comparison",
+        "pair": 5,
+        "label": "after",
+        "process_ms": 153.67645799415186,
+        "log": "target/cleanup-audit/roots-perf-comparison-05-after.log",
+        "initial_ms": 13.182833333333335,
+        "insert_ms": 0.7774514166666666,
+        "measured_frames": 75,
+        "remove_ms": 0.5568610416666666,
+        "reorder_ms": 0.8782049583333333,
+        "total_ms": 92.64891800000001,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 23,
+        "mode": "comparison",
+        "pair": 5,
+        "label": "before",
+        "process_ms": 159.7292920050677,
+        "log": "target/cleanup-audit/roots-perf-comparison-05-before.log",
+        "initial_ms": 13.16225,
+        "insert_ms": 0.7931320416666666,
+        "measured_frames": 75,
+        "remove_ms": 0.6786961666666667,
+        "reorder_ms": 0.8846405416666667,
+        "total_ms": 96.042,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 24,
+        "mode": "comparison",
+        "pair": 6,
+        "label": "before",
+        "process_ms": 159.2704170034267,
+        "log": "target/cleanup-audit/roots-perf-comparison-06-before.log",
+        "initial_ms": 13.254486,
+        "insert_ms": 0.77966825,
+        "measured_frames": 75,
+        "remove_ms": 0.7005729166666667,
+        "reorder_ms": 0.9034844166666667,
+        "total_ms": 96.972872,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 25,
+        "mode": "comparison",
+        "pair": 6,
+        "label": "after",
+        "process_ms": 153.2107079983689,
+        "log": "target/cleanup-audit/roots-perf-comparison-06-after.log",
+        "initial_ms": 13.057457999999999,
+        "insert_ms": 0.7551145,
+        "measured_frames": 75,
+        "remove_ms": 0.58374475,
+        "reorder_ms": 0.8867048333333333,
+        "total_ms": 92.585912,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 26,
+        "mode": "identical_current_control",
+        "pair": 6,
+        "label": "current_a",
+        "process_ms": 152.09570800652727,
+        "log": "target/cleanup-audit/roots-perf-identical_current_control-06-current_a.log",
+        "initial_ms": 13.422652666666666,
+        "insert_ms": 0.7476962500000001,
+        "measured_frames": 75,
+        "remove_ms": 0.488362875,
+        "reorder_ms": 0.9342691666666667,
+        "total_ms": 92.355837,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 27,
+        "mode": "identical_current_control",
+        "pair": 6,
+        "label": "current_b",
+        "process_ms": 152.71958301309496,
+        "log": "target/cleanup-audit/roots-perf-identical_current_control-06-current_b.log",
+        "initial_ms": 13.316833666666668,
+        "insert_ms": 0.7514687083333333,
+        "measured_frames": 75,
+        "remove_ms": 0.48657645833333335,
+        "reorder_ms": 0.896463625,
+        "total_ms": 91.17871199999999,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 28,
+        "mode": "identical_current_control",
+        "pair": 7,
+        "label": "current_b",
+        "process_ms": 156.94424998946488,
+        "log": "target/cleanup-audit/roots-perf-identical_current_control-07-current_b.log",
+        "initial_ms": 13.177944333333334,
+        "insert_ms": 0.784783,
+        "measured_frames": 75,
+        "remove_ms": 0.5554200833333333,
+        "reorder_ms": 0.8905383333333333,
+        "total_ms": 93.071627,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 29,
+        "mode": "identical_current_control",
+        "pair": 7,
+        "label": "current_a",
+        "process_ms": 153.49841699935496,
+        "log": "target/cleanup-audit/roots-perf-identical_current_control-07-current_a.log",
+        "initial_ms": 13.332346999999999,
+        "insert_ms": 0.7768384166666666,
+        "measured_frames": 75,
+        "remove_ms": 0.4844756666666667,
+        "reorder_ms": 0.8884877916666666,
+        "total_ms": 91.59228599999999,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 30,
+        "mode": "comparison",
+        "pair": 7,
+        "label": "after",
+        "process_ms": 151.72170801088214,
+        "log": "target/cleanup-audit/roots-perf-comparison-07-after.log",
+        "initial_ms": 13.230375,
+        "insert_ms": 0.7489427499999999,
+        "measured_frames": 75,
+        "remove_ms": 0.5093922083333333,
+        "reorder_ms": 0.9155174166666665,
+        "total_ms": 91.863582,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 31,
+        "mode": "comparison",
+        "pair": 7,
+        "label": "before",
+        "process_ms": 158.0408330191858,
+        "log": "target/cleanup-audit/roots-perf-comparison-07-before.log",
+        "initial_ms": 13.221888666666667,
+        "insert_ms": 0.753968875,
+        "measured_frames": 75,
+        "remove_ms": 0.6833473333333333,
+        "reorder_ms": 0.9222569166666666,
+        "total_ms": 96.295421,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 32,
+        "mode": "comparison",
+        "pair": 8,
+        "label": "before",
+        "process_ms": 156.23583301203325,
+        "log": "target/cleanup-audit/roots-perf-comparison-08-before.log",
+        "initial_ms": 13.162541666666668,
+        "insert_ms": 0.7471874166666668,
+        "measured_frames": 75,
+        "remove_ms": 0.6793350833333335,
+        "reorder_ms": 0.8775052083333333,
+        "total_ms": 94.78429,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 33,
+        "mode": "comparison",
+        "pair": 8,
+        "label": "after",
+        "process_ms": 153.4408750012517,
+        "log": "target/cleanup-audit/roots-perf-comparison-08-after.log",
+        "initial_ms": 13.386986333333333,
+        "insert_ms": 0.7538297916666666,
+        "measured_frames": 75,
+        "remove_ms": 0.52286975,
+        "reorder_ms": 0.8980208333333333,
+        "total_ms": 92.354248,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 34,
+        "mode": "identical_current_control",
+        "pair": 8,
+        "label": "current_a",
+        "process_ms": 152.61870800168253,
+        "log": "target/cleanup-audit/roots-perf-identical_current_control-08-current_a.log",
+        "initial_ms": 13.200958,
+        "insert_ms": 0.7897639166666667,
+        "measured_frames": 75,
+        "remove_ms": 0.5184720833333334,
+        "reorder_ms": 0.9041648333333333,
+        "total_ms": 92.700494,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 35,
+        "mode": "identical_current_control",
+        "pair": 8,
+        "label": "current_b",
+        "process_ms": 151.07737501966767,
+        "log": "target/cleanup-audit/roots-perf-identical_current_control-08-current_b.log",
+        "initial_ms": 13.526264,
+        "insert_ms": 0.7476805,
+        "measured_frames": 75,
+        "remove_ms": 0.48561991666666665,
+        "reorder_ms": 0.8926667083333332,
+        "total_ms": 91.602003,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 36,
+        "mode": "identical_current_control",
+        "pair": 9,
+        "label": "current_b",
+        "process_ms": 154.62116699200124,
+        "log": "target/cleanup-audit/roots-perf-identical_current_control-09-current_b.log",
+        "initial_ms": 13.295500333333331,
+        "insert_ms": 0.7493524166666666,
+        "measured_frames": 75,
+        "remove_ms": 0.5034392916666667,
+        "reorder_ms": 0.9437550416666666,
+        "total_ms": 92.603623,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 37,
+        "mode": "identical_current_control",
+        "pair": 9,
+        "label": "current_a",
+        "process_ms": 157.47158401063643,
+        "log": "target/cleanup-audit/roots-perf-identical_current_control-09-current_a.log",
+        "initial_ms": 13.851069333333333,
+        "insert_ms": 0.7926423333333332,
+        "measured_frames": 75,
+        "remove_ms": 0.5022707916666667,
+        "reorder_ms": 0.916701125,
+        "total_ms": 94.63194999999999,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 38,
+        "mode": "comparison",
+        "pair": 9,
+        "label": "after",
+        "process_ms": 151.7613329924643,
+        "log": "target/cleanup-audit/roots-perf-comparison-09-after.log",
+        "initial_ms": 13.166486666666666,
+        "insert_ms": 0.7498367916666666,
+        "measured_frames": 75,
+        "remove_ms": 0.485909875,
+        "reorder_ms": 0.8937899583333334,
+        "total_ms": 90.608339,
+        "warmup_frames": 25
+      },
+      {
+        "observation": 39,
+        "mode": "comparison",
+        "pair": 9,
+        "label": "before",
+        "process_ms": 162.10254200268537,
+        "log": "target/cleanup-audit/roots-perf-comparison-09-before.log",
+        "initial_ms": 13.213068999999999,
+        "insert_ms": 0.7862464583333334,
+        "measured_frames": 75,
+        "remove_ms": 0.69072225,
+        "reorder_ms": 0.9212065833333333,
+        "total_ms": 97.19541400000001,
+        "warmup_frames": 25
+      }
+    ],
+    "summary": {
+      "comparison": {
+        "initial_ms": {
+          "medians": [
+            13.238187333333332,
+            13.211007166666668
+          ],
+          "median_delta_percent": -0.20531637740330844,
+          "paired_descriptive_bootstrap_95_percent": [
+            -1.2394721053430313,
+            1.1577105126131526
+          ]
+        },
+        "reorder_ms": {
+          "medians": [
+            0.9113350416666666,
+            0.8959053958333334
+          ],
+          "median_delta_percent": -1.693081592156842,
+          "paired_descriptive_bootstrap_95_percent": [
+            -3.53365315748686,
+            4.356027753784164
+          ]
+        },
+        "remove_ms": {
+          "medians": [
+            0.6813412083333334,
+            0.5183393541666667
+          ],
+          "median_delta_percent": -23.92367468355462,
+          "paired_descriptive_bootstrap_95_percent": [
+            -26.45247827500844,
+            -18.02851710023812
+          ]
+        },
+        "insert_ms": {
+          "medians": [
+            0.7813228125,
+            0.7785234583333334
+          ],
+          "median_delta_percent": -0.35828394127001006,
+          "paired_descriptive_bootstrap_95_percent": [
+            -3.7201978300595573,
+            5.255296675005416
+          ]
+        },
+        "total_ms": {
+          "medians": [
+            96.60016700000001,
+            92.47008
+          ],
+          "median_delta_percent": -4.275444989655163,
+          "paired_descriptive_bootstrap_95_percent": [
+            -5.150367918514654,
+            -1.0334849430560733
+          ]
+        },
+        "process_ms": {
+          "medians": [
+            159.4998545042472,
+            153.3257914998103
+          ],
+          "median_delta_percent": -3.8708894272204475,
+          "paired_descriptive_bootstrap_95_percent": [
+            -5.640244684421692,
+            -3.431065132172406
+          ]
+        }
+      },
+      "identical_current_control": {
+        "initial_ms": {
+          "medians": [
+            13.220430666666665,
+            13.191069166666667
+          ],
+          "median_delta_percent": -0.2220918572193642,
+          "paired_descriptive_bootstrap_95_percent": [
+            -0.9824730702357454,
+            0.3880753704895268
+          ]
+        },
+        "reorder_ms": {
+          "medians": [
+            0.8904913958333333,
+            0.8908263958333333
+          ],
+          "median_delta_percent": 0.03761967847950576,
+          "paired_descriptive_bootstrap_95_percent": [
+            -1.4787477107025326,
+            0.9984039808500489
+          ]
+        },
+        "remove_ms": {
+          "medians": [
+            0.48925787499999995,
+            0.4950269583333333
+          ],
+          "median_delta_percent": 1.1791498161032976,
+          "paired_descriptive_bootstrap_95_percent": [
+            -3.8139143769926,
+            12.556484424278459
+          ]
+        },
+        "insert_ms": {
+          "medians": [
+            0.7585677916666667,
+            0.7504105624999999
+          ],
+          "median_delta_percent": -1.0753461004117115,
+          "paired_descriptive_bootstrap_95_percent": [
+            -5.328607167099619,
+            2.3933014020373067
+          ]
+        },
+        "total_ms": {
+          "medians": [
+            91.47155699999999,
+            91.5847955
+          ],
+          "median_delta_percent": 0.12379640591446694,
+          "paired_descriptive_bootstrap_95_percent": [
+            -1.4012505036542278,
+            1.3983811467820129
+          ]
+        },
+        "process_ms": {
+          "medians": [
+            152.52262449939735,
+            153.47379150625784
+          ],
+          "median_delta_percent": 0.6236235509206267,
+          "paired_descriptive_bootstrap_95_percent": [
+            -0.9706076327044122,
+            2.2529734837862803
+          ]
+        }
+      }
+    },
+    "application_pngs": {
+      "frame-2.png": "9081a0a91a5a0df9158aa387b548585af5eda5eb6c22c0c8e73eec6cccae6237",
+      "frame-24.png": "9b081dbcb2512976e33699fb72d298f6a941b25c98a0d51d5d56f30927fd388e",
+      "frame-1.png": "9b081dbcb2512976e33699fb72d298f6a941b25c98a0d51d5d56f30927fd388e",
+      "frame-0.png": "9b081dbcb2512976e33699fb72d298f6a941b25c98a0d51d5d56f30927fd388e"
+    },
+    "application_pngs_exact": true,
+    "control_order": "comparison and identical-current pairs interleaved; block and label order reverse on odd pairs"
+  },
+  "performance_interpretation": "For this 32-card retained dashboard, removal after root reorder changes 0.681341 to 0.518339 ms (-23.924%), descriptive paired bootstrap interval [-26.452%, -18.029%]. The 75-frame render total changes 96.600167 to 92.470080 ms (-4.275%), interval [-5.150%, -1.034%]. Identical-current total medians vary +0.124%, interval [-1.401%, +1.398%]. Other phase intervals include zero. The reduction applies to this root reorder/removal workload, not every rendering workload.",
+  "application_pixel_validation": {
+    "png_count": 4,
+    "pngs": {
+      "frame-2.png": "9081a0a91a5a0df9158aa387b548585af5eda5eb6c22c0c8e73eec6cccae6237",
+      "frame-24.png": "9b081dbcb2512976e33699fb72d298f6a941b25c98a0d51d5d56f30927fd388e",
+      "frame-1.png": "9b081dbcb2512976e33699fb72d298f6a941b25c98a0d51d5d56f30927fd388e",
+      "frame-0.png": "9b081dbcb2512976e33699fb72d298f6a941b25c98a0d51d5d56f30927fd388e"
+    },
+    "exact_before_after": true,
+    "timed_correctness_runs": false,
+    "validation_enabled": true
+  },
+  "measurement_accounting": {
+    "process_observations": 40,
+    "measured_render_frames": 3000,
+    "warmup_render_frames": 1000,
+    "png_readback_and_transactions_excluded_from_render_timer": true,
+    "render_timer_includes_submission_wait": true,
+    "timing_validation_enabled": false,
+    "comparison_pairs": 10,
+    "interleaved_identical_current_control_pairs": 10,
+    "order": "comparison and identical-current pairs interleaved; block and label order reverse on odd pairs",
+    "bootstrap_resamples": 10000,
+    "bootstrap_seed": 54
+  },
+  "gpu_selection_scope": "Raw Metal unit tests and window use TILEINK_NATIVE_GPU=0000000100000575. SVG CLI uses the default API device on this single-GPU Apple M5 host.",
+  "platform_limits": [
+    "Windows DX12/Vulkan all-target release checks and actual DXC/reflection pass; these do not execute Windows GPU drivers.",
+    "Vulkan driver construction, Win32 geometry/shutdown and the actual ShaderTools language server remain pending.",
+    "Website architecture Markdown updated in both languages; no website build because node_modules is unavailable."
+  ],
+  "temporary_measurement_cleanup_complete": true,
+  "temporary_source_removed": "examples/cleanup_roots.rs",
+  "temporary_artifacts_removed": [
+    "target/cleanup-audit/roots-app-before",
+    "target/cleanup-audit/roots-app-after",
+    "target/cleanup-audit/roots-svg-before",
+    "target/cleanup-audit/roots-window-before",
+    "target/release/examples/cleanup_roots",
+    "target/release/examples/cleanup_roots-3c688abd12ec72f4",
+    "target/release/examples/cleanup_roots-3c688abd12ec72f4.d",
+    "target/release/examples/cleanup_roots.d"
+  ]
+}

@@ -1,7 +1,10 @@
 mod append;
 mod compile;
 mod draw;
+mod journal;
 mod layers;
+mod offset;
+mod painter;
 mod paths;
 mod primitives;
 mod retained;
@@ -11,13 +14,14 @@ mod surface;
 use std::{ops::Range, rc::Rc as SharedRc};
 
 use peniko::{
-    Color, Compose, Extend, Mix,
+    BlendMode, Color, Compose, Extend, Mix,
     kurbo::{
         Affine, Arc, BezPath, Circle, PathEl, Point, Rect, Shape, Stroke, StrokeOpts,
         stroke as kurbo_stroke,
     },
 };
 
+use crate::CanvasSurface;
 use crate::shared::{
     affine::GpuAffine,
     bounds::{Bounds, PixelBounds},
@@ -33,10 +37,8 @@ use crate::shared::{
     image_resource::{ImageKey, ImageResourceStore},
     layer::{
         Layer, LayerKind,
-        blend::Blend,
         filter::{Filter, FilterPrimitive, FilterPrimitiveKind, LightSource},
         mask::Mask,
-        opacity::Opacity,
         region::Region,
     },
     line::Line,
@@ -57,9 +59,10 @@ use crate::shared::{
         },
         line::{DashLine as SdfDashLine, Line as SdfLine, LineShadow as SdfLineShadow},
         rect::{
-            Radius, Rect as SdfRect, RectShadow as SdfRectShadow, RectShadowOptions,
-            RectStroke as SdfRectStroke, StrokeWidths,
+            Radius, Rect as SdfRect, RectShadow as SdfRectShadow, RectStroke as SdfRectStroke,
+            StrokeWidths,
         },
+        shadow::ShadowOptions,
         star::{Star as SdfStar, StarStroke as SdfStarStroke},
         triangle::Triangle as SdfTriangle,
     },
@@ -67,9 +70,13 @@ use crate::shared::{
 use crate::text::{TextRun, layout_bounds_at_scaled_origin, scene_glyphs_at_scaled_origin};
 use crate::{TextContext, TextFontSystem, TextLayout};
 
+pub(crate) use journal::MaterializationStamp;
+pub(crate) use painter::{PainterKey, PainterMetadata};
 pub use retained::RetainedNodeId;
+pub(crate) mod damage_history;
+
 pub(crate) use retained::{
-    NodeGeneration, PersistentLayerKey, RetainedDamage, RetainedFrame, RetainedFrameDelta,
+    NodeRevision, PersistentLayerKey, RetainedDamage, RetainedFrame, RetainedFrameDelta,
     RetainedNodeKind, RetainedNodePatch, RetainedNodeState, RetainedSurfaceId,
 };
 
@@ -87,15 +94,12 @@ pub struct Canvas {
     pub(crate) text_runs: Vec<TextRun>,
     pub(crate) scene_images: ImageResourceStore,
     pub(crate) command_lists: Vec<CommandList>,
-    pub(crate) root_commands: CommandListId,
-    pub(crate) command_stack: Vec<CommandListId>,
-    pub(crate) layer_stack: Vec<LayerKind>,
+    pub(crate) current_commands: CommandListId,
+    pub(crate) layer_stack: Vec<OpenLayer>,
     pub(crate) path_cnt: u32,
     pub(crate) backdrop_pool_capacity: u32,
     pub(crate) tile_cnt: u32,
-    pub(crate) logical_width: u32,
-    pub(crate) logical_height: u32,
-    pub(crate) scale_factor: f32,
+    pub(crate) surface: CanvasSurface,
     draw_generation: u32,
     pub(crate) persistent_root: Option<RetainedNodeId>,
     pub(crate) invalidated_bounds: Vec<Bounds>,
@@ -107,21 +111,35 @@ pub struct Canvas {
     /// only when topology or physical draw slots change, so buffer-only edits do not scan the
     /// whole command graph during prepare.
     pub(crate) plan_cache_key: Option<u64>,
+    /// Identity of one materialized scene's physical arenas. Descriptor/command edits
+    /// can change the plan key without replacing geometry; a full rebuild gets a new identity.
+    pub(crate) materialization_key: Option<u64>,
     pub(crate) compiled_plan: Option<SharedRc<ExecPlan>>,
     pub(crate) persistent_frame: Option<RetainedFrame>,
-    pub(crate) painter_keys: Option<Vec<PainterKey>>,
-    pub(crate) stable_batch_ids: Option<Vec<u32>>,
-    /// Live physical draw count per stable batch. Persistent plans may keep an empty placeholder
-    /// or a stale shared draw list while membership moves through the stable ID table.
-    pub(crate) stable_batch_counts: Option<Vec<u32>>,
+    pub(crate) painter: PainterMetadata,
     /// Local-to-device transform installed by retained materialization. Immediate canvases keep
     /// identity; retained transform edits use the previous value to patch command metadata by a
     /// delta without ever walking path lines.
     retained_transform: GpuAffine,
 }
 
+/// An open layer owns its return address and kind together. Root recording always
+/// uses command list zero; no second stack or missing-root recovery is needed.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct OpenLayer {
+    parent: CommandListId,
+    kind: LayerKind,
+}
+
 #[derive(Clone, Debug, Default)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "Flags describe independent changes or statistics that may be true together"
+)]
 pub(crate) struct SceneBufferChanges {
+    /// Materialized CPU version these ranges replace. Geometry reuse must follow
+    /// this journal, independently of damage-frame compaction or plan patching.
+    pub(crate) from_version: Option<u64>,
     pub(crate) lines: Vec<Range<usize>>,
     pub(crate) paths: Vec<Range<usize>>,
     pub(crate) draws: Vec<Range<usize>>,
@@ -149,27 +167,10 @@ pub(crate) struct SceneBufferChanges {
     pub(crate) plan_values_patched: bool,
     /// Changed fused layer-stack records in the precompiled plan.
     pub(crate) plan_layer_stack: Vec<Range<usize>>,
-    /// Offscreen filter descriptors changed and their auxiliary GPU tables must be refreshed.
-    pub(crate) filter_resources_changed: bool,
     pub(crate) arena_live_bytes: u64,
     pub(crate) arena_capacity_bytes: u64,
     pub(crate) arena_fragmentation: f32,
     pub(crate) arena_compactions: u64,
-}
-
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub(crate) struct PainterKey {
-    pub(crate) path: SharedRc<[u128]>,
-    pub(crate) local: u32,
-}
-
-impl PainterKey {
-    pub(crate) fn inactive() -> Self {
-        Self {
-            path: SharedRc::from([u128::MAX]),
-            local: u32::MAX,
-        }
-    }
 }
 
 /// Opaque handle to a draw stored inside a [`Canvas`].
@@ -184,7 +185,8 @@ pub struct DrawId {
 }
 
 impl DrawId {
-    pub fn index(self) -> usize {
+    #[must_use]
+    pub const fn index(self) -> usize {
         self.index as usize
     }
 }
@@ -194,20 +196,6 @@ struct PathPushOptions {
     brush: Brush,
     emit_draw_command: bool,
     tag: DrawTag,
-}
-
-fn valid_scale_factor(scale_factor: f32) -> f32 {
-    assert!(
-        scale_factor.is_finite() && scale_factor > 0.0,
-        "canvas scale factor must be finite and positive"
-    );
-    scale_factor
-}
-
-fn scaled_canvas_extent(value: u32, scale: f32) -> u32 {
-    ((value as f64) * f64::from(scale))
-        .ceil()
-        .clamp(0.0, u32::MAX as f64) as u32
 }
 
 fn scale_brush_transform(transform: [f32; 6], scale: f32) -> [f32; 6] {
@@ -247,274 +235,6 @@ enum SceneAppendMode {
 struct SceneOffset {
     dx: f64,
     dy: f64,
-}
-
-impl SceneOffset {
-    fn new(pos: Point) -> Self {
-        assert!(
-            pos.x.is_finite() && pos.y.is_finite(),
-            "canvas append position must be finite"
-        );
-        Self {
-            dx: pos.x,
-            dy: pos.y,
-        }
-    }
-
-    fn is_zero(self) -> bool {
-        self.dx == 0.0 && self.dy == 0.0
-    }
-
-    fn line(self, line: &mut Line) {
-        let dx = self.dx as f32;
-        let dy = self.dy as f32;
-        line.p0[0] += dx;
-        line.p0[1] += dy;
-        line.p1[0] += dx;
-        line.p1[1] += dy;
-    }
-
-    fn pixel_bounds(self, bounds: PixelBounds) -> PixelBounds {
-        PixelBounds {
-            x0: (bounds.x0 as f64 + self.dx).floor() as i32,
-            y0: (bounds.y0 as f64 + self.dy).floor() as i32,
-            x1: (bounds.x1 as f64 + self.dx).ceil() as i32,
-            y1: (bounds.y1 as f64 + self.dy).ceil() as i32,
-        }
-    }
-
-    fn bounds(self, bounds: Bounds) -> Bounds {
-        Bounds::new(
-            (bounds.x0 as f64 + self.dx).floor() as i32,
-            (bounds.y0 as f64 + self.dy).floor() as i32,
-            (bounds.x1 as f64 + self.dx).ceil() as i32,
-            (bounds.y1 as f64 + self.dy).ceil() as i32,
-        )
-    }
-
-    fn rect(self, rect: Rect) -> Rect {
-        Rect::new(
-            rect.x0 + self.dx,
-            rect.y0 + self.dy,
-            rect.x1 + self.dx,
-            rect.y1 + self.dy,
-        )
-    }
-
-    fn transform(self, transform: Affine) -> Affine {
-        Affine::translate((self.dx, self.dy)) * transform
-    }
-
-    fn sdf(self, sdf: Sdf) -> Sdf {
-        // SDF::translated subtracts its arguments for offscreen local-space
-        // conversion. Appending moves local child geometry into parent space.
-        sdf.translated(-(self.dx as f32), -(self.dy as f32))
-    }
-
-    fn sdf_shadow(self, sdf_shadow: SdfShadow) -> SdfShadow {
-        sdf_shadow.translated(-(self.dx as f32), -(self.dy as f32))
-    }
-
-    fn brush(self, brush: Brush) -> Brush {
-        let dx = self.dx as f32;
-        let dy = self.dy as f32;
-        match brush {
-            Brush::Solid(_) => brush,
-            Brush::Linear(mut gradient) => {
-                gradient.transform = self.brush_transform(gradient.transform);
-                Brush::Linear(gradient)
-            }
-            Brush::Radial(mut gradient) => {
-                gradient.transform = self.brush_transform(gradient.transform);
-                Brush::Radial(gradient)
-            }
-            Brush::Sweep(mut gradient) => {
-                gradient.center[0] += dx;
-                gradient.center[1] += dy;
-                Brush::Sweep(gradient)
-            }
-            Brush::FourCorner(mut gradient) => {
-                gradient.bounds[0] += dx;
-                gradient.bounds[1] += dy;
-                gradient.bounds[2] += dx;
-                gradient.bounds[3] += dy;
-                Brush::FourCorner(gradient)
-            }
-            Brush::Pattern(mut pattern) => {
-                pattern.transform = self.brush_transform(pattern.transform);
-                Brush::Pattern(pattern)
-            }
-        }
-    }
-
-    fn brush_transform(self, transform: [f32; 6]) -> [f32; 6] {
-        let [a, b, c, d, e, f] = transform;
-        let dx = self.dx as f32;
-        let dy = self.dy as f32;
-        [a, b, c, d, e - a * dx - c * dy, f - b * dx - d * dy]
-    }
-
-    fn layer(self, layer: Layer) -> Layer {
-        match layer {
-            Layer::Clip | Layer::Isolate | Layer::Opacity(_) | Layer::Blend(_) => layer,
-            Layer::ClipSdf { sdf, bounds } => Layer::ClipSdf {
-                sdf: self.sdf(sdf),
-                bounds: self.bounds(bounds),
-            },
-            Layer::Filter {
-                filter,
-                sample_region,
-            } => Layer::Filter {
-                filter: self.filter(filter),
-                sample_region: self.region(sample_region),
-            },
-            Layer::Backdrop {
-                filter,
-                sample_region,
-            } => Layer::Backdrop {
-                filter: self.filter(filter),
-                sample_region: self.region(sample_region),
-            },
-        }
-    }
-
-    fn mask(self, mask: Mask) -> Mask {
-        Mask {
-            region: self.region(mask.region),
-            kind: mask.kind,
-        }
-    }
-
-    fn filter(self, filter: Filter) -> Filter {
-        match filter {
-            Filter::Chain {
-                filters,
-                fixed_region,
-            } => Filter::Chain {
-                filters: filters
-                    .into_iter()
-                    .map(|filter| self.filter(filter))
-                    .collect(),
-                fixed_region,
-            },
-            Filter::Graph {
-                primitives,
-                fixed_region,
-            } => Filter::Graph {
-                primitives: primitives
-                    .into_iter()
-                    .map(|primitive| FilterPrimitive {
-                        input: primitive.input,
-                        input2: primitive.input2,
-                        region: self.bounds(primitive.region),
-                        kind: self.primitive_kind(primitive.kind),
-                    })
-                    .collect(),
-                fixed_region,
-            },
-            Filter::Flood { brush } => Filter::Flood {
-                brush: self.brush(brush),
-            },
-            Filter::DropShadow {
-                offset_x,
-                offset_y,
-                std_dev,
-                brush,
-            } => Filter::DropShadow {
-                offset_x,
-                offset_y,
-                std_dev,
-                brush: self.brush(brush),
-            },
-            Filter::DiffuseLighting(mut lighting) => {
-                lighting.light_source = self.light_source(lighting.light_source);
-                Filter::DiffuseLighting(lighting)
-            }
-            Filter::SpecularLighting(mut lighting) => {
-                lighting.light_source = self.light_source(lighting.light_source);
-                Filter::SpecularLighting(lighting)
-            }
-            _ => filter,
-        }
-    }
-
-    fn light_source(self, source: LightSource) -> LightSource {
-        let dx = self.dx as f32;
-        let dy = self.dy as f32;
-        match source {
-            LightSource::Distant { .. } => source,
-            LightSource::Point { x, y, z } => LightSource::Point {
-                x: x + dx,
-                y: y + dy,
-                z,
-            },
-            LightSource::Spot {
-                x,
-                y,
-                z,
-                points_at_x,
-                points_at_y,
-                points_at_z,
-                specular_exponent,
-                limiting_cone_angle,
-            } => LightSource::Spot {
-                x: x + dx,
-                y: y + dy,
-                z,
-                points_at_x: points_at_x + dx,
-                points_at_y: points_at_y + dy,
-                points_at_z,
-                specular_exponent,
-                limiting_cone_angle,
-            },
-        }
-    }
-
-    fn primitive_kind(self, kind: FilterPrimitiveKind) -> FilterPrimitiveKind {
-        match kind {
-            FilterPrimitiveKind::Filter(filter) => {
-                FilterPrimitiveKind::Filter(Box::new(self.filter(*filter)))
-            }
-            FilterPrimitiveKind::Image { brush } => FilterPrimitiveKind::Image {
-                brush: self.brush(brush),
-            },
-            FilterPrimitiveKind::Tile { source_region } => FilterPrimitiveKind::Tile {
-                source_region: self.bounds(source_region),
-            },
-            FilterPrimitiveKind::Turbulence(mut turbulence) => {
-                turbulence.transform_x += self.dx as f32;
-                turbulence.transform_y += self.dy as f32;
-                turbulence.tile_x += self.dx as f32;
-                turbulence.tile_y += self.dy as f32;
-                FilterPrimitiveKind::Turbulence(turbulence)
-            }
-            _ => kind,
-        }
-    }
-
-    fn region(self, region: Region) -> Region {
-        match region {
-            Region::Rect { rect, radius } => Region::rect(self.rect(rect), radius),
-            Region::Path {
-                path,
-                transform,
-                tolerance,
-            } => Region::path(path, self.transform(transform), tolerance),
-        }
-    }
-
-    fn command(self, command: &mut Command) {
-        match command {
-            Command::Draw(_) => {}
-            Command::MaterializedRetainedScene { .. } => {}
-            Command::Layer { layer, .. } => {
-                *layer = self.layer(layer.clone());
-            }
-            Command::MaskLayer { layer, .. } => {
-                *layer = self.mask(layer.clone());
-            }
-        }
-    }
 }
 
 #[cfg(test)]

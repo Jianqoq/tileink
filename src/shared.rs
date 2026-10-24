@@ -1,13 +1,13 @@
 pub(crate) mod affine;
 pub(crate) mod bounds;
 pub(crate) mod brush;
-pub(crate) mod cpu_time;
 pub(crate) mod dense_set;
 pub(crate) mod draw_record;
 pub(crate) mod execution;
 pub(crate) mod fill;
 pub(crate) mod gpu_brush;
 pub(crate) mod gpu_coarse;
+pub(crate) mod gpu_constants;
 pub(crate) mod gpu_layout;
 pub(crate) mod gpu_plan;
 pub(crate) mod gpu_sdf;
@@ -25,4 +25,34 @@ pub(crate) mod pixel;
 pub(crate) mod scan_line;
 pub(crate) mod scene_arena;
 pub(crate) mod sdf;
+pub(crate) mod shader;
 pub(crate) mod tile_seg_range;
+
+pub(crate) mod fine_config;
+// SAFETY: repr(C) and twenty contiguous u32 fields contain no padding.
+unsafe impl bytemuck::Zeroable for fine_config::FineConfig {}
+// SAFETY: repr(C), contiguous u32 fields, no padding, and all bit patterns are valid.
+unsafe impl bytemuck::Pod for fine_config::FineConfig {}
+
+pub(crate) mod filter_config;
+pub(crate) mod filter_parameters;
+pub(crate) mod progressive_blur_config;
+// SAFETY: repr(C), contiguous four-byte scalars and five four-float vectors, with no padding.
+unsafe impl bytemuck::Zeroable for filter_config::FilterConfig {}
+// SAFETY: repr(C), four-byte scalars/vectors, no padding, and all bit patterns are valid.
+unsafe impl bytemuck::Pod for filter_config::FilterConfig {}
+
+impl Default for filter_config::FilterConfig {
+    fn default() -> Self {
+        // Preserve the all-zero native uniform with its unit sampling factor.
+        // Keep runtime initialization here so build-time layout reads need no
+        // runtime dependency or duplicate list of zero-valued fields.
+        Self {
+            downsample: 1,
+            ..bytemuck::Zeroable::zeroed()
+        }
+    }
+}
+
+#[cfg(test)]
+mod filter_config_tests;

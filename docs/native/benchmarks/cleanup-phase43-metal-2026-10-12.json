@@ -1,0 +1,1329 @@
+{
+  "baseline_commit": "376c268148b202452598a4ed228a46e0b6efd0fb",
+  "gpu": "Apple M5",
+  "device_selection": {
+    "window": "Explicit registry ID 0000000100000575",
+    "svg": "System default on freshly verified single-GPU host"
+  },
+  "validation": {
+    "commands": {
+      "release-all": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets",
+          "--no-fail-fast",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 101,
+        "seconds": 57.93810825000401
+      },
+      "build-examples": {
+        "command": [
+          "cargo",
+          "build",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--examples"
+        ],
+        "exit_code": 0,
+        "seconds": 2.029469250002876
+      },
+      "clippy": {
+        "command": [
+          "cargo",
+          "clippy",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets"
+        ],
+        "exit_code": 0,
+        "seconds": 3.77136904199142
+      },
+      "backend-free": {
+        "command": [
+          "cargo",
+          "check",
+          "--release",
+          "--no-default-features",
+          "--lib"
+        ],
+        "exit_code": 0,
+        "seconds": 0.13201162501354702
+      },
+      "fmt-check": {
+        "command": [
+          "cargo",
+          "fmt",
+          "--check"
+        ],
+        "exit_code": 0,
+        "seconds": 0.6138090830063447
+      }
+    },
+    "tests": {
+      "passed": 1093,
+      "failed": 3,
+      "ignored": 0,
+      "failures": [
+        "every_hlsl_header_compiles_without_callers_globals",
+        "pinned_dxc_reports_invalid_source_for_both_targets",
+        "scaled_turbulence_matches_canonical_rgba"
+      ],
+      "log": "target/cleanup-audit/upload-release-all.log"
+    },
+    "test_log_note": "Metal validation output interrupted one progress line. Failure names were verified from completed failure-report headings; the completed test run was reused.",
+    "executables": {
+      "svg": {
+        "path": "target/cleanup-audit/upload-svg-after",
+        "sha256": "611f9b2fb73a3c1732c0bad9d417276489a9e14aedf63f2d07df3e439ef09568"
+      },
+      "window": {
+        "path": "target/cleanup-audit/upload-window-after",
+        "sha256": "336e78752cd2c16b833ab4c9adf70cd5af8038827bda1355f44634ee3fcd8460"
+      }
+    },
+    "manifests": [
+      {
+        "path": "target/release/build/tileink-693345b8f8240684/out/tileink_native_artifacts.json",
+        "before_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "after_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "path": "target/release/build/tileink-24048925a7656d71/out/tileink_native_artifacts.json",
+        "before_sha256": "dbe277ec7af54dc1ae1e9d6d0f1ccb6607269c648a12f371126a65676d75085b",
+        "after_sha256": "dbe277ec7af54dc1ae1e9d6d0f1ccb6607269c648a12f371126a65676d75085b"
+      },
+      {
+        "path": "target/release/build/tileink-02c1122da65b8cf5/out/tileink_native_artifacts.json",
+        "before_sha256": "dbe277ec7af54dc1ae1e9d6d0f1ccb6607269c648a12f371126a65676d75085b",
+        "after_sha256": "dbe277ec7af54dc1ae1e9d6d0f1ccb6607269c648a12f371126a65676d75085b"
+      }
+    ],
+    "render": {
+      "svg": {
+        "count": 1730,
+        "diffs": [],
+        "milliseconds": 7976.130541
+      },
+      "examples": [
+        {
+          "name": "mesh-gradient",
+          "exact_png_and_pixels": true,
+          "sha256": "b441ab07fa794d197930974308e74ccf02eb6790ea39c2ddfdda556c31afa91b",
+          "milliseconds": 495.247333
+        },
+        {
+          "name": "program-brush",
+          "exact_png_and_pixels": true,
+          "sha256": "e43f483170f77abeecfd10698aeddcd2b56c3cd6bd69f46a1b0522b5d332a5be",
+          "milliseconds": 508.027083
+        },
+        {
+          "name": "program-glass",
+          "exact_png_and_pixels": true,
+          "sha256": "90115ade795808c3b5b3b3aeb229ba98bbb8d33d2cc65fd02755bbcbbb9e341e",
+          "milliseconds": 435.763917
+        },
+        {
+          "name": "shader-pipeline",
+          "exact_png_and_pixels": true,
+          "sha256": "b5518d0badb099847172803ea06892212d864ac4a023be365b19741042e161cb",
+          "milliseconds": 504.656084
+        },
+        {
+          "name": "shader-graph",
+          "exact_png_and_pixels": true,
+          "sha256": "4a2ad67381fdad4f44ad88a324f16a092bdd8c7bf43adf36e3e7799730bc06d8",
+          "milliseconds": 444.337667
+        },
+        {
+          "name": "progressive-balanced",
+          "exact_png_and_pixels": true,
+          "sha256": "79b56db9b658c240324aa6ea06a6e463795aa98c43ac010e402878c95d44d0cf",
+          "milliseconds": 456.37425
+        },
+        {
+          "name": "progressive-high",
+          "exact_png_and_pixels": true,
+          "sha256": "5b100f5ce99634323890e2a49a0d4984ffe62082fa3dcabc67651999c46d1d7d",
+          "milliseconds": 64.539959
+        }
+      ],
+      "window": {
+        "milliseconds": 686.629541,
+        "output": "2026-10-12 03:46:51.205 upload-window-after[92930:4906564] Metal API Validation Enabled\nMetal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+      }
+    },
+    "benchmark_report": "docs/native/benchmarks/cleanup-phase43-metal-2026-10-12.json",
+    "removed_temporary_files": [
+      "target/cleanup-audit/upload-svg-before",
+      "target/cleanup-audit/upload-svg-after",
+      "target/cleanup-audit/upload-window-before",
+      "target/cleanup-audit/upload-window-after",
+      "/Users/jian/tileink/target/cleanup-audit/upload-validate.py"
+    ],
+    "application_conclusion": "Whole-process median changes: SVG +1.20% (identical-current control +0.12%), window +0.37% (control -0.14%). Paired percent-change medians are +0.057% and +0.713%; both descriptive 95% bootstrap intervals include zero and overlap the corresponding identical-current controls. No stable material timing regression was identified in these applications; these measurements do not establish an isolated encoder speedup or performance for every workload. Raw observations and tails are retained.",
+    "paired_summaries": [
+      {
+        "workload": "svg",
+        "comparison": "baseline-current",
+        "percent_changes": [
+          0.3276618173300383,
+          0.7293065448661373,
+          -10.395321376152378,
+          1.0474415564179385,
+          -0.16510550741104524,
+          -0.7334033756296487,
+          2.4605592958005573,
+          -0.5918459416351052,
+          0.27858725189833233,
+          -0.234082083014564
+        ],
+        "median_change_percent": 0.05674087224364355,
+        "percentile_bootstrap_95_interval": [
+          -0.5918459416351052,
+          0.7293065448661373
+        ]
+      },
+      {
+        "workload": "svg",
+        "comparison": "identical-current",
+        "percent_changes": [
+          -1.2174658265495575,
+          -0.6078118473480942,
+          0.724855923919665,
+          1.712798985578523,
+          -0.24437855675962794,
+          -1.053984950072906,
+          -8.058490053773959,
+          0.0643571847303459,
+          0.3040588972546221,
+          1.7753948119924257
+        ],
+        "median_change_percent": -0.09001068601464102,
+        "percentile_bootstrap_95_interval": [
+          -1.053984950072906,
+          1.0084289414165726
+        ]
+      },
+      {
+        "workload": "window",
+        "comparison": "baseline-current",
+        "percent_changes": [
+          5.260114509881109,
+          0.6585433989059641,
+          0.7677635053016996,
+          -0.0893574101327066,
+          0.9861661776197517,
+          -0.005256809948195329,
+          -0.5450243309263358,
+          -0.6044473214898205,
+          1.3612475692330817,
+          0.7936821569652475
+        ],
+        "median_change_percent": 0.7131534521038319,
+        "percentile_bootstrap_95_interval": [
+          -0.2751405704372656,
+          1.0774648630991646
+        ]
+      },
+      {
+        "workload": "window",
+        "comparison": "identical-current",
+        "percent_changes": [
+          1.1204340807289936,
+          1.700807271338478,
+          1.9397207874176203,
+          -1.9656054371288034,
+          -0.8275579360977336,
+          -0.7567524380765134,
+          -0.05021725034054514,
+          -0.20087199616731777,
+          0.8896486651495783,
+          -0.5579536799301787
+        ],
+        "median_change_percent": -0.12554462325393145,
+        "percentile_bootstrap_95_interval": [
+          -0.7567524380765134,
+          1.2952279682440282
+        ]
+      }
+    ]
+  },
+  "executables": {
+    "svg": {
+      "baseline": {
+        "path": "target/cleanup-audit/upload-svg-before",
+        "sha256": "1657cddabbb8f3b83738683c513458d208a8ea6a5812173c06ba616961fe8158"
+      },
+      "current": {
+        "path": "target/cleanup-audit/upload-svg-after",
+        "sha256": "611f9b2fb73a3c1732c0bad9d417276489a9e14aedf63f2d07df3e439ef09568"
+      }
+    },
+    "window": {
+      "baseline": {
+        "path": "target/cleanup-audit/upload-window-before",
+        "sha256": "61cfd710d2af99986dca6c8ece31904bdffbf5715a2efa832207e2d3695e71cd"
+      },
+      "current": {
+        "path": "target/cleanup-audit/upload-window-after",
+        "sha256": "336e78752cd2c16b833ab4c9adf70cd5af8038827bda1355f44634ee3fcd8460"
+      }
+    }
+  },
+  "warmups_per_label": 2,
+  "timed_pairs": 10,
+  "timing_scope": "Whole process including initialization, completion and teardown. SVG includes parsing, readback and PNG saving. Verification follows the stopped timer. Metal validation disabled while timing. Ten-sample nearest-rank p95 equals maximum; raw tails retained.",
+  "observations": [
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": true,
+      "pair": 0,
+      "milliseconds": 5168.338125,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": true,
+      "pair": 0,
+      "milliseconds": 4682.637167,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": true,
+      "pair": 1,
+      "milliseconds": 4554.254584,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": true,
+      "pair": 1,
+      "milliseconds": 4468.443709,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 0,
+      "milliseconds": 4490.605625,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 0,
+      "milliseconds": 4505.319625,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 1,
+      "milliseconds": 4463.90975,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 1,
+      "milliseconds": 4431.589875,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 2,
+      "milliseconds": 5276.858667,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 2,
+      "milliseconds": 4728.31225,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 3,
+      "milliseconds": 4321.080333,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 3,
+      "milliseconds": 4276.288708,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 4,
+      "milliseconds": 4253.190042,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 4,
+      "milliseconds": 4246.167791,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 5,
+      "milliseconds": 4218.963208,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 5,
+      "milliseconds": 4250.133833,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 6,
+      "milliseconds": 4256.535625,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 6,
+      "milliseconds": 4361.270208,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 7,
+      "milliseconds": 4224.014708,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 7,
+      "milliseconds": 4249.163208,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 8,
+      "milliseconds": 4242.312209,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 8,
+      "milliseconds": 4254.13075,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 9,
+      "milliseconds": 4313.842375,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 9,
+      "milliseconds": 4323.964,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": true,
+      "pair": 0,
+      "milliseconds": 4428.192916,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": true,
+      "pair": 0,
+      "milliseconds": 4236.199125,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": true,
+      "pair": 1,
+      "milliseconds": 4274.94225,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": true,
+      "pair": 1,
+      "milliseconds": 4224.48175,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 0,
+      "milliseconds": 4300.134333,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 0,
+      "milliseconds": 4247.781667,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 1,
+      "milliseconds": 4240.52675,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 1,
+      "milliseconds": 4266.458792,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 2,
+      "milliseconds": 4242.935042,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 2,
+      "milliseconds": 4273.690208,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 3,
+      "milliseconds": 4306.396625,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 3,
+      "milliseconds": 4233.878792,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 4,
+      "milliseconds": 4243.4165,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 4,
+      "milliseconds": 4233.0465,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 5,
+      "milliseconds": 4237.571458,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 5,
+      "milliseconds": 4282.710583,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 6,
+      "milliseconds": 5057.094,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 6,
+      "milliseconds": 4649.568583,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 7,
+      "milliseconds": 4223.367042,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 7,
+      "milliseconds": 4220.65075,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 8,
+      "milliseconds": 4235.898083,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 8,
+      "milliseconds": 4248.777708,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 9,
+      "milliseconds": 4294.382167,
+      "output_verified": true
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 9,
+      "milliseconds": 4219.469917,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": true,
+      "pair": 0,
+      "milliseconds": 1857.042291,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": true,
+      "pair": 0,
+      "milliseconds": 241.870041,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": true,
+      "pair": 1,
+      "milliseconds": 236.745292,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": true,
+      "pair": 1,
+      "milliseconds": 233.754667,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 0,
+      "milliseconds": 224.879458,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 0,
+      "milliseconds": 236.708375,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 1,
+      "milliseconds": 236.733292,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 1,
+      "milliseconds": 235.1845,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 2,
+      "milliseconds": 231.245167,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 2,
+      "milliseconds": 233.020583,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 3,
+      "milliseconds": 233.031333,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 3,
+      "milliseconds": 233.23975,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 4,
+      "milliseconds": 231.823708,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 4,
+      "milliseconds": 234.109875,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 5,
+      "milliseconds": 233.037833,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 5,
+      "milliseconds": 233.050084,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 6,
+      "milliseconds": 233.1395,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 6,
+      "milliseconds": 231.868833,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 7,
+      "milliseconds": 231.854042,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 7,
+      "milliseconds": 233.264,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 8,
+      "milliseconds": 232.05125,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 8,
+      "milliseconds": 235.210042,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "current",
+      "warmup": false,
+      "pair": 9,
+      "milliseconds": 233.787166,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "label": "baseline",
+      "warmup": false,
+      "pair": 9,
+      "milliseconds": 231.94625,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": true,
+      "pair": 0,
+      "milliseconds": 227.79325,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": true,
+      "pair": 0,
+      "milliseconds": 234.877791,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": true,
+      "pair": 1,
+      "milliseconds": 229.773125,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": true,
+      "pair": 1,
+      "milliseconds": 237.00725,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 0,
+      "milliseconds": 233.68925,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 0,
+      "milliseconds": 236.307584,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 1,
+      "milliseconds": 235.001708,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 1,
+      "milliseconds": 231.071625,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 2,
+      "milliseconds": 230.439042,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 2,
+      "milliseconds": 234.908916,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 3,
+      "milliseconds": 229.871416,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 3,
+      "milliseconds": 234.480375,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 4,
+      "milliseconds": 235.295792,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 4,
+      "milliseconds": 233.348583,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 5,
+      "milliseconds": 232.135208,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 5,
+      "milliseconds": 233.905292,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 6,
+      "milliseconds": 232.987667,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 6,
+      "milliseconds": 232.870667,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 7,
+      "milliseconds": 232.951416,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 7,
+      "milliseconds": 233.420292,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 8,
+      "milliseconds": 231.968875,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 8,
+      "milliseconds": 234.032583,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-b",
+      "warmup": false,
+      "pair": 9,
+      "milliseconds": 232.236416,
+      "output_verified": true
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "label": "current-a",
+      "warmup": false,
+      "pair": 9,
+      "milliseconds": 233.539458,
+      "output_verified": true
+    }
+  ],
+  "summaries": [
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "labels": [
+        "baseline",
+        "current"
+      ],
+      "medians_ms": [
+        4266.4121665,
+        4317.461354
+      ],
+      "median_change_percent": 1.1965367036227637,
+      "nearest_rank_p95_ms": [
+        5276.858667,
+        4728.31225
+      ]
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "labels": [
+        "current-a",
+        "current-b"
+      ],
+      "medians_ms": [
+        4243.175771,
+        4248.2796875
+      ],
+      "median_change_percent": 0.12028529515282216,
+      "nearest_rank_p95_ms": [
+        5057.094,
+        4649.568583
+      ]
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "labels": [
+        "baseline",
+        "current"
+      ],
+      "medians_ms": [
+        232.550667,
+        233.41249950000002
+      ],
+      "median_change_percent": 0.370599883078393,
+      "nearest_rank_p95_ms": [
+        235.1845,
+        236.733292
+      ]
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "labels": [
+        "current-a",
+        "current-b"
+      ],
+      "medians_ms": [
+        233.479875,
+        233.14999949999998
+      ],
+      "median_change_percent": -0.1412864813294945,
+      "nearest_rank_p95_ms": [
+        235.295792,
+        236.307584
+      ]
+    }
+  ],
+  "checked_png_hashes": 83040,
+  "completed_window_frames": 384,
+  "svg_source_manifest": {
+    "count": 1730,
+    "sha256": "3850d8cdef97258ae3caae438b1fb6d7a2014b9f241306d7b3ce9e7e916201e1",
+    "unchanged": true,
+    "encoding": "UTF-8 sorted relative path + NUL + SHA256 rows, joined by LF without trailing LF"
+  },
+  "conclusion": "Whole-process median changes: SVG +1.20% (identical-current control +0.12%), window +0.37% (control -0.14%). Paired percent-change medians are +0.057% and +0.713%; both descriptive 95% bootstrap intervals include zero and overlap the corresponding identical-current controls. No stable material timing regression was identified in these applications; these measurements do not establish an isolated encoder speedup or performance for every workload. Raw observations and tails are retained.",
+  "cleanup": [
+    "target/cleanup-audit/upload-svg-before",
+    "target/cleanup-audit/upload-svg-after",
+    "target/cleanup-audit/upload-window-before",
+    "target/cleanup-audit/upload-window-after",
+    "/Users/jian/tileink/target/cleanup-audit/upload-validate.py"
+  ],
+  "cleanup_verified": true,
+  "paired_summaries": [
+    {
+      "workload": "svg",
+      "comparison": "baseline-current",
+      "percent_changes": [
+        0.3276618173300383,
+        0.7293065448661373,
+        -10.395321376152378,
+        1.0474415564179385,
+        -0.16510550741104524,
+        -0.7334033756296487,
+        2.4605592958005573,
+        -0.5918459416351052,
+        0.27858725189833233,
+        -0.234082083014564
+      ],
+      "median_change_percent": 0.05674087224364355,
+      "percentile_bootstrap_95_interval": [
+        -0.5918459416351052,
+        0.7293065448661373
+      ]
+    },
+    {
+      "workload": "svg",
+      "comparison": "identical-current",
+      "percent_changes": [
+        -1.2174658265495575,
+        -0.6078118473480942,
+        0.724855923919665,
+        1.712798985578523,
+        -0.24437855675962794,
+        -1.053984950072906,
+        -8.058490053773959,
+        0.0643571847303459,
+        0.3040588972546221,
+        1.7753948119924257
+      ],
+      "median_change_percent": -0.09001068601464102,
+      "percentile_bootstrap_95_interval": [
+        -1.053984950072906,
+        1.0084289414165726
+      ]
+    },
+    {
+      "workload": "window",
+      "comparison": "baseline-current",
+      "percent_changes": [
+        5.260114509881109,
+        0.6585433989059641,
+        0.7677635053016996,
+        -0.0893574101327066,
+        0.9861661776197517,
+        -0.005256809948195329,
+        -0.5450243309263358,
+        -0.6044473214898205,
+        1.3612475692330817,
+        0.7936821569652475
+      ],
+      "median_change_percent": 0.7131534521038319,
+      "percentile_bootstrap_95_interval": [
+        -0.2751405704372656,
+        1.0774648630991646
+      ]
+    },
+    {
+      "workload": "window",
+      "comparison": "identical-current",
+      "percent_changes": [
+        1.1204340807289936,
+        1.700807271338478,
+        1.9397207874176203,
+        -1.9656054371288034,
+        -0.8275579360977336,
+        -0.7567524380765134,
+        -0.05021725034054514,
+        -0.20087199616731777,
+        0.8896486651495783,
+        -0.5579536799301787
+      ],
+      "median_change_percent": -0.12554462325393145,
+      "percentile_bootstrap_95_interval": [
+        -0.7567524380765134,
+        1.2952279682440282
+      ]
+    }
+  ],
+  "paired_method": "Use all ten alternating timed pairs, with no exclusions. Percent change is 100*(second/first-1) within each pair. Descriptive percentile bootstrap: 20000 ten-pair resamples, Python random.Random(43), comparisons in summaries order; sorted indexes 500 and 19499. Small-sample intervals describe measurement uncertainty and do not establish an all-workload guarantee."
+}

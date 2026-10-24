@@ -1,0 +1,775 @@
+{
+  "baseline_commit": "7ff5f46c4f0d7b6795a5fd916182831f24beddae",
+  "gpu": "Apple M5",
+  "device_selection": "SVG example uses system-default device on freshly verified single-GPU host",
+  "workload": "Complete 1730-fixture SVG rendering application",
+  "warmups_per_label": 2,
+  "timed_pairs": 10,
+  "timing_scope": "Process initialization, parsing, rendering, completion, readback, PNG saving and teardown. Hash verification runs after the timer.",
+  "executables": {
+    "before": {
+      "path": "target/cleanup-audit/clip-composite-before",
+      "sha256": "69e2baebbdee12fd6b2da5eab10e394bab55852d704f72e3ee6c85319f425801"
+    },
+    "after": {
+      "path": "target/cleanup-audit/clip-composite-after",
+      "sha256": "2f6499917cb4e6b3c8f0e5083eb129b4efd5c49f5b3ccc0b95929c0edb348d3e"
+    }
+  },
+  "observations": [
+    {
+      "experiment": "baseline-current",
+      "kind": "warmup",
+      "pair": 0,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 5038.700167002389,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "baseline-current",
+      "kind": "warmup",
+      "pair": 0,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4977.072209003381,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "baseline-current",
+      "kind": "warmup",
+      "pair": 1,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4239.645416993881,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "baseline-current",
+      "kind": "warmup",
+      "pair": 1,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 4278.680624993285,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 0,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 4287.4588330159895,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 0,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4250.162999989698,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 1,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4276.298916985979,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 1,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 4296.0600839869585,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 2,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 4266.792042006273,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 2,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4261.385416990379,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 3,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4284.7506669932045,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 3,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 4313.786292012082,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 4,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 4279.104499990353,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 4,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4241.901500005042,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 5,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4267.9826249950565,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 5,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 4263.344374980079,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 6,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 4261.213417019462,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 6,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4293.800542014651,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 7,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4309.554458013736,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 7,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 4238.592583016725,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 8,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 4249.63958299486,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 8,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4414.556542003993,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 9,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4334.779708995484,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "baseline-current",
+      "kind": "timed",
+      "pair": 9,
+      "label": "A",
+      "stage": "before",
+      "milliseconds": 4275.115040974924,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "warmup",
+      "pair": 0,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4378.736207989277,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "warmup",
+      "pair": 0,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4271.049917006167,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "warmup",
+      "pair": 1,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4266.4296249859035,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "warmup",
+      "pair": 1,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4269.899000006262,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 0,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4259.502583008725,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 0,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4256.061249994673,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 1,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4259.0246250038035,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 1,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4230.77441600617,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 2,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4271.024374989793,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 2,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4306.382167007541,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 3,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4243.89808397973,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 3,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4244.085124984849,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 4,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4254.729125008453,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 4,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4236.420833010925,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 5,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4257.836917007808,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 5,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4408.598375011934,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 6,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4254.043499997351,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 6,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4241.811790998327,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 7,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4315.1031250017695,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 7,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4247.829041996738,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 8,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4253.615000023274,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 8,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4308.446999988519,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 9,
+      "label": "B",
+      "stage": "after",
+      "milliseconds": 4317.318707995582,
+      "exit_code": 0,
+      "output_verified": true
+    },
+    {
+      "experiment": "identical-current-control",
+      "kind": "timed",
+      "pair": 9,
+      "label": "A",
+      "stage": "after",
+      "milliseconds": 4251.681458990788,
+      "exit_code": 0,
+      "output_verified": true
+    }
+  ],
+  "summaries": {
+    "baseline-current": {
+      "A": {
+        "samples": 10,
+        "median_ms": 4270.953541490599,
+        "mean_ms": 4273.110674999771,
+        "p95_nearest_rank_ms": 4313.786292012082
+      },
+      "B": {
+        "samples": 10,
+        "median_ms": 4280.524791989592,
+        "mean_ms": 4293.517337698722,
+        "p95_nearest_rank_ms": 4414.556542003993
+      },
+      "median_change_percent": 0.2241010211422978
+    },
+    "identical-current-control": {
+      "A": {
+        "samples": 10,
+        "median_ms": 4253.8292500103125,
+        "mean_ms": 4267.5883000018075,
+        "p95_nearest_rank_ms": 4408.598375011934
+      },
+      "B": {
+        "samples": 10,
+        "median_ms": 4258.430771005806,
+        "mean_ms": 4274.230449998868,
+        "p95_nearest_rank_ms": 4317.318707995582
+      },
+      "median_change_percent": 0.10817361781698676
+    }
+  },
+  "svg_manifest": {
+    "count": 1730,
+    "sha256": "739f23a1363f06c83d6b2b6e0b4ad673f0a6fb20bf873bc9ecfe10bff667c76d",
+    "checked_after_every_observation": true
+  },
+  "svg_source_manifest": {
+    "count": 1730,
+    "sha256": "5397004b528601bc764cab3ab110b62d1a815de0a7b07146d16a6158bf1ded54"
+  },
+  "checked_png_hashes": 83040,
+  "validation": {
+    "commands": {
+      "release-all": {
+        "command": [
+          "cargo",
+          "test",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets",
+          "--no-fail-fast",
+          "--",
+          "--test-threads=1",
+          "--include-ignored"
+        ],
+        "exit_code": 101,
+        "seconds": 65.93189558299491
+      },
+      "clippy": {
+        "command": [
+          "cargo",
+          "clippy",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--all-targets"
+        ],
+        "exit_code": 0,
+        "seconds": 21.51586379201035
+      },
+      "backend-free": {
+        "command": [
+          "cargo",
+          "check",
+          "--release",
+          "--no-default-features",
+          "--lib"
+        ],
+        "exit_code": 0,
+        "seconds": 1.0549137080088258
+      },
+      "fmt-check": {
+        "command": [
+          "cargo",
+          "fmt",
+          "--check"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5996295000077225
+      },
+      "build-examples": {
+        "command": [
+          "cargo",
+          "build",
+          "--release",
+          "--no-default-features",
+          "--features",
+          "metal",
+          "--examples"
+        ],
+        "exit_code": 0,
+        "seconds": 1.9383893749909475
+      },
+      "gpus": {
+        "command": [
+          "system_profiler",
+          "SPDisplaysDataType",
+          "-json"
+        ],
+        "exit_code": 0,
+        "seconds": 0.22419741601333953
+      },
+      "svg": {
+        "command": [
+          "target/release/examples/svg_fixture_render",
+          "target/cleanup-audit/clip-composite-svg"
+        ],
+        "exit_code": 0,
+        "seconds": 7.433038082992425
+      },
+      "mesh-gradient": {
+        "command": [
+          "target/release/examples/mesh_gradient",
+          "target/cleanup-audit/clip-composite-mesh-gradient.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.48880533399642445
+      },
+      "program-brush": {
+        "command": [
+          "target/release/examples/program_brush",
+          "target/cleanup-audit/clip-composite-program-brush.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.582945166999707
+      },
+      "program-glass": {
+        "command": [
+          "target/release/examples/program_glass",
+          "target/cleanup-audit/clip-composite-program-glass.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5359740830026567
+      },
+      "shader-pipeline": {
+        "command": [
+          "target/release/examples/shader_pipeline",
+          "target/cleanup-audit/clip-composite-shader-pipeline.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.44220920800580643
+      },
+      "shader-graph": {
+        "command": [
+          "target/release/examples/shader_graph",
+          "target/cleanup-audit/clip-composite-shader-graph.png"
+        ],
+        "exit_code": 0,
+        "seconds": 0.4796666250040289
+      },
+      "progressive-balanced": {
+        "command": [
+          "target/release/examples/progressive_blur",
+          "target/cleanup-audit/clip-composite-progressive-balanced.png",
+          "balanced"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5170603329897858
+      },
+      "progressive-high": {
+        "command": [
+          "target/release/examples/progressive_blur",
+          "target/cleanup-audit/clip-composite-progressive-high.png",
+          "high"
+        ],
+        "exit_code": 0,
+        "seconds": 0.06222891600918956
+      },
+      "window": {
+        "command": [
+          "target/release/examples/native_present",
+          "metal",
+          "--smoke"
+        ],
+        "exit_code": 0,
+        "seconds": 0.9124639999936335
+      }
+    },
+    "render": {
+      "artifacts": [
+        {
+          "path": "target/release/build/tileink-24048925a7656d71/out/tileink_native_artifacts.json",
+          "changes": [
+            {
+              "family": "filter-stack",
+              "sources": [
+                "filter/stack.metal",
+                "filter/stack_math.metal"
+              ],
+              "before_sha256": "8d27a07b508ff941b0e0b40c964bbac91bf78761b1e0c8272f4a31fa8462130f",
+              "after_sha256": "cb7ba2df10e22238c96fde3e2ac38a72a023e84e5299d96d3ccfed7a60992415",
+              "abi_unchanged": true
+            }
+          ]
+        },
+        {
+          "path": "target/release/build/tileink-02c1122da65b8cf5/out/tileink_native_artifacts.json",
+          "changes": [
+            {
+              "family": "filter-stack",
+              "sources": [
+                "filter/stack.metal",
+                "filter/stack_math.metal"
+              ],
+              "before_sha256": "8d27a07b508ff941b0e0b40c964bbac91bf78761b1e0c8272f4a31fa8462130f",
+              "after_sha256": "cb7ba2df10e22238c96fde3e2ac38a72a023e84e5299d96d3ccfed7a60992415",
+              "abi_unchanged": true
+            }
+          ]
+        }
+      ],
+      "svg": {
+        "count": 1730,
+        "diffs": []
+      },
+      "examples": [
+        {
+          "name": "mesh-gradient",
+          "exact": true
+        },
+        {
+          "name": "program-brush",
+          "exact": true
+        },
+        {
+          "name": "program-glass",
+          "exact": true
+        },
+        {
+          "name": "shader-pipeline",
+          "exact": true
+        },
+        {
+          "name": "shader-graph",
+          "exact": true
+        },
+        {
+          "name": "progressive-balanced",
+          "exact": true
+        },
+        {
+          "name": "progressive-high",
+          "exact": true
+        }
+      ],
+      "window": "2026-10-12 02:11:40.394 native_present[42072:4666614] Metal API Validation Enabled\nMetal host GPU: Apple M5 (0000000100000575); separate rendering/presentation queues\nmetal: 8 native present frames completed; physical sizes [[640, 360], [480, 270]]\n"
+    },
+    "tests": {
+      "passed": 1072,
+      "failed": 3,
+      "ignored": 0,
+      "failures": [
+        "every_hlsl_header_compiles_without_callers_globals",
+        "pinned_dxc_reports_invalid_source_for_both_targets",
+        "scaled_turbulence_matches_canonical_rgba"
+      ]
+    }
+  },
+  "cleanup": "Temporary scripts and copied executables removed after validation; no production measurement instrumentation.",
+  "conclusion": "Median whole-application time is effectively unchanged (+0.22%; same-version control +0.11%), with no material central regression in this workload. The sample does not establish isolated GPU-stage improvement, tail behavior, or all retained-edit workload performance. Clip, mask and actual offscreen blend semantics are preserved; retained fragment clipping is independently regression-tested."
+}

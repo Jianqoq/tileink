@@ -1,3 +1,6 @@
+mod mesh;
+pub use mesh::{MeshGradient, MeshGradientError, MeshInterpolation};
+
 use std::rc::Rc;
 
 use peniko::{
@@ -8,10 +11,10 @@ use peniko::{
 
 use crate::shared::{
     gpu_layout::brush::{
-        GPU_BRUSH_FOUR_CORNER, GPU_BRUSH_LINEAR, GPU_BRUSH_PARAM_STRIDE,
-        GPU_BRUSH_PATTERN_RESOURCE, GPU_BRUSH_RADIAL, GPU_BRUSH_SOLID, GPU_BRUSH_SWEEP,
-        GPU_BRUSH_U32_STRIDE, GPU_EXTEND_PAD, GPU_EXTEND_REFLECT, GPU_EXTEND_REPEAT,
-        GPU_PATTERN_BILINEAR, GPU_PATTERN_NEAREST,
+        GPU_BRUSH_FOUR_CORNER, GPU_BRUSH_LINEAR, GPU_BRUSH_MESH, GPU_BRUSH_PARAM_STRIDE,
+        GPU_BRUSH_PATTERN_RESOURCE, GPU_BRUSH_PROGRAM, GPU_BRUSH_RADIAL, GPU_BRUSH_SOLID,
+        GPU_BRUSH_SWEEP, GPU_BRUSH_U32_STRIDE, GPU_EXTEND_PAD, GPU_EXTEND_REFLECT,
+        GPU_EXTEND_REPEAT, GPU_PATTERN_BILINEAR, GPU_PATTERN_NEAREST,
     },
     image::unpack_rgba8,
     image_resource::{ImageKey, ImageResourceId},
@@ -32,6 +35,8 @@ pub enum Brush {
     Radial(RadialGradient),
     Sweep(SweepGradient),
     FourCorner(FourCornerGradient),
+    Mesh(MeshGradient),
+    Program(super::shader::ProgramBrush),
     Pattern(PatternBrush),
 }
 
@@ -58,8 +63,10 @@ pub struct RadialGradient {
 #[derive(Clone, Debug)]
 pub struct SweepGradient {
     pub(crate) center: [f32; 2],
+    /// Orientation in [-PI, PI]; GPU evaluation needs at most one turn correction.
     pub(crate) start_angle: f32,
-    pub(crate) end_angle: f32,
+    /// Kept separately so normalizing the orientation cannot change the sweep.
+    pub(crate) angle_span: f32,
     pub(crate) extend: Extend,
     pub(crate) ramp: Rc<[u32]>,
 }
@@ -97,6 +104,7 @@ pub(crate) const ENCODED_BRUSH_HEADER_WORDS: usize = GPU_BRUSH_U32_STRIDE + GPU_
 
 impl Brush {
     /// Creates an image brush from a renderer-owned image resource key with explicit sampling.
+    #[must_use]
     pub fn from_image_key(
         key: ImageKey,
         rect: kurbo::Rect,
@@ -153,10 +161,20 @@ impl Brush {
             .map(Self::Pattern)
     }
 
+    /// Creates a gradient brush with an automatically sized color ramp.
+    ///
+    /// # Panics
+    /// Panics if a sweep gradient has a nonfinite start or end angle.
+    #[must_use]
     pub fn from_gradient(gradient: &Gradient) -> Self {
         Self::from_gradient_with_ramp_size(gradient, estimate_gradient_ramp_size(gradient))
     }
 
+    /// Creates a gradient brush with the requested color ramp size.
+    ///
+    /// # Panics
+    /// Panics if a sweep gradient has a nonfinite start or end angle.
+    #[must_use]
     pub fn from_gradient_with_ramp_size(gradient: &Gradient, ramp_size: usize) -> Self {
         let ramp = build_ramp(gradient, ramp_size);
         match gradient.kind {
@@ -179,16 +197,34 @@ impl Brush {
                 extend: gradient.extend,
                 ramp,
             }),
-            GradientKind::Sweep(position) => Self::Sweep(SweepGradient {
-                center: [position.center.x as f32, position.center.y as f32],
-                start_angle: position.start_angle,
-                end_angle: position.end_angle,
-                extend: gradient.extend,
-                ramp,
-            }),
+            GradientKind::Sweep(position) => {
+                let start = f64::from(position.start_angle);
+                let end = f64::from(position.end_angle);
+                assert!(
+                    start.is_finite() && end.is_finite(),
+                    "sweep gradient angles must be finite"
+                );
+                // Reduce once in wide precision, rather than iterating toward a
+                // potentially huge start on every GPU pixel. Keep the original
+                // signed span; subtracting normalized endpoints loses full turns.
+                let orientation = start.rem_euclid(std::f64::consts::TAU);
+                let orientation = if orientation > std::f64::consts::PI {
+                    orientation - std::f64::consts::TAU
+                } else {
+                    orientation
+                };
+                Self::Sweep(SweepGradient {
+                    center: [position.center.x as f32, position.center.y as f32],
+                    start_angle: orientation as f32,
+                    angle_span: (end - start) as f32,
+                    extend: gradient.extend,
+                    ramp,
+                })
+            }
         }
     }
 
+    #[must_use]
     pub fn four_corner(bounds: kurbo::Rect, colors: [peniko::Color; 4]) -> Self {
         Self::FourCorner(FourCornerGradient {
             bounds: [
@@ -202,7 +238,7 @@ impl Brush {
     }
 
     #[inline]
-    pub(crate) fn solid_color(&self) -> Option<peniko::Color> {
+    pub(crate) const fn solid_color(&self) -> Option<peniko::Color> {
         match self {
             Self::Solid(color) => Some(*color),
             _ => None,
@@ -258,7 +294,7 @@ pub(crate) fn push_encoded_brush(blob: &mut Vec<u32>, brush: &Brush) -> (u32, u3
             params[0] = gradient.center[0].to_bits();
             params[1] = gradient.center[1].to_bits();
             params[2] = gradient.start_angle.to_bits();
-            params[3] = gradient.end_angle.to_bits();
+            params[3] = gradient.angle_span.to_bits();
             set_local_payload(&mut data, gradient.ramp.len());
             push_encoded_header(blob, data, params);
             blob.extend_from_slice(&gradient.ramp);
@@ -272,13 +308,25 @@ pub(crate) fn push_encoded_brush(blob: &mut Vec<u32>, brush: &Brush) -> (u32, u3
             blob.extend_from_slice(&gradient.colors);
             return (offset, blob.len() as u32 - offset);
         }
+        Brush::Mesh(gradient) => {
+            data[0] = GPU_BRUSH_MESH;
+            data[4] = gradient.bins[0];
+            data[5] = gradient.bins[1];
+            data[6] = gradient.patch_base;
+            data[7] = u32::from(gradient.interpolation == MeshInterpolation::Smooth);
+            copy_f32_bits(&mut params[..6], &gradient.transform);
+            copy_f32_bits(&mut params[6..10], &gradient.bounds);
+            set_local_payload(&mut data, gradient.payload.len());
+            push_encoded_header(blob, data, params);
+            blob.extend_from_slice(&gradient.payload);
+            return (offset, blob.len() as u32 - offset);
+        }
+        Brush::Program(brush) => return brush.0.encode(blob),
         Brush::Pattern(pattern) => {
             data[1] = encode_gpu_extend(pattern.extend);
             copy_f32_bits(&mut params[0..6], &pattern.transform);
-            let (width, height) = pattern.image_size();
-            data[5] = width;
-            data[6] = height;
-            data[7] = pattern.opacity as u32;
+            // Resource dimensions are patched from renderer-owned image placement on upload.
+            data[7] = u32::from(pattern.opacity);
             data[8] = encode_gpu_pattern_sampling(pattern.sampling);
             let PatternImage::Resource(id) = pattern.image;
             let (scope, low, high) = id.encode();
@@ -304,30 +352,31 @@ pub(crate) fn encoded_brush_word_len(brush: &Brush) -> usize {
             Brush::Radial(gradient) => gradient.ramp.len(),
             Brush::Sweep(gradient) => gradient.ramp.len(),
             Brush::FourCorner(gradient) => gradient.colors.len(),
+            Brush::Mesh(gradient) => gradient.payload.len(),
+            Brush::Program(brush) => brush.0.word_len() - ENCODED_BRUSH_HEADER_WORDS,
             Brush::Pattern(_) => 3,
         }
 }
 
-pub(crate) fn encoded_brush_payload(blob: &[u32], offset: u32, len: u32) -> Option<&[u32]> {
-    let record = encoded_brush_words(blob, offset, len)?;
-    let data: &[u32; GPU_BRUSH_U32_STRIDE] = record[..GPU_BRUSH_U32_STRIDE].try_into().ok()?;
-    let start = data[2] as usize;
-    let end = start.checked_add(data[3] as usize)?;
-    record.get(start..end)
-}
-
 pub(crate) fn decode_encoded_brush(blob: &[u32], offset: u32, len: u32) -> Option<Brush> {
-    let record = encoded_brush_words(blob, offset, len)?;
-    let data: &[u32; GPU_BRUSH_U32_STRIDE] = record[..GPU_BRUSH_U32_STRIDE].try_into().ok()?;
-    let params = decode_params(&record[GPU_BRUSH_U32_STRIDE..ENCODED_BRUSH_HEADER_WORDS]);
-    let payload = encoded_brush_payload(blob, offset, len)?;
+    let start = offset as usize;
+    let record = blob.get(start..start.checked_add(len as usize)?)?;
+    let header = record.get(..ENCODED_BRUSH_HEADER_WORDS)?;
+    let data = &header[..GPU_BRUSH_U32_STRIDE];
+    // Header validation guarantees every fixed parameter. Variable payloads and
+    // encoded descriptor values still require validation below: unknown values are
+    // malformed records, not alternate spellings of the default enum variant.
+    let params: [f32; GPU_BRUSH_PARAM_STRIDE] =
+        std::array::from_fn(|i| f32::from_bits(header[GPU_BRUSH_U32_STRIDE + i]));
+    let payload_start = data[2] as usize;
+    let payload = record.get(payload_start..payload_start.checked_add(data[3] as usize)?)?;
     match data[0] {
         GPU_BRUSH_SOLID => Some(Brush::Solid(color_from_premul_rgba8(data[4]))),
         GPU_BRUSH_LINEAR => Some(Brush::Linear(LinearGradient {
             start: [params[0], params[1]],
             end: [params[2], params[3]],
-            transform: params[4..10].try_into().ok()?,
-            extend: decode_gpu_extend(data[1]),
+            transform: std::array::from_fn(|i| params[4 + i]),
+            extend: decode_gpu_extend(data[1])?,
             ramp: Rc::from(payload),
         })),
         GPU_BRUSH_RADIAL => Some(Brush::Radial(RadialGradient {
@@ -335,36 +384,81 @@ pub(crate) fn decode_encoded_brush(blob: &[u32], offset: u32, len: u32) -> Optio
             end_center: [params[2], params[3]],
             start_radius: params[4],
             end_radius: params[5],
-            transform: params[6..12].try_into().ok()?,
-            extend: decode_gpu_extend(data[1]),
+            transform: std::array::from_fn(|i| params[6 + i]),
+            extend: decode_gpu_extend(data[1])?,
             ramp: Rc::from(payload),
         })),
-        GPU_BRUSH_SWEEP => Some(Brush::Sweep(SweepGradient {
-            center: [params[0], params[1]],
-            start_angle: params[2],
-            end_angle: params[3],
-            extend: decode_gpu_extend(data[1]),
-            ramp: Rc::from(payload),
-        })),
+        GPU_BRUSH_SWEEP => {
+            if !params[2].is_finite()
+                || params[2].abs() > std::f32::consts::PI
+                || params[3].is_nan()
+            {
+                return None;
+            }
+            Some(Brush::Sweep(SweepGradient {
+                center: [params[0], params[1]],
+                start_angle: params[2],
+                angle_span: params[3],
+                extend: decode_gpu_extend(data[1])?,
+                ramp: Rc::from(payload),
+            }))
+        }
         GPU_BRUSH_FOUR_CORNER => Some(Brush::FourCorner(FourCornerGradient {
-            bounds: params[0..4].try_into().ok()?,
+            bounds: std::array::from_fn(|i| params[i]),
             colors: payload.try_into().ok()?,
         })),
+        GPU_BRUSH_MESH => {
+            let bins = [data[4], data[5]];
+            let bin_count = bins[0].checked_mul(bins[1])? as usize;
+            let patch_base = data[6] as usize;
+            if bins
+                .iter()
+                .any(|&v| v == 0 || v > mesh::MESH_MAX_BINS as u32)
+                || patch_base < bin_count + 1
+                || patch_base > payload.len()
+                || !(payload.len() - patch_base).is_multiple_of(mesh::MESH_PATCH_WORDS)
+                || payload.first().copied()? as usize != bin_count + 1
+                || payload.get(bin_count).copied()? as usize != patch_base
+            {
+                return None;
+            }
+            Some(Brush::Mesh(MeshGradient {
+                transform: std::array::from_fn(|i| params[i]),
+                bounds: std::array::from_fn(|i| params[6 + i]),
+                bins,
+                patch_base: data[6],
+                interpolation: match data[7] {
+                    0 => MeshInterpolation::Bilinear,
+                    1 => MeshInterpolation::Smooth,
+                    _ => return None,
+                },
+                payload: Rc::from(payload),
+            }))
+        }
+        GPU_BRUSH_PROGRAM => Some(Brush::Program(super::shader::ProgramBrush(
+            super::shader::BrushInstance::decode(payload, std::array::from_fn(|i| params[i]))?,
+        ))),
         GPU_BRUSH_PATTERN_RESOURCE => {
-            if payload.len() < 3 {
+            if payload.len() != 3 {
                 return None;
             }
             Some(Brush::Pattern(PatternBrush {
                 image: PatternImage::Resource(ImageResourceId::decode(
                     payload[0], payload[1], payload[2],
-                )),
-                transform: params[0..6].try_into().ok()?,
-                extend: decode_gpu_extend(data[1]),
-                sampling: decode_gpu_pattern_sampling(data[8]),
-                opacity: data[7].min(255) as u8,
+                )?),
+                transform: std::array::from_fn(|i| params[i]),
+                extend: decode_gpu_extend(data[1])?,
+                sampling: decode_gpu_pattern_sampling(data[8])?,
+                opacity: data[7].try_into().ok()?,
             }))
         }
         _ => None,
+    }
+}
+
+impl From<MeshGradient> for Brush {
+    fn from(value: MeshGradient) -> Self {
+        Self::Mesh(value)
     }
 }
 
@@ -440,25 +534,23 @@ pub(crate) fn estimate_sweep_ramp_size(
 }
 
 impl PatternBrush {
-    /// Creates a pattern brush with a caller-provided world-to-image transform.
-    ///
-    /// The transform maps canvas coordinates to image pixel coordinates. Images
-    /// are rejected when either dimension is zero because sampled resources
-    /// require at least one valid texel.
-    pub(crate) fn new_resource(
+    /// Creates a resource descriptor with a caller-provided sampling transform.
+    /// Image dimensions are validated when registering/uploading the resource;
+    /// constructing a descriptor from its identity is infallible.
+    pub(crate) const fn new_resource(
         id: ImageResourceId,
         transform: [f32; 6],
         extend: Extend,
         sampling: PatternSampling,
         opacity: u8,
-    ) -> Option<Self> {
-        Some(Self {
+    ) -> Self {
+        Self {
             image: PatternImage::Resource(id),
             transform,
             extend,
             sampling,
             opacity,
-        })
+        }
     }
 
     /// Creates a renderer-resource pattern brush that maps the image exactly into `rect`.
@@ -474,7 +566,7 @@ impl PatternBrush {
         }
         let sx = 1.0 / rect.width() as f32;
         let sy = 1.0 / rect.height() as f32;
-        Self::new_resource(
+        Some(Self::new_resource(
             id,
             [
                 sx,
@@ -487,11 +579,12 @@ impl PatternBrush {
             extend,
             sampling,
             opacity,
-        )
+        ))
     }
 
     /// Creates a renderer-resource pattern brush that maps image pixels 1:1 to canvas
     /// coordinates.
+    #[must_use]
     pub fn for_origin_resource(
         key: ImageKey,
         origin: [f32; 2],
@@ -506,17 +599,17 @@ impl PatternBrush {
         }
         let sx = 1.0 / width as f32;
         let sy = 1.0 / height as f32;
-        Self::new_resource(
+        Some(Self::new_resource(
             ImageResourceId::renderer(key),
             [sx, 0.0, 0.0, sy, -origin[0] * sx, -origin[1] * sy],
             extend,
             sampling,
             opacity,
-        )
+        ))
     }
 
     #[cfg(test)]
-    pub(crate) fn image_key(&self) -> Option<ImageKey> {
+    pub(crate) const fn image_key(&self) -> Option<ImageKey> {
         match self.image {
             PatternImage::Resource(ImageResourceId::Renderer(key)) => Some(key),
             PatternImage::Resource(ImageResourceId::Scene(_)) => None,
@@ -524,14 +617,10 @@ impl PatternBrush {
     }
 
     #[cfg(test)]
-    pub(crate) fn image_resource_id(&self) -> ImageResourceId {
+    pub(crate) const fn image_resource_id(&self) -> ImageResourceId {
         match self.image {
             PatternImage::Resource(id) => id,
         }
-    }
-
-    pub(crate) fn image_size(&self) -> (u32, u32) {
-        (0, 0)
     }
 }
 
@@ -612,7 +701,7 @@ fn push_encoded_header(
     blob.extend_from_slice(&params);
 }
 
-fn set_local_payload(data: &mut [u32; GPU_BRUSH_U32_STRIDE], len: usize) {
+const fn set_local_payload(data: &mut [u32; GPU_BRUSH_U32_STRIDE], len: usize) {
     data[2] = ENCODED_BRUSH_HEADER_WORDS as u32;
     data[3] = len as u32;
 }
@@ -621,21 +710,6 @@ fn copy_f32_bits(dst: &mut [u32], src: &[f32]) {
     for (dst, src) in dst.iter_mut().zip(src) {
         *dst = src.to_bits();
     }
-}
-
-fn encoded_brush_words(blob: &[u32], offset: u32, len: u32) -> Option<&[u32]> {
-    let start = offset as usize;
-    let end = start.checked_add(len as usize)?;
-    let record = blob.get(start..end)?;
-    (record.len() >= ENCODED_BRUSH_HEADER_WORDS).then_some(record)
-}
-
-fn decode_params(words: &[u32]) -> [f32; GPU_BRUSH_PARAM_STRIDE] {
-    let mut params = [0.0; GPU_BRUSH_PARAM_STRIDE];
-    for (dst, src) in params.iter_mut().zip(words) {
-        *dst = f32::from_bits(*src);
-    }
-    params
 }
 
 fn color_from_premul_rgba8(color: u32) -> peniko::Color {
@@ -648,7 +722,7 @@ fn color_from_premul_rgba8(color: u32) -> peniko::Color {
     peniko::Color::from_rgba8(unpremul(r), unpremul(g), unpremul(b), a)
 }
 
-pub(crate) fn encode_gpu_extend(extend: Extend) -> u32 {
+pub(crate) const fn encode_gpu_extend(extend: Extend) -> u32 {
     match extend {
         Extend::Pad => GPU_EXTEND_PAD,
         Extend::Repeat => GPU_EXTEND_REPEAT,
@@ -656,25 +730,27 @@ pub(crate) fn encode_gpu_extend(extend: Extend) -> u32 {
     }
 }
 
-fn decode_gpu_extend(extend: u32) -> Extend {
+const fn decode_gpu_extend(extend: u32) -> Option<Extend> {
     match extend {
-        GPU_EXTEND_REPEAT => Extend::Repeat,
-        GPU_EXTEND_REFLECT => Extend::Reflect,
-        _ => Extend::Pad,
+        GPU_EXTEND_PAD => Some(Extend::Pad),
+        GPU_EXTEND_REPEAT => Some(Extend::Repeat),
+        GPU_EXTEND_REFLECT => Some(Extend::Reflect),
+        _ => None,
     }
 }
 
-pub(crate) fn encode_gpu_pattern_sampling(sampling: PatternSampling) -> u32 {
+pub(crate) const fn encode_gpu_pattern_sampling(sampling: PatternSampling) -> u32 {
     match sampling {
         PatternSampling::Nearest => GPU_PATTERN_NEAREST,
         PatternSampling::Bilinear => GPU_PATTERN_BILINEAR,
     }
 }
 
-fn decode_gpu_pattern_sampling(sampling: u32) -> PatternSampling {
+const fn decode_gpu_pattern_sampling(sampling: u32) -> Option<PatternSampling> {
     match sampling {
-        GPU_PATTERN_BILINEAR => PatternSampling::Bilinear,
-        _ => PatternSampling::Nearest,
+        GPU_PATTERN_NEAREST => Some(PatternSampling::Nearest),
+        GPU_PATTERN_BILINEAR => Some(PatternSampling::Bilinear),
+        _ => None,
     }
 }
 
@@ -691,113 +767,4 @@ fn quantize_ramp_size(span: f32, stop_count: usize) -> usize {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use peniko::{
-        ColorStop, ColorStops, Gradient, GradientKind, LinearGradientPosition,
-        color::{AlphaColor, ColorSpaceTag, HueDirection},
-    };
-
-    fn linear_gradient() -> Gradient {
-        let stops = [
-            ColorStop::from((0.0, AlphaColor::from_rgb8(255, 0, 0))),
-            ColorStop::from((1.0, AlphaColor::from_rgb8(0, 0, 255))),
-        ];
-        Gradient {
-            kind: GradientKind::Linear(LinearGradientPosition::new((0.0, 0.0), (1.0, 0.0))),
-            extend: Extend::Pad,
-            stops: ColorStops::from(stops.as_slice()),
-            interpolation_cs: ColorSpaceTag::Srgb,
-            interpolation_alpha_space: InterpolationAlphaSpace::Premultiplied,
-            hue_direction: HueDirection::Shorter,
-        }
-    }
-
-    #[test]
-    fn from_gradient_with_ramp_size_uses_dynamic_len() {
-        let brush = Brush::from_gradient_with_ramp_size(&linear_gradient(), 33);
-        let Brush::Linear(gradient) = brush else {
-            panic!("expected linear gradient");
-        };
-        assert_eq!(gradient.ramp.len(), 33);
-    }
-
-    #[test]
-    fn from_gradient_automatically_estimates_small_linear_ramp() {
-        let brush = Brush::from_gradient(&linear_gradient());
-        let Brush::Linear(gradient) = brush else {
-            panic!("expected linear gradient");
-        };
-        assert_eq!(gradient.ramp.len(), MIN_GRADIENT_RAMP_SIZE);
-    }
-
-    #[test]
-    fn estimated_ramp_size_grows_with_span() {
-        let small = estimate_linear_ramp_size([0.0, 0.0], [8.0, 0.0], 2);
-        let large = estimate_linear_ramp_size([0.0, 0.0], [512.0, 0.0], 2);
-        assert!(large > small, "small={small} large={large}");
-    }
-
-    #[test]
-    fn estimated_ramp_size_respects_stop_density() {
-        let sparse = estimate_linear_ramp_size([0.0, 0.0], [8.0, 0.0], 2);
-        let dense = estimate_linear_ramp_size([0.0, 0.0], [8.0, 0.0], 12);
-        assert!(dense > sparse, "sparse={sparse} dense={dense}");
-    }
-
-    #[test]
-    fn encoded_brush_blob_round_trips_variable_payload_brushes() {
-        let renderer_key = ImageKey::new(0x1234_5678_9abc_def0);
-        let scene_key = ImageKey::new(0x2234_5678_9abc_def0);
-        let brushes = [
-            Brush::Solid(peniko::Color::from_rgba8(64, 128, 255, 128)),
-            Brush::Pattern(
-                PatternBrush::new_resource(
-                    ImageResourceId::renderer(renderer_key),
-                    [2.0, 0.0, 0.0, 3.0, 5.0, 7.0],
-                    Extend::Reflect,
-                    PatternSampling::Bilinear,
-                    200,
-                )
-                .unwrap(),
-            ),
-            Brush::Pattern(
-                PatternBrush::new_resource(
-                    ImageResourceId::scene(scene_key),
-                    [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-                    Extend::Repeat,
-                    PatternSampling::Nearest,
-                    255,
-                )
-                .unwrap(),
-            ),
-        ];
-        let mut blob = Vec::new();
-        let ranges = brushes
-            .iter()
-            .map(|brush| push_encoded_brush(&mut blob, brush))
-            .collect::<Vec<_>>();
-
-        assert_eq!(
-            decode_encoded_brush(&blob, ranges[0].0, ranges[0].1)
-                .and_then(|brush| brush.solid_color()),
-            Some(peniko::Color::from_rgba8(64, 128, 255, 128))
-        );
-        let Some(Brush::Pattern(resource)) = decode_encoded_brush(&blob, ranges[1].0, ranges[1].1)
-        else {
-            panic!("expected renderer resource pattern");
-        };
-        assert_eq!(resource.image_key(), Some(renderer_key));
-        assert_eq!(resource.transform, [2.0, 0.0, 0.0, 3.0, 5.0, 7.0]);
-        assert_eq!(resource.extend, Extend::Reflect);
-        assert_eq!(resource.sampling, PatternSampling::Bilinear);
-        assert_eq!(resource.opacity, 200);
-
-        let Some(Brush::Pattern(scene)) = decode_encoded_brush(&blob, ranges[2].0, ranges[2].1)
-        else {
-            panic!("expected scene resource pattern");
-        };
-        assert_eq!(scene.image_resource_id(), ImageResourceId::scene(scene_key));
-        assert_eq!(scene.extend, Extend::Repeat);
-    }
-}
+mod tests;

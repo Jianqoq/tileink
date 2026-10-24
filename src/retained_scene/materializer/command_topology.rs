@@ -1,13 +1,38 @@
+use super::command_order::{Direction, command_container, command_neighbor};
 use super::helpers::painter_path;
 use super::*;
-
-#[derive(Clone, Copy)]
-struct DetachedSceneCommand {
-    fragment_start: usize,
-    fragment_count: usize,
-}
+use crate::shared::execution::{ExecOp, ROOT_COMMAND_LIST_ID};
 
 impl PersistentSceneMaterializer {
+    /// A lack of backdrop dependencies does not imply a flat plan: Scenes can own
+    /// clips and filters. Root-wide reuse needs the actual single unscoped batch.
+    #[allow(
+        clippy::expect_used,
+        reason = "Materialized commands and the installed plan keep live location indices synchronized"
+    )]
+    pub(crate) fn flat_root_batch(&self) -> Option<u32> {
+        if !self.dependency_free {
+            return None;
+        }
+        match self
+            .canvas
+            .compiled_plan
+            .as_ref()
+            .expect("materialized scene owns a plan")
+            .ops
+            .as_slice()
+        {
+            [
+                ExecOp::DrawBatch {
+                    batch_id,
+                    layer_stack,
+                    ..
+                },
+            ] if layer_stack.is_empty() => Some(*batch_id),
+            _ => None,
+        }
+    }
+
     /// Synchronizes flat retained commands after the execution plan reused stable batch storage.
     ///
     /// The plan does not read this command list again until a structural compilation, but later
@@ -18,36 +43,29 @@ impl PersistentSceneMaterializer {
         &mut self,
         scene: &RetainedScene,
         changes: &SceneChangeSet,
-    ) -> bool {
-        if changes.removed_nodes.iter().any(|id| {
-            self.node_metadata
-                .get(id)
-                .is_some_and(|metadata| metadata.kind == NodeKindTag::Layer)
-        }) || changes.changed_nodes.iter().any(|id| {
-            scene
-                .nodes
-                .get(id)
-                .is_some_and(|node| matches!(node.kind, NodeKind::Layer(_)))
-        }) {
-            return false;
-        }
-
+    ) {
+        // The caller selected plain runs with unchanged layer commands. Retired instances
+        // still lose their old command when a new node immediately reuses the same ID.
         let mut removals = Vec::new();
         let mut insertions = HashSet::default();
         let mut patches = Vec::new();
         for &id in &changes.removed_nodes {
-            if scene.nodes.contains_key(&id)
-                || !self
-                    .node_metadata
-                    .get(&id)
-                    .is_some_and(|metadata| metadata.kind == NodeKindTag::Scene)
+            if !self
+                .node_metadata
+                .get(&id)
+                .is_some_and(|metadata| metadata.kind == NodeKindTag::Scene)
             {
                 continue;
             }
-            let Some(location) = self.scene_command_locations.get(&id).cloned() else {
-                return false;
-            };
-            removals.push((location.parent_list, location.command_index, id, false));
+            let location = &self.scene_command_locations[&id];
+            let live = scene
+                .nodes
+                .get(&id)
+                .is_some_and(|node| matches!(node.kind, NodeKind::Scene { .. }));
+            if live {
+                insertions.insert(id);
+            }
+            removals.push((location.parent_list, location.command_index, id));
         }
         for &id in &changes.changed_nodes {
             let Some(node) = scene.nodes.get(&id) else {
@@ -56,18 +74,21 @@ impl PersistentSceneMaterializer {
             if !matches!(node.kind, NodeKind::Scene { .. }) {
                 continue;
             }
-            let Some(previous) = self.node_metadata.get(&id).copied() else {
+            if insertions.contains(&id) {
+                continue;
+            }
+            let Some(previous) = self
+                .node_metadata
+                .get(&id)
+                .filter(|old| old.kind == NodeKindTag::Scene)
+            else {
+                // Groups have no command of their own; a new Scene instance inserts one.
                 insertions.insert(id);
                 continue;
             };
-            if previous.kind != NodeKindTag::Scene {
-                return false;
-            }
-            let Some(location) = self.scene_command_locations.get(&id).cloned() else {
-                return false;
-            };
-            if !self.scene_command_is_current(scene, id, &location) {
-                removals.push((location.parent_list, location.command_index, id, true));
+            let location = &self.scene_command_locations[&id];
+            if !self.scene_command_is_current(scene, id, location) {
+                removals.push((location.parent_list, location.command_index, id));
                 insertions.insert(id);
             } else if previous.instance != node.instance || previous.generation != node.generation {
                 patches.push(id);
@@ -76,36 +97,17 @@ impl PersistentSceneMaterializer {
 
         let mut insertion_targets = HashMap::default();
         for &id in &insertions {
-            let Some(container) = command_container(scene, scene.nodes[&id].parent) else {
-                return false;
-            };
-            let Some(parent_list) = self.command_list_for_container(scene, container) else {
-                return false;
-            };
+            let container = command_container(scene, id);
+            let parent_list = self.command_list_for_container(scene, container);
             insertion_targets.insert(id, (container, parent_list));
         }
 
         // Descending indices keep every not-yet-removed location stable. Each removal only repairs
         // the suffix that physically shifted in its own Vec.
         removals.sort_unstable_by(|a, b| a.0.cmp(&b.0).then_with(|| b.1.cmp(&a.1)));
-        let mut detached = HashMap::default();
-        for (_, _, id, live) in removals {
-            let location = self
-                .scene_command_locations
-                .get(&id)
-                .cloned()
-                .expect("classified retained command location remains live");
+        for (_, _, id) in removals {
+            let location = self.scene_command_locations[&id];
             self.remove_scene_command(id, &location);
-            let command = DetachedSceneCommand {
-                fragment_start: location.fragment_start,
-                fragment_count: location.fragment_count,
-            };
-            if live {
-                detached.insert(id, command);
-            } else {
-                self.vacant_command_fragments
-                    .push(command.fragment_start..command.fragment_start + command.fragment_count);
-            }
         }
         for id in patches {
             self.patch_scene_commands(scene, id);
@@ -126,62 +128,40 @@ impl PersistentSceneMaterializer {
                     || self.canvas.command_lists[parent_list].commands.len(),
                     |location| location.command_index,
                 );
-            let reuse = detached.remove(&id).map(|command| {
-                command.fragment_start..command.fragment_start + command.fragment_count
-            });
-            let reuse = reuse.or_else(|| {
-                let count = self.chunks[&id].canvas.command_lists.len();
-                self.vacant_command_fragments
-                    .iter()
-                    .position(|range| range.len() == count)
-                    .map(|index| self.vacant_command_fragments.swap_remove(index))
-            });
-            let (children, fragment_start, fragment_count) = self.install_chunk_commands(id, reuse);
+            let fragment = self.install_chunk_commands(id, None);
             Rc::make_mut(&mut self.canvas).command_lists[parent_list]
                 .commands
                 .insert(
                     command_index,
                     Command::MaterializedRetainedScene {
                         id,
-                        revision: NodeGeneration::new(scene.nodes[&id].generation),
-                        children,
+                        revision: NodeRevision::new(
+                            scene.nodes[&id].instance,
+                            scene.nodes[&id].generation,
+                        ),
+                        fragment,
                     },
                 );
             self.scene_command_locations.insert(
                 id,
-                SceneCommandLocation {
+                CommandLocation {
                     parent_list,
                     command_index,
-                    fragment_start,
-                    fragment_count,
                 },
             );
             self.refresh_command_indices(parent_list, command_index);
         }
-        debug_assert!(detached.is_empty());
-        true
     }
 
     fn scene_command_is_current(
         &self,
         scene: &RetainedScene,
         id: RetainedNodeId,
-        location: &SceneCommandLocation,
+        location: &CommandLocation,
     ) -> bool {
-        let Some(container) = command_container(scene, scene.nodes[&id].parent) else {
-            return false;
-        };
-        let Some(parent_list) = self.command_list_for_container(scene, container) else {
-            return false;
-        };
-        if location.parent_list != parent_list
-            || !matches!(
-                self.canvas.command_lists[parent_list]
-                    .commands
-                    .get(location.command_index),
-                Some(Command::MaterializedRetainedScene { id: command, .. }) if *command == id
-            )
-        {
+        let container = command_container(scene, id);
+        let parent_list = self.command_list_for_container(scene, container);
+        if location.parent_list != parent_list {
             return false;
         }
         self.next_located_command(scene, id, container, parent_list)
@@ -198,54 +178,45 @@ impl PersistentSceneMaterializer {
         &self,
         scene: &RetainedScene,
         container: RetainedParent,
-    ) -> Option<usize> {
+    ) -> usize {
         if container.node == scene.root {
-            return (container.branch == RetainedChildBranch::Content).then_some(0);
+            return ROOT_COMMAND_LIST_ID;
         }
-        let location = self.layer_command_locations.get(&container.node)?;
+        let location = self.layer_command_locations[&container.node];
         match (
-            self.canvas.command_lists[location.parent_list]
-                .commands
-                .get(location.command_index)?,
+            &self.canvas.command_lists[location.parent_list].commands[location.command_index],
             container.branch,
         ) {
-            (Command::Layer { children, .. }, RetainedChildBranch::Content) => Some(*children),
-            (Command::MaskLayer { content, .. }, RetainedChildBranch::Content) => Some(*content),
-            (Command::MaskLayer { mask, .. }, RetainedChildBranch::Mask) => Some(*mask),
-            _ => None,
+            (Command::Layer { children, .. }, RetainedChildBranch::Content) => *children,
+            (Command::MaskLayer { content, .. }, RetainedChildBranch::Content) => *content,
+            (Command::MaskLayer { mask, .. }, RetainedChildBranch::Mask) => *mask,
+            _ => unreachable!("validated retained container has its branch command list"),
         }
     }
 
-    fn next_located_command(
+    pub(super) fn next_located_command(
         &self,
         scene: &RetainedScene,
         id: RetainedNodeId,
         container: RetainedParent,
         parent_list: usize,
-    ) -> Option<LayerCommandLocation> {
-        let mut next = next_command_node(scene, id, container);
+    ) -> Option<CommandLocation> {
+        let mut next = command_neighbor(scene, id, container, Direction::Next);
         while let Some(id) = next {
             let location = match &scene.nodes[&id].kind {
-                NodeKind::Scene { .. } => {
-                    self.scene_command_locations
-                        .get(&id)
-                        .map(|location| LayerCommandLocation {
-                            parent_list: location.parent_list,
-                            command_index: location.command_index,
-                        })
-                }
+                NodeKind::Scene { .. } => self.scene_command_locations.get(&id).copied(),
                 NodeKind::Layer(_) => self.layer_command_locations.get(&id).copied(),
                 NodeKind::Group => None,
             };
             if location.is_some_and(|location| location.parent_list == parent_list) {
                 return location;
             }
-            next = next_command_node(scene, id, container);
+            next = command_neighbor(scene, id, container, Direction::Next);
         }
         None
     }
 
-    fn remove_scene_command(&mut self, id: RetainedNodeId, location: &SceneCommandLocation) {
+    fn remove_scene_command(&mut self, id: RetainedNodeId, location: &CommandLocation) {
         let removed = Rc::make_mut(&mut self.canvas).command_lists[location.parent_list]
             .commands
             .remove(location.command_index);
@@ -255,9 +226,14 @@ impl PersistentSceneMaterializer {
         );
         self.scene_command_locations.remove(&id);
         self.refresh_command_indices(location.parent_list, location.command_index);
+        self.release_command(removed);
     }
 
-    fn refresh_command_indices(&mut self, parent_list: usize, start: usize) {
+    #[allow(
+        clippy::expect_used,
+        reason = "Materialized commands and the installed plan keep live location indices synchronized"
+    )]
+    pub(super) fn refresh_command_indices(&mut self, parent_list: usize, start: usize) {
         let Self {
             canvas,
             scene_command_locations,
@@ -288,66 +264,13 @@ impl PersistentSceneMaterializer {
                 } => {
                     *layer_command_locations
                         .get_mut(&key.id)
-                        .expect("live retained layer command has a location") =
-                        LayerCommandLocation {
-                            parent_list,
-                            command_index,
-                        };
+                        .expect("live retained layer command has a location") = CommandLocation {
+                        parent_list,
+                        command_index,
+                    };
                 }
                 _ => unreachable!("retained container lists only contain retained commands"),
             }
         }
-    }
-}
-
-fn command_container(
-    scene: &RetainedScene,
-    mut parent: Option<RetainedParent>,
-) -> Option<RetainedParent> {
-    loop {
-        let current = parent?;
-        if current.node == scene.root
-            || matches!(scene.nodes.get(&current.node)?.kind, NodeKind::Layer(_))
-        {
-            return Some(current);
-        }
-        let node = scene.nodes.get(&current.node)?;
-        if !matches!(node.kind, NodeKind::Group) {
-            return None;
-        }
-        parent = node.parent;
-    }
-}
-
-fn first_command_node(scene: &RetainedScene, id: RetainedNodeId) -> Option<RetainedNodeId> {
-    if !matches!(scene.nodes[&id].kind, NodeKind::Group) {
-        return Some(id);
-    }
-    scene.nodes[&id]
-        .content
-        .values()
-        .find_map(|&child| first_command_node(scene, child))
-}
-
-fn next_command_node(
-    scene: &RetainedScene,
-    mut id: RetainedNodeId,
-    container: RetainedParent,
-) -> Option<RetainedNodeId> {
-    loop {
-        let parent = scene.nodes.get(&id)?.parent?;
-        let siblings = scene.nodes[&parent.node].children(parent.branch).ok()?;
-        let key = siblings.key_of(id)?;
-        if let Some(next) = siblings
-            .order
-            .range((std::ops::Bound::Excluded(key), std::ops::Bound::Unbounded))
-            .find_map(|(_, &sibling)| first_command_node(scene, sibling))
-        {
-            return Some(next);
-        }
-        if parent == container {
-            return None;
-        }
-        id = parent.node;
     }
 }

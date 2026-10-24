@@ -1,56 +1,20 @@
 ---
-sidebar_position: 4
-title: GPU Pipeline
+title: GPU pipeline
 ---
 
-# GPU Pipeline
+# GPU pipeline
 
-```mermaid
-flowchart LR
-  Records[Scene records] --> ScanCount[Scan count]
-  ScanCount --> Prefix[Prefix sums]
-  Prefix --> ScanEmit[Emit path segments]
-  ScanEmit --> CoarseCount[Coarse count per tile]
-  CoarseCount --> CoarseEmit[Emit particles/pages]
-  CoarseEmit --> Fine[Fine raster 16x16]
-  Fine --> Composite[Layer stacks]
-  Composite --> Offscreen[Filters / masks / backdrop]
-  Offscreen --> Target[RGBA8 target]
-```
+各原生 API 从同一场景模型准备路径、画刷、layer、文本和图片。Path scan 与 prefix 计算工作量，coarse binning 将绘制分配到 16×16 tile，fine raster 计算 coverage 与混合。Filter pass 按需使用中间 surface。Retained 帧复用未变化的记录与输出历史。通过 `NativeImageSubmission::readback` 显式读回图像；host target 使用提交凭据协调呈现。
 
-## Scan
 
-Path geometry 被 flatten 为 line records。scan shaders 计算每条 line 穿过哪些 tile/row，并通过 prefix/cumsum 分配 backdrop 与 segment 输出。解析 SDF 不需要 CPU tessellation；transform 作为 affine 数据进入 GPU。
+CPU tile binning 会先证明纯色不透明 SDF 矩形完整覆盖的 tile，在同一 raster batch 内跳过被它遮挡的 draw 引用，从而减少 GPU coarse 计数、粒子生成和 fine 绘制。圆角、抗锯齿边缘，以及 clip 未完全覆盖的 tile 会保留；不确定的画刷和变换交给原有 GPU 证明。CPU 空间索引保留全部源内容，确保遮挡移开、透明度变化和滤镜局部化后仍能恢复正确绘制。单 batch 的 retained 索引可以只更新 tile 的可见起点，避免透明度切换时重写完整索引。
 
-## Coarse
+CPU tile 成员和 GPU draw 引用分别保存在连续 arena 中。每个 tile 只记录起点和实际长度，局部编辑复用空闲区间并只上传变化的引用；GPU 的 256 项工作组不再决定存储页大小。碎片过多时统一压紧并刷新起点，完整源成员仍用于空间查询和遮挡恢复。
 
-Coarse 阶段只遍历该 tile 的 draw references，而不是扫描整个 draw table。它产生 fine particles、glyph work 和 layer-stack events。Retained scenes 用稳定 `BatchId`，物理 draw slot 可以在 arena 中不连续。
+Retained path scan 保留已经成功提交的 backdrop、tile segment range 和线段结果。几何日志只选择变化路径，并包含它们的全部边、scan chunks 和 cumsum 行；paint 编辑不重复 scan。物理存储身份、版本连续性和缓冲区容量共同决定能否复用。版本跳跃、放弃提交或输出存储扩容时重建全量结果；cumsum 不会再次累加未变化的行。
 
-## Fine
+版本跳跃同时使其他 scene 日志失效：draw、paint、text、layer、batch 输入以及 tile 成员和 glyph 容量都按当前完整数据刷新。只重算路径仍可能保留漏同步的颜色或位置。刷新保留可复用的 CPU/GPU 容量。文字的 CPU 准备独立记录已处理版本，因为它可能先于 GPU 提交推进；日志不连续时核对完整字形和 run 数据。
 
-Fine shader 每 workgroup 处理 tile pixels，组合 path coverage、SDF、text coverage、brush sampling、clip/opacity/blend stack。native backend 可直接写 storage texture；portable backend 使用兼容的中间表示与 texture copy。
+Coarse 仍为每个 tile 记录最后一个已证明完全覆盖、alpha 为 255 的纯色粒子，供 Fine 跳过更早的粒子。这层证明保留粒子分配区间和 glyph 索引，补充 CPU 的保守剔除。融合的 opacity/blend wrapper、滤镜和 backdrop 依赖仍按原顺序执行。遮挡剔除本身不会省去场景准备、路径 scan 或源数据上传；几何复用由上述独立的增量规则控制。Metal 和 HLSL 使用相同的 CPU tile 引用和执行边界。
 
-## Filters 与 offscreen surfaces
-
-不能 fuse 的 filter/mask/backdrop 变成 ExecPlan offscreen ops。持久 scene 用 `RetainedSurfaceId` 复用兼容 surface；revision、bounds、resource 或 dependency damage 决定是否重新渲染。
-
-## Native 与 portable
-
-两条 WGPU 路径共享场景数据和绝大多数 shader 语义。仓库的 examples/SVG scripts 会执行 native 与 portable pixel compare，确保 backend 一致。
-
-portable fine 对仅含 fused root layer 的执行计划使用整帧 ping-pong：full redraw 只复制一次进入中间纹理、一次复制回输出；partial redraw 额外初始化第二张中间纹理以保留 inactive pixels。递归 offscreen/filter 计划继续使用逐目标的保守路径。`IncrementalRenderStats::portable_texture_copies` 用于观测实际复制次数。
-
-## DX12 构建期 DXIL
-
-Windows 构建会把 portable fine 的四个主要 compute entry point 预编译为 Shader Model 6.0
-DXIL，并把 blob 嵌入库中。Cargo 以 WGSL、shader patch、binding manifest、构建脚本、DXC
-发现环境、Windows SDK bin 目录、DXC 可执行文件及同目录的 `dxcompiler.dll`/`dxil.dll`
-作为失效输入，因此安装或更新工具链也会重新生成产物。DX12 运行时只有在真实 D3D12
-device 支持 Shader Model 6.0，且 `PASSTHROUGH_SHADERS`、portable texture path、64-entry
-image texture table 和 entry point 全部匹配时才使用预编译模块；其他 device、backend 或
-layout 自动回退到现有 WGSL 路径。
-
-DXIL 与 GPU 厂商/型号无关，但驱动从 DXIL 生成的 PSO/机器码仍与 adapter 和 driver
-相关。`Renderer::precompiled_dxil_pipeline_count` 可证明实际初始化了多少条 DXIL pipeline，
-避免把输出等价的 WGSL 回退误判为缓存命中。`TILEINK_DXC_PATH` 可指定构建期 DXC；
-`TILEINK_DXIL_PRECOMPILE=0` 可用于验证回退路径。
+融合栈由类型化的 clip、opacity、blend 记录编码，只有 clip 可以使用 SDF 几何；opacity 和 blend 的边界使用路径。每个 emitter 先对当前 tile 计算有效 wrapper 数量，排除无覆盖的路径或 SDF，并省去已证明覆盖整个 tile 的 clip。随后按嵌套顺序发射 begin，按相反顺序发射 end，复用同一组只读场景输入。Metal 和 HLSL 都遵循这一契约，发射阶段无需重复处理未知栈类型或已排除的路径。

@@ -6,71 +6,67 @@ use crate::shared::gpu_layout::brush::{
 use crate::shared::{
     brush::{Brush, ENCODED_BRUSH_HEADER_WORDS, push_encoded_brush},
     draw_record::DrawRecord,
-    execution::ExecOp,
-    image_resource::{AtlasRect, GpuImageResourceUpload, ImageResourceId, ImageResourcePlacement},
-    layer::{
-        Layer,
-        filter::{Filter, FilterPrimitiveKind},
-    },
+    image_resource::{GpuImageResourceUpload, ImageResourceId, ImageResourcePlacement},
 };
 
 #[derive(Clone, Default)]
 pub(crate) struct GpuBrushUpload {
     pub(crate) blob: Vec<u32>,
+    pub(crate) offsets: Vec<u32>,
 }
 
 impl GpuBrushUpload {
-    pub(crate) fn draw_uses_resource_brush(draw: &DrawRecord, brush_blob: &[u32]) -> bool {
+    pub(crate) const fn draw_uses_resource_brush(draw: &DrawRecord, brush_blob: &[u32]) -> bool {
         let base = draw.brush_offset as usize;
-        draw.brush_offset != DrawRecord::NONE
-            && brush_blob.get(base).copied() == Some(GPU_BRUSH_PATTERN_RESOURCE)
+        draw.brush_offset != DrawRecord::NONE && brush_blob[base] == GPU_BRUSH_PATTERN_RESOURCE
+    }
+
+    /// Resolve resource headers from immutable CPU records, never from previously patched
+    /// GPU headers: words 2/3 change from payload offset/length to atlas coordinates.
+    pub(crate) fn patch_brush_record(
+        destination: &mut [u32],
+        source: &[u32],
+        image_resources: Option<&GpuImageResourceUpload>,
+    ) {
+        if let Some(header) = resource_brush_header(source, image_resources) {
+            destination[..GPU_BRUSH_U32_STRIDE].copy_from_slice(&header);
+        }
     }
 
     pub(crate) fn patch_scene_brush_blob(
-        blob: &mut [u32],
+        destination: &mut [u32],
+        source: &[u32],
         draws: &[DrawRecord],
         image_resources: Option<&GpuImageResourceUpload>,
     ) {
         for draw in draws {
             if draw.brush_offset != DrawRecord::NONE {
-                patch_resource_brush_at(blob, draw.brush_offset, image_resources);
+                let range = draw.brush_offset as usize
+                    ..draw.brush_offset as usize + draw.brush_len as usize;
+                Self::patch_brush_record(
+                    &mut destination[range.clone()],
+                    &source[range],
+                    image_resources,
+                );
             }
         }
     }
 
     pub(crate) fn patch_scene_brush_blob_draw_ranges(
-        blob: &mut [u32],
+        destination: &mut [u32],
+        source: &[u32],
         draws: &[DrawRecord],
         ranges: &[std::ops::Range<usize>],
         image_resources: Option<&GpuImageResourceUpload>,
     ) {
-        for draw in ranges.iter().flat_map(|range| {
-            draws[range.start.min(draws.len())..range.end.min(draws.len())].iter()
-        }) {
-            if draw.brush_offset != DrawRecord::NONE {
-                patch_resource_brush_at(blob, draw.brush_offset, image_resources);
-            }
+        for range in ranges {
+            Self::patch_scene_brush_blob(
+                destination,
+                source,
+                &draws[range.clone()],
+                image_resources,
+            );
         }
-    }
-
-    pub(crate) fn from_filter_plan_with_resources(
-        ops: &[ExecOp],
-        image_resources: Option<&GpuImageResourceUpload>,
-    ) -> Self {
-        let mut upload = Self::default();
-        collect_filter_brushes_for_ops(ops, &mut upload, image_resources);
-        upload
-    }
-
-    pub(crate) fn from_filter_ops_and_filter_with_resources(
-        ops: &[ExecOp],
-        filter: &Filter,
-        image_resources: Option<&GpuImageResourceUpload>,
-    ) -> Self {
-        let mut upload = Self::default();
-        collect_filter_brushes_for_ops(ops, &mut upload, image_resources);
-        collect_filter_brush(filter, &mut upload, image_resources);
-        upload
     }
 
     pub(crate) fn push_brush_with_resources(
@@ -79,233 +75,58 @@ impl GpuBrushUpload {
         image_resources: Option<&GpuImageResourceUpload>,
     ) -> u32 {
         let offset = self.blob.len() as u32;
+        self.offsets.push(offset);
         let (brush_offset, _) = push_encoded_brush(&mut self.blob, brush);
         debug_assert_eq!(offset, brush_offset);
-        patch_resource_brush_at(&mut self.blob, offset, image_resources);
+        // This newly encoded record is still in CPU format; resolve before overwriting it.
+        if let Some(header) = resource_brush_header(&self.blob[offset as usize..], image_resources)
+        {
+            self.blob[offset as usize..offset as usize + GPU_BRUSH_U32_STRIDE]
+                .copy_from_slice(&header);
+        }
         offset
     }
 }
 
-fn patch_resource_brush_at(
-    blob: &mut [u32],
-    brush_offset: u32,
+#[allow(
+    clippy::expect_used,
+    reason = "Resource brush scope and payload are created by the canvas encoder"
+)]
+fn resource_brush_header(
+    source: &[u32],
     image_resources: Option<&GpuImageResourceUpload>,
-) {
-    let base = brush_offset as usize;
-    if blob.get(base).copied() != Some(GPU_BRUSH_PATTERN_RESOURCE) {
-        return;
+) -> Option<[u32; GPU_BRUSH_U32_STRIDE]> {
+    if source[0] != GPU_BRUSH_PATTERN_RESOURCE {
+        return None;
     }
-    let Some(data) = blob.get(base..base + GPU_BRUSH_U32_STRIDE) else {
-        return;
-    };
-    let payload_start = base + data[2] as usize;
-    let payload_len = data[3] as usize;
-    let Some(payload) = blob.get(payload_start..payload_start + payload_len) else {
-        clear_missing_resource_pattern(blob, base);
-        return;
-    };
-    if payload.len() < 3 {
-        clear_missing_resource_pattern(blob, base);
-        return;
-    }
-    let id = ImageResourceId::decode(payload[0], payload[1], payload[2]);
-    if let Some(placement) = image_resources.and_then(|resources| resources.image_placement(id)) {
-        patch_resource_pattern(blob, base, placement);
-    } else {
-        clear_missing_resource_pattern(blob, base);
-    }
-}
-
-fn patch_resource_pattern(blob: &mut [u32], base: usize, placement: ImageResourcePlacement) {
-    match placement {
-        ImageResourcePlacement::Atlas(rect) => patch_atlas_resource_pattern(blob, base, rect),
-        ImageResourcePlacement::Texture(rect) => {
-            if rect.width > 0 && rect.height > 0 {
-                blob[base + 2] = 0;
-                blob[base + 3] = 0;
-                // Word 4 stores either an atlas page or a tagged texture-table index.
-                // The high bit selects texture placement; the remaining bits store the index.
-                blob[base + 4] = GPU_RESOURCE_TEXTURE_PLACEMENT_BIT | rect.index;
-                blob[base + 5] = rect.width;
-                blob[base + 6] = rect.height;
-            } else {
-                clear_missing_resource_pattern(blob, base);
-            }
+    // Canvas and filter brush encoders own this internal format. Resource payloads
+    // contain exactly one three-word image ID; malformed records are invariant errors.
+    let payload = &source[source[2] as usize..];
+    let id = ImageResourceId::decode(payload[0], payload[1], payload[2])
+        .expect("resource brush scope is encoder-owned");
+    let mut header = std::array::from_fn(|index| source[index]);
+    match image_resources.and_then(|resources| resources.image_placement(id)) {
+        Some(ImageResourcePlacement::Atlas(rect)) if rect.width > 0 && rect.height > 0 => {
+            header[2..7].copy_from_slice(&[rect.x, rect.y, rect.page, rect.width, rect.height]);
+        }
+        Some(ImageResourcePlacement::Texture(rect)) if rect.width > 0 && rect.height > 0 => {
+            // The high bit selects a texture-table index instead of an atlas page.
+            header[2..7].copy_from_slice(&[
+                0,
+                0,
+                GPU_RESOURCE_TEXTURE_PLACEMENT_BIT | rect.index,
+                rect.width,
+                rect.height,
+            ]);
+        }
+        _ => {
+            // A genuinely absent or empty image has transparent pattern semantics.
+            header[0] = GPU_BRUSH_PATTERN;
+            header[2..7].copy_from_slice(&[ENCODED_BRUSH_HEADER_WORDS as u32, 0, 0, 0, 0]);
         }
     }
-}
-
-fn patch_atlas_resource_pattern(blob: &mut [u32], base: usize, rect: AtlasRect) {
-    if rect.width > 0 && rect.height > 0 {
-        blob[base + 2] = rect.x;
-        blob[base + 3] = rect.y;
-        blob[base + 4] = rect.page;
-        blob[base + 5] = rect.width;
-        blob[base + 6] = rect.height;
-    } else {
-        clear_missing_resource_pattern(blob, base);
-    }
-}
-
-fn clear_missing_resource_pattern(blob: &mut [u32], base: usize) {
-    blob[base] = GPU_BRUSH_PATTERN;
-    blob[base + 2] = ENCODED_BRUSH_HEADER_WORDS as u32;
-    blob[base + 3] = 0;
-    blob[base + 4] = 0;
-    blob[base + 5] = 0;
-    blob[base + 6] = 0;
-}
-
-fn collect_filter_brushes_for_ops(
-    ops: &[ExecOp],
-    upload: &mut GpuBrushUpload,
-    image_resources: Option<&GpuImageResourceUpload>,
-) {
-    for op in ops {
-        match op {
-            ExecOp::OffscreenLayer {
-                layer, children, ..
-            } => match layer {
-                Layer::Filter { filter, .. } => {
-                    collect_filter_brushes_for_ops(children, upload, image_resources);
-                    collect_filter_brush(filter, upload, image_resources);
-                }
-                Layer::Backdrop { filter, .. } => {
-                    collect_filter_brush(filter, upload, image_resources);
-                    collect_filter_brushes_for_ops(children, upload, image_resources);
-                }
-                _ => collect_filter_brushes_for_ops(children, upload, image_resources),
-            },
-            ExecOp::OffscreenMaskLayer { content, mask, .. } => {
-                collect_filter_brushes_for_ops(content, upload, image_resources);
-                collect_filter_brushes_for_ops(mask, upload, image_resources);
-            }
-            _ => {}
-        }
-    }
-}
-
-fn collect_filter_brush(
-    filter: &Filter,
-    upload: &mut GpuBrushUpload,
-    image_resources: Option<&GpuImageResourceUpload>,
-) {
-    match filter {
-        Filter::Chain { filters, .. } => {
-            for filter in filters {
-                collect_filter_brush(filter, upload, image_resources);
-            }
-        }
-        Filter::Graph { primitives, .. } => {
-            for primitive in primitives {
-                match &primitive.kind {
-                    FilterPrimitiveKind::Filter(filter) => {
-                        collect_filter_brush(filter, upload, image_resources)
-                    }
-                    FilterPrimitiveKind::Image { brush } => {
-                        upload.push_brush_with_resources(brush, image_resources);
-                    }
-                    _ => {}
-                }
-            }
-        }
-        Filter::DropShadow { brush, .. } => {
-            upload.push_brush_with_resources(brush, image_resources);
-        }
-        Filter::Flood { brush } => {
-            upload.push_brush_with_resources(brush, image_resources);
-        }
-        _ => {}
-    }
+    Some(header)
 }
 
 #[cfg(test)]
-mod tests {
-    use peniko::{Color, Extend};
-
-    use super::*;
-    use crate::shared::{
-        bounds::PixelBounds,
-        brush::{PatternBrush, PatternSampling},
-        draw_record::{DrawTagWord, FillRuleWord},
-        fill::FillRule,
-        image_resource::ImageKey,
-    };
-
-    fn draw_with_brush(brush_offset: u32, brush_len: u32) -> DrawRecord {
-        DrawRecord {
-            path_id: DrawRecord::NONE,
-            glyph_run_id: DrawRecord::NONE,
-            sdf_offset: DrawRecord::NONE,
-            sdf_len: 0,
-            sdf_shadow_offset: DrawRecord::NONE,
-            sdf_shadow_len: 0,
-            brush_offset,
-            brush_len,
-            tag: DrawTagWord(0),
-            fill_rule: FillRuleWord(FillRule::NonZero as u32),
-            pixel_bounds: PixelBounds::default(),
-            local_pixel_bounds: PixelBounds::default(),
-            transform: crate::shared::affine::GpuAffine::IDENTITY,
-            inverse_transform: crate::shared::affine::GpuAffine::IDENTITY,
-            solid_rect: 0,
-        }
-    }
-
-    #[test]
-    fn draw_uses_resource_brush_only_for_resource_patterns() {
-        let mut blob = Vec::new();
-        let solid = Brush::Solid(Color::from_rgb8(16, 32, 48));
-        let (solid_offset, solid_len) = push_encoded_brush(&mut blob, &solid);
-        assert!(!GpuBrushUpload::draw_uses_resource_brush(
-            &draw_with_brush(solid_offset, solid_len),
-            &blob
-        ));
-
-        let key = ImageKey::new(0x1234_5678);
-        let resource = Brush::Pattern(
-            PatternBrush::new_resource(
-                ImageResourceId::renderer(key),
-                [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-                Extend::Pad,
-                PatternSampling::Nearest,
-                255,
-            )
-            .unwrap(),
-        );
-        let (resource_offset, resource_len) = push_encoded_brush(&mut blob, &resource);
-        assert!(GpuBrushUpload::draw_uses_resource_brush(
-            &draw_with_brush(resource_offset, resource_len),
-            &blob
-        ));
-    }
-
-    #[test]
-    fn patch_scene_brush_blob_clears_missing_resource_placement() {
-        let key = ImageKey::new(0x1234_5678);
-        let resource = Brush::Pattern(
-            PatternBrush::new_resource(
-                ImageResourceId::renderer(key),
-                [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-                Extend::Pad,
-                PatternSampling::Nearest,
-                255,
-            )
-            .unwrap(),
-        );
-        let mut blob = Vec::new();
-        let (offset, len) = push_encoded_brush(&mut blob, &resource);
-        let draw = draw_with_brush(offset, len);
-        assert_eq!(blob[offset as usize], GPU_BRUSH_PATTERN_RESOURCE);
-
-        GpuBrushUpload::patch_scene_brush_blob(&mut blob, &[draw], None);
-
-        let base = offset as usize;
-        assert_eq!(blob[base], GPU_BRUSH_PATTERN);
-        assert_eq!(blob[base + 2], ENCODED_BRUSH_HEADER_WORDS as u32);
-        assert_eq!(blob[base + 3], 0);
-        assert_eq!(blob[base + 4], 0);
-        assert_eq!(blob[base + 5], 0);
-        assert_eq!(blob[base + 6], 0);
-    }
-}
+mod tests;

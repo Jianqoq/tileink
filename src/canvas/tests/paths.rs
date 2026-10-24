@@ -22,7 +22,6 @@ fn push_arc_adds_draw_and_path_record() {
 
     assert_eq!(canvas.draw_records.len(), 1);
     assert_eq!(canvas.path_records.len(), 1);
-    assert_eq!(canvas.path_records.len(), 1);
     assert_eq!(canvas.draw_records[0].tag, DrawTag::Brush);
     assert!(!canvas.draw_records[0].solid_rect());
 }
@@ -129,13 +128,7 @@ fn push_path_reserves_segment_capacity_from_scan_tile_count() {
     let expected = canvas
         .lines
         .iter()
-        .map(|&line| {
-            line_scanned_tile_count(
-                line,
-                tile_bbox,
-                (canvas.width_in_tiles(), canvas.height_in_tiles()),
-            )
-        })
+        .map(|&line| line_scanned_tile_count(line, tile_bbox))
         .sum::<u32>();
 
     assert_eq!(record.segment_capacity, expected);
@@ -230,7 +223,6 @@ fn append_preserves_path_geometry_for_scene_records_without_mutating_child() {
     }
     assert_path_geometry_records_match_scene(&canvas);
     assert_eq!(canvas.path_records.len(), child.path_records.len() * 2);
-    assert_eq!(canvas.path_records.len(), canvas.path_records.len());
     assert!(canvas.lines.iter().all(|line| {
         [line.p0, line.p1].into_iter().all(|point| {
             (point[0] >= 8.0 && point[0] <= 30.0) && (point[1] >= 4.0 && point[1] <= 22.0)

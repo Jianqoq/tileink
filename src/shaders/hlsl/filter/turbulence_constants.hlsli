@@ -1,0 +1,5 @@
+#ifndef TILEINK_TURBULENCE_CONSTANTS_HLSLI
+#define TILEINK_TURBULENCE_CONSTANTS_HLSLI
+#include "../constants.hlsli"
+static const float TURBULENCE_SCALE_EPSILON=0.00000011920929;
+#endif

@@ -1,0 +1,259 @@
+{
+  "schema": 1,
+  "phase": 27,
+  "date": "2026-10-11",
+  "baseline_commit": "4462c2825884a91da80a25fb39d7ae74e09566c5",
+  "change": "Remove unused incremental controls/statistics and test-only retired planners; split active damage/configuration ownership; fix valid low redraw thresholds.",
+  "environment": {
+    "os": "macOS 27.0.1",
+    "gpu": "Apple M5",
+    "gpu_registry_id": "0000000100000575",
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+    "build_profile": "release",
+    "backend": "metal",
+    "rayon_num_threads": 1,
+    "validation_during_timing": false,
+    "competing_builds_or_gpu_jobs": false
+  },
+  "workload": {
+    "command": [
+      "native_present",
+      "metal",
+      "--smoke"
+    ],
+    "timing_scope": "Whole process: window/context initialization, warmed native shader-cache load, eight submitted/presented frames, resize and teardown. Does not isolate frame time or GPU throughput.",
+    "physical_sizes": [
+      [
+        640,
+        360
+      ],
+      [
+        480,
+        270
+      ]
+    ],
+    "frames_per_process": 8,
+    "warmup_processes_per_variant": 2,
+    "timed_alternating_pairs": 10,
+    "p95_method": "nearest rank"
+  },
+  "executables": {
+    "before_sha256": "ff50f9e7cd1f56065784bf6347264bb5b893f3e29ffdda7726916a20cbf83cb2",
+    "after_sha256": "02d1d0b6b91125ac98b119c6b6349354fe284861fe1d9e003d64b13ae8282bdc"
+  },
+  "summary": {
+    "before": {
+      "timed_processes": 10,
+      "median_ms": 227.88385399326216,
+      "p95_ms": 231.79745799279772,
+      "min_ms": 226.11554100876674,
+      "max_ms": 231.79745799279772
+    },
+    "after": {
+      "timed_processes": 10,
+      "median_ms": 223.1630415044492,
+      "p95_ms": 227.36429201904684,
+      "min_ms": 220.41100001661107,
+      "max_ms": 227.36429201904684
+    }
+  },
+  "change_percent": {
+    "median_ms": -2.071587085302029,
+    "p95_ms": -1.9125170794101698
+  },
+  "raw_runs": [
+    {
+      "pair": -2,
+      "variant": "before",
+      "warmup": true,
+      "exit_code": 0,
+      "milliseconds": 706.4421660033986
+    },
+    {
+      "pair": -2,
+      "variant": "after",
+      "warmup": true,
+      "exit_code": 0,
+      "milliseconds": 224.2860840051435
+    },
+    {
+      "pair": -1,
+      "variant": "after",
+      "warmup": true,
+      "exit_code": 0,
+      "milliseconds": 221.86187500483356
+    },
+    {
+      "pair": -1,
+      "variant": "before",
+      "warmup": true,
+      "exit_code": 0,
+      "milliseconds": 227.4540830112528
+    },
+    {
+      "pair": 0,
+      "variant": "before",
+      "warmup": false,
+      "exit_code": 0,
+      "milliseconds": 231.08929197769612
+    },
+    {
+      "pair": 0,
+      "variant": "after",
+      "warmup": false,
+      "exit_code": 0,
+      "milliseconds": 222.90054100449197
+    },
+    {
+      "pair": 1,
+      "variant": "after",
+      "warmup": false,
+      "exit_code": 0,
+      "milliseconds": 220.41100001661107
+    },
+    {
+      "pair": 1,
+      "variant": "before",
+      "warmup": false,
+      "exit_code": 0,
+      "milliseconds": 227.8042079997249
+    },
+    {
+      "pair": 2,
+      "variant": "before",
+      "warmup": false,
+      "exit_code": 0,
+      "milliseconds": 226.9053750205785
+    },
+    {
+      "pair": 2,
+      "variant": "after",
+      "warmup": false,
+      "exit_code": 0,
+      "milliseconds": 225.9851249982603
+    },
+    {
+      "pair": 3,
+      "variant": "after",
+      "warmup": false,
+      "exit_code": 0,
+      "milliseconds": 224.76879099849612
+    },
+    {
+      "pair": 3,
+      "variant": "before",
+      "warmup": false,
+      "exit_code": 0,
+      "milliseconds": 226.11554100876674
+    },
+    {
+      "pair": 4,
+      "variant": "before",
+      "warmup": false,
+      "exit_code": 0,
+      "milliseconds": 228.8289580028504
+    },
+    {
+      "pair": 4,
+      "variant": "after",
+      "warmup": false,
+      "exit_code": 0,
+      "milliseconds": 227.36429201904684
+    },
+    {
+      "pair": 5,
+      "variant": "after",
+      "warmup": false,
+      "exit_code": 0,
+      "milliseconds": 225.2758749818895
+    },
+    {
+      "pair": 5,
+      "variant": "before",
+      "warmup": false,
+      "exit_code": 0,
+      "milliseconds": 227.96349998679943
+    },
+    {
+      "pair": 6,
+      "variant": "before",
+      "warmup": false,
+      "exit_code": 0,
+      "milliseconds": 226.52974998345599
+    },
+    {
+      "pair": 6,
+      "variant": "after",
+      "warmup": false,
+      "exit_code": 0,
+      "milliseconds": 223.09937502723187
+    },
+    {
+      "pair": 7,
+      "variant": "after",
+      "warmup": false,
+      "exit_code": 0,
+      "milliseconds": 222.80866699293256
+    },
+    {
+      "pair": 7,
+      "variant": "before",
+      "warmup": false,
+      "exit_code": 0,
+      "milliseconds": 231.79745799279772
+    },
+    {
+      "pair": 8,
+      "variant": "before",
+      "warmup": false,
+      "exit_code": 0,
+      "milliseconds": 227.7614159975201
+    },
+    {
+      "pair": 8,
+      "variant": "after",
+      "warmup": false,
+      "exit_code": 0,
+      "milliseconds": 221.63345801527612
+    },
+    {
+      "pair": 9,
+      "variant": "after",
+      "warmup": false,
+      "exit_code": 0,
+      "milliseconds": 223.22670798166655
+    },
+    {
+      "pair": 9,
+      "variant": "before",
+      "warmup": false,
+      "exit_code": 0,
+      "milliseconds": 229.5591659785714
+    }
+  ],
+  "verification": {
+    "all_24_window_processes_completed_8_frames_and_resize": true,
+    "validated_window_completed": true,
+    "svg_exact_matches": 1730,
+    "example_exact_matches": 7,
+    "active_metal_manifests_byte_identical": true,
+    "release_tests": {
+      "passed": 1048,
+      "failed": 3,
+      "ignored": 0
+    },
+    "focused_tests_passed": 28,
+    "example_tests_passed": 12,
+    "known_failures": [
+      "every_hlsl_header_compiles_without_callers_globals",
+      "pinned_dxc_reports_invalid_source_for_both_targets",
+      "scaled_turbulence_matches_canonical_rgba"
+    ]
+  },
+  "interpretation": "No measured whole-process regression. The median decreases by 2.07%; do not attribute this small change to GPU speedup or infer other workloads/backends. Production algorithms are preserved except removal of unused configuration validation and the obsolete Wasm budget fork.",
+  "limitations": [
+    "DXC and actual DX12/Vulkan runtime execution unavailable.",
+    "The existing scaled-turbulence canonical-image regression remains unchanged."
+  ],
+  "temporary_measurement_code": "None added. Copied baseline executable and source backups removed after review."
+}
