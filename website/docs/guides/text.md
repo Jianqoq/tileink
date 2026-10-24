@@ -45,6 +45,11 @@ buffer 必须由同一个 font system 创建。
 RGB/BGR 对普通轮廓字形使用 Harmony LCD 覆盖率；`None` 使用单通道 alpha。
 彩色字体仍优先使用其彩色轮廓或位图，切换 subpixel 模式不会将彩色 emoji 转成单色。
 
+LCD 的三个颜色通道覆盖率只在不透明目标像素上分别合成。透明目标（包括动画的离屏透明图层）
+使用通道平均覆盖率表示一个 alpha；单个 RGBA alpha 无法保留三个独立的透射率。
+原先使用最大通道作为 alpha 会在图层覆盖到背景时加重字形边缘，这里修复的是合成根因。
+图层插入、透明度变化与小数位移都必须保持字形覆盖一致，不能靠改变字重补偿。
+
 ## 扁平 Canvas 的 prepared text 复用
 
 连续调用 `render_with_text*` 渲染新记录的扁平 `Canvas` 时，renderer 会复用已准备的

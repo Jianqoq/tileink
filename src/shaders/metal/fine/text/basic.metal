@@ -1,8 +1,19 @@
+// RGB coverage cannot be stored as one alpha against an unknown backdrop.
+// Preserve its mean coverage on transparent layers instead of thickening it
+// with the maximum channel; opaque destinations retain LCD rendering.
+uint3 text_subpixel_coverage(uint destination,uint mask,uint clip) {
+    uint3 bytes=byte_channels(mask).rgb;
+    uint3 coverage=uint3(mul255(bytes.r,clip),mul255(bytes.g,clip),mul255(bytes.b,clip));
+    if((destination>>24)!=255) {
+        uint gray=(coverage.r+coverage.g+coverage.b+1)/3;
+        coverage=uint3(gray);
+    }
+    return coverage;
+}
 uint subpixel_over(uint destination,uint source,uint mask,uint clip) {
     uint sa=source>>24;
     if(!sa || !clip) return destination;
-    uint3 m=byte_channels(mask).rgb;
-    m=uint3(mul255(m.r,clip),mul255(m.g,clip),mul255(m.b,clip));
+    uint3 m=text_subpixel_coverage(destination,mask,clip);
     if(all(m==0)) return destination;
     uint3 coverage=uint3(mul255(sa,m.r),mul255(sa,m.g),mul255(sa,m.b));
     uint alpha=max(max(coverage.r,coverage.g),coverage.b);
@@ -19,8 +30,7 @@ uint linear_mask_over(uint destination,uint source,uint coverage) {
 }
 uint linear_subpixel_over(uint destination,uint source,uint mask,uint clip) {
     if(!(source>>24) || !clip) return destination;
-    uint3 bytes=byte_channels(mask).rgb;
-    float3 m=float3(mul255(bytes.r,clip),mul255(bytes.g,clip),mul255(bytes.b,clip))*(1.0f/255.0f);
+    float3 m=float3(text_subpixel_coverage(destination,mask,clip))*(1.0f/255.0f);
     if(all(m==0)) return destination;
     float sa=float(source>>24)*(1.0f/255.0f),da=float(destination>>24)*(1.0f/255.0f);
     float3 s=linear_premul(source,sa),d=linear_premul(destination,da),coverage=sa*m;

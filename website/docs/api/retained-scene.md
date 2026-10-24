@@ -75,3 +75,10 @@ Group 和 Layer 可以拥有 Content 子节点；`insert_scene` 创建的 Canvas
 `RetainedSceneError`：`DuplicateNode`、`MissingNode`、`InvalidParentBranch`、`InvalidSibling`、`Cycle`、`CannotRemoveRoot`、`ScaleMismatch`、`UnclosedCanvas`、`InvalidPosition`、`InvalidTransform`、`InvalidSize`。
 
 失败 commit 会执行完整 rollback，不会留下部分 hierarchy/order/generation/surface 修改。
+
+Scene placement 和 `ClipSdf` 的变换必须在当前 surface scale 下转换为 GPU `f32`
+后仍然有限、可逆，且逆矩阵的系数也可表示。小但非零的缩放不会仅因行列式小于
+固定 epsilon 而被拒绝；求逆使用 `f64` 中间值避免行列式上下溢。转换后变为奇异矩阵、
+物理位移溢出或逆矩阵溢出时，commit 返回 `InvalidTransform` 并完整回滚。
+同一规则覆盖插入、placement/layer 更新和 surface scale 修改。这修复了校验通过后
+materializer 在动画小缩放上 panic 的根因。

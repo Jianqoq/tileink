@@ -12,6 +12,8 @@ cargo test --release --no-default-features --features vulkan -- --test-threads=1
 cargo test --release --no-default-features --features metal -- --test-threads=1
 ```
 
+Successful Vulkan pipeline cache hits and cold pipeline creation are silent; creation failures return their normal error results.
+
 Only one GPU backend feature may be enabled in a build. The native renderer owns its context, GPU resources, output textures, and submission receipts. `NativeContextOptions` can select a physical adapter and require API validation.
 
 ## Render an image

@@ -24,6 +24,12 @@ RGB/BGR use Harmony LCD coverage for ordinary outline glyphs; `None` uses a sing
 alpha channel. Color fonts retain their color outlines or bitmap strikes in every
 subpixel mode, so changing the mode does not turn color emoji into monochrome glyphs.
 
+Independent LCD channel coverage requires an opaque destination pixel. Transparent targets,
+including offscreen opacity groups used by animations, use the channel mean as scalar coverage.
+One RGBA alpha cannot retain three independent transmittances; using their maximum made glyph
+edges heavier when the layer was composited. This fixes the compositing cause. Group insertion,
+opacity changes and fractional motion must preserve coverage without changing the font weight.
+
 If the application already retains a `cosmic_text::Buffer` for measurement or editing, call
 `TextContext::layout_buffer(&mut fonts, &mut buffer)`. It shapes pending changes and reuses the
 buffer's existing layout state, avoiding the allocation and shaping cost of `layout`'s owned

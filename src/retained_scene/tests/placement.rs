@@ -327,3 +327,41 @@ fn ordinary_transform_exits_fixed_damage_bounds() {
             .any(|nodes| nodes.contains(&child))
     );
 }
+
+#[test]
+fn small_invertible_animation_scales_materialize_and_recover() {
+    let root = RetainedNodeId::for_owner(70_020);
+    let child = RetainedNodeId::for_owner(70_021);
+    let mut scene = RetainedScene::new(96, 96, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            child,
+            path_leaf(),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+    let mut materializer = PersistentSceneMaterializer::new(&scene);
+    for scale in [0.01, 0.0001, 0.00001, 0.5, 1.0] {
+        let transform = Affine::translate((24.0, 12.0)) * Affine::scale(scale);
+        scene
+            .transaction()
+            .set_transform(child, transform)
+            .commit()
+            .unwrap();
+        assert!(update_materializer(&mut materializer, &scene));
+        let draw = materializer.chunks[&child].canvas.draw_records[0];
+        let fresh = PersistentSceneMaterializer::new(&scene);
+        assert_eq!(
+            draw.inverse_transform,
+            fresh.chunks[&child].canvas.draw_records[0].inverse_transform
+        );
+        let (x, y) = draw.transform.transform_point(8.0, 10.0);
+        let (local_x, local_y) = draw.inverse_transform.transform_point(x, y);
+        assert!((local_x - 8.0).abs() < 0.2, "scale={scale}, x={local_x}");
+        assert!((local_y - 10.0).abs() < 0.2, "scale={scale}, y={local_y}");
+    }
+}

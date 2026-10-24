@@ -84,7 +84,7 @@ impl RetainedScene {
                 transform,
                 translation_damage,
             } => {
-                validate_transform(transform)?;
+                validate_transform(transform, self.surface.scale_factor())?;
                 if let Some(damage) = translation_damage {
                     validate_damage_rect(damage)?;
                 }
@@ -123,7 +123,7 @@ impl RetainedScene {
                 }
             }
             Mutation::UpdateLayer { id, layer } => {
-                validate_layer(&layer)?;
+                validate_layer(&layer, self.surface.scale_factor())?;
                 let node = self
                     .nodes
                     .get_mut(&id)
@@ -247,13 +247,10 @@ impl RetainedScene {
                     return Err(RetainedSceneError::InvalidSize);
                 }
                 let scale = surface.scale_factor();
-                if self.nodes.values().any(|node| match &node.kind {
-                    NodeKind::Scene { canvas, .. } => {
-                        (canvas.scale_factor() - scale).abs() > f32::EPSILON
+                if scale != self.surface.scale_factor() {
+                    for node in self.nodes.values() {
+                        validate_kind(&node.kind, scale)?;
                     }
-                    _ => false,
-                }) {
-                    return Err(RetainedSceneError::ScaleMismatch);
                 }
                 if self.surface == surface {
                     Ok(UndoMutation::None)

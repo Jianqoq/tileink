@@ -105,12 +105,7 @@ pub fn ensure(
             .name(&name);
         let cached = cache::create(device, properties, key, stage, result.layout);
         device.destroy_shader_module(shader, None);
-        let (pipeline, hit) = cached?;
-        result.pipeline = pipeline;
-        eprintln!(
-            "native Vulkan compute {entry}: {}",
-            if hit { "cache hit" } else { "compiled" }
-        );
+        result.pipeline = cached?.0;
         pipelines.insert(pass.key().to_owned(), result);
         Ok(())
     }

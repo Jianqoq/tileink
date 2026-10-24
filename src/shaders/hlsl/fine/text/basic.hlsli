@@ -4,13 +4,29 @@
 #include "../../shared/pixel.hlsli"
 #include "gamma.hlsli"
 
+// LCD coverage has three independent transmittances. An RGBA layer has only one
+// alpha, so transparent destinations need scalar coverage. Taking the channel
+// maximum inflated glyph edges when the layer was later composited (root cause).
+uint3 text_subpixel_coverage(uint destination, uint mask, uint clip) {
+    uint3 coverage = uint3(
+        combine_alpha(mask & 255u, clip),
+        combine_alpha((mask >> 8u) & 255u, clip),
+        combine_alpha((mask >> 16u) & 255u, clip));
+    if ((destination >> 24u) != 255u) {
+        uint gray = (coverage.x + coverage.y + coverage.z + 1u) / 3u;
+        coverage = uint3(gray, gray, gray);
+    }
+    return coverage;
+}
+
 uint src_over_subpixel_mask_u8(uint dst, uint src, uint mask_rgb, uint clip) {
     uint sa = src >> 24u;
     uint result = dst;
     if (sa != 0u && clip != 0u) {
-        uint mr = combine_alpha(mask_rgb & 255u, clip);
-        uint mg = combine_alpha((mask_rgb >> 8u) & 255u, clip);
-        uint mb = combine_alpha((mask_rgb >> 16u) & 255u, clip);
+        uint3 coverage = text_subpixel_coverage(dst, mask_rgb, clip);
+        uint mr = coverage.x;
+        uint mg = coverage.y;
+        uint mb = coverage.z;
         if (mr != 0u || mg != 0u || mb != 0u) {
             uint cr = mul_div255(sa, mr);
             uint cg = mul_div255(sa, mg);
@@ -52,9 +68,10 @@ uint src_over_mask_linear_u8(uint dst, uint src, uint coverage) {
 uint src_over_subpixel_mask_linear_u8(uint dst, uint src, uint mask_rgb, uint clip) {
     uint result = dst;
     if ((src >> 24u) != 0u && clip != 0u) {
-        float mr = float(combine_alpha(mask_rgb & 255u, clip)) * (1.0 / 255.0);
-        float mg = float(combine_alpha((mask_rgb >> 8u) & 255u, clip)) * (1.0 / 255.0);
-        float mb = float(combine_alpha((mask_rgb >> 16u) & 255u, clip)) * (1.0 / 255.0);
+        uint3 coverage = text_subpixel_coverage(dst, mask_rgb, clip);
+        float mr = float(coverage.x) * (1.0 / 255.0);
+        float mg = float(coverage.y) * (1.0 / 255.0);
+        float mb = float(coverage.z) * (1.0 / 255.0);
         if (mr != 0.0 || mg != 0.0 || mb != 0.0) {
             float src_a = float((src >> 24u) & 255u) * (1.0 / 255.0);
             float dst_a = float((dst >> 24u) & 255u) * (1.0 / 255.0);

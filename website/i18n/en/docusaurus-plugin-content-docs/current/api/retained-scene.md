@@ -34,3 +34,12 @@ Groups and layers can own content children. A Canvas leaf created by `insert_sce
 `RetainedLayerDescriptor` covers ClipPath, ClipSdf, Isolate, Opacity, Blend, Filter, Backdrop, and Mask. Only mask layers accept mask-branch children.
 
 Validation errors include duplicate/missing nodes, invalid parent/sibling/branch, cycles, root removal, scale mismatch, unclosed Canvas, invalid position/transform, and invalid size. Failed commits leave no partial state.
+
+Scene placements and `ClipSdf` transforms must remain finite and invertible after conversion
+into GPU `f32` coordinates at the current surface scale, with a representable inverse.
+Small nonzero scales are accepted without a fixed determinant epsilon. Inversion uses `f64`
+intermediates to avoid determinant underflow/overflow. Matrices that become singular after
+conversion, overflow their physical translation, or have an unrepresentable inverse return
+`InvalidTransform` and roll back the complete commit. The same rule covers insertion,
+placement/layer updates, and surface scale changes. This fixes the root cause of materializer
+panics on validated small animation scales.
