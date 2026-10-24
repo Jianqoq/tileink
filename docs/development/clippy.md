@@ -24,6 +24,13 @@ conditional exceptions keep unavailable-backend stubs consistent with the
 runtime API; Windows and macOS check the actual implementations. Tests run in release mode with `RAYON_NUM_THREADS=1` and
 `--test-threads=1`.
 
+The required status names are `Formatting`, `Clippy`, `Tests (ubuntu-latest)`,
+`Tests (windows-latest)`, and `Tests (macos-latest)`. Keep these names stable when
+changing the backend matrix. Clippy and test aggregate jobs require every
+underlying matrix entry to succeed; failure, cancellation, or skipping cannot
+produce a successful required check. This fixes the mismatch between expanded
+backend job names and main's required statuses without changing the ruleset.
+
 ## What is checked
 
 The default groups cover correctness, suspicious code, performance, unnecessary

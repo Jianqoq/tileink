@@ -13,6 +13,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   formatting:
+    name: Formatting
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -73,3 +74,28 @@ jobs:
       - run: cargo test --release --no-default-features --features ${{ matrix.feature }} --test native_shader_compiler -- --test-threads=1 --include-ignored
         if: runner.os != 'macOS'
       - run: cargo build --release --no-default-features --features ${{ matrix.feature }} --examples
+  # These names are the contract with main's required status checks. Aggregate
+  # every matrix result so backend changes cannot leave required names missing.
+  clippy-required:
+    name: Clippy
+    needs: clippy
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every Clippy matrix entry
+        env:
+          RESULT: ${{ needs.clippy.result }}
+        run: test "$RESULT" = success
+  tests-required:
+    name: Tests (${{ matrix.os }})
+    needs: tests
+    if: ${{ always() }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every test matrix entry
+        env:
+          RESULT: ${{ needs.tests.result }}
+        run: test "$RESULT" = success
