@@ -27,6 +27,10 @@ CPU membership work before clip scheduling, with the same batch set.
 - Retained sparse output preserves active-list order. An explicit empty active
   list returns `Some(empty)`, distinct from the regular-dispatch `None` result.
   Partial edge tiles and nonmonotonic IDs retain their existing semantics.
+  Sparse filtering first rejects IDs outside the flattened first/last row
+  interval. Only surviving IDs need a column remainder; full-width clips need
+  no remainder. This is an exact predicate reduction, not a change to list order,
+  sparse classification, allocation capacity, or GPU coverage.
 - Current child bounds cannot restrict retained damage: removed or reparented
   content and empty clip batches can still require masks. Child bounds constrain
   only complete repaints with known content. Dense full-repaint generation keeps
@@ -138,3 +142,69 @@ Frozen baseline SHA-256 is
 `504bae14b966d19d6dd9685127bc18fc589b7f59815a9d716c290a03a7297bfe`;
 candidate is
 `dac3dbf451f5477513299d2eb7acbe5ac8d29ea2d0f9832faab58d81c46912e4`.
+
+
+## Flattened sparse rejection, 2026-10-29
+
+Sparse retained selection still scanned approximately 9,800 active IDs per query
+to retain about 52-54 tiles in a fresh AAPL Trades replay with MACD. Converting
+every ID into row/column coordinates spent work on unrelated rows. The root fix
+rejects IDs outside the flattened first/last row interval before calculating a
+column remainder. Full-width rows need no remainder. This preserves insertion
+order and all existing classification/allocation behavior without adding caches,
+changing shaders, or changing indicator/data loading work.
+
+An optional timer around the actual selection in the running application measured
+10.58 -> 5.80 microseconds per sparse query (45% less). The two diagnostic captures
+contain 62 and 69 blocks of 1,024 selections with more than nine million input IDs
+per block; small startup clips are excluded from this stage-cost comparison.
+A temporary machine-local budget test failed at 10.54 microseconds and passed at
+2.40 microseconds. Neither that isolated result nor the stage percentage represents
+an overall frame-rate gain. Both temporary timers and the budget test were removed.
+
+Eight captures with stage timers disabled in both frozen builds use fresh AAPL
+Trades sessions, October 21-22, 2026,
+1-minute candles and MACD. Native mouse input resizes the window from 3300x1300 to
+2940x1140 and back, and pans the chart horizontally by 360 pixels. Each measured
+gesture has eight 1.8-second legs; replay is paused or playing at 1x. No build or test jobs were scheduled alongside gesture recording. Existing
+desktop processes were not isolated; an earlier ra-lsp helper was found still
+present at cleanup and stopped. These are observational application measurements,
+not an isolated system benchmark. The fixed sequence is
+baseline/candidate/candidate/baseline, repeated twice. Every completed capture is
+included. One earlier diagnostic capture aborted on a UTF-8 decoding error before
+any measured gestures; its replacement is retained as `probe-after2`.
+
+Mean FPS below is the mean of four per-run displayed-frame rates. PresentMon
+legacy QPC timestamps are converted to the native driver's millisecond clock.
+Only complete display intervals within the gesture are included, excluding
+boundary intervals which began in the preceding idle period. See the upstream
+[PresentMon metric definitions](https://github.com/GameTechDev/PresentMon/blob/main/README-ConsoleApplication.md).
+
+| Workload | Before FPS | After FPS | Difference |
+|---|---:|---:|---:|
+| paused-resize | 108.85 | 109.05 | +0.18% |
+| paused-drag | 137.65 | 137.92 | +0.20% |
+| playing-resize | 120.73 | 119.73 | -0.83% |
+| playing-drag | 136.86 | 136.29 | -0.42% |
+
+The first group's playing-resize mean decreased, while the second group's
+increased. Overall FPS is effectively similar at these sample sizes; there is no
+demonstrated FPS improvement. Playing-drag median per-run P95 is 7.00 -> 10.43 ms
+(the latter averages two middle values across the approximately 6.94/13.89 ms
+display intervals); P99 is 13.91 ms for both. Tails have not improved. Retention is
+based on lower measured CPU selection work, not a claimed frame-pacing win.
+GPU rendering work and production presentation policy are unchanged. DX12 and
+Metal share this CPU predicate, but their hardware performance was not measured.
+
+Validation: the independent list oracle and new reverse-order row/column-edge
+regression pass under Vulkan and DX12 (eight focused CPU tests each). The six
+explicit clip GPU tests pass on RTX 4090 with Vulkan validation enabled. The full
+single-threaded Vulkan release suite has 1,017 passes, zero failures and 221 ignored
+tests; ignored hardware tests are not counted as full-suite passes. All 1,728 SVG
+outputs match the frozen baseline byte-for-byte, and all Vulkan examples compile.
+Strict Vulkan all-target Clippy, formatting, and the normal App release build pass.
+Temporary App scenarios and all measurement code have been removed.
+
+Raw CSVs, gesture snapshots, screenshots, per-run statistics, original provisional
+boundary statistics, stage logs, test logs and source/binary hashes are preserved
+under `northstar-trading-app/artifacts/tile-stage-2026-10-29/`.

@@ -59,9 +59,13 @@ pub(super) fn tiles(
             (bounds.3 as u32).div_ceil(TILE_SIZE),
         );
         let mut selected = Vec::with_capacity(count as usize);
-        selected.extend(active.list().iter().copied().filter(|tile| {
-            let (x, y) = (tile % stride, tile / stride);
-            x >= x0 && x < x1 && y >= y0 && y < y1
+        // Root fix: sparse clips used to divide every active ID into row/column coordinates,
+        // including unrelated rows. Reject the flat interval first while retaining list order.
+        let first = y0 * stride + x0;
+        let end = (y1 - 1) * stride + x1;
+        let full_rows = x0 == 0 && x1 == stride;
+        selected.extend(active.list().iter().copied().filter(|&tile| {
+            (first..end).contains(&tile) && (full_rows || (x0..x1).contains(&(tile % stride)))
         }));
         return Some(selected);
     }

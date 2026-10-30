@@ -555,3 +555,41 @@ fn retained_bitmap_clip_selection_matches_list_reference_for_edges_holes_and_ord
         }
     }
 }
+
+#[test]
+fn sparse_clip_preserves_reverse_order_at_row_and_column_edges() {
+    // Non-word-aligned stride exercises complete rows and middle-column subsets. Filtering
+    // flattened row intervals must still reject columns outside the clip in intermediate rows.
+    for clip in [
+        Rect::new(0.0, 16.0, 1040.0, 32.0),
+        Rect::new(16.0, 16.0, 1024.0, 32.0),
+        Rect::new(1024.0, 0.0, 1040.0, 64.0),
+        Rect::new(0.0, 0.0, 16.0, 64.0),
+    ] {
+        let mut canvas = Canvas::new(1040, 64, 1.0);
+        canvas.push_clip_sdf_rect_layer(clip, crate::Radius::ZERO);
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, 1040.0, 64.0),
+            crate::Radius::ZERO,
+            peniko::Color::BLACK,
+        );
+        canvas.pop_layer();
+        let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+        let ids: Vec<_> = (0..260).rev().collect();
+        let active = active_tiles(&canvas, &ids);
+        let expected: Vec<_> = ids
+            .into_iter()
+            .filter(|tile| {
+                let (x, y) = ((tile % 65) * TILE_SIZE, (tile / 65) * TILE_SIZE);
+                f64::from(x) >= clip.x0
+                    && f64::from(x) < clip.x1
+                    && f64::from(y) >= clip.y0
+                    && f64::from(y) < clip.y1
+            })
+            .collect();
+        assert_eq!(
+            tiles(&canvas, &plan, 0..1, Some(&active), None),
+            Some(expected)
+        );
+    }
+}
