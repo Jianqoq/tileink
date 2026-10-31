@@ -189,7 +189,7 @@ fn create(
                     .to_vec(),
             ))
         };
-        let hit = super::super::pipeline_cache::load_or_create_for_layout(
+        super::super::pipeline_cache::load_or_create_for_layout(
             identity,
             shader_key,
             if samplers.is_some() {
@@ -219,11 +219,6 @@ fn create(
                 Ok(bytes)
             },
         )?;
-        eprintln!(
-            "native DX12 compute {}: {}",
-            shader.entry,
-            if hit { "cache hit" } else { "compiled" }
-        );
         Ok(Pipeline {
             signature,
             state: pipeline
