@@ -33,6 +33,7 @@ pub(crate) enum Layer {
     Backdrop {
         filter: Filter,
         sample_region: Region,
+        opacity: Option<f32>,
     },
 }
 

@@ -76,6 +76,7 @@ impl FilterCursors {
                     OffscreenLayer::Backdrop {
                         filter,
                         sample_region,
+                        ..
                     } => {
                         self.next_path_index(sample_region);
                         self.advance_filter(filter);

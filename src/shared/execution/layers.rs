@@ -23,5 +23,6 @@ pub(crate) enum OffscreenLayer {
     Backdrop {
         filter: Filter,
         sample_region: Region,
+        opacity: Option<f32>,
     },
 }

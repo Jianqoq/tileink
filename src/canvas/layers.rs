@@ -208,6 +208,27 @@ impl Canvas {
     /// # Panics
     /// Panics if a rectangular liquid-glass effect is supplied with a nonrectangular region.
     pub fn push_backdrop_layer(&mut self, filter: Filter, sample_region: Region) {
+        self.push_backdrop(filter, sample_region, None);
+    }
+
+    /// Capture/filter the parent's backdrop, then fade it and the foreground as one surface.
+    ///
+    /// This samples the parent before isolation. Only the filtered backdrop is clipped to
+    /// `sample_region`; foreground overflow remains visible. Opacity is clamped to 0..=1.
+    ///
+    /// # Panics
+    /// Panics for nonfinite opacity or invalid rectangular-liquid-glass regions.
+    pub fn push_backdrop_layer_with_opacity(
+        &mut self,
+        filter: Filter,
+        sample_region: Region,
+        opacity: f32,
+    ) {
+        assert!(opacity.is_finite(), "backdrop opacity must be finite");
+        self.push_backdrop(filter, sample_region, Some(opacity.clamp(0.0, 1.0)));
+    }
+
+    fn push_backdrop(&mut self, filter: Filter, sample_region: Region, opacity: Option<f32>) {
         let filter = self.physical_filter(filter);
         let sample_region = self.physical_region(sample_region);
         if filter.contains_rect_liquid_glass() {
@@ -219,6 +240,7 @@ impl Canvas {
         self.push_layer_command(Layer::Backdrop {
             filter,
             sample_region,
+            opacity,
         });
     }
 

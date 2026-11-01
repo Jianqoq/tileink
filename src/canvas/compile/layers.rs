@@ -52,9 +52,11 @@ impl Canvas {
             Layer::Backdrop {
                 filter,
                 sample_region,
+                opacity,
             } => LayerExecution::Offscreen(OffscreenLayer::Backdrop {
                 filter: filter.clone(),
                 sample_region: sample_region.clone(),
+                opacity: *opacity,
             }),
         }
     }

@@ -295,6 +295,7 @@ pub(super) fn backdrop_dependencies(canvas: &Canvas) -> Vec<BackdropDependency> 
                     if let Layer::Backdrop {
                         filter: value,
                         sample_region,
+                        ..
                     } = layer
                     {
                         result.push(BackdropDependency {
@@ -311,7 +312,7 @@ pub(super) fn backdrop_dependencies(canvas: &Canvas) -> Vec<BackdropDependency> 
                     collect(
                         canvas,
                         *children,
-                        scoped || !matches!(layer, Layer::Backdrop { .. }),
+                        scoped || !matches!(layer, Layer::Backdrop { opacity: None, .. }),
                         result,
                     );
                 }
@@ -355,6 +356,7 @@ pub(super) fn chunk_layer_influence_bounds(chunk: &SceneChunk) -> Bounds {
                 | crate::shared::layer::Layer::Backdrop {
                     filter: value,
                     sample_region,
+                    ..
                 },
             ..
         } => filter::unclipped_filtered_region_bounds(value, sample_region),

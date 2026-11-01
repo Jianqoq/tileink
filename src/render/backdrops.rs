@@ -1,5 +1,6 @@
 //! Painter-order backdrop history and lifecycle, independent of GPU API.
 use std::ops::Range;
+mod composite;
 
 use crate::{
     Canvas,
@@ -23,6 +24,7 @@ pub(crate) struct BackdropLayer<'a> {
     pub(crate) retained_id: Option<RetainedSurfaceId>,
     pub(crate) filter: &'a Filter,
     pub(crate) region: &'a Region,
+    pub(crate) opacity: Option<f32>,
     pub(crate) stack: Range<usize>,
     pub(crate) children: &'a [ExecOp],
 }
@@ -37,7 +39,9 @@ pub(crate) struct BackdropPass<'a> {
     pub(crate) region: &'a Region,
 }
 
-pub(crate) trait BackdropAdapter: MaskAdapter + FilterPassAdapter {
+pub(crate) trait BackdropAdapter:
+    MaskAdapter + FilterPassAdapter + super::groups::GroupAdapter
+{
     type WorkState;
     /// Ok(false) permits the ordinary path; recording failures abort the frame.
     fn try_direct_backdrop(
@@ -76,15 +80,31 @@ fn active_region<A: BackdropAdapter>(a: &A, bounds: Bounds) -> Option<Bounds> {
     a.retained().surface_is_dirty(bounds).then_some(bounds)
 }
 
-#[allow(
-    clippy::expect_used,
-    reason = "A cacheable backdrop owns both allocated scratch slots until they are transferred to the cache"
-)]
 pub(crate) fn execute<A: BackdropAdapter>(
     a: &mut A,
     canvas: &Canvas,
     plan: &ExecPlan,
     layer: &BackdropLayer<'_>,
+    target: RenderTargetId,
+    cursors: &mut FilterCursors,
+) -> Result<(), A::Error> {
+    if let Some(opacity) = layer.opacity {
+        composite::execute(a, canvas, plan, layer, target, cursors, opacity)
+    } else {
+        execute_to(a, canvas, plan, layer, target, target, cursors)
+    }
+}
+
+#[allow(
+    clippy::expect_used,
+    reason = "A cacheable backdrop owns both allocated scratch slots until they are transferred to the cache"
+)]
+fn execute_to<A: BackdropAdapter>(
+    a: &mut A,
+    canvas: &Canvas,
+    plan: &ExecPlan,
+    layer: &BackdropLayer<'_>,
+    input: RenderTargetId,
     target: RenderTargetId,
     cursors: &mut FilterCursors,
 ) -> Result<(), A::Error> {
@@ -94,7 +114,7 @@ pub(crate) fn execute<A: BackdropAdapter>(
     if bounds.is_empty() {
         // An empty effect does not clip its foreground or break root submission batching.
         cursors.advance_filter(layer.filter);
-        return operations::execute_ops(a, canvas, plan, layer.children, target, cursors, None);
+        return foreground(a, canvas, plan, layer, target, cursors, input != target);
     }
     let meta = layer.retained_id.and_then(|id| {
         a.retained()
@@ -109,6 +129,7 @@ pub(crate) fn execute<A: BackdropAdapter>(
     if !a.retained().backdrop_is_dirty(layer.retained_id)
         && let Some((id, surface)) = cached.take()
     {
+        let output_work = (input != target).then(|| a.suspend_backdrop_work());
         let result = active_region(a, bounds).map_or(Ok(()), |output| {
             if direct_rect {
                 a.composite_cached_backdrop_rect(target, &surface.primary, output, layer.region)
@@ -123,11 +144,14 @@ pub(crate) fn execute<A: BackdropAdapter>(
                 )
             }
         });
+        if let Some(work) = output_work {
+            a.restore_backdrop_work(work);
+        }
         a.retained_mut().stats_mut().reused_offscreen_surfaces += 1;
         a.retained_mut().insert_surface(id, surface);
         cursors.advance_filter(layer.filter);
         result?;
-        return operations::execute_ops(a, canvas, plan, layer.children, target, cursors, None);
+        return foreground(a, canvas, plan, layer, target, cursors, input != target);
     }
     let partial = cached.as_ref().is_some_and(|(_, surface)| {
         surface.backdrop_source.is_some() && (
@@ -151,10 +175,11 @@ pub(crate) fn execute<A: BackdropAdapter>(
     let bypass = a.retained().bypasses_backdrop_cache();
     if (layer.retained_id.is_none() || bypass)
         && direct_rect
+        && input == target
         && a.try_direct_backdrop(target, bounds, layer.filter, layer.region)?
     {
         cursors.advance_filter(layer.filter);
-        return operations::execute_ops(a, canvas, plan, layer.children, target, cursors, None);
+        return foreground(a, canvas, plan, layer, target, cursors, input != target);
     }
     let cache_surface = layer.retained_id.is_some() && meta.is_some() && !bypass;
     let mut backdrop_slot = None;
@@ -179,18 +204,18 @@ pub(crate) fn execute<A: BackdropAdapter>(
             // Read footprints are independent of the final coverage rectangle.
             // Refraction/convolution can reach background outside that rectangle;
             // keeping only output pixels silently substitutes pooled/stale pixels.
-            let input = filter_dependency(layer.filter)
+            let read_bounds = filter_dependency(layer.filter)
                 .source_bounds(bounds, Bounds::canvas(size.0, size.1));
             let update = if cached_source.is_some() {
-                active_region(a, input)
+                active_region(a, read_bounds)
             } else {
-                Some(input)
+                Some(read_bounds)
             };
             if let Some(source_history) = cached_source {
                 a.install_scratch(source, source_history);
             }
             if let Some(update) = update {
-                a.copy_filter_region(target, source, update)?;
+                a.copy_filter_region(input, source, update)?;
             }
         }
         let partial_output = partial.then(|| {
@@ -203,7 +228,7 @@ pub(crate) fn execute<A: BackdropAdapter>(
         let suspended = (!partial).then(|| a.suspend_backdrop_work());
         let filtered = a.filter_backdrop(
             BackdropPass {
-                source: source_slot.unwrap_or(target),
+                source: source_slot.unwrap_or(input),
                 target: backdrop,
                 bounds,
                 partial_output,
@@ -216,6 +241,7 @@ pub(crate) fn execute<A: BackdropAdapter>(
             a.restore_backdrop_work(state);
         }
         filtered?;
+        let output_work = (input != target).then(|| a.suspend_backdrop_work());
         let composite = if direct_rect {
             active_region(a, bounds).map_or(Ok(()), |output| {
                 a.composite_backdrop_rect(target, backdrop, output, layer.region)
@@ -232,6 +258,9 @@ pub(crate) fn execute<A: BackdropAdapter>(
                 a.composite_targets(target, backdrop, mask, output, layer.stack.clone(), None)
             })
         };
+        if let Some(work) = output_work {
+            a.restore_backdrop_work(work);
+        }
         // A composite error leaves complete source/filter/coverage images valid.
         // Errors during their construction take the cleanup path above instead.
         if cache_surface {
@@ -250,7 +279,24 @@ pub(crate) fn execute<A: BackdropAdapter>(
         a.release_scratch(slot);
     }
     result?;
-    operations::execute_ops(a, canvas, plan, layer.children, target, cursors, None)
+    foreground(a, canvas, plan, layer, target, cursors, input != target)
+}
+
+fn foreground<A: BackdropAdapter>(
+    a: &mut A,
+    canvas: &Canvas,
+    plan: &ExecPlan,
+    layer: &BackdropLayer<'_>,
+    target: RenderTargetId,
+    cursors: &mut FilterCursors,
+    fresh: bool,
+) -> Result<(), A::Error> {
+    let work = fresh.then(|| a.suspend_backdrop_work());
+    let result = operations::execute_ops(a, canvas, plan, layer.children, target, cursors, None);
+    if let Some(work) = work {
+        a.restore_backdrop_work(work);
+    }
+    result
 }
 
 #[cfg(test)]

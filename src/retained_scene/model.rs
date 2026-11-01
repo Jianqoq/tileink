@@ -83,6 +83,12 @@ pub enum RetainedLayerDescriptor {
         filter: Filter,
         sample_region: Region,
     },
+    /// Capture the parent backdrop before isolating and fading the complete surface.
+    BackdropWithOpacity {
+        filter: Filter,
+        sample_region: Region,
+        opacity: f32,
+    },
     Mask(Mask),
 }
 

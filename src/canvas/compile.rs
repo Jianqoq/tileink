@@ -219,7 +219,8 @@ impl Canvas {
                             let stack_start = plan.layer_stack_data.len();
                             plan.layer_stack_data.extend_from_slice(layer_stack);
                             let stack_end = plan.layer_stack_data.len();
-                            let inherit_stack = matches!(layer, OffscreenLayer::Backdrop { .. });
+                            let inherit_stack =
+                                matches!(layer, OffscreenLayer::Backdrop { opacity: None, .. });
                             ops.push(ExecOp::OffscreenLayer {
                                 retained_id: retained_owner.map(|owner| {
                                     let slot = surface_slots.entry(owner).or_default();

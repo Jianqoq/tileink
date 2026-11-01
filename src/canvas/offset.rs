@@ -131,9 +131,11 @@ impl SceneOffset {
             Layer::Backdrop {
                 filter,
                 sample_region,
+                opacity,
             } => Layer::Backdrop {
                 filter: self.filter(filter),
                 sample_region: self.region(sample_region),
+                opacity,
             },
         }
     }
