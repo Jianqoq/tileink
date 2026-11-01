@@ -83,6 +83,7 @@ fn filters_render_local_children_while_backdrops_sample_the_existing_parent_targ
     for backdrop in [false, true] {
         let layer = if backdrop {
             OffscreenLayer::Backdrop {
+                opacity: None,
                 filter: Filter::Invert(1.0),
                 sample_region: region.clone(),
             }

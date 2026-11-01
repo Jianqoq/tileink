@@ -47,6 +47,7 @@ pub(crate) fn execute<A: GroupAdapter + FilterAdapter + BackdropAdapter>(
         OffscreenLayer::Backdrop {
             filter,
             sample_region,
+            opacity,
         } => {
             return backdrops::execute(
                 adapter,
@@ -56,6 +57,7 @@ pub(crate) fn execute<A: GroupAdapter + FilterAdapter + BackdropAdapter>(
                     retained_id: op.retained_id,
                     filter,
                     region: sample_region,
+                    opacity: *opacity,
                     stack: op.outer_stack,
                     children: op.children,
                 },

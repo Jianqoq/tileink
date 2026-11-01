@@ -194,7 +194,8 @@ impl PersistentSceneMaterializer {
                 outset: 0,
                 clip: Some(chunk_layer_influence_bounds(&self.chunks[&id])),
             },
-            RetainedLayerDescriptor::Backdrop { .. } => BoundsInfluence {
+            RetainedLayerDescriptor::Backdrop { .. }
+            | RetainedLayerDescriptor::BackdropWithOpacity { .. } => BoundsInfluence {
                 outset: 0,
                 clip: None,
             },

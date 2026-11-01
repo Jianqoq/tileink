@@ -126,6 +126,7 @@ fn render(
         canvas,
         plan,
         &BackdropLayer {
+            opacity: None,
             retained_id: retained.then(id),
             filter,
             region,
@@ -389,6 +390,7 @@ fn cached_composite_failure_preserves_history_and_consumes_backdrop_resources() 
             &canvas,
             &plan,
             &BackdropLayer {
+                opacity: None,
                 retained_id: Some(id()),
                 filter: &transfer(),
                 region: &path(),
@@ -462,6 +464,7 @@ fn nested_backdrop_foreground_preserves_its_scratch_target() {
         &canvas,
         &plan,
         &BackdropLayer {
+            opacity: None,
             retained_id: None,
             filter: &transfer(),
             region: &path(),
@@ -564,4 +567,77 @@ fn clean_rect_cache_uses_its_direct_composite_and_preserves_foreground() {
     );
     assert_eq!(cached(&mut a), Some((20, None, Some(40))));
     idle(&a);
+}
+
+#[test]
+fn combined_backdrop_errors_restore_work_and_release_every_scratch_lease() {
+    for (stage, skip) in [
+        ("clear", 0),
+        ("backdrop", 0),
+        ("children", 0),
+        ("opacity", 0),
+        ("region", 0),
+        ("composite", 0),
+        ("composite", 1),
+    ] {
+        let (canvas, plan) = fixture();
+        let mut a = Adapter::new(&canvas, RetainedSurfaceKind::Backdrop);
+        let mut damage = DamageTiles::new((32, 32));
+        damage.add_bounds(Bounds::new(2, 2, 4, 4));
+        a.retained.set_active_tiles(Some(damage));
+        a.fail = Some(stage);
+        a.skip_failures = skip;
+        let filter = transfer();
+        let region = rect();
+        let result = execute(
+            &mut a,
+            &canvas,
+            &plan,
+            &BackdropLayer {
+                retained_id: None,
+                filter: &filter,
+                region: &region,
+                opacity: Some(0.5),
+                stack: 2..4,
+                children: &plan.ops[..1],
+            },
+            RenderTargetId::Main,
+            &mut FilterCursors::default(),
+        );
+        assert!(
+            matches!(result, Err(error) if error == stage),
+            "stage {stage}, skip {skip}"
+        );
+        assert_eq!(a.retained.active_tiles().unwrap().len(), 1);
+        idle(&a);
+    }
+}
+
+#[test]
+fn combined_backdrop_exhaustion_releases_parent_and_filter_leases() {
+    for limit in 0..3 {
+        let (canvas, plan) = fixture();
+        let mut a = Adapter::new(&canvas, RetainedSurfaceKind::Backdrop);
+        a.expected_stack = 0..0;
+        a.scratch_limit = limit;
+        let filter = transfer();
+        let region = path();
+        let result = execute(
+            &mut a,
+            &canvas,
+            &plan,
+            &BackdropLayer {
+                retained_id: None,
+                filter: &filter,
+                region: &region,
+                opacity: Some(0.5),
+                stack: 0..0,
+                children: &plan.ops[..1],
+            },
+            RenderTargetId::Main,
+            &mut FilterCursors::default(),
+        );
+        assert!(matches!(result, Err("scratch")), "limit {limit}");
+        idle(&a);
+    }
 }

@@ -176,6 +176,7 @@ fn layer_bounds(
         Layer::Backdrop {
             filter: value,
             sample_region,
+            ..
         } => child_bounds.union(offset.bounds(filter::unclipped_filtered_region_bounds(
             value,
             sample_region,
@@ -238,6 +239,7 @@ fn propagate_list_damage(
                     Layer::Backdrop {
                         filter: value,
                         sample_region,
+                        ..
                     } => {
                         let source_changed = propagate_filter_damage(
                             value,

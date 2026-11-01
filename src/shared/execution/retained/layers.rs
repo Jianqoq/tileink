@@ -124,19 +124,28 @@ fn patch_retained_layer_ops(ops: &mut [ExecOp], id: RetainedNodeId, new: &Comman
                             filter: replacement_filter,
                             sample_region: replacement_region,
                         },
-                    )
-                    | (
+                    ) => {
+                        *filter = replacement_filter.clone();
+                        *sample_region = replacement_region.clone();
+                    }
+                    (
                         OffscreenLayer::Backdrop {
                             filter,
                             sample_region,
+                            opacity,
                         },
                         Layer::Backdrop {
                             filter: replacement_filter,
                             sample_region: replacement_region,
+                            opacity: replacement_opacity,
                         },
                     ) => {
+                        if opacity.is_some() != replacement_opacity.is_some() {
+                            return false;
+                        }
                         *filter = replacement_filter.clone();
                         *sample_region = replacement_region.clone();
+                        *opacity = *replacement_opacity;
                     }
                     _ => return false,
                 }

@@ -50,6 +50,11 @@ pub(super) fn descriptor(kind: usize) -> RetainedLayerDescriptor {
             filter: filter::Filter::Opacity(1.0),
             sample_region,
         },
+        8 => RetainedLayerDescriptor::BackdropWithOpacity {
+            filter: filter::Filter::Opacity(1.0),
+            sample_region,
+            opacity: 0.5,
+        },
         7 => RetainedLayerDescriptor::Mask(Mask {
             region: sample_region,
             kind: MaskKind::Alpha,
@@ -94,8 +99,8 @@ fn assert_fragment_partition(state: &PersistentSceneMaterializer, scene: &Retain
 fn root_fragment_ranges_follow_all_layer_kind_transitions_and_empty_children() {
     let id = RetainedNodeId::for_owner;
     for empty in [false, true] {
-        for before in 0..8 {
-            for after in 0..8 {
+        for before in 0..9 {
+            for after in 0..9 {
                 let mut scene = RetainedScene::new(32, 32, 1.0, id(181_000)).unwrap();
                 scene
                     .transaction()

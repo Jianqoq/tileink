@@ -99,6 +99,16 @@ pub(super) fn validate_layer(
         }
         RetainedLayerDescriptor::Filter { sample_region, .. }
         | RetainedLayerDescriptor::Backdrop { sample_region, .. } => validate_region(sample_region),
+        RetainedLayerDescriptor::BackdropWithOpacity {
+            sample_region,
+            opacity,
+            ..
+        } => {
+            if !opacity.is_finite() || !(0.0..=1.0).contains(opacity) {
+                return Err(RetainedSceneError::InvalidPosition);
+            }
+            validate_region(sample_region)
+        }
         RetainedLayerDescriptor::Mask(mask) => validate_region(&mask.region),
         RetainedLayerDescriptor::ClipSdf { sdf, transform } => {
             validate_sdf(*sdf)?;
@@ -206,4 +216,26 @@ pub(super) fn validate_path(path: &BezPath) -> Result<(), RetainedSceneError> {
         })
         .then_some(())
         .ok_or(RetainedSceneError::InvalidPosition)
+}
+
+#[cfg(test)]
+mod backdrop_opacity_tests {
+    use super::*;
+    #[test]
+    fn retained_combined_backdrop_rejects_invalid_opacity_without_normalizing_authored_data() {
+        for opacity in [-1.0, 0.0, 0.5, 1.0, 2.0, f32::NAN, f32::INFINITY] {
+            let layer = RetainedLayerDescriptor::BackdropWithOpacity {
+                filter: crate::Filter::Invert(1.0),
+                sample_region: crate::Region::rect(
+                    peniko::kurbo::Rect::new(0.0, 0.0, 20.0, 20.0),
+                    crate::Radius::ZERO,
+                ),
+                opacity,
+            };
+            assert_eq!(
+                validate_layer(&layer, 1.0).is_ok(),
+                opacity.is_finite() && (0.0..=1.0).contains(&opacity)
+            );
+        }
+    }
 }

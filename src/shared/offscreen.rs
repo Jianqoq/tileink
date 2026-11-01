@@ -171,9 +171,11 @@ fn translate_layer_to_local(
         OffscreenLayer::Backdrop {
             filter,
             sample_region,
+            opacity,
         } => OffscreenLayer::Backdrop {
             filter: translate_filter_to_local(filter, local),
             sample_region: translate_region_to_local(sample_region, local),
+            opacity: *opacity,
         },
     }
 }

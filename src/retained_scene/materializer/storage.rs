@@ -65,6 +65,17 @@ impl PersistentSceneMaterializer {
                         filter,
                         sample_region,
                     } => canvas.push_backdrop_layer(filter.clone(), sample_region.clone()),
+                    RetainedLayerDescriptor::BackdropWithOpacity {
+                        filter,
+                        sample_region,
+                        opacity,
+                    } => {
+                        canvas.push_backdrop_layer_with_opacity(
+                            filter.clone(),
+                            sample_region.clone(),
+                            *opacity,
+                        );
+                    }
                     RetainedLayerDescriptor::Mask(mask) => {
                         canvas.push_mask_layer(Canvas::with_surface(scene.surface), mask.clone());
                     }

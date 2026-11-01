@@ -369,3 +369,61 @@ fn offscreen_layer_updates_reach_both_mask_branches() {
         ));
     }
 }
+
+#[test]
+fn combined_backdrop_scope_changes_recompile_but_opacity_samples_only_patch_values() {
+    let region = Region::rect(Rect::new(0.0, 0.0, 64.0, 64.0), Radius::ZERO);
+    let mut scene = scene(RetainedLayerDescriptor::Backdrop {
+        filter: Filter::Invert(1.0),
+        sample_region: region.clone(),
+    });
+    let mut materializer = PersistentSceneMaterializer::new(&scene);
+    let before = materializer.canvas.compiled_plan.clone().unwrap();
+    scene
+        .transaction()
+        .update_layer(
+            GROUP,
+            RetainedLayerDescriptor::BackdropWithOpacity {
+                filter: Filter::Invert(1.0),
+                sample_region: region.clone(),
+                opacity: 0.25,
+            },
+        )
+        .commit()
+        .unwrap();
+    assert!(update_materializer(&mut materializer, &scene));
+    assert!(matches!(
+        root_layer(&materializer),
+        OffscreenLayer::Backdrop {
+            opacity: Some(0.25),
+            ..
+        }
+    ));
+    let first = materializer.canvas.compiled_plan.clone().unwrap();
+    assert!(!Rc::ptr_eq(&before.draw_order, &first.draw_order));
+    scene
+        .transaction()
+        .update_layer(
+            GROUP,
+            RetainedLayerDescriptor::BackdropWithOpacity {
+                filter: Filter::Invert(1.0),
+                sample_region: region,
+                opacity: 0.75,
+            },
+        )
+        .commit()
+        .unwrap();
+    assert!(update_materializer(&mut materializer, &scene));
+    assert!(matches!(
+        root_layer(&materializer),
+        OffscreenLayer::Backdrop {
+            opacity: Some(0.75),
+            ..
+        }
+    ));
+    let after = materializer.canvas.compiled_plan.clone().unwrap();
+    assert!(
+        Rc::ptr_eq(&first.draw_order, &after.draw_order),
+        "opacity animation rebuilt draw batches"
+    );
+}

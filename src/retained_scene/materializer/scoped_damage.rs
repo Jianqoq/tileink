@@ -15,7 +15,8 @@ impl PersistentSceneMaterializer {
             Command::Layer {
                 layer, children, ..
             } => Some(
-                !matches!(layer, Layer::Backdrop { .. }) && !self.canvas.can_fuse(layer, *children),
+                !matches!(layer, Layer::Backdrop { opacity: None, .. })
+                    && !self.canvas.can_fuse(layer, *children),
             ),
             Command::MaskLayer { .. } => Some(true),
             _ => None,
