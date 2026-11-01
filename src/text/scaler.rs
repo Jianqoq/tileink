@@ -30,9 +30,16 @@ pub(super) fn with_glyph_scaler<R>(
     Some(f(&mut scaler))
 }
 
+pub(super) const FAKE_ITALIC_ANGLE: f32 = 14.0;
+
 pub(super) fn fake_italic_transform(cache_key: CacheKey) -> Option<Transform> {
     cache_key
         .flags
         .contains(CacheKeyFlags::FAKE_ITALIC)
-        .then(|| Transform::skew(Angle::from_degrees(14.0), Angle::from_degrees(0.0)))
+        .then(|| {
+            Transform::skew(
+                Angle::from_degrees(FAKE_ITALIC_ANGLE),
+                Angle::from_degrees(0.0),
+            )
+        })
 }

@@ -37,3 +37,13 @@ uint linear_subpixel_over(uint destination,uint source,uint mask,uint clip) {
     float alpha=max(max(coverage.r,coverage.g),coverage.b);
     return pack_linear(s*m+d*(1.0f-coverage),alpha+da*(1.0f-alpha));
 }
+
+uint subpixel_over_f32(uint destination,uint source,float3 coverage) {
+    if(!(source>>24) || all(coverage==0)) return destination;
+    if((destination>>24)!=255) coverage=float3((coverage.r+coverage.g+coverage.b)/3.0f);
+    float3 amount=float(source>>24)*(1.0f/255.0f)*coverage;
+    float3 output=float3(byte_channels(source).rgb)*coverage+float3(byte_channels(destination).rgb)*(1.0f-amount);
+    float maximum=max(max(amount.r,amount.g),amount.b);
+    float alpha=maximum*255.0f+float(destination>>24)*(1.0f-maximum);
+    return pack_bytes(uint4(uint3(output+0.5f),uint(alpha+0.5f)));
+}

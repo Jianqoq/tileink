@@ -85,3 +85,71 @@ For the isolated Inter 14px/500 light-background line, normalized edge uncertain
 sample fell from 11.4% to 7.5%, while total ink changed by 0.25%. Comparable real 14/16px
 light/dark component samples also improved. This is a diagnostic of edge spreading for these
 samples, not a universal perceptual sharpness score or a claim that all glyphs match Chrome.
+
+## Windows native masks and one color-transfer rule
+
+Ordinary Windows text uses DirectWrite's natural-symmetric, natural-measuring glyph analysis.
+It produces CPU coverage only; Tileink retains ownership of layout, glyph caching, atlas upload,
+GPU rendering and color composition. RGB/BGR masks keep three canonical bytes per pixel and
+alpha masks keep one. Cache hits do not call DirectWrite again. Physical pixel size, subpixel
+phase, pixel-font phase rounding, disabled hinting and synthetic italic remain part of the
+existing cache-key contract. Invalid glyph indices return no image, because DirectWrite's
+implicit .notdef substitution would violate the portable missing-glyph/cache contract.
+
+A lazily registered in-memory font loader copies each database face once. Native variable-font
+instances preserve default axes except the requested weight, clamped to its declared range;
+instances are keyed by that resolved weight. Equivalent out-of-range requests must share one
+face. Clearing glyph caches after a font-database replacement also drops the copied resources.
+The loader is unregistered only after its fonts have been released. No HWND, window renderer,
+or second text-layout system is introduced.
+
+Color outlines and bitmap emoji keep their established Swash priority. Explicit positive outline
+expansion uses the portable adapter, which implements that operation. Unsupported native fonts
+or native initialization errors also use the portable path. Ordinary Windows mask expansion now
+defaults to zero so the actual requested font weight reaches DirectWrite; other platforms retain
+their existing portable defaults. These are rasterization policies, not component offsets.
+
+The default Linear mode uses a single correcting-coverage transfer and the renderer's common
+encoded, premultiplied RGBA source-over. For raw coverage a and straight foreground f, use the
+complementary background b=1-f and enhance coverage by `a + a*(1-a)*srgb_to_linear(b)`. Convert
+that blend in linear light back to sRGB and solve the equivalent encoded-color coverage. A
+near-equal foreground/background uses the continuous coverage limit to avoid an ill-conditioned
+inverse. This is Skia's correcting-LUT principle, evaluated continuously rather than quantizing
+the foreground into a small set of LUT colors. Explicit Srgb mode keeps raw encoded source-over.
+
+Every texel is corrected before bilinear interpolation; corrected coverage stays floating point
+until final color output. Clip and source opacity apply afterward. Unknown/transparent targets
+reduce corrected LCD channels to their scalar mean. This ordering preserves total ink as a label
+moves fractionally or enters an offscreen opacity group. Correcting an interpolated raw mask
+increased light-on-dark ink; blending only the first draw in actual linear light increased ink
+when its encoded RGBA layer was later composited. The existing real fade/motion tests caught both
+cases. Neither a font-weight adjustment nor a component-specific offset can fix that mismatch.
+
+Cached font masks remain independent of foreground color. Integer-aligned draws still read one
+texel; fractional draws interpolate corrected neighboring texels without rerasterization or new
+atlas entries. There is no spatial convolution, empirical exponent, apparent-axis correction,
+or stem-core boost in the correcting path. Layout, shaping and cache identity stay shared.
+
+Regression coverage exercises the actual glyph cache against an independent file-based
+DirectWrite reference across sizes, phases, channel modes, italic, hinting and pixel-font flags;
+empty/invalid glyphs, explicit expansion, color emoji and resolved variable-weight reuse are
+covered too. Native compute validation compares the real alpha/LCD shaders with a high-precision
+color oracle across 10,752 coverage, palette, clipping and transparency requests. The old transfer
+failed that GPU test before replacement. Rendered component acceptance remains a separate check.
+
+Validation on Windows: the full single-thread release suite passed (923 library tests plus
+integration/doc tests), formatting and strict all-target release Clippy passed. Native GPU
+coverage transfer, clipped fading, eighth-pixel motion, large-coordinate cancellation and SVG
+font fallback tests passed. All 1,712 SVG fixture PNGs remain byte-identical to the previous
+baseline. Nova/Vega component interactions, all 12 Trigger rectangles and their focus bands
+still pass their installed-browser comparison.
+
+The real Inter 14px/500 light-background Trigger now has normalized edge uncertainty 0.2904
+(Chrome 0.2774), versus 0.3090 before the redundant FIR was removed. For the 14/16px light/dark
+samples, the remaining excess is 2.8–4.7% and total ink differs by at most 1.1%. This remains a
+sample-specific diagnostic, not a universal sharpness metric or a pixel-identity claim.
+
+Windows Vulkan also compiled its SPIR-V shaders and passed the real clipped-fade/motion test.
+Its optional validation-layer compute test remains unavailable on this host because the
+Khronos validation layer is not installed (ERROR_LAYER_NOT_PRESENT); the test requirement is
+unchanged. All examples built, and seven non-interactive image-example runs passed.

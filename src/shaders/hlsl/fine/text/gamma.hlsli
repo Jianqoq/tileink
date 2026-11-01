@@ -20,15 +20,6 @@ float linear_to_srgb(float value) {
     return result;
 }
 
-float linear_to_srgb_derivative(float value) {
-    float v = clamp(value, 0.0, 1.0);
-    float result = 12.92;
-    if (v > 0.0031308) {
-        result = (1.055 / 2.4) * pow(v, 1.0 / 2.4 - 1.0);
-    }
-    return result;
-}
-
 float linear_premul_from_srgb8(uint value, float alpha) {
     float result = 0.0;
     if (alpha > 0.0) {

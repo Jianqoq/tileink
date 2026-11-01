@@ -96,4 +96,22 @@ uint src_over_subpixel_mask_linear_u8(uint dst, uint src, uint mask_rgb, uint cl
     return result;
 }
 
+// Float coverage keeps the correcting transfer precise until final output.
+// All intermediate RGBA surfaces use the same encoded premultiplied colors.
+uint src_over_subpixel_mask_f32(uint destination, uint source, float3 coverage) {
+    if ((source >> 24u) == 0u || all(coverage == 0.0)) return destination;
+    if ((destination >> 24u) != 255u) {
+        float gray = (coverage.r + coverage.g + coverage.b) / 3.0;
+        coverage = float3(gray, gray, gray);
+    }
+    float alpha = float(source >> 24u) * (1.0 / 255.0);
+    float3 amount = alpha * coverage;
+    float3 src = float3(source & 255u, (source >> 8u) & 255u, (source >> 16u) & 255u);
+    float3 dst = float3(destination & 255u, (destination >> 8u) & 255u, (destination >> 16u) & 255u);
+    float3 output = src * coverage + dst * (1.0 - amount);
+    float maximum = max(max(amount.r, amount.g), amount.b);
+    float out_alpha = maximum * 255.0 + float(destination >> 24u) * (1.0 - maximum);
+    return rgba8_pack(uint(output.r + 0.5), uint(output.g + 0.5), uint(output.b + 0.5), uint(out_alpha + 0.5));
+}
+
 #endif

@@ -20,8 +20,15 @@ are limited to the signed `i32` pixel domain without wrapping; bounds are limite
 scaling and padding. `push_text_layout` and `push_text_layout_clipped` return `None` for a
 nonfinite origin or an empty range outside that domain, without recording empty glyph/run data.
 
-RGB/BGR use Harmony LCD coverage for ordinary outline glyphs; `None` uses a single
-alpha channel. Color fonts retain their color outlines or bitmap strikes in every
+Ordinary Windows glyphs use DirectWrite coverage masks; Tileink still owns layout, caching,
+atlas upload and GPU composition. Other platforms use Swash/Harmony, which also handles explicit
+outline expansion and unsupported native fonts. RGB/BGR have three channels; `None` has one.
+The default Linear mode corrects coverage from the foreground color, then uses the same
+encoded premultiplied RGBA source-over as intermediate layers. It replaces empirical exponent,
+axis and stem-core boosts. Correct each texel before fractional interpolation so motion and
+opacity-group insertion preserve ink without recoloring or rerasterizing cached font masks.
+Ordinary Windows masks have zero default outline expansion. Explicit Srgb mode keeps encoded-color
+source-over. Color fonts retain their color outlines or bitmap strikes in every
 subpixel mode, so changing the mode does not turn color emoji into monochrome glyphs.
 Each channel's pixel-area integration already provides antialiasing. The merged coverage is
 preserved without another smoothing pass; the removed convolution spread glyph edges twice
