@@ -48,3 +48,16 @@ with an empty prepared-text cache.
 Affine-transformed glyph bitmaps use bilinear sampling with transparent texels outside the glyph.
 Integer translations preserve exact texels; fractional translation no longer snaps animated labels
 to physical pixels. Coarse glyph bounds include the interpolation footprint on all native backends.
+
+## Shared UI line geometry
+
+`text_layout_runs(&buffer)` is the common line-placement view used by both `layout` and
+`layout_buffer`. It rounds font ascent/descent before flooring the upper half-leading, while
+preserving fractional glyph advances, line heights and scrolling. Empty paragraphs keep their
+line boxes. Raster and outline glyphs use the same resolved baseline plus their shaping offsets;
+there is no later Y truncation. DPI conversion and physical-pixel fitting remain separate.
+
+Use this view for underlines, selection and caret geometry, and `text_hit(&buffer, x, y)` for
+pointer-to-cursor conversion. Both borrow the retained shaped buffer without cloning or reshaping
+it. Explicitly positioned Canvas and SVG glyphs keep their authored coordinates. See the
+[implementation contract](https://github.com/Jianqoq/tileink/blob/main/docs/native/ui-text-metrics.md).

@@ -185,3 +185,17 @@ fn shaped_cosmic_buffer_preserves_alignment_and_no_wrap() {
             .with_wrap(cosmic_text::Wrap::None),
     );
 }
+
+#[test]
+fn ui_line_metrics_place_raster_and_outline_on_the_same_browser_baseline() {
+    let mut fonts = font_system();
+    let mut text = TextContext::new();
+    // Noto Sans at 14px has rounded ascent/descent 15/4. With a 21px line,
+    // the upper half-leading is 1px: the shared baseline is 16, not trunc(15.932).
+    let layout = text.layout(
+        &mut fonts,
+        TextLayoutOptions::new("Heading", 14.0).with_line_height(21.0),
+    );
+    assert_eq!(layout.glyphs()[0].y, 16, "raster baseline is biased upward");
+    assert_eq!(layout.glyphs()[0].outline_origin.y, 16.0);
+}

@@ -5,7 +5,9 @@
 //! independently.
 
 mod context;
+mod hit;
 mod layout;
+mod line_metrics;
 mod options;
 mod outline;
 mod prepared;
@@ -13,7 +15,9 @@ mod raster;
 mod scaler;
 
 pub use context::TextContext;
+pub use hit::text_hit;
 pub use layout::TextLayout;
+pub use line_metrics::text_layout_runs;
 pub use options::{TextCompositeMode, TextLayoutOptions, TextRasterOptions, TextSubpixelMode};
 
 #[cfg(test)]

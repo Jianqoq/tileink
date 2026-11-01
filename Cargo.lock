@@ -1142,6 +1142,7 @@ dependencies = [
  "sha2",
  "swash",
  "tempfile",
+ "unicode-segmentation",
  "usvg",
  "windows",
 ]

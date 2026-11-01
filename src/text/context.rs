@@ -89,10 +89,6 @@ impl TextContext {
     /// recording. Pending buffer changes are shaped before glyph extraction, while an unchanged
     /// already-shaped buffer stays on Cosmic Text's inexpensive reuse path. `buffer` must have
     /// been created with `font_system` because Cosmic Text's font ids are local to that system.
-    #[allow(
-        clippy::suspicious_operation_groupings,
-        reason = "Glyph placement combines the run baseline with the glyph offset in the same axis"
-    )]
     pub fn layout_buffer(
         &mut self,
         font_system: &mut FontSystem,
@@ -100,15 +96,16 @@ impl TextContext {
     ) -> TextLayout {
         buffer.shape_until_scroll(font_system, false);
         let mut glyphs = Vec::new();
-        for run in buffer.layout_runs() {
+        for run in super::text_layout_runs(buffer) {
             for glyph in run.glyphs {
+                let offset_y = glyph.y - glyph.font_size * glyph.y_offset;
                 let outline_origin = Point::new(
                     f64::from(glyph.x + glyph.font_size * glyph.x_offset),
-                    f64::from(run.line_y + glyph.y - glyph.font_size * glyph.y_offset),
+                    f64::from(run.line_y + offset_y),
                 );
-                // Preserve Cosmic Text's Y hinting and key metadata, but use
-                // the same bounded position conversion as recording/append.
-                // physical() passes full positions to its overflowing bin carry.
+                // Raster and outline placement share the resolved baseline and glyph offsets.
+                // Do not truncate Y here: fractional line spacing, marks and scrolling must
+                // reach the same bounded subpixel conversion as positioned canvas glyphs.
                 let physical = CanvasGlyph::at_position(
                     CacheKey {
                         font_id: glyph.font_id,
@@ -119,12 +116,8 @@ impl TextContext {
                         font_weight: glyph.font_weight,
                         flags: glyph.cache_key_flags,
                     },
-                    f64::from(glyph.x + glyph.font_size * glyph.x_offset),
-                    f64::from(
-                        (glyph.y - glyph.font_size * glyph.y_offset)
-                            .mul_add(1.0, run.line_y)
-                            .trunc(),
-                    ),
+                    outline_origin.x,
+                    outline_origin.y,
                 );
                 glyphs.push(TextGlyph {
                     cache_key: physical.cache_key,

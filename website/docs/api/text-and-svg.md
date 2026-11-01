@@ -52,3 +52,10 @@ canvas.push_svg_with_options(&tree, SvgOptions {
 ```
 
 转换是事务式的：任何 unsupported feature 都在目标 Canvas 被修改前返回 `SvgError`。`SvgError::unsupported(name)` 构造错误，`feature()` 读取 feature 名。
+
+## Shared UI line metrics
+
+`text_layout_runs(&buffer)` exposes the same resolved UI baselines used by `TextContext`, while
+retaining original glyph advances, line boxes and shaped-buffer identity. `text_hit(&buffer, x, y)`
+uses those line boxes and direction-aware grapheme positions for editing. Both require an already
+shaped buffer. See [the line-metric contract](https://github.com/Jianqoq/tileink/blob/main/docs/native/ui-text-metrics.md).
