@@ -16,8 +16,8 @@ use crate::{
 
 use super::{
     raster::{
-        FREETYPE_HARMONY_LCD_SHIFT, GlyphRasterImage, filter_harmony_lcd_mask,
-        harmony_lcd_outline_shifts, merge_harmony_lcd_masks,
+        FREETYPE_HARMONY_LCD_SHIFT, GlyphRasterImage, harmony_lcd_outline_shifts,
+        merge_harmony_lcd_masks,
     },
     *,
 };
