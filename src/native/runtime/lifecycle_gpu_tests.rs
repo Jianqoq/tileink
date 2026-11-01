@@ -83,6 +83,9 @@ mod completion_and_history;
 #[path = "tests/pixel_rounding_gpu.rs"]
 mod pixel_rounding;
 
+#[path = "tests/text_composite_gpu.rs"]
+mod text_composite;
+
 #[path = "tests/renderer_rounding_gpu.rs"]
 mod renderer_rounding;
 

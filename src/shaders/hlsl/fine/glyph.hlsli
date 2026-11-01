@@ -29,6 +29,30 @@ uint sample_glyph(FineInputs input, FineGlyphImage image, float2 p) {
     return unorm_to_rgba8(lerp(top, bottom, f.y));
 }
 
+float3 corrected_glyph_texel(uint data, float3 foreground, bool lcd) {
+    if (!lcd) {
+        float alpha = text_correcting_coverage(data & 255u, dot(foreground, float3(0.2126, 0.7152, 0.0722)));
+        return float3(alpha, alpha, alpha);
+    }
+    return float3(text_correcting_coverage(data & 255u, foreground.r),
+        text_correcting_coverage((data >> 8u) & 255u, foreground.g),
+        text_correcting_coverage((data >> 16u) & 255u, foreground.b));
+}
+
+// Correct before interpolation: nonlinear transfer of an interpolated raw mask
+// changed its total ink during fractional motion, especially light-on-dark text.
+// Integer draws still read one texel; cached masks remain color independent.
+float3 sample_corrected_glyph(FineInputs input, FineGlyphImage image, float2 position, float3 foreground, bool lcd) {
+    int2 base = int2(floor(position));
+    float2 f = position - float2(base);
+    float3 a = corrected_glyph_texel(glyph_texel(input, image, base), foreground, lcd);
+    if (all(f == 0.0)) return a;
+    float3 top = lerp(a, corrected_glyph_texel(glyph_texel(input, image, base + int2(1,0)), foreground, lcd), f.x);
+    float3 bottom = lerp(corrected_glyph_texel(glyph_texel(input, image, base + int2(0,1)), foreground, lcd),
+        corrected_glyph_texel(glyph_texel(input, image, base + int2(1,1)), foreground, lcd), f.x);
+    return lerp(top, bottom, f.y);
+}
+
 float4 composite_glyphs_at(FineInputs input, Texture2D<float4> images[NATIVE_TEXTURE_TABLE_CAPACITY], float4 start_pixel,
     uint glyph_start,
     uint glyph_end,
@@ -59,29 +83,26 @@ float4 composite_glyphs_at(FineInputs input, Texture2D<float4> images[NATIVE_TEX
             float local_y = local.y - float(y0);
             if (local_x > -1.0 && local_y > -1.0 && local_x < int(width) && local_y < int(height)) {
                 uint content = image.content;
-                uint data = sample_glyph(input, image, float2(local_x, local_y));
-                if (content == GLYPH_MASK) {
-                    uint alpha = combine_alpha(data, clip_mask);
-                    if (alpha != 0u) {
-                        uint color = sample_draw_brush(input, images, draw, float(global_x) + 0.5, float(global_y) + 0.5);
-                        pixel = src_over_premul_unorm(pixel, scale_premul_u8_to_unorm(color, alpha));
-                    }
-                } else if (content == GLYPH_LINEAR_MASK) {
-                    uint alpha = combine_alpha(data, clip_mask);
-                    if (alpha != 0u) {
-                        uint color = sample_draw_brush(input, images, draw, float(global_x) + 0.5, float(global_y) + 0.5);
-                        pixel = rgba8_to_unorm(src_over_mask_linear_auto_u8(unorm_to_rgba8(pixel), color, alpha));
-                    }
-                } else if (content == GLYPH_COLOR) {
-                    pixel = src_over_premul_unorm(pixel, scale_premul_u8_to_unorm(data, clip_mask));
-                } else if (content == GLYPH_LINEAR_COLOR) {
-                    pixel = rgba8_to_unorm(src_over_mask_linear_auto_u8(unorm_to_rgba8(pixel), data, clip_mask));
-                } else if (content == GLYPH_SUBPIXEL_MASK) {
+                if (content == GLYPH_LINEAR_MASK || content == GLYPH_LINEAR_SUBPIXEL_MASK) {
                     uint color = sample_draw_brush(input, images, draw, float(global_x) + 0.5, float(global_y) + 0.5);
-                    pixel = rgba8_to_unorm(src_over_subpixel_mask_u8(unorm_to_rgba8(pixel), color, data, clip_mask));
-                } else if (content == GLYPH_LINEAR_SUBPIXEL_MASK) {
-                    uint color = sample_draw_brush(input, images, draw, float(global_x) + 0.5, float(global_y) + 0.5);
-                    pixel = rgba8_to_unorm(src_over_subpixel_mask_linear_auto_u8(unorm_to_rgba8(pixel), color, data, clip_mask));
+                    float3 coverage = sample_corrected_glyph(input, image, float2(local_x, local_y), text_foreground(color), content == GLYPH_LINEAR_SUBPIXEL_MASK);
+                    pixel = rgba8_to_unorm(src_over_subpixel_mask_f32(unorm_to_rgba8(pixel), color, coverage * (float(clip_mask) * (1.0 / 255.0))));
+                } else {
+                    uint data = sample_glyph(input, image, float2(local_x, local_y));
+                    if (content == GLYPH_MASK) {
+                        uint alpha = combine_alpha(data, clip_mask);
+                        if (alpha != 0u) {
+                            uint color = sample_draw_brush(input, images, draw, float(global_x) + 0.5, float(global_y) + 0.5);
+                            pixel = src_over_premul_unorm(pixel, scale_premul_u8_to_unorm(color, alpha));
+                        }
+                    } else if (content == GLYPH_COLOR) {
+                        pixel = src_over_premul_unorm(pixel, scale_premul_u8_to_unorm(data, clip_mask));
+                    } else if (content == GLYPH_LINEAR_COLOR) {
+                        pixel = rgba8_to_unorm(src_over_mask_linear_auto_u8(unorm_to_rgba8(pixel), data, clip_mask));
+                    } else if (content == GLYPH_SUBPIXEL_MASK) {
+                        uint color = sample_draw_brush(input, images, draw, float(global_x) + 0.5, float(global_y) + 0.5);
+                        pixel = rgba8_to_unorm(src_over_subpixel_mask_u8(unorm_to_rgba8(pixel), color, data, clip_mask));
+                    }
                 }
             }
         }

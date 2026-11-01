@@ -92,8 +92,16 @@ impl TextRasterOptions {
         Self {
             subpixel_mode: TextSubpixelMode::Rgb,
             composite_mode: TextCompositeMode::Linear,
-            alpha_mask_embolden: 0.119_441_95,
-            subpixel_mask_embolden: 0.032_732_67,
+            alpha_mask_embolden: if cfg!(target_os = "windows") {
+                0.0
+            } else {
+                0.119_441_95
+            },
+            subpixel_mask_embolden: if cfg!(target_os = "windows") {
+                0.0
+            } else {
+                0.032_732_67
+            },
         }
     }
 

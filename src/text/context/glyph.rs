@@ -1,6 +1,6 @@
 //! Pixel data and visible coverage share one font/DPI/raster-keyed cache entry.
 use super::*;
-use crate::text::raster::{GlyphContent, GlyphRasterImage, raster_glyph_image};
+use crate::text::raster::{GlyphContent, GlyphRasterImage};
 use peniko::kurbo::Rect;
 
 pub(super) struct CachedGlyph {
@@ -22,14 +22,13 @@ impl TextContext {
         self.image_cache
             .entry(key)
             .or_insert_with(|| {
-                let image = raster_glyph_image(
+                let image = self.rasterizer.image(
                     fonts,
-                    &mut self.scale_context,
                     cache_key,
                     key.subpixel_mode,
                     f32::from_bits(key.embolden_bits),
                 )?;
-                // Compute after LCD filtering and all raster transforms, not on intermediate masks.
+                // Compute after final channel coverage and all raster transforms, not on intermediate masks.
                 // Recording/measurement and atlas preparation then reuse the very same pixels.
                 let ink = visible_bounds(&image);
                 Some(CachedGlyph { image, ink })

@@ -4,13 +4,19 @@ use std::collections::HashMap;
 #[test]
 fn mask_weights_preserve_defaults_and_select_the_active_raster_mode() {
     let defaults = TextRasterOptions::new();
+    let expected: [f32; 2] = if cfg!(target_os = "windows") {
+        // Native masks retain their actual font weight without outline expansion.
+        [0.0, 0.0]
+    } else {
+        [0.119_441_95, 0.032_732_67]
+    };
     assert_eq!(
         defaults.alpha_mask_embolden.to_bits(),
-        0.119_441_95f32.to_bits()
+        expected[0].to_bits()
     );
     assert_eq!(
         defaults.subpixel_mask_embolden.to_bits(),
-        0.032_732_67f32.to_bits()
+        expected[1].to_bits()
     );
     for mode in [
         TextSubpixelMode::None,

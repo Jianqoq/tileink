@@ -73,3 +73,6 @@ mod recording;
 mod line_metrics;
 
 mod hit;
+
+#[cfg(target_os = "windows")]
+mod platform_windows;

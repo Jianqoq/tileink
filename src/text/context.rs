@@ -1,8 +1,8 @@
+use super::rasterizer::GlyphRasterizer;
 use std::collections::HashMap;
 
 use cosmic_text::{Buffer, CacheKey, FontSystem, Metrics, Shaping, SubpixelBin};
 use peniko::kurbo::{BezPath, Point};
-use swash::scale::ScaleContext;
 
 use self::glyph::CachedGlyph;
 
@@ -19,7 +19,7 @@ mod glyph;
 mod ink;
 
 pub struct TextContext {
-    scale_context: ScaleContext,
+    rasterizer: GlyphRasterizer,
     image_cache: HashMap<RasterGlyphKey, Option<CachedGlyph>>,
     outline_cache: HashMap<CacheKey, Option<BezPath>>,
     raster_options: TextRasterOptions,
@@ -30,7 +30,7 @@ impl TextContext {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            scale_context: ScaleContext::new(),
+            rasterizer: GlyphRasterizer::new(),
             image_cache: HashMap::new(),
             outline_cache: HashMap::new(),
             raster_options: TextRasterOptions::default(),
@@ -168,7 +168,9 @@ impl TextContext {
         let key = outline_cache_key(cache_key);
         self.outline_cache
             .entry(key)
-            .or_insert_with(|| outline_glyph_path(font_system, &mut self.scale_context, key))
+            .or_insert_with(|| {
+                outline_glyph_path(font_system, &mut self.rasterizer.scale_context, key)
+            })
             .as_ref()
     }
 
@@ -191,6 +193,7 @@ impl TextContext {
     /// Clears cached glyph images and outlines after external font database changes.
     pub fn clear_glyph_caches(&mut self) {
         self.image_cache.clear();
+        self.rasterizer.clear();
         self.outline_cache.clear();
         // Prepared renderer text must not keep pixels derived from the previous font database.
         self.cache_generation = self.cache_generation.wrapping_add(1);

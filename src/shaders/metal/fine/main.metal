@@ -10,7 +10,6 @@ using namespace metal;
 #include "../shared/blend/compose.metal"
 #include "text/gamma.metal"
 #include "text/basic.metal"
-#include "text/axis.metal"
 #include "text/coverage.metal"
 #include "input.metal"
 #include "stack.metal"

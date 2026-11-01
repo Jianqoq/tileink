@@ -139,7 +139,7 @@ fn raster_glyph_image_with_sources(
     .map(GlyphRasterImage::from_swash)
 }
 
-const fn raster_glyph_offset(cache_key: CacheKey) -> Vector {
+pub(super) const fn raster_glyph_offset(cache_key: CacheKey) -> Vector {
     if cache_key.flags.contains(CacheKeyFlags::PIXEL_FONT) {
         Vector::new(
             cache_key.x_bin.as_float().round(),
@@ -240,3 +240,23 @@ pub(super) fn merge_harmony_lcd_masks(channels: [GlyphRasterImage; 3]) -> GlyphR
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(target_os = "windows")]
+pub(super) fn raster_color_glyph_image(
+    fonts: &mut FontSystem,
+    context: &mut ScaleContext,
+    key: CacheKey,
+    embolden: f32,
+) -> Option<GlyphRasterImage> {
+    raster_glyph_image_with_sources(
+        fonts,
+        context,
+        key,
+        embolden,
+        raster_glyph_offset(key),
+        &[
+            Source::ColorOutline(0),
+            Source::ColorBitmap(StrikeWith::BestFit),
+        ],
+    )
+}

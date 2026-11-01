@@ -42,9 +42,13 @@ buffer 必须由同一个 font system 创建。
 
 `TextRasterOptions` 控制 composite/subpixel 策略。`TextSubpixelMode` 可选择 none、RGB/BGR 等模式；`TextCompositeMode` 控制 coverage 如何应用到颜色。窗口目标与字体 atlas 参数变化会使相关资源重新准备。
 
-RGB/BGR 对普通轮廓字形使用 Harmony LCD 覆盖率；`None` 使用单通道 alpha。
-每个通道的像素面积积分已经提供抗锯齿，合并后直接保留其覆盖率，不再追加平滑滤波。
-原先的额外卷积会重复扩散字形边缘，使小字号文字偏软。
+Windows 的普通字形使用 DirectWrite 生成覆盖率掩码，布局、缓存、atlas 与 GPU 合成仍由 Tileink 管理。
+其他平台使用 Swash/Harmony；显式轮廓扩张和不受支持的原生字体也保留 portable 路径。
+RGB/BGR 掩码使用三个通道，`None` 使用单通道 alpha；不再追加平滑卷积。
+默认 Linear 模式使用基于前景颜色的覆盖率预补偿，再使用与中间图层一致的 RGBA source-over，
+替换原有的经验指数、轴线和笔画中心补偿。先补偿字形像素，再做小数位移插值，
+避免进入透明度图层或移动时文字突然加重。Windows 默认不扩张普通字形轮廓。
+Srgb 模式仍表示显式的编码颜色 source-over。
 彩色字体仍优先使用其彩色轮廓或位图，切换 subpixel 模式不会将彩色 emoji 转成单色。
 
 LCD 的三个颜色通道覆盖率只在不透明目标像素上分别合成。透明目标（包括动画的离屏透明图层）

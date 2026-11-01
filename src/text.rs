@@ -33,3 +33,5 @@ pub(crate) use raster::GlyphContent;
 
 #[cfg(test)]
 mod tests;
+
+mod rasterizer;
