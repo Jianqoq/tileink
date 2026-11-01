@@ -67,3 +67,16 @@ range 会直接传给 GPU text upload，因此无需重建未变化的 text reco
 
 经过仿射变换的字形位图采用双线性采样，字形外部按透明像素处理。整数位移保持原始像素，
 小数位移不会将动画文字吸附到物理整数像素。各原生后端的粗粒度字形边界均包含插值范围。
+
+## Shared UI line geometry
+
+`text_layout_runs(&buffer)` is the common line-placement view used by both `layout` and
+`layout_buffer`. It rounds font ascent/descent before flooring the upper half-leading, while
+preserving fractional glyph advances, line heights and scrolling. Empty paragraphs keep their
+line boxes. Raster and outline glyphs use the same resolved baseline plus their shaping offsets;
+there is no later Y truncation. DPI conversion and physical-pixel fitting remain separate.
+
+Use this view for underlines, selection and caret geometry, and `text_hit(&buffer, x, y)` for
+pointer-to-cursor conversion. Both borrow the retained shaped buffer without cloning or reshaping
+it. Explicitly positioned Canvas and SVG glyphs keep their authored coordinates. See the
+[implementation contract](https://github.com/Jianqoq/tileink/blob/main/docs/native/ui-text-metrics.md).

@@ -69,3 +69,7 @@ mod layout;
 mod lcd;
 mod prepared;
 mod recording;
+
+mod line_metrics;
+
+mod hit;

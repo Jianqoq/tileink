@@ -248,7 +248,7 @@ fn text_position_binning_preserves_cosmic_text_thresholds_and_key_metadata() {
 }
 
 #[test]
-fn layout_buffer_preserves_cosmic_physical_keys_and_vertical_hinting() {
+fn layout_buffer_preserves_shaping_keys_and_shared_subpixel_baselines() {
     let mut fonts = font_system();
     let mut text = TextContext::new();
     for font_size in [12.0, 20.25, 32.5] {
@@ -265,12 +265,25 @@ fn layout_buffer_preserves_cosmic_physical_keys_and_vertical_hinting() {
             Some(Align::Center),
         );
         buffer.shape_until_scroll(&mut fonts, false);
-        let expected: Vec<_> = buffer
-            .layout_runs()
+        let expected: Vec<_> = text_layout_runs(&buffer)
             .flat_map(|run| {
-                run.glyphs
-                    .iter()
-                    .map(move |glyph| glyph.physical((0.0, run.line_y), 1.0))
+                run.glyphs.iter().map(move |glyph| {
+                    let key = cosmic_text::CacheKey {
+                        font_id: glyph.font_id,
+                        glyph_id: glyph.glyph_id,
+                        font_size_bits: glyph.font_size.to_bits(),
+                        x_bin: cosmic_text::SubpixelBin::Zero,
+                        y_bin: cosmic_text::SubpixelBin::Zero,
+                        font_weight: glyph.font_weight,
+                        flags: glyph.cache_key_flags,
+                    };
+                    let offset_y = glyph.y - glyph.font_size * glyph.y_offset;
+                    crate::text::CanvasGlyph::at_position(
+                        key,
+                        f64::from(glyph.x + glyph.font_size * glyph.x_offset),
+                        f64::from(run.line_y + offset_y),
+                    )
+                })
             })
             .collect();
         let layout = text.layout_buffer(&mut fonts, &mut buffer);
