@@ -61,56 +61,6 @@ fn harmony_lcd_merge_unions_shifted_channel_masks() {
 }
 
 #[test]
-fn harmony_lcd_filter_applies_normalized_three_tap_kernel() {
-    let mut image = GlyphRasterImage::new(
-        GlyphContent::SubpixelMask,
-        Placement {
-            left: 4,
-            top: 1,
-            width: 1,
-            height: 1,
-        },
-        vec![0, 255, 0],
-    );
-    let unfiltered_coverage: u32 = image.data.iter().map(|&value| u32::from(value)).sum();
-
-    filter_harmony_lcd_mask(&mut image, TextSubpixelMode::Rgb);
-
-    let filtered_coverage: u32 = image.data.iter().map(|&value| u32::from(value)).sum();
-    assert_eq!(image.placement.left, 3);
-    assert_eq!(image.placement.width, 3);
-    assert_eq!(image.data, vec![0, 0, 0, 21, 213, 21, 0, 0, 0]);
-    assert_eq!(filtered_coverage, unfiltered_coverage);
-}
-
-#[test]
-fn harmony_lcd_filter_follows_bgr_physical_order() {
-    let image = |mode| {
-        let mut image = GlyphRasterImage::new(
-            GlyphContent::SubpixelMask,
-            Placement {
-                left: 4,
-                top: 1,
-                width: 1,
-                height: 1,
-            },
-            vec![255, 0, 0],
-        );
-        filter_harmony_lcd_mask(&mut image, mode);
-        image
-    };
-
-    assert_eq!(
-        image(TextSubpixelMode::Rgb).data,
-        vec![0, 0, 21, 213, 21, 0, 0, 0, 0]
-    );
-    assert_eq!(
-        image(TextSubpixelMode::Bgr).data,
-        vec![0, 0, 0, 213, 21, 0, 0, 0, 21]
-    );
-}
-
-#[test]
 fn text_raster_options_use_linear_compositing_by_default() {
     assert_eq!(
         TextRasterOptions::default().composite_mode,
@@ -170,41 +120,6 @@ fn raster_contract_merge_rejects_truncated_channels() {
 }
 
 #[test]
-fn raster_contract_filter_rejects_wrong_content_and_disabled_mode() {
-    for (content, data, mode) in [
-        (GlyphContent::Mask, vec![255], TextSubpixelMode::Rgb),
-        (
-            GlyphContent::SubpixelMask,
-            vec![1, 2, 3],
-            TextSubpixelMode::None,
-        ),
-    ] {
-        assert!(
-            std::panic::catch_unwind(|| filter_harmony_lcd_mask(
-                &mut canonical_glyph(content, data),
-                mode
-            ))
-            .is_err()
-        );
-    }
-}
-
-#[test]
-fn raster_contract_filter_rejects_truncated_lcd_data() {
-    assert!(
-        std::panic::catch_unwind(|| filter_harmony_lcd_mask(
-            &mut {
-                let mut image = canonical_glyph(GlyphContent::SubpixelMask, vec![1, 2, 3]);
-                image.data.pop();
-                image
-            },
-            TextSubpixelMode::Rgb,
-        ))
-        .is_err()
-    );
-}
-
-#[test]
 fn canonical_image_layouts_preserve_alpha_color_and_lcd_bytes() {
     for (content, data) in [
         (GlyphContent::Mask, vec![127]),
@@ -253,22 +168,9 @@ fn empty_masks_remain_empty_without_lcd_padding() {
         let mask = GlyphRasterImage::new(GlyphContent::Mask, placement, vec![]);
         let lcd = merge_harmony_lcd_masks([mask.clone(), mask.clone(), mask]);
         assert!(lcd.data.is_empty());
-        for mode in [TextSubpixelMode::Rgb, TextSubpixelMode::Bgr] {
-            let mut image = lcd.clone();
-            filter_harmony_lcd_mask(&mut image, mode);
-            assert_eq!(
-                (
-                    image.placement.left,
-                    image.placement.top,
-                    image.placement.width,
-                    image.placement.height
-                ),
-                (-2, 3, width, height)
-            );
-            let prepared = PreparedGlyphImage::from_raster(&image, TextRasterOptions::default());
-            assert!(prepared.data.is_empty());
-            assert_eq!((prepared.width, prepared.height), (width, height));
-        }
+        let prepared = PreparedGlyphImage::from_raster(&lcd, TextRasterOptions::default());
+        assert!(prepared.data.is_empty());
+        assert_eq!((prepared.width, prepared.height), (width, height));
     }
 }
 

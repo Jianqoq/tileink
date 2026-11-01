@@ -331,19 +331,18 @@ fn prepared_text_signature_changes_with_subpixel_mode() {
 }
 
 #[test]
-fn prepared_glyph_image_preserves_filtered_harmony_subpixel_channels() {
-    let mut image = canonical_glyph(GlyphContent::SubpixelMask, vec![255, 0, 0]);
-    filter_harmony_lcd_mask(&mut image, TextSubpixelMode::Rgb);
+fn prepared_glyph_image_preserves_independent_harmony_subpixel_channels() {
+    let image = canonical_glyph(GlyphContent::SubpixelMask, vec![255, 0, 0]);
     let prepared = PreparedGlyphImage::from_raster(
         &image,
         TextRasterOptions::new().with_composite_mode(TextCompositeMode::Linear),
     );
     assert_eq!(prepared.content, GlyphContent::SubpixelMask);
     assert_eq!(prepared.composite_mode, TextCompositeMode::Linear);
-    assert_eq!(prepared.left, -1);
-    assert_eq!(prepared.width, 3);
+    assert_eq!(prepared.left, 0);
+    assert_eq!(prepared.width, 1);
     assert_eq!(prepared.data, image.data);
-    assert_eq!(prepared.data, vec![0, 0, 21, 213, 21, 0, 0, 0, 0]);
+    assert_eq!(prepared.data, vec![255, 0, 0]);
 }
 
 #[test]

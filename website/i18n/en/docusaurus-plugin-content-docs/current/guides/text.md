@@ -23,6 +23,9 @@ nonfinite origin or an empty range outside that domain, without recording empty 
 RGB/BGR use Harmony LCD coverage for ordinary outline glyphs; `None` uses a single
 alpha channel. Color fonts retain their color outlines or bitmap strikes in every
 subpixel mode, so changing the mode does not turn color emoji into monochrome glyphs.
+Each channel's pixel-area integration already provides antialiasing. The merged coverage is
+preserved without another smoothing pass; the removed convolution spread glyph edges twice
+and softened small UI text.
 
 Independent LCD channel coverage requires an opaque destination pixel. Transparent targets,
 including offscreen opacity groups used by animations, use the channel mean as scalar coverage.

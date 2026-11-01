@@ -11,7 +11,7 @@ title: Text and SVG API
 
 `TextContext::ink_bounds_at_scale(font_system, layout, origin, scale)` returns nontransparent
 raster coverage in logical coordinates at the actual DPI/origin. Pixels and visible bounds share
-one cache entry, computed after final raster transforms and LCD filtering. Measurement unions
+one cache entry, computed after final raster transforms and channel-area integration. Measurement unions
 cached bounds without rescanning pixels or keeping a second bounds cache. Reuse the same
 `TextContext` and matching font database for recording/measurement and atlas preparation to avoid
 duplicate rasterization; independently created contexts remain independent. `clear_glyph_caches`

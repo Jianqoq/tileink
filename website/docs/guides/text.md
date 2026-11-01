@@ -43,6 +43,8 @@ buffer 必须由同一个 font system 创建。
 `TextRasterOptions` 控制 composite/subpixel 策略。`TextSubpixelMode` 可选择 none、RGB/BGR 等模式；`TextCompositeMode` 控制 coverage 如何应用到颜色。窗口目标与字体 atlas 参数变化会使相关资源重新准备。
 
 RGB/BGR 对普通轮廓字形使用 Harmony LCD 覆盖率；`None` 使用单通道 alpha。
+每个通道的像素面积积分已经提供抗锯齿，合并后直接保留其覆盖率，不再追加平滑滤波。
+原先的额外卷积会重复扩散字形边缘，使小字号文字偏软。
 彩色字体仍优先使用其彩色轮廓或位图，切换 subpixel 模式不会将彩色 emoji 转成单色。
 
 LCD 的三个颜色通道覆盖率只在不透明目标像素上分别合成。透明目标（包括动画的离屏透明图层）
