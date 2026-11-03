@@ -153,3 +153,27 @@ Windows Vulkan also compiled its SPIR-V shaders and passed the real clipped-fade
 Its optional validation-layer compute test remains unavailable on this host because the
 Khronos validation layer is not installed (ERROR_LAYER_NOT_PRESENT); the test requirement is
 unchanged. All examples built, and seven non-interactive image-example runs passed.
+
+
+## Ellipsis soft-break source boundaries
+
+The text shaper is pinned to official pop-os/cosmic-text merge revision
+5ea7aae78611652a6c88ba84d8ef3e3099fb32cf. Its merged
+[upstream fix #535](https://github.com/pop-os/cosmic-text/pull/535) is not in the
+0.19.0 registry release. Both gfx_ui and Tileink use this same source identity;
+a consumer does not need a workspace patch or a local fork.
+
+The former release moved a discarded wrap-space onto the last ellipsized line.
+That shifted the line's first painted character and consumed room needed by
+another character before the ellipsis. The failed-first public text_layout_runs
+regression compares Word/WordOrGlyph soft-break source boundaries before/after
+limiting the visual line budget. Original Buffer text remains complete. This
+updates the shaping root cause; it does not translate glyphs, remove bytes,
+change font metrics, or alter Taffy's official implementation.
+
+
+Validation for this dependency pin: the complete single-thread Release suite, strict
+all-target Clippy, formatting, and all example builds passed. Fresh before/after
+native rendering of all 1,712 SVG fixtures produced identical decoded pixels under
+the same environment. Generated repository images were restored instead of mixing
+unrelated historical baseline differences into this dependency change.
