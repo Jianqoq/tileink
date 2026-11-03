@@ -93,3 +93,13 @@ it. Explicitly positioned Canvas and SVG glyphs keep their authored coordinates.
 需要链接、混合颜色或逐行裁切时，先准备同一 buffer，再通过 `layout_buffer_runs` 只读提取分段。
 返回的 `TextLayoutRun` 保留视觉行、metadata 和可选 RGBA8 颜色；按原顺序逐段绘制即可。
 改变画刷或裁切不需要再次 shaping，也不需要复制一份编辑／选择数据。
+
+
+### 筛选已准备的字形
+
+`TextContext::layout_buffer_runs_filtered` 使用原有排版和字形位置，回调会收到原始字形及
+视觉行编号（包含空段落）。空绘制组会被省略，其余组的元数据、颜色、基线及顺序保持不变。
+普通 `layout_buffer_runs` 仍包含全部字形；两个接口都不会重新排版或修改源缓冲区。
+
+这是块级行截断的共享基础：单纯裁剪像素会切断连字、组合重音或斜体轮廓。调用方先按字形簇
+决定保留范围，完整源文本仍可用于选择、复制以及后续的焦点滚动。

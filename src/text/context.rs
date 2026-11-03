@@ -141,6 +141,20 @@ impl TextContext {
         font_system: &mut FontSystem,
         buffer: &Buffer,
     ) -> Vec<super::layout::TextLayoutRun> {
+        self.layout_buffer_runs_filtered(font_system, buffer, |_, _| true)
+    }
+
+    /// Projects already-shaped glyphs into paint runs without modifying their source or positions.
+    /// The predicate receives the visual-line index (including empty paragraphs) and each original
+    /// glyph exactly once. Callers own cluster-level inclusion: include all glyphs of a cluster
+    /// together when implementing truncation. Rejected glyphs leave no paint; empty groups are
+    /// omitted. The remaining metadata/color groups retain their original order and UI baselines.
+    pub fn layout_buffer_runs_filtered(
+        &mut self,
+        font_system: &mut FontSystem,
+        buffer: &Buffer,
+        mut include: impl FnMut(usize, &cosmic_text::LayoutGlyph) -> bool,
+    ) -> Vec<super::layout::TextLayoutRun> {
         let mut result = Vec::new();
         for (line, run) in super::text_layout_runs(buffer).enumerate() {
             let mut start = 0;
@@ -156,8 +170,13 @@ impl TextContext {
                 }
                 let glyphs = run.glyphs[start..end]
                     .iter()
+                    .filter(|glyph| include(line, glyph))
                     .map(|glyph| prepared_glyph(glyph, run.line_y))
                     .collect::<Vec<_>>();
+                if glyphs.is_empty() {
+                    start = end;
+                    continue;
+                }
                 let bounds = self.raster_bounds(font_system, &glyphs);
                 result.push(super::layout::TextLayoutRun {
                     line,

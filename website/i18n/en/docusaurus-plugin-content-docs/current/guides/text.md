@@ -79,3 +79,16 @@ For links, mixed colors or line clipping, prepare the retained buffer once and e
 values with visual-line identity, application metadata and optional RGBA8 color. Draw their
 layouts in order with the chosen brushes; brush/clip changes need neither another source buffer
 nor another shaping pass. Use the same font system that created the retained buffer.
+
+
+### Projecting prepared glyphs
+
+`TextContext::layout_buffer_runs_filtered` keeps the existing shaping and glyph positions while
+selecting which complete glyphs reach paint. Its predicate receives the original glyph and visual
+line index, including empty-paragraph indices. Empty paint groups are omitted; metadata, color,
+baseline and order remain unchanged. The normal `layout_buffer_runs` path includes every glyph.
+
+This is the root seam for block line-clamp projections: pixel clipping alone can cut a ligature,
+combining mark or italic outline in half. The application groups clusters before filtering and
+retains the full source buffer for selection, copying and later focus/scroll. Neither extraction
+method reshapes or mutates that buffer.

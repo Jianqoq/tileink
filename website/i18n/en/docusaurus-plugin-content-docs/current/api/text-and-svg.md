@@ -31,3 +31,16 @@ The visual-line index counts empty paragraphs; colors are optional straight-alph
 with None selecting the caller's current brush. Only adjacent glyphs on one line with matching
 metadata/color are grouped, preserving paint order. The buffer's font ids must belong to the
 same font system. Frameworks can recolor or clip those prepared spans while retaining shaping.
+
+
+### Projecting prepared glyphs
+
+`TextContext::layout_buffer_runs_filtered` keeps the existing shaping and glyph positions while
+selecting which complete glyphs reach paint. Its predicate receives the original glyph and visual
+line index, including empty-paragraph indices. Empty paint groups are omitted; metadata, color,
+baseline and order remain unchanged. The normal `layout_buffer_runs` path includes every glyph.
+
+This is the root seam for block line-clamp projections: pixel clipping alone can cut a ligature,
+combining mark or italic outline in half. The application groups clusters before filtering and
+retains the full source buffer for selection, copying and later focus/scroll. Neither extraction
+method reshapes or mutates that buffer.
