@@ -202,3 +202,16 @@ fresh official-tree run pixel-for-pixel with identical adjacent image/font resou
 consumer's actual mixed-color GPU regression passes immediate/retained recording at 1x, 1.25x
 and 2x. Its failed-first uniform path painted red/blue/inherited spans entirely green; prepared
 run brushes now retain those declarations without a second source buffer or shaping pass.
+
+
+### Projecting prepared glyphs
+
+`TextContext::layout_buffer_runs_filtered` keeps the existing shaping and glyph positions while
+selecting which complete glyphs reach paint. Its predicate receives the original glyph and visual
+line index, including empty-paragraph indices. Empty paint groups are omitted; metadata, color,
+baseline and order remain unchanged. The normal `layout_buffer_runs` path includes every glyph.
+
+This is the root seam for block line-clamp projections: pixel clipping alone can cut a ligature,
+combining mark or italic outline in half. The application groups clusters before filtering and
+retains the full source buffer for selection, copying and later focus/scroll. Neither extraction
+method reshapes or mutates that buffer.

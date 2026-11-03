@@ -67,3 +67,13 @@ shaped buffer. See [the line-metric contract](https://github.com/Jianqoq/tileink
 `color` 是可选的非预乘 sRGB RGBA8，None 使用调用方的默认画刷。只有同一行、相邻且颜色与 metadata
 一致的字形才合并，绘制顺序不变。先按同一字体库准备 buffer，再调用 `layout_buffer_runs`；提取不会
 修改或重新排版 buffer。应用可以为每段选择画刷、裁切行或更改交互颜色，复用同一份字形数据。
+
+
+### 筛选已准备的字形
+
+`TextContext::layout_buffer_runs_filtered` 使用原有排版和字形位置，回调会收到原始字形及
+视觉行编号（包含空段落）。空绘制组会被省略，其余组的元数据、颜色、基线及顺序保持不变。
+普通 `layout_buffer_runs` 仍包含全部字形；两个接口都不会重新排版或修改源缓冲区。
+
+这是块级行截断的共享基础：单纯裁剪像素会切断连字、组合重音或斜体轮廓。调用方先按字形簇
+决定保留范围，完整源文本仍可用于选择、复制以及后续的焦点滚动。

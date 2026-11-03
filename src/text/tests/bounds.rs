@@ -389,3 +389,61 @@ fn prepared_runs_keep_visual_line_identity_across_empty_paragraphs() {
     buffer.shape_until_scroll(&mut fonts, false);
     assert!(context.layout_buffer_runs(&mut fonts, &buffer).is_empty());
 }
+
+#[test]
+fn prepared_run_filter_retains_whole_glyphs_and_does_not_change_source_layout() {
+    let mut fonts = font_system();
+    let mut context = TextContext::new();
+    let mut buffer = cosmic_text::Buffer::new(&mut fonts, cosmic_text::Metrics::new(20.25, 25.5));
+    buffer.set_text(
+        "Alpha\n\nאבג e\u{301} 😀\nOmega",
+        &Attrs::new()
+            .metadata(11)
+            .color(cosmic_text::Color::rgba(200, 20, 30, 180)),
+        cosmic_text::Shaping::Advanced,
+        None,
+    );
+    buffer.shape_until_scroll(&mut fonts, false);
+    let complete = context.layout_buffer(&mut fonts, &mut buffer);
+    buffer.set_redraw(false);
+    let source_glyphs: Vec<_> = super::super::text_layout_runs(&buffer)
+        .enumerate()
+        .flat_map(|(line, run)| run.glyphs.iter().map(move |glyph| (line, glyph)))
+        .collect();
+    let expected: Vec<_> = source_glyphs
+        .iter()
+        .zip(complete.glyphs())
+        .filter(|((line, glyph), _)| *line != 2 || glyph.start >= 7)
+        .map(|(_, glyph)| *glyph)
+        .collect();
+    let mut calls = 0;
+    let runs = context.layout_buffer_runs_filtered(&mut fonts, &buffer, |line, glyph| {
+        calls += 1;
+        line != 2 || glyph.start >= 7
+    });
+    assert_eq!(calls, source_glyphs.len());
+    assert!(!buffer.redraw());
+    assert!(expected.len() < complete.glyphs().len());
+    assert!(runs.iter().any(|run| run.line == 2));
+    assert!(runs.iter().any(|run| run.line == 3));
+    assert!(
+        runs.iter()
+            .all(|run| run.metadata == 11 && run.color == Some([200, 20, 30, 180]))
+    );
+    let actual: Vec<_> = runs.iter().flat_map(|run| run.layout.glyphs()).collect();
+    assert_eq!(actual.len(), expected.len());
+    for (actual, expected) in actual.into_iter().zip(expected) {
+        assert_eq!(actual.cache_key, expected.cache_key);
+        assert_eq!((actual.x, actual.y), (expected.x, expected.y));
+        assert_eq!(actual.outline_origin, expected.outline_origin);
+    }
+    assert_eq!(
+        buffer.layout_runs().flat_map(|run| run.glyphs).count(),
+        complete.glyphs().len()
+    );
+    assert!(
+        context
+            .layout_buffer_runs_filtered(&mut fonts, &buffer, |_, _| false)
+            .is_empty()
+    );
+}
