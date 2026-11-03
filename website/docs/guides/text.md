@@ -86,3 +86,10 @@ Use this view for underlines, selection and caret geometry, and `text_hit(&buffe
 pointer-to-cursor conversion. Both borrow the retained shaped buffer without cloning or reshaping
 it. Explicitly positioned Canvas and SVG glyphs keep their authored coordinates. See the
 [implementation contract](https://github.com/Jianqoq/tileink/blob/main/docs/native/ui-text-metrics.md).
+
+## 复用已排版的 span
+
+对于已有的 `cosmic_text::Buffer`，`layout_buffer` 会先完成 pending shaping，再生成统一画刷的 layout。
+需要链接、混合颜色或逐行裁切时，先准备同一 buffer，再通过 `layout_buffer_runs` 只读提取分段。
+返回的 `TextLayoutRun` 保留视觉行、metadata 和可选 RGBA8 颜色；按原顺序逐段绘制即可。
+改变画刷或裁切不需要再次 shaping，也不需要复制一份编辑／选择数据。

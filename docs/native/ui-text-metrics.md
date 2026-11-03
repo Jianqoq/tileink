@@ -177,3 +177,28 @@ all-target Clippy, formatting, and all example builds passed. Fresh before/after
 native rendering of all 1,712 SVG fixtures produced identical decoded pixels under
 the same environment. Generated repository images were restored instead of mixing
 unrelated historical baseline differences into this dependency change.
+
+## Prepared span paint runs
+
+`TextContext::layout_buffer_runs(font_system, &buffer)` extracts `TextLayoutRun` values from
+already-prepared source. It borrows the buffer immutably and performs no shaping. Each result
+carries its visual-line index, application metadata, optional straight-alpha sRGB RGBA8 color,
+and ordinary TextLayout. Contiguous metadata/color values stay together; different lines and
+noncontiguous values stay separate to preserve paint order. Empty paragraphs count toward
+visual-line indices while producing no glyph run. The matching font system still owns font ids.
+
+This supplies a native framework seam for per-span paint and line-clamp projection. A uniform
+TextLayout intentionally has one caller-supplied brush; flattening styled source into that shape
+lost span colors and application identities. Consumers can now change brushes or clip a prepared
+run without rebuilding source or reshaping glyphs. Uniform and segmented extraction share one
+physical-glyph conversion, retaining UI baselines, marks, cache keys, weight and fractional bins.
+Regressions compare every extracted glyph with the existing uniform layout, including mixed
+fonts/directions, colors/alpha, metadata, empty paragraphs and a source which must remain unmodified.
+
+Validation for prepared span runs: 925 ordinary single-thread Release library tests passed
+(196 existing opt-in tests ignored), plus the integration suite, formatting, strict all-target
+Release Clippy and all example builds. The complete 1,712 SVG fixture outputs match the prior
+fresh official-tree run pixel-for-pixel with identical adjacent image/font resources. The gfx_ui
+consumer's actual mixed-color GPU regression passes immediate/retained recording at 1x, 1.25x
+and 2x. Its failed-first uniform path painted red/blue/inherited spans entirely green; prepared
+run brushes now retain those declarations without a second source buffer or shaping pass.

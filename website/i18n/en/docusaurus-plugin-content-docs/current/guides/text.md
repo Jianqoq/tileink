@@ -71,3 +71,11 @@ Use this view for underlines, selection and caret geometry, and `text_hit(&buffe
 pointer-to-cursor conversion. Both borrow the retained shaped buffer without cloning or reshaping
 it. Explicitly positioned Canvas and SVG glyphs keep their authored coordinates. See the
 [implementation contract](https://github.com/Jianqoq/tileink/blob/main/docs/native/ui-text-metrics.md).
+
+## Reuse prepared spans
+
+For links, mixed colors or line clipping, prepare the retained buffer once and extract
+`layout_buffer_runs(&mut fonts, &buffer)`. The immutable read returns ordered `TextLayoutRun`
+values with visual-line identity, application metadata and optional RGBA8 color. Draw their
+layouts in order with the chosen brushes; brush/clip changes need neither another source buffer
+nor another shaping pass. Use the same font system that created the retained buffer.

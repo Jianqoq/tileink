@@ -22,3 +22,12 @@ return `None`.
 # SVG
 
 `SvgOptions` exposes `tolerance` and base `transform`. `Canvas::push_svg` uses defaults; `push_svg_with_options` applies custom options. Lowering is atomic. `SvgError::unsupported` constructs an error and `feature()` returns the unsupported feature name.
+
+## Prepared span paint runs
+
+`TextContext::layout_buffer_runs(font_system, &buffer)` reads an already-shaped buffer without
+mutating or reshaping it. Each `TextLayoutRun` exposes `layout`, `line`, `metadata` and `color`.
+The visual-line index counts empty paragraphs; colors are optional straight-alpha sRGB RGBA8,
+with None selecting the caller's current brush. Only adjacent glyphs on one line with matching
+metadata/color are grouped, preserving paint order. The buffer's font ids must belong to the
+same font system. Frameworks can recolor or clip those prepared spans while retaining shaping.
