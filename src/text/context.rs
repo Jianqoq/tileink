@@ -26,6 +26,35 @@ pub struct TextContext {
     cache_generation: u64,
 }
 
+// One conversion owns physical cache keys for uniform and span-aware recording.
+// Extracting prepared runs must never quantize a baseline differently or reshape their source.
+fn prepared_glyph(glyph: &cosmic_text::LayoutGlyph, line_y: f32) -> TextGlyph {
+    let offset_y = glyph.y - glyph.font_size * glyph.y_offset;
+    let outline_origin = Point::new(
+        f64::from(glyph.x + glyph.font_size * glyph.x_offset),
+        f64::from(line_y + offset_y),
+    );
+    let physical = CanvasGlyph::at_position(
+        CacheKey {
+            font_id: glyph.font_id,
+            glyph_id: glyph.glyph_id,
+            font_size_bits: glyph.font_size.to_bits(),
+            x_bin: SubpixelBin::Zero,
+            y_bin: SubpixelBin::Zero,
+            font_weight: glyph.font_weight,
+            flags: glyph.cache_key_flags,
+        },
+        outline_origin.x,
+        outline_origin.y,
+    );
+    TextGlyph {
+        cache_key: physical.cache_key,
+        x: physical.x,
+        y: physical.y,
+        outline_origin,
+    }
+}
+
 impl TextContext {
     #[must_use]
     pub fn new() -> Self {
@@ -82,53 +111,67 @@ impl TextContext {
         self.layout_buffer(font_system, &mut buffer)
     }
 
-    /// Builds a Tileink layout from a retained Cosmic Text buffer.
-    ///
-    /// UI frameworks that retain an editable or measured buffer should use this path; allocating
-    /// and shaping a second buffer would duplicate the most expensive part of responsive text
-    /// recording. Pending buffer changes are shaped before glyph extraction, while an unchanged
-    /// already-shaped buffer stays on Cosmic Text's inexpensive reuse path. `buffer` must have
-    /// been created with `font_system` because Cosmic Text's font ids are local to that system.
+    /// Builds a uniform-brush layout from a retained Cosmic Text buffer.
+    /// Pending changes are shaped once; prepared buffers use Cosmic Text's reuse path.
+    /// Use `layout_buffer_runs` for independent colors or interactions on prepared spans.
+    /// The buffer must have been created with `font_system`; font ids are local to that system.
     pub fn layout_buffer(
         &mut self,
         font_system: &mut FontSystem,
         buffer: &mut Buffer,
     ) -> TextLayout {
         buffer.shape_until_scroll(font_system, false);
-        let mut glyphs = Vec::new();
-        for run in super::text_layout_runs(buffer) {
-            for glyph in run.glyphs {
-                let offset_y = glyph.y - glyph.font_size * glyph.y_offset;
-                let outline_origin = Point::new(
-                    f64::from(glyph.x + glyph.font_size * glyph.x_offset),
-                    f64::from(run.line_y + offset_y),
-                );
-                // Raster and outline placement share the resolved baseline and glyph offsets.
-                // Do not truncate Y here: fractional line spacing, marks and scrolling must
-                // reach the same bounded subpixel conversion as positioned canvas glyphs.
-                let physical = CanvasGlyph::at_position(
-                    CacheKey {
-                        font_id: glyph.font_id,
-                        glyph_id: glyph.glyph_id,
-                        font_size_bits: glyph.font_size.to_bits(),
-                        x_bin: SubpixelBin::Zero,
-                        y_bin: SubpixelBin::Zero,
-                        font_weight: glyph.font_weight,
-                        flags: glyph.cache_key_flags,
-                    },
-                    outline_origin.x,
-                    outline_origin.y,
-                );
-                glyphs.push(TextGlyph {
-                    cache_key: physical.cache_key,
-                    x: physical.x,
-                    y: physical.y,
-                    outline_origin,
-                });
-            }
-        }
+        let glyphs = super::text_layout_runs(buffer)
+            .flat_map(|run| {
+                run.glyphs
+                    .iter()
+                    .map(move |glyph| prepared_glyph(glyph, run.line_y))
+            })
+            .collect::<Vec<_>>();
         let bounds = self.raster_bounds(font_system, &glyphs);
         TextLayout { glyphs, bounds }
+    }
+    /// Extracts ordered paint runs from an already-shaped buffer without mutating or reshaping it.
+    /// The buffer and its glyph font ids must belong to `font_system`. Each run remains on one
+    /// visual line and has one metadata/color value; noncontiguous values remain separate so
+    /// overlapping glyphs keep their source paint order. Empty paragraphs retain their line
+    /// indices but produce no paint run. Baselines use the same UI metrics as `layout_buffer`.
+    pub fn layout_buffer_runs(
+        &mut self,
+        font_system: &mut FontSystem,
+        buffer: &Buffer,
+    ) -> Vec<super::layout::TextLayoutRun> {
+        let mut result = Vec::new();
+        for (line, run) in super::text_layout_runs(buffer).enumerate() {
+            let mut start = 0;
+            while start < run.glyphs.len() {
+                let metadata = run.glyphs[start].metadata;
+                let color = run.glyphs[start].color_opt;
+                let mut end = start + 1;
+                while end < run.glyphs.len()
+                    && run.glyphs[end].metadata == metadata
+                    && run.glyphs[end].color_opt == color
+                {
+                    end += 1;
+                }
+                let glyphs = run.glyphs[start..end]
+                    .iter()
+                    .map(|glyph| prepared_glyph(glyph, run.line_y))
+                    .collect::<Vec<_>>();
+                let bounds = self.raster_bounds(font_system, &glyphs);
+                result.push(super::layout::TextLayoutRun {
+                    line,
+                    metadata,
+                    color: color.map(|color| {
+                        let (r, g, b, a) = color.as_rgba_tuple();
+                        [r, g, b, a]
+                    }),
+                    layout: TextLayout { glyphs, bounds },
+                });
+                start = end;
+            }
+        }
+        result
     }
 
     /// Builds a vector path for every scalable glyph in `layout`.

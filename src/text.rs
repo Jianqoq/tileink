@@ -16,7 +16,7 @@ mod scaler;
 
 pub use context::TextContext;
 pub use hit::text_hit;
-pub use layout::TextLayout;
+pub use layout::{TextLayout, TextLayoutRun};
 pub use line_metrics::text_layout_runs;
 pub use options::{TextCompositeMode, TextLayoutOptions, TextRasterOptions, TextSubpixelMode};
 

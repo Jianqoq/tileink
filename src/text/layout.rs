@@ -11,6 +11,16 @@ pub struct TextLayout {
     pub(crate) bounds: Bounds,
 }
 
+/// A contiguous prepared span with its original visual-line and application identity.
+/// Colors are straight-alpha sRGB RGBA8; None uses the caller's current text brush.
+#[derive(Clone, Debug)]
+pub struct TextLayoutRun {
+    pub layout: TextLayout,
+    pub line: usize,
+    pub metadata: usize,
+    pub color: Option<[u8; 4]>,
+}
+
 impl TextLayout {
     #[must_use]
     pub const fn is_empty(&self) -> bool {

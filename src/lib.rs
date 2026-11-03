@@ -92,8 +92,8 @@ pub use shared::{
 };
 pub use svg::{SvgError, SvgOptions};
 pub use text::{
-    TextCompositeMode, TextContext, TextLayout, TextLayoutOptions, TextRasterOptions,
-    TextSubpixelMode,
+    TextCompositeMode, TextContext, TextLayout, TextLayoutOptions, TextLayoutRun,
+    TextRasterOptions, TextSubpixelMode,
 };
 pub use text::{text_hit, text_layout_runs};
 

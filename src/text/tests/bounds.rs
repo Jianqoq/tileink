@@ -316,3 +316,76 @@ fn aligned_layout_does_not_wrap_out_of_domain_cosmic_positions() {
         }
     }
 }
+
+#[test]
+fn prepared_runs_keep_shaping_positions_metadata_and_colors_without_mutating_the_buffer() {
+    let mut fonts = font_system();
+    let mut context = TextContext::new();
+    let mut buffer = cosmic_text::Buffer::new(&mut fonts, cosmic_text::Metrics::new(20.25, 25.5));
+    buffer.set_size(Some(180.5), None);
+    buffer.set_rich_text(
+        [
+            ("First ", Attrs::new().metadata(7)),
+            (
+                "colored words\n",
+                Attrs::new()
+                    .metadata(9)
+                    .color(cosmic_text::Color::rgba(200, 20, 30, 180)),
+            ),
+            ("אבג e\u{301} 😀", Attrs::new().metadata(11)),
+        ],
+        &Attrs::new(),
+        cosmic_text::Shaping::Advanced,
+        None,
+    );
+    buffer.shape_until_scroll(&mut fonts, false);
+    let complete = context.layout_buffer(&mut fonts, &mut buffer);
+    buffer.set_redraw(false);
+    let runs = context.layout_buffer_runs(&mut fonts, &buffer);
+    assert!(
+        !buffer.redraw(),
+        "extracting paint runs must not mutate or reshape retained source"
+    );
+    assert!(
+        runs.iter()
+            .any(|run| run.metadata == 7 && run.color.is_none())
+    );
+    assert!(
+        runs.iter()
+            .any(|run| run.metadata == 9 && run.color == Some([200, 20, 30, 180]))
+    );
+    assert!(runs.iter().any(|run| run.metadata == 11));
+    let actual: Vec<_> = runs.iter().flat_map(|run| run.layout.glyphs()).collect();
+    assert_eq!(actual.len(), complete.glyphs().len());
+    for (actual, expected) in actual.into_iter().zip(complete.glyphs()) {
+        assert_eq!(actual.cache_key, expected.cache_key);
+        assert_eq!((actual.x, actual.y), (expected.x, expected.y));
+        assert_eq!(actual.outline_origin, expected.outline_origin);
+    }
+    let mut previous = 0;
+    for run in &runs {
+        assert!(run.line >= previous);
+        previous = run.line;
+    }
+}
+#[test]
+fn prepared_runs_keep_visual_line_identity_across_empty_paragraphs() {
+    let mut fonts = font_system();
+    let mut context = TextContext::new();
+    let mut buffer = cosmic_text::Buffer::new(&mut fonts, cosmic_text::Metrics::new(14., 21.));
+    buffer.set_text(
+        "First\n\nLast",
+        &Attrs::new(),
+        cosmic_text::Shaping::Advanced,
+        None,
+    );
+    buffer.shape_until_scroll(&mut fonts, false);
+    let runs = context.layout_buffer_runs(&mut fonts, &buffer);
+    assert_eq!(
+        runs.iter().map(|run| run.line).collect::<Vec<_>>(),
+        vec![0, 2]
+    );
+    buffer.set_text("", &Attrs::new(), cosmic_text::Shaping::Advanced, None);
+    buffer.shape_until_scroll(&mut fonts, false);
+    assert!(context.layout_buffer_runs(&mut fonts, &buffer).is_empty());
+}

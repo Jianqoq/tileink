@@ -25,6 +25,7 @@ title: Text 与 SVG API
 | `raster_options()` / `set_raster_options()` | 查询/修改 text raster 策略 |
 | `layout(font_system, options)` | 返回 `TextLayout` |
 | `layout_buffer(font_system, buffer)` | 复用 retained `cosmic_text::Buffer`，只 shape pending changes |
+| `layout_buffer_runs(font_system, &buffer)` | 只读提取已排版的分段 `TextLayoutRun`；保留视觉行、metadata 和 RGBA8 颜色，不重新 shaping |
 | `ink_bounds_at_scale(font_system, layout, origin, scale)` | 当前 DPI／origin 下的非透明字形像素边界，返回逻辑坐标 `Option<Rect>`；按 glyph／raster 配置缓存，空白文本或无效输入返回 None |
 | `layout_outline_path(font_system, layout, origin)` | 收集 glyph outlines |
 | `clear_glyph_caches()` | fonts/resources 发生外部重大变化时清理 |
@@ -59,3 +60,10 @@ canvas.push_svg_with_options(&tree, SvgOptions {
 retaining original glyph advances, line boxes and shaped-buffer identity. `text_hit(&buffer, x, y)`
 uses those line boxes and direction-aware grapheme positions for editing. Both require an already
 shaped buffer. See [the line-metric contract](https://github.com/Jianqoq/tileink/blob/main/docs/native/ui-text-metrics.md).
+
+## 已排版的 span 绘制
+
+`TextLayoutRun` 提供 `layout`、`line`、`metadata`、`color`。`line` 为视觉行序号，空段落也计数；
+`color` 是可选的非预乘 sRGB RGBA8，None 使用调用方的默认画刷。只有同一行、相邻且颜色与 metadata
+一致的字形才合并，绘制顺序不变。先按同一字体库准备 buffer，再调用 `layout_buffer_runs`；提取不会
+修改或重新排版 buffer。应用可以为每段选择画刷、裁切行或更改交互颜色，复用同一份字形数据。
