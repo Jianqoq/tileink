@@ -41,7 +41,7 @@ impl PersistentSceneMaterializer {
                 // the layer's output domain; using visual_bounds erased opacity/clip
                 // output on parameter updates. Keep the same domain as frame construction.
                 let raw = match node.kind {
-                    NodeKind::Layer(_) => chunk_layer_influence_bounds(chunk),
+                    NodeKind::Layer(_) => self.layer_output_bounds(id, chunk),
                     _ => chunk.canvas.visual_bounds(),
                 };
                 (

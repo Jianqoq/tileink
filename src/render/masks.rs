@@ -155,7 +155,8 @@ pub(crate) fn execute<A: MaskAdapter>(
         }
         adapter.release_scratch(region);
         region_slot = None;
-        let result = adapter.composite_targets(target, content, mask, bounds, op.outer_stack, None);
+        let result =
+            adapter.composite_targets(target, content, Some(mask), bounds, op.outer_stack, None);
         if op.retained_id.is_some() && meta.is_some() {
             content_slot = None;
             mask_slot = None;

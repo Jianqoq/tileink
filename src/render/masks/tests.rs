@@ -114,7 +114,7 @@ fn uncached_masks_preserve_content_coverage_region_and_composite_order() {
         );
         assert_eq!(
             a.composites,
-            vec![(RenderTargetId::Main, s(0), s(2), bounds)]
+            vec![(RenderTargetId::Main, s(0), Some(s(2)), bounds)]
         );
         assert!(a.targets.iter().all(Option::is_none));
     }

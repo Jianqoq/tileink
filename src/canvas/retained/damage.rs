@@ -1,3 +1,4 @@
+use crate::shared::execution::CommandListId;
 use crate::shared::execution::ROOT_COMMAND_LIST_ID;
 use std::collections::HashSet;
 
@@ -86,6 +87,10 @@ impl Canvas {
     pub(crate) fn visual_bounds(&self) -> Bounds {
         canvas_visual_bounds(self)
     }
+
+    pub(crate) fn command_list_visual_bounds(&self, list: CommandListId) -> Bounds {
+        list_visual_bounds(self, list, SceneOffset { dx: 0.0, dy: 0.0 })
+    }
     /// Propagates already-known output damage through filter dependencies.
     ///
     /// The retained diff identifies changed component pixels. This pass adds
@@ -163,9 +168,12 @@ fn layer_bounds(
         Layer::Clip { draw }
         | Layer::ClipSdf { draw }
         | Layer::Isolate { draw }
-        | Layer::Opacity { draw, .. }
+        | Layer::Opacity {
+            draw: Some(draw), ..
+        }
         | Layer::Blend { draw, .. } => child_bounds
             .intersect(offset.bounds(pixel_bounds(canvas.draw_records[*draw].pixel_bounds))),
+        Layer::Opacity { draw: None, .. } => child_bounds,
         Layer::Filter {
             filter: value,
             sample_region,

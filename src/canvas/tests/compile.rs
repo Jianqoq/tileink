@@ -509,7 +509,7 @@ fn compile_keeps_opacity_with_offscreen_child_isolated() {
             children,
             ..
         } => {
-            assert_eq!(*draw, 0);
+            assert_eq!(*draw, Some(0));
             assert_eq!(*opacity, 0.5);
             assert!(outer_stack.is_empty());
             assert!(matches!(

@@ -30,7 +30,7 @@ impl PersistentSceneMaterializer {
         let mut nodes = Vec::new();
         scene.collect_subtree(id, &mut nodes);
         let node_set = nodes.iter().copied().collect::<HashSet<_>>();
-        let layer_bounds = chunk_layer_influence_bounds(&self.chunks[&id]);
+        let layer_bounds = self.layer_output_bounds(id, &self.chunks[&id]);
         let layer_painter = painter_path(scene, id);
         let next_layer = self.canvas.command_lists[ROOT_COMMAND_LIST_ID]
             .commands

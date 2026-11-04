@@ -1,6 +1,7 @@
 use super::helpers::chunk_layer_influence_bounds;
 use super::*;
 use crate::canvas::damage_history::ResolvedDamage;
+use crate::shared::execution::ROOT_COMMAND_LIST_ID;
 
 impl PersistentSceneMaterializer {
     pub(super) fn layer_input_isolated(&self, id: RetainedNodeId) -> Option<bool> {
@@ -47,12 +48,9 @@ impl PersistentSceneMaterializer {
         })
     }
 
-    #[allow(
-        clippy::unused_self,
-        reason = "Tests count bounds reads through this materializer instance"
-    )]
     pub(super) fn local_output_bounds(
         &self,
+        id: RetainedNodeId,
         kind: &NodeKind,
         chunk: &SceneChunk,
     ) -> Option<Bounds> {
@@ -60,7 +58,7 @@ impl PersistentSceneMaterializer {
         self.local_output_bounds_reads
             .set(self.local_output_bounds_reads.get() + 1);
         Some(match kind {
-            NodeKind::Layer(_) => chunk_layer_influence_bounds(chunk),
+            NodeKind::Layer(_) => self.layer_output_bounds(id, chunk),
             NodeKind::Scene { .. } => chunk.canvas.visual_bounds(),
             NodeKind::Group => return None,
         })
@@ -137,6 +135,29 @@ impl PersistentSceneMaterializer {
                 "Scoped damage is published into the persistent frame installed by materialization",
             )
             .damage_history = history;
+    }
+
+    /// A layer shell has no child commands. Unbounded opacity gets its output
+    /// domain from the installed subtree; treating the empty shell as its output
+    /// erased frame damage after the first alpha update and left stale pixels.
+    pub(super) fn layer_output_bounds(&self, id: RetainedNodeId, chunk: &SceneChunk) -> Bounds {
+        if matches!(
+            &chunk.canvas.command_lists[ROOT_COMMAND_LIST_ID].commands[0],
+            Command::Layer {
+                layer: Layer::Opacity { draw: None, .. },
+                ..
+            }
+        ) {
+            let location = self.layer_command_locations[&id];
+            let Command::Layer { children, .. } =
+                &self.canvas.command_lists[location.parent_list].commands[location.command_index]
+            else {
+                unreachable!("a retained opacity layer owns a layer command");
+            };
+            self.canvas.command_list_visual_bounds(*children)
+        } else {
+            chunk_layer_influence_bounds(chunk)
+        }
     }
 }
 

@@ -19,7 +19,8 @@ pub(crate) enum Layer {
         draw: usize,
     },
     Opacity {
-        draw: usize,
+        // None isolates all descendant paint without introducing a geometry clip.
+        draw: Option<usize>,
         opacity: f32,
     },
     Blend {
@@ -44,8 +45,8 @@ impl Layer {
             Self::Clip { draw }
             | Self::ClipSdf { draw }
             | Self::Isolate { draw }
-            | Self::Opacity { draw, .. }
             | Self::Blend { draw, .. } => Some(*draw),
+            Self::Opacity { draw, .. } => *draw,
             Self::Filter { .. } | Self::Backdrop { .. } => None,
         }
     }
@@ -59,8 +60,12 @@ impl Layer {
             Self::Clip { draw }
             | Self::ClipSdf { draw }
             | Self::Isolate { draw }
-            | Self::Opacity { draw, .. }
             | Self::Blend { draw, .. } => *draw += offset,
+            Self::Opacity { draw, .. } => {
+                if let Some(draw) = draw {
+                    *draw += offset;
+                }
+            }
             Self::Filter { .. } | Self::Backdrop { .. } => {}
         }
         self

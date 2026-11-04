@@ -154,7 +154,7 @@ fn translate_layer_to_local(
             draw: draw_map[draw],
         },
         OffscreenLayer::Opacity { draw, opacity } => OffscreenLayer::Opacity {
-            draw: draw_map[draw],
+            draw: draw.map(|draw| draw_map[&draw]),
             opacity: *opacity,
         },
         OffscreenLayer::Blend { draw, mode } => OffscreenLayer::Blend {

@@ -22,9 +22,9 @@ pub(crate) fn execute<A: GroupAdapter + FilterAdapter + BackdropAdapter>(
     cursors: &mut FilterCursors,
 ) -> Result<(), A::Error> {
     let (draw, opacity, blend) = match op.layer {
-        OffscreenLayer::Isolate { draw } => (*draw, None, None),
+        OffscreenLayer::Isolate { draw } => (Some(*draw), None, None),
         OffscreenLayer::Opacity { draw, opacity } => (*draw, Some(*opacity), None),
-        OffscreenLayer::Blend { draw, mode } => (*draw, None, Some(*mode)),
+        OffscreenLayer::Blend { draw, mode } => (Some(*draw), None, Some(*mode)),
         OffscreenLayer::Filter {
             filter,
             sample_region,

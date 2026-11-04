@@ -125,7 +125,7 @@ impl PersistentSceneMaterializer {
                     }
                     let chunk = &self.chunks[&id];
                     let bounds = influences[&id]
-                        .apply(chunk_layer_influence_bounds(chunk))
+                        .apply(self.layer_output_bounds(id, chunk))
                         .union(subtree_leaf_bounds[&id]);
                     nodes.push(crate::canvas::RetainedNodeState {
                         id,
@@ -195,7 +195,8 @@ impl PersistentSceneMaterializer {
                 clip: Some(chunk_layer_influence_bounds(&self.chunks[&id])),
             },
             RetainedLayerDescriptor::Backdrop { .. }
-            | RetainedLayerDescriptor::BackdropWithOpacity { .. } => BoundsInfluence {
+            | RetainedLayerDescriptor::BackdropWithOpacity { .. }
+            | RetainedLayerDescriptor::OpacityGroup { .. } => BoundsInfluence {
                 outset: 0,
                 clip: None,
             },

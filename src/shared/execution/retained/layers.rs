@@ -31,9 +31,12 @@ impl ExecPlan {
                         },
                     )),
                     (
-                        Layer::Opacity { draw: old_draw, .. },
                         Layer::Opacity {
-                            draw: new_draw,
+                            draw: Some(old_draw),
+                            ..
+                        },
+                        Layer::Opacity {
+                            draw: Some(new_draw),
                             opacity,
                         },
                     ) => Some((
@@ -102,6 +105,9 @@ fn patch_retained_layer_ops(ops: &mut [ExecOp], id: RetainedNodeId, new: &Comman
                             opacity: value,
                         },
                     ) => {
+                        if draw.is_some() != new_draw.is_some() {
+                            return false;
+                        }
                         *draw = *new_draw;
                         *opacity = *value;
                     }

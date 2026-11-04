@@ -48,7 +48,14 @@ pub(super) fn execute<A: BackdropAdapter>(
             let mask = a.acquire_scratch()?;
             mask_slot = Some(mask);
             a.region_mask(mask, &region, None, bounds)?;
-            a.composite_targets(target, source, mask, bounds, layer.stack.clone(), None)
+            a.composite_targets(
+                target,
+                source,
+                Some(mask),
+                bounds,
+                layer.stack.clone(),
+                None,
+            )
         }
     })();
     if let Some(mask) = mask_slot {

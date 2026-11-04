@@ -109,6 +109,12 @@ pub(super) fn validate_layer(
             }
             validate_region(sample_region)
         }
+        RetainedLayerDescriptor::OpacityGroup { opacity } => {
+            if !opacity.is_finite() || !(0.0..=1.0).contains(opacity) {
+                return Err(RetainedSceneError::InvalidPosition);
+            }
+            Ok(())
+        }
         RetainedLayerDescriptor::Mask(mask) => validate_region(&mask.region),
         RetainedLayerDescriptor::ClipSdf { sdf, transform } => {
             validate_sdf(*sdf)?;
@@ -235,6 +241,33 @@ mod backdrop_opacity_tests {
             assert_eq!(
                 validate_layer(&layer, 1.0).is_ok(),
                 opacity.is_finite() && (0.0..=1.0).contains(&opacity)
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod opacity_group_tests {
+    use super::*;
+
+    #[test]
+    fn retained_opacity_group_validates_alpha_without_normalizing_authored_data() {
+        for alpha in [f32::NAN, f32::NEG_INFINITY, f32::INFINITY, -0.01, 1.01] {
+            assert!(
+                validate_layer(
+                    &RetainedLayerDescriptor::OpacityGroup { opacity: alpha },
+                    1.0
+                )
+                .is_err()
+            );
+        }
+        for alpha in [0.0, 0.5, 1.0] {
+            assert!(
+                validate_layer(
+                    &RetainedLayerDescriptor::OpacityGroup { opacity: alpha },
+                    1.0
+                )
+                .is_ok()
             );
         }
     }

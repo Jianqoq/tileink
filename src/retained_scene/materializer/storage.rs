@@ -44,6 +44,9 @@ impl PersistentSceneMaterializer {
                         tolerance,
                         opacity,
                     } => canvas.push_opacity_layer(path.clone(), *transform, *tolerance, *opacity),
+                    RetainedLayerDescriptor::OpacityGroup { opacity } => {
+                        canvas.push_opacity_group(*opacity);
+                    }
                     RetainedLayerDescriptor::Blend {
                         path,
                         transform,

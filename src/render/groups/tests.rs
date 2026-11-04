@@ -17,7 +17,7 @@ impl GroupAdapter for Adapter {
 fn group(plan: &ExecPlan, retained: bool) -> Group<'_> {
     Group {
         retained_id: retained.then(id),
-        draw: 0,
+        draw: Some(0),
         outer_stack: 2..4,
         children: &plan.ops,
         opacity: None,
@@ -444,4 +444,92 @@ fn failed_composite_transfers_recorded_surfaces_to_the_cache_once() {
             if was_cached { (20, 30) } else { (100, 101) }
         );
     }
+}
+
+#[test]
+fn unmasked_opacity_renders_once_without_a_mask_allocation() {
+    let (canvas, plan) = fixture();
+    let mut adapter = Adapter::new(&canvas, RetainedSurfaceKind::Group);
+    let mut op = group(&plan, false);
+    op.draw = None;
+    op.opacity = Some(0.5);
+    let mut cursors = FilterCursors::default();
+    execute(
+        &mut adapter,
+        &canvas,
+        &plan,
+        op,
+        RenderTargetId::Main,
+        &mut cursors,
+    )
+    .unwrap();
+    let source = RenderTargetId::Scratch(0);
+    assert_eq!(
+        adapter.events,
+        vec![
+            Event::Acquire(source),
+            Event::Clear(source),
+            Event::Draw(source),
+            Event::Filter,
+            Event::Opacity(0.5),
+            Event::Composite(None),
+            Event::Release(source),
+        ]
+    );
+    assert_eq!(adapter.composites[0].2, None);
+    assert_eq!(cursors.next_transfer_index(), 1);
+    assert!(adapter.targets.iter().all(Option::is_none));
+}
+
+#[test]
+fn unmasked_cached_groups_reuse_one_surface_and_only_repaint_dirty_tiles() {
+    let (canvas, plan) = fixture();
+    let mut adapter = Adapter::new(&canvas, RetainedSurfaceKind::Group);
+    let run = |adapter: &mut Adapter| {
+        let mut op = group(&plan, true);
+        op.draw = None;
+        op.opacity = Some(0.5);
+        execute(
+            adapter,
+            &canvas,
+            &plan,
+            op,
+            RenderTargetId::Main,
+            &mut FilterCursors::default(),
+        )
+        .unwrap();
+    };
+    run(&mut adapter);
+    adapter.events.clear();
+    adapter
+        .retained
+        .set_active_tiles(Some(DamageTiles::new((32, 32))));
+    run(&mut adapter);
+    assert!(matches!(
+        adapter.events.as_slice(),
+        [Event::Cached(_, None, None)]
+    ));
+    adapter.events.clear();
+    let mut damage = DamageTiles::new((32, 32));
+    damage.add_bounds(Bounds::new(0, 0, 8, 8));
+    adapter.retained.set_active_tiles(Some(damage));
+    let before = adapter.retained.stats().rerendered_offscreen_tiles;
+    run(&mut adapter);
+    assert!(
+        adapter
+            .events
+            .iter()
+            .any(|event| matches!(event, Event::ClearRegion(..)))
+    );
+    assert!(
+        !adapter
+            .events
+            .iter()
+            .any(|event| matches!(event, Event::Mask(_) | Event::Clear(_)))
+    );
+    assert_eq!(
+        adapter.retained.stats().rerendered_offscreen_tiles,
+        before + 1
+    );
+    assert_eq!(adapter.composites.last().unwrap().2, None);
 }

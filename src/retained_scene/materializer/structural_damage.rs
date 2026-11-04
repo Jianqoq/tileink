@@ -1,4 +1,3 @@
-use super::helpers::chunk_layer_influence_bounds;
 use super::*;
 use crate::canvas::{RetainedDamage, damage_history::ResolvedDamage};
 
@@ -54,7 +53,7 @@ impl PersistentSceneMaterializer {
                     damage.add_node(
                         id,
                         if layer {
-                            chunk_layer_influence_bounds(chunk)
+                            self.layer_output_bounds(id, chunk)
                         } else {
                             chunk.canvas.visual_bounds()
                         },

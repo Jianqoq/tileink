@@ -44,7 +44,7 @@ impl PersistentSceneMaterializer {
                 NodeKind::Layer(_) => {
                     let chunk = &self.chunks[&id];
                     let mut bounds =
-                        self.influenced_bounds(scene, id, chunk_layer_influence_bounds(chunk));
+                        self.influenced_bounds(scene, id, self.layer_output_bounds(id, chunk));
                     let mut leaves = Vec::new();
                     collect_scene_leaves(scene, id, &mut leaves);
                     for leaf_id in leaves {
@@ -99,7 +99,7 @@ impl PersistentSceneMaterializer {
             }
             if let Some(chunk) = self.chunks.get(&id) {
                 let raw_bounds = match scene.nodes[&id].kind {
-                    NodeKind::Layer(_) => chunk_layer_influence_bounds(chunk),
+                    NodeKind::Layer(_) => self.layer_output_bounds(id, chunk),
                     NodeKind::Scene { .. } => chunk.canvas.visual_bounds(),
                     NodeKind::Group => unreachable!("groups do not own chunks"),
                 };

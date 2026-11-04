@@ -17,7 +17,10 @@ impl Canvas {
             Layer::Clip { draw } | Layer::ClipSdf { draw } => {
                 LayerExecution::Fused(LayerStackEntry::Clip { draw: *draw as u32 })
             }
-            Layer::Opacity { draw, opacity } if self.can_fuse(layer, children) => {
+            Layer::Opacity {
+                draw: Some(draw),
+                opacity,
+            } if self.can_fuse(layer, children) => {
                 LayerExecution::Fused(LayerStackEntry::Opacity {
                     draw: *draw as u32,
                     opacity: *opacity,

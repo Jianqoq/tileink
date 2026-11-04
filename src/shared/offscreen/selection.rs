@@ -108,7 +108,9 @@ fn collect_local_plan_draws<'a>(
                 ..
             } => {
                 if let OffscreenLayer::Isolate { draw }
-                | OffscreenLayer::Opacity { draw, .. }
+                | OffscreenLayer::Opacity {
+                    draw: Some(draw), ..
+                }
                 | OffscreenLayer::Blend { draw, .. } = layer
                 {
                     hidden.insert(*draw);

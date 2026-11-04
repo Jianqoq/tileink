@@ -42,7 +42,7 @@ impl PersistentSceneMaterializer {
                 // its source instead of special-casing resize transactions in callers.
                 let node = scene.nodes.get(&id)?;
                 let bounds = match node.kind {
-                    NodeKind::Layer(_) => chunk_layer_influence_bounds(chunk),
+                    NodeKind::Layer(_) => self.layer_output_bounds(id, chunk),
                     NodeKind::Scene { .. } => chunk.canvas.visual_bounds(),
                     NodeKind::Group => unreachable!("groups do not own chunks"),
                 };
@@ -98,7 +98,7 @@ impl PersistentSceneMaterializer {
                 self.raw_node_bounds.get(&id).copied().unwrap_or(fixed)
             } else {
                 match node.kind {
-                    NodeKind::Layer(_) => chunk_layer_influence_bounds(chunk),
+                    NodeKind::Layer(_) => self.layer_output_bounds(id, chunk),
                     NodeKind::Scene { .. } => chunk.canvas.visual_bounds(),
                     NodeKind::Group => unreachable!("groups do not own chunks"),
                 }

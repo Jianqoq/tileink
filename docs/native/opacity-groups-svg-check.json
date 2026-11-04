@@ -1,0 +1,13 @@
+{
+  "baseline": "06d9be0a720e22007d645ec7b0dfef852bcd395b",
+  "current_base": "06d9be0a720e22007d645ec7b0dfef852bcd395b",
+  "backend": "dx12",
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "luid": "ea3c010000000000",
+  "total": 1712,
+  "equal_bytes": 1712,
+  "equal_pixels": 0,
+  "different": [],
+  "manifest_sha256": "59b53d062d017b63cdb69ede4684499c8f4e3365b6fa2efead97d4512338c1e0",
+  "scope": "Unbounded opacity group production changes compared with an unmodified 06d9be0a build on the same host; stored golden image differences were not accepted or updated."
+}

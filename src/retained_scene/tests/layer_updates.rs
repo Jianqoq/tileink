@@ -427,3 +427,47 @@ fn combined_backdrop_scope_changes_recompile_but_opacity_samples_only_patch_valu
         "opacity animation rebuilt draw batches"
     );
 }
+
+#[test]
+fn unbounded_opacity_parameter_updates_preserve_the_descendant_output_domain() {
+    let mut scene = scene(RetainedLayerDescriptor::OpacityGroup { opacity: 0.5 });
+    let mut materializer = PersistentSceneMaterializer::new(&scene);
+    let bounds = |materializer: &PersistentSceneMaterializer| {
+        materializer
+            .canvas
+            .persistent_frame
+            .as_ref()
+            .unwrap()
+            .node_state(GROUP)
+            .unwrap()
+            .bounds
+    };
+    let expected = bounds(&materializer);
+    assert!(!expected.is_empty());
+    let order = Rc::clone(
+        &materializer
+            .canvas
+            .compiled_plan
+            .as_ref()
+            .unwrap()
+            .draw_order,
+    );
+    for opacity in [0.25, 0.75, 0.0, 1.0, 0.5] {
+        scene
+            .transaction()
+            .update_layer(GROUP, RetainedLayerDescriptor::OpacityGroup { opacity })
+            .commit()
+            .unwrap();
+        assert!(update_materializer(&mut materializer, &scene));
+        assert_eq!(bounds(&materializer), expected, "opacity={opacity}");
+        assert!(Rc::ptr_eq(
+            &order,
+            &materializer
+                .canvas
+                .compiled_plan
+                .as_ref()
+                .unwrap()
+                .draw_order
+        ));
+    }
+}

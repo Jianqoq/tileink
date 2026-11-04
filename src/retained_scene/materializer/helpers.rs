@@ -340,7 +340,9 @@ pub(super) fn chunk_layer_influence_bounds(chunk: &SceneChunk) -> Bounds {
                 Layer::Clip { draw }
                 | Layer::ClipSdf { draw }
                 | Layer::Isolate { draw }
-                | Layer::Opacity { draw, .. }
+                | Layer::Opacity {
+                    draw: Some(draw), ..
+                }
                 | Layer::Blend { draw, .. },
             ..
         } => {
@@ -360,6 +362,10 @@ pub(super) fn chunk_layer_influence_bounds(chunk: &SceneChunk) -> Bounds {
                 },
             ..
         } => filter::unclipped_filtered_region_bounds(value, sample_region),
+        Command::Layer {
+            layer: Layer::Opacity { draw: None, .. },
+            ..
+        } => Bounds::new(0, 0, 0, 0),
         Command::MaskLayer { layer, .. } => filter::region_bounds(&layer.region),
         _ => unreachable!("retained layer chunk has one root layer command"),
     }

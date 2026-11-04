@@ -66,7 +66,8 @@ impl PersistentSceneMaterializer {
                         bounds.intersect(chunk_layer_influence_bounds(&self.chunks[&parent.node]))
                     }
                     RetainedLayerDescriptor::Backdrop { .. }
-                    | RetainedLayerDescriptor::BackdropWithOpacity { .. } => bounds,
+                    | RetainedLayerDescriptor::BackdropWithOpacity { .. }
+                    | RetainedLayerDescriptor::OpacityGroup { .. } => bounds,
                 };
             }
             id = parent.node;
