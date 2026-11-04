@@ -286,3 +286,88 @@ fn empty_mask_branches_keep_independent_batches_on_first_insertion() {
         );
     }
 }
+
+#[test]
+fn wrapping_existing_empty_layers_rebuilds_their_execution_ownership() {
+    let id = RetainedNodeId::for_owner;
+    for grouped in [false, true] {
+        for wrapper_kind in [2, 7] {
+            let root = id(186_000);
+            let clip = id(186_001);
+            let a = id(186_002);
+            let b = id(186_003);
+            let wrapper = id(186_004);
+            let group = id(186_005);
+            let mut scene = RetainedScene::new(32, 32, 1.0, root).unwrap();
+            let mut tx = scene.transaction();
+            if grouped {
+                tx.insert_group(RetainedParent::content(root), None, group);
+            }
+            tx.insert_layer(
+                RetainedParent::content(if grouped { group } else { root }),
+                None,
+                clip,
+                descriptor(1),
+            )
+            .insert_scene(
+                RetainedParent::content(root),
+                None,
+                a,
+                leaf(false),
+                Affine::IDENTITY,
+            )
+            .insert_scene(
+                RetainedParent::content(root),
+                None,
+                b,
+                leaf(false),
+                Affine::IDENTITY,
+            )
+            .commit()
+            .unwrap();
+            let mut state = PersistentSceneMaterializer::new(&scene);
+            let mut tx = scene.transaction();
+            tx.insert_layer(
+                RetainedParent::content(root),
+                None,
+                wrapper,
+                descriptor(wrapper_kind),
+            )
+            .reparent(
+                if grouped { group } else { clip },
+                if wrapper_kind == 7 {
+                    RetainedParent::mask(wrapper)
+                } else {
+                    RetainedParent::content(wrapper)
+                },
+                None,
+            )
+            .reparent(a, RetainedParent::content(wrapper), None)
+            .reparent(b, RetainedParent::content(wrapper), None)
+            .commit()
+            .unwrap();
+            assert!(state.update(&scene, scene.changes_since(state.version())));
+            assert_fragment_partition(&state, &scene);
+            assert_eq!(state.root_plan_fragments.len(), 1);
+            assert!(
+                state
+                    .empty_branch_batches
+                    .contains_key(&RetainedParent::content(clip))
+            );
+            scene
+                .transaction()
+                .insert_scene(
+                    RetainedParent::content(clip),
+                    None,
+                    id(186_006),
+                    leaf(false),
+                    Affine::IDENTITY,
+                )
+                .commit()
+                .unwrap();
+            state.update(&scene, scene.changes_since(state.version()));
+            assert_fragment_partition(&state, &scene);
+            assert!(state.node_physical_draws(id(186_006)).next().is_some());
+        }
+    }
+}

@@ -49,6 +49,26 @@ impl PersistentSceneMaterializer {
         {
             return None;
         }
+        // A previously materialized layer owns structural plan operations, including empty
+        // batches. Plain-run insertion cannot retire that old range when wrapping it in a new
+        // parent: retaining both ranges duplicates its owner and invalidates empty membership.
+        // Compile the hierarchy atomically, including layers under reparented transparent groups.
+        let mut pending = vec![id];
+        while let Some(node_id) = pending.pop() {
+            if self.layer_command_locations.contains_key(&node_id) {
+                return None;
+            }
+            let node = scene.nodes.get(&node_id)?;
+            pending.extend(node.content.values().copied());
+            if matches!(node.kind, NodeKind::Layer(RetainedLayerDescriptor::Mask(_))) {
+                pending.extend(
+                    node.children(RetainedParent::mask(node_id))
+                        .ok()?
+                        .values()
+                        .copied(),
+                );
+            }
+        }
         // This edit splits one plain execution run. A following Scene with its own
         // offscreen operations needs structural compilation; do not partially move it.
         let mut next = command_neighbor(

@@ -102,3 +102,10 @@ Resize 必须 full redraw，但不等于需要重建场景数据。连续 resize
 4. resize 结束后的第一次普通增量 mutation 才恢复 persistent reverse index。
 
 这避免每个 resize frame 构造下一帧立刻失效的 per-tile mutation index。
+
+
+根图层的普通片段插入不能包入已经物化的 layer，包括位于透明 Group 中的 layer。
+这些节点已经拥有结构化执行范围；只迁移普通 draw 的 batch 成员不会退役旧范围，
+可能把同一空裁剪分支同时留在旧位置和新父层中，破坏唯一批次归属并引发崩溃。
+候选选择会遍历新子树的 Content／Mask 分支；发现已有 layer 时，原子编译当前层级。
+这是对增量路径适用条件的根因修复，不忽略缺失归属，也不丢弃空裁剪或后续新增绘制。

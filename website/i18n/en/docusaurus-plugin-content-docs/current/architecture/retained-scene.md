@@ -74,3 +74,12 @@ together, and batch migration stops at the next layer boundary. A following Scen
 its own offscreen operations requires compilation of its complete structure.
 
 Each non-group node becomes a local-indexed `SceneChunk`. Stable arenas prevent unrelated variable-length updates from moving live data. Tile draw ranges and plan fragments update only affected regions/ancestors. CPU memberships and GPU references use contiguous arenas, with an offset and actual length per tile. Local edits reuse free ranges and upload changed references; excessive fragmentation compacts storage and refreshes offsets. During continuous resize, Tileink preserves chunks, defers exact spatial metadata, uses dense one-frame tile bins, and restores the persistent reverse index on the first later incremental mutation. Responsive hierarchy changes committed with a resize also preserve the previous immutable frame/spatial pages because the full redraw makes them unobservable; the first later non-resize mutation reconstructs the exact current hierarchy before incremental damage tracking resumes.
+
+
+A plain root-fragment insertion cannot wrap an already materialized layer, including a layer
+beneath a transparent Group. Its previous structural execution range must retire atomically
+with installation under the new parent. Migrating only ordinary draw membership leaves duplicate
+empty clip owners and can crash empty-branch indexing. Candidate selection checks the new
+subtree's Content and Mask branches; an existing layer requires compiling the current hierarchy.
+This fixes the fast-path eligibility invariant rather than suppressing a missing owner or dropping
+empty clips and later child insertions.
