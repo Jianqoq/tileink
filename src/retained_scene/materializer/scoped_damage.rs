@@ -144,17 +144,32 @@ impl PersistentSceneMaterializer {
         if matches!(
             &chunk.canvas.command_lists[ROOT_COMMAND_LIST_ID].commands[0],
             Command::Layer {
-                layer: Layer::Opacity { draw: None, .. },
+                layer: Layer::BlurGroup { .. } | Layer::Opacity { draw: None, .. },
                 ..
             }
         ) {
             let location = self.layer_command_locations[&id];
-            let Command::Layer { children, .. } =
-                &self.canvas.command_lists[location.parent_list].commands[location.command_index]
+            let Command::Layer {
+                layer, children, ..
+            } = &self.canvas.command_lists[location.parent_list].commands[location.command_index]
             else {
                 unreachable!("a retained opacity layer owns a layer command");
             };
-            self.canvas.command_list_visual_bounds(*children)
+            let bounds = self.canvas.command_list_visual_bounds(*children);
+            if bounds.is_empty() {
+                return bounds;
+            }
+            match layer {
+                Layer::BlurGroup { sigma } => filter::unclipped_filtered_region_bounds(
+                    &filter::Filter::Blur {
+                        std_dev_x: *sigma,
+                        std_dev_y: *sigma,
+                        sampling: crate::BlurSampling::default(),
+                    },
+                    &self.canvas.paint_region(*children),
+                ),
+                _ => bounds,
+            }
         } else {
             chunk_layer_influence_bounds(chunk)
         }

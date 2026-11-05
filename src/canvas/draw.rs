@@ -73,7 +73,7 @@ impl Canvas {
             Layer::Isolate { .. } => LayerKind::Isolate,
             Layer::Opacity { .. } => LayerKind::Opacity,
             Layer::Blend { .. } => LayerKind::Blend,
-            Layer::Filter { .. } => LayerKind::Filter,
+            Layer::Filter { .. } | Layer::BlurGroup { .. } => LayerKind::Filter,
             Layer::Backdrop { .. } => LayerKind::Backdrop,
         };
         let children = self.push_child_command_list();

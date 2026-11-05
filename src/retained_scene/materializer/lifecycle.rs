@@ -276,6 +276,7 @@ impl PersistentSceneMaterializer {
                                 &node.kind,
                                 NodeKind::Layer(
                                     RetainedLayerDescriptor::Filter { .. }
+                                        | RetainedLayerDescriptor::BlurGroup { .. }
                                         | RetainedLayerDescriptor::Mask(_)
                                 )
                             )

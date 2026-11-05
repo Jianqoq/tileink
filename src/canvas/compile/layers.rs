@@ -45,6 +45,14 @@ impl Canvas {
                 draw: *draw,
                 mode: *mode,
             }),
+            Layer::BlurGroup { sigma } => LayerExecution::Offscreen(OffscreenLayer::Filter {
+                filter: crate::Filter::Blur {
+                    std_dev_x: *sigma,
+                    std_dev_y: *sigma,
+                    sampling: crate::BlurSampling::default(),
+                },
+                sample_region: self.paint_region(children),
+            }),
             Layer::Filter {
                 filter,
                 sample_region,

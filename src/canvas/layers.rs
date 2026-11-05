@@ -197,6 +197,20 @@ impl Canvas {
         self.push_mask_command(self.physical_mask(mask), mask_commands);
     }
 
+    /// Blur the complete descendant paint without introducing a geometric clip.
+    /// Input bounds are resolved from recorded children at compilation, including overflow.
+    ///
+    /// # Panics
+    /// Panics for nonfinite/negative sigma or a sigma outside the physical finite range.
+    pub fn push_blur_group(&mut self, sigma: f32) {
+        let physical = sigma * self.scale_factor();
+        assert!(
+            sigma.is_finite() && sigma >= 0.0 && physical.is_finite(),
+            "blur sigma must be finite and nonnegative"
+        );
+        self.push_layer_command(Layer::BlurGroup { sigma: physical });
+    }
+
     /// Adds an offscreen filter group sampled from `sample_region`.
     ///
     /// Filters derive their final output bounds from this region. Blur and

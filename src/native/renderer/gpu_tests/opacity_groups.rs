@@ -241,3 +241,70 @@ fn nested_unbounded_opacity_inside_a_local_filter_matches_direct_pixels() -> Tes
     context.check_validation()?;
     Ok(())
 }
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn foreground_blur_tracks_descendant_growth_moves_removal_and_sigma_revisions() -> TestResult {
+    let context = context()?;
+    for scale in [1, 2] {
+        let root = RetainedNodeId::for_owner(100);
+        let group = RetainedNodeId::for_owner(101);
+        let child = RetainedNodeId::for_owner(102);
+        let mut scene = RetainedScene::new(64, 64, scale as f32, root)?;
+        scene
+            .transaction()
+            .insert_layer(
+                RetainedParent::content(root),
+                None,
+                group,
+                RetainedLayerDescriptor::BlurGroup { sigma: 2.0 },
+            )
+            .commit()?;
+        let mut renderer = NativeRenderer::with_context(&context, 64 * scale, 64 * scale)?;
+        for (step, sigma) in [2.0, 4.0, 1.0, 0.0, 3.0].into_iter().enumerate() {
+            let mut leaf = Canvas::new(4, 4, scale as f32);
+            let x = 8.0 + step as f64 * 6.0;
+            leaf.push_rect(
+                Rect::new(x, 16.0, x + 12.0 + step as f64 * 2.0, 40.0),
+                Radius::ZERO,
+                Color::WHITE,
+            );
+            let leaf = Rc::new(leaf);
+            let mut transaction = scene.transaction();
+            transaction.update_layer(group, RetainedLayerDescriptor::BlurGroup { sigma });
+            if step == 0 {
+                transaction.insert_scene(
+                    RetainedParent::content(group),
+                    None,
+                    child,
+                    Rc::clone(&leaf),
+                    Affine::IDENTITY,
+                );
+            } else {
+                transaction.replace_scene(child, Rc::clone(&leaf));
+            }
+            transaction.commit()?;
+            let actual = renderer.render_retained_to_image(&scene)?.readback()?;
+            let mut fresh = NativeRenderer::with_context(&context, 64 * scale, 64 * scale)?;
+            assert_eq!(
+                actual.pixels,
+                fresh.render_retained_to_image(&scene)?.readback()?.pixels,
+                "incremental blur, step={step}, dpi={scale}"
+            );
+            let mut immediate = Canvas::new(64, 64, scale as f32);
+            immediate.push_blur_group(sigma);
+            immediate.append(&leaf, peniko::kurbo::Point::ZERO);
+            immediate.pop_layer();
+            let mut direct = NativeRenderer::with_context(&context, 64 * scale, 64 * scale)?;
+            assert_eq!(
+                actual.pixels,
+                direct.render_to_image(&immediate)?.readback()?.pixels,
+                "automatic region, step={step}, dpi={scale}"
+            );
+        }
+        scene.transaction().remove_subtree(child).commit()?;
+        let empty = renderer.render_retained_to_image(&scene)?.readback()?;
+        assert!(empty.pixels.iter().all(|pixel| *pixel == 0));
+    }
+    Ok(())
+}

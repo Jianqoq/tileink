@@ -46,3 +46,52 @@ fn opacity_groups_allocate_no_geometry_and_preserve_overflow_bounds() {
 fn opacity_group_rejects_nonfinite_alpha() {
     Canvas::new(64, 64, 1.0).push_opacity_group(f32::NAN);
 }
+
+#[test]
+fn blur_groups_resolve_descendant_bounds_and_expand_overflow_at_physical_dpi() {
+    use crate::shared::execution::{ExecOp, OffscreenLayer};
+    for dpi in [1.0, 1.25, 2.0] {
+        let mut canvas = Canvas::new(64, 64, dpi);
+        canvas.push_blur_group(2.0);
+        canvas.push_rect(
+            Rect::new(-10.0, 8.0, 90.0, 40.0),
+            Radius::ZERO,
+            Color::WHITE,
+        );
+        assert_eq!(canvas.pop_layer(), Some(LayerKind::Filter));
+        assert_eq!(canvas.draw_count(), 1);
+        let bounds = canvas.visual_bounds();
+        assert!(f64::from(bounds.x0) < -10.0 * f64::from(dpi));
+        assert!(f64::from(bounds.x1) > 90.0 * f64::from(dpi));
+        let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+        let ExecOp::OffscreenLayer {
+            layer:
+                OffscreenLayer::Filter {
+                    filter:
+                        crate::Filter::Blur {
+                            std_dev_x,
+                            std_dev_y,
+                            ..
+                        },
+                    sample_region,
+                },
+            ..
+        } = &plan.ops[0]
+        else {
+            panic!("real blur layer");
+        };
+        assert_eq!((*std_dev_x, *std_dev_y), (2.0 * dpi, 2.0 * dpi));
+        assert!(
+            crate::shared::layer::filter::region_bounds(sample_region).x0 <= (-10.0 * dpi) as i32
+        );
+    }
+}
+#[test]
+fn nested_blur_groups_are_finite_and_empty_groups_stay_empty() {
+    let mut canvas = Canvas::new(64, 64, 1.0);
+    canvas.push_blur_group(2.0);
+    canvas.push_blur_group(3.0);
+    canvas.pop_layer();
+    canvas.pop_layer();
+    assert!(canvas.visual_bounds().is_empty());
+}

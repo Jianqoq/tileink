@@ -97,6 +97,12 @@ pub(super) fn validate_layer(
             }
             Ok(())
         }
+        RetainedLayerDescriptor::BlurGroup { sigma } => {
+            if !sigma.is_finite() || *sigma < 0.0 || !(*sigma * scale).is_finite() {
+                return Err(RetainedSceneError::InvalidPosition);
+            }
+            Ok(())
+        }
         RetainedLayerDescriptor::Filter { sample_region, .. }
         | RetainedLayerDescriptor::Backdrop { sample_region, .. } => validate_region(sample_region),
         RetainedLayerDescriptor::BackdropWithOpacity {

@@ -54,6 +54,9 @@ impl PersistentSceneMaterializer {
                             let clip = draw.pixel_bounds;
                             bounds.intersect(Bounds::new(clip.x0, clip.y0, clip.x1, clip.y1))
                         }),
+                    RetainedLayerDescriptor::BlurGroup { .. } => {
+                        bounds.outset(chunk_blur_radius(&self.chunks[&parent.node]))
+                    }
                     RetainedLayerDescriptor::Filter { .. } => {
                         let (value, sample_region) = chunk_filter(&self.chunks[&parent.node]);
                         filter::filter_dependency(value).affected_output(

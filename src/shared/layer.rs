@@ -27,6 +27,10 @@ pub(crate) enum Layer {
         draw: usize,
         mode: BlendMode,
     },
+    /// Gaussian foreground group; its input domain comes from descendant paint.
+    BlurGroup {
+        sigma: f32,
+    },
     Filter {
         filter: Filter,
         sample_region: Region,
@@ -47,7 +51,7 @@ impl Layer {
             | Self::Isolate { draw }
             | Self::Blend { draw, .. } => Some(*draw),
             Self::Opacity { draw, .. } => *draw,
-            Self::Filter { .. } | Self::Backdrop { .. } => None,
+            Self::BlurGroup { .. } | Self::Filter { .. } | Self::Backdrop { .. } => None,
         }
     }
 
@@ -66,7 +70,7 @@ impl Layer {
                     *draw += offset;
                 }
             }
-            Self::Filter { .. } | Self::Backdrop { .. } => {}
+            Self::BlurGroup { .. } | Self::Filter { .. } | Self::Backdrop { .. } => {}
         }
         self
     }

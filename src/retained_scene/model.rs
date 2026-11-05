@@ -79,6 +79,10 @@ pub enum RetainedLayerDescriptor {
         mix: Mix,
         compose: Compose,
     },
+    /// Foreground Gaussian blur of every descendant, preserving overflow.
+    BlurGroup {
+        sigma: f32,
+    },
     Filter {
         filter: Filter,
         sample_region: Region,

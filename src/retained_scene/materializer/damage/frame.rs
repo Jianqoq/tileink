@@ -174,6 +174,10 @@ impl PersistentSceneMaterializer {
                     Bounds::new(clip.x0, clip.y0, clip.x1, clip.y1)
                 }),
             },
+            RetainedLayerDescriptor::BlurGroup { .. } => BoundsInfluence {
+                outset: chunk_blur_radius(&self.chunks[&id]),
+                clip: None,
+            },
             RetainedLayerDescriptor::Filter { .. } => {
                 let (value, sample_region) = chunk_filter(&self.chunks[&id]);
                 let input = filter::filter_input_bounds(

@@ -60,6 +60,7 @@ impl PersistentSceneMaterializer {
                         *mix,
                         *compose,
                     ),
+                    RetainedLayerDescriptor::BlurGroup { sigma } => canvas.push_blur_group(*sigma),
                     RetainedLayerDescriptor::Filter {
                         filter,
                         sample_region,
