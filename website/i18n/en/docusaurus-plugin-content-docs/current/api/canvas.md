@@ -40,3 +40,7 @@ its draw count remains two regardless of area or cell count.
 ## Images, text, and SVG
 
 `push_image(rect, image, extend, sampling)` embeds a shared image; `push_image_key(rect, key, extend, sampling)` uses the renderer registry. `push_text_layout` records text runs, while `push_text_layout_as_path` records scalable outlines. `push_svg` and `push_svg_with_options` transactionally lower a usvg tree.
+
+## Foreground Gaussian groups
+
+`canvas.push_blur_group(sigma)` blurs the complete child paint until `pop_layer()`. Sigma is in logical pixels and must be finite and nonnegative. Descendant paint determines the input bounds, preserving overflow; use `push_filter_layer` when an explicit SVG filter region is intended. Retained scenes use `RetainedLayerDescriptor::BlurGroup { sigma }`.

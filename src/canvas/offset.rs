@@ -120,7 +120,8 @@ impl SceneOffset {
             | Layer::ClipSdf { .. }
             | Layer::Isolate { .. }
             | Layer::Opacity { .. }
-            | Layer::Blend { .. } => layer,
+            | Layer::Blend { .. }
+            | Layer::BlurGroup { .. } => layer,
             Layer::Filter {
                 filter,
                 sample_region,

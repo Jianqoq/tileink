@@ -134,3 +134,7 @@ Image-key draw 必须在 renderer 中存在相同 `ImageKey`，否则无法采�
 |---|---|
 | `push_svg(&usvg::Tree)` | 默认 `SvgOptions`，事务式 append |
 | `push_svg_with_options(tree, options)` | 自定义 transform/tolerance |
+
+## Foreground Gaussian groups
+
+`canvas.push_blur_group(sigma)` blurs the complete child paint until `pop_layer()`. Sigma is in logical pixels and must be finite and nonnegative. Descendant paint determines the input bounds, preserving overflow; use `push_filter_layer` when an explicit SVG filter region is intended. Retained scenes use `RetainedLayerDescriptor::BlurGroup { sigma }`.

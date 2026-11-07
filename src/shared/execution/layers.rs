@@ -9,7 +9,7 @@ pub(crate) enum OffscreenLayer {
         draw: usize,
     },
     Opacity {
-        draw: usize,
+        draw: Option<usize>,
         opacity: f32,
     },
     Blend {

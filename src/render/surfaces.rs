@@ -36,7 +36,7 @@ pub(crate) trait SurfaceAdapter: OperationAdapter {
         &mut self,
         target: RenderTargetId,
         source: RenderTargetId,
-        mask: RenderTargetId,
+        mask: Option<RenderTargetId>,
         bounds: Bounds,
         stack: Range<usize>,
         blend: Option<peniko::BlendMode>,

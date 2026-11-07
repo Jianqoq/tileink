@@ -277,7 +277,7 @@ pub(super) fn chunk_has_surface_dependent_plan(canvas: &Canvas) -> bool {
             matches!(
                 command,
                 Command::Layer {
-                    layer: Layer::Filter { .. } | Layer::Backdrop { .. },
+                    layer: Layer::BlurGroup { .. } | Layer::Filter { .. } | Layer::Backdrop { .. },
                     ..
                 } | Command::MaskLayer { .. }
             )
@@ -340,7 +340,9 @@ pub(super) fn chunk_layer_influence_bounds(chunk: &SceneChunk) -> Bounds {
                 Layer::Clip { draw }
                 | Layer::ClipSdf { draw }
                 | Layer::Isolate { draw }
-                | Layer::Opacity { draw, .. }
+                | Layer::Opacity {
+                    draw: Some(draw), ..
+                }
                 | Layer::Blend { draw, .. },
             ..
         } => {
@@ -360,6 +362,10 @@ pub(super) fn chunk_layer_influence_bounds(chunk: &SceneChunk) -> Bounds {
                 },
             ..
         } => filter::unclipped_filtered_region_bounds(value, sample_region),
+        Command::Layer {
+            layer: Layer::BlurGroup { .. } | Layer::Opacity { draw: None, .. },
+            ..
+        } => Bounds::new(0, 0, 0, 0),
         Command::MaskLayer { layer, .. } => filter::region_bounds(&layer.region),
         _ => unreachable!("retained layer chunk has one root layer command"),
     }
@@ -391,6 +397,18 @@ pub(super) fn reuse_empty_slice<T>(values: Vec<T>, previous: Option<&Rc<[T]>>) -
         return Rc::clone(previous);
     }
     values.into()
+}
+
+/// The encoded sigma is physical, unlike the logical retained descriptor.
+pub(super) fn chunk_blur_radius(chunk: &SceneChunk) -> u32 {
+    let Command::Layer {
+        layer: Layer::BlurGroup { sigma },
+        ..
+    } = &chunk.canvas.command_lists[ROOT_COMMAND_LIST_ID].commands[0]
+    else {
+        unreachable!("blur layer shell");
+    };
+    filter::blur_outset(*sigma)
 }
 
 #[cfg(test)]

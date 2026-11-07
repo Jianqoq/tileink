@@ -17,7 +17,7 @@ use crate::{
 
 pub(crate) struct Group<'a> {
     pub(crate) retained_id: Option<RetainedSurfaceId>,
-    pub(crate) draw: usize,
+    pub(crate) draw: Option<usize>,
     pub(crate) outer_stack: Range<usize>,
     pub(crate) children: &'a [ExecOp],
     pub(crate) opacity: Option<f32>,
@@ -40,10 +40,6 @@ pub(crate) trait GroupAdapter: super::surfaces::SurfaceAdapter {
     ) -> Result<(), Self::Error>;
 }
 
-#[allow(
-    clippy::expect_used,
-    reason = "Matched masked group caches always contain retained mask coverage"
-)]
 pub(crate) fn execute<A: GroupAdapter>(
     adapter: &mut A,
     canvas: &Canvas,
@@ -53,7 +49,13 @@ pub(crate) fn execute<A: GroupAdapter>(
     cursors: &mut FilterCursors,
 ) -> Result<(), A::Error> {
     let size = adapter.size();
-    let bounds = draw_bounds(canvas, group.draw).intersect(Bounds::canvas(size.0, size.1));
+    let bounds = group
+        .draw
+        .map_or_else(
+            || bounds::content_bounds(canvas, plan, group.children),
+            |draw| draw_bounds(canvas, draw),
+        )
+        .intersect(Bounds::canvas(size.0, size.1));
     if bounds.is_empty() {
         // Resource tables follow the complete plan even when a group has no pixels.
         cursors.advance_ops(group.children);
@@ -87,9 +89,7 @@ pub(crate) fn execute<A: GroupAdapter>(
         cursors.advance_ops(group.children);
         return result;
     }
-    let partial = cached
-        .as_ref()
-        .is_some_and(|(_, surface)| surface.secondary.is_some());
+    let partial = cached.is_some();
     if group.retained_id.is_some() {
         let tiles = if partial {
             adapter.retained().active_tiles().map_or_else(
@@ -115,7 +115,7 @@ pub(crate) fn execute<A: GroupAdapter>(
             if adapter.retained().surface_is_dirty(bounds) {
                 adapter.clear_region(source, bounds)?;
             }
-            Some(surface.secondary.expect("group cache has a retained mask"))
+            surface.secondary
         } else {
             adapter.clear_target(source)?;
             None
@@ -131,26 +131,33 @@ pub(crate) fn execute<A: GroupAdapter>(
         {
             adapter.apply_opacity(source, bounds, opacity)?;
         }
-        let mask = if let Some(mask) = mask_slot {
-            mask
-        } else {
-            let mask = adapter.acquire_scratch()?;
-            mask_slot = Some(mask);
-            mask
-        };
-        if adapter.retained().surface_is_dirty(bounds) {
-            adapter.build_mask(mask, group.draw as u32, bounds)?;
+        if let Some(draw) = group.draw {
+            let mask = if let Some(mask) = mask_slot {
+                mask
+            } else {
+                let mask = adapter.acquire_scratch()?;
+                mask_slot = Some(mask);
+                mask
+            };
+            if adapter.retained().surface_is_dirty(bounds) {
+                adapter.build_mask(mask, draw as u32, bounds)?;
+            }
         }
-        let result =
-            adapter.composite_targets(target, source, mask, bounds, group.outer_stack, group.blend);
+        let result = adapter.composite_targets(
+            target,
+            source,
+            mask_slot,
+            bounds,
+            group.outer_stack,
+            group.blend,
+        );
         if group.retained_id.is_some() && meta.is_some() {
             source_slot = None;
-            mask_slot = None;
             let source = adapter.take_scratch(source);
-            let mask = adapter.take_scratch(mask);
+            let mask = mask_slot.take().map(|mask| adapter.take_scratch(mask));
             adapter
                 .retained_mut()
-                .cache_surface(group.retained_id, meta, source, Some(mask), None);
+                .cache_surface(group.retained_id, meta, source, mask, None);
         }
         result
     })();
@@ -167,6 +174,8 @@ pub(crate) fn draw_bounds(canvas: &Canvas, draw_ix: usize) -> Bounds {
     let bounds = canvas.draw_records[draw_ix].pixel_bounds;
     Bounds::new(bounds.x0, bounds.y0, bounds.x1, bounds.y1)
 }
+
+mod bounds;
 
 #[cfg(test)]
 mod tests;

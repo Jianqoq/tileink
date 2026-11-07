@@ -19,12 +19,17 @@ pub(crate) enum Layer {
         draw: usize,
     },
     Opacity {
-        draw: usize,
+        // None isolates all descendant paint without introducing a geometry clip.
+        draw: Option<usize>,
         opacity: f32,
     },
     Blend {
         draw: usize,
         mode: BlendMode,
+    },
+    /// Gaussian foreground group; its input domain comes from descendant paint.
+    BlurGroup {
+        sigma: f32,
     },
     Filter {
         filter: Filter,
@@ -44,9 +49,9 @@ impl Layer {
             Self::Clip { draw }
             | Self::ClipSdf { draw }
             | Self::Isolate { draw }
-            | Self::Opacity { draw, .. }
             | Self::Blend { draw, .. } => Some(*draw),
-            Self::Filter { .. } | Self::Backdrop { .. } => None,
+            Self::Opacity { draw, .. } => *draw,
+            Self::BlurGroup { .. } | Self::Filter { .. } | Self::Backdrop { .. } => None,
         }
     }
 
@@ -59,9 +64,13 @@ impl Layer {
             Self::Clip { draw }
             | Self::ClipSdf { draw }
             | Self::Isolate { draw }
-            | Self::Opacity { draw, .. }
             | Self::Blend { draw, .. } => *draw += offset,
-            Self::Filter { .. } | Self::Backdrop { .. } => {}
+            Self::Opacity { draw, .. } => {
+                if let Some(draw) = draw {
+                    *draw += offset;
+                }
+            }
+            Self::BlurGroup { .. } | Self::Filter { .. } | Self::Backdrop { .. } => {}
         }
         self
     }

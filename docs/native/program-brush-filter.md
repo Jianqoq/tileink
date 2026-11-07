@@ -142,10 +142,12 @@ compact dispatch, transparent borders, allocation padding and backdrop halos.
 Actual GPU execution is validated on Apple M5. DX12/Vulkan device execution
 requires their respective platforms and the pinned DXC toolchain.
 
-The existing whole-filter-layer rotation/shear sample-region placement issue in
-`append_transformed` also affects ordinary built-in filters. This change does
-not repair that separate geometry issue. Brush affine transforms and filter
-DPI/translation/offscreen coordinates have focused regressions.
+Whole-filter-layer sample/mask geometry now follows scale, rotation and shear in
+`append_transformed` and retained placement. This does not add general affine
+remapping of descriptor-internal procedural paint/filter coordinates; those remain
+in their existing physical canvas frame. See [scene effect placement](scene-effect-placement.md)
+for that boundary and the compact offscreen coordinate invariant. Brush affine
+transforms and filter DPI/translation/offscreen coordinates have focused regressions.
 
 See [glass measurements](program-glass-comparison.md) for the current same-source
 runtime/offline comparison, whole-renderer costs and historical interpreter data.

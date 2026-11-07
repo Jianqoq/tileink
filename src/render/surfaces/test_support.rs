@@ -86,7 +86,12 @@ pub(crate) struct Adapter {
     pub(crate) filter_placements:
         Vec<(RenderTargetId, u32, crate::render::filters::FilterPlacement)>,
     pub(crate) mask_calls: Vec<MaskCall>,
-    pub(crate) composites: Vec<(RenderTargetId, RenderTargetId, RenderTargetId, Bounds)>,
+    pub(crate) composites: Vec<(
+        RenderTargetId,
+        RenderTargetId,
+        Option<RenderTargetId>,
+        Bounds,
+    )>,
 }
 
 impl Adapter {
@@ -288,7 +293,7 @@ impl crate::render::surfaces::SurfaceAdapter for Adapter {
         &mut self,
         target: RenderTargetId,
         source: RenderTargetId,
-        mask: RenderTargetId,
+        mask: Option<RenderTargetId>,
         bounds: Bounds,
         stack: Range<usize>,
         blend: Option<peniko::BlendMode>,

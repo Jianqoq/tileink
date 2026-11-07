@@ -133,7 +133,26 @@ impl Canvas {
             FillRule::NonZero,
             tolerance,
         );
-        self.push_layer_command(Layer::Opacity { draw, opacity });
+        self.push_layer_command(Layer::Opacity {
+            draw: Some(draw),
+            opacity,
+        });
+    }
+
+    /// Isolate descendant paint and apply opacity once, without an implicit clip.
+    ///
+    /// Use an explicit clip layer when clipping is intended. Unlike path-masked
+    /// opacity, the group's output bounds follow its actual child paint.
+    /// Finite values are clamped to the unit interval.
+    ///
+    /// # Panics
+    /// Panics when opacity is not finite, before changing the command tree.
+    pub fn push_opacity_group(&mut self, opacity: f32) {
+        assert!(opacity.is_finite(), "opacity must be finite");
+        self.push_layer_command(Layer::Opacity {
+            draw: None,
+            opacity: opacity.clamp(0.0, 1.0),
+        });
     }
 
     pub fn push_blend_layer(
@@ -176,6 +195,20 @@ impl Canvas {
         );
         let mask_commands = self.append_scene_as_command_list(&mask_scene);
         self.push_mask_command(self.physical_mask(mask), mask_commands);
+    }
+
+    /// Blur the complete descendant paint without introducing a geometric clip.
+    /// Input bounds are resolved from recorded children at compilation, including overflow.
+    ///
+    /// # Panics
+    /// Panics for nonfinite/negative sigma or a sigma outside the physical finite range.
+    pub fn push_blur_group(&mut self, sigma: f32) {
+        let physical = sigma * self.scale_factor();
+        assert!(
+            sigma.is_finite() && sigma >= 0.0 && physical.is_finite(),
+            "blur sigma must be finite and nonnegative"
+        );
+        self.push_layer_command(Layer::BlurGroup { sigma: physical });
     }
 
     /// Adds an offscreen filter group sampled from `sample_region`.

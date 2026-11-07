@@ -50,6 +50,7 @@ impl Canvas {
             persistent_frame: None,
             painter: PainterMetadata::default(),
             retained_transform: GpuAffine::IDENTITY,
+            retained_effects: effect_placement::RetainedEffects::default(),
         }
     }
 
@@ -111,6 +112,9 @@ impl Canvas {
     )]
     pub(crate) fn set_retained_transform(&mut self, logical_transform: Affine) {
         let transform = GpuAffine::from_logical(logical_transform, self.scale_factor());
+        if self.retained_transform == transform {
+            return;
+        }
         let inverse = transform
             .inverse()
             .expect("validated retained transforms are invertible");
@@ -120,24 +124,8 @@ impl Canvas {
                 .inverse()
                 .expect("installed retained transforms are invertible"),
         );
-        if previous.a == transform.a
-            && previous.b == transform.b
-            && previous.c == transform.c
-            && previous.d == transform.d
-        {
-            let offset = SceneOffset {
-                dx: f64::from(transform.e - previous.e),
-                dy: f64::from(transform.f - previous.f),
-            };
-            if !offset.is_zero() {
-                for list in &mut self.command_lists {
-                    list.commands = std::mem::take(&mut list.commands)
-                        .into_iter()
-                        .map(|command| offset.command(command))
-                        .collect();
-                }
-            }
-        }
+        self.retained_effects
+            .place(&mut self.command_lists, transform);
         for path in &mut self.path_records {
             path.transform = if path.transform == previous {
                 transform

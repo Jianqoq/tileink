@@ -528,3 +528,5 @@ fn newly_inserted_clipped_page_matches_fresh_render() -> Result<(), Box<dyn std:
     }
     Ok(())
 }
+
+mod opacity_groups;

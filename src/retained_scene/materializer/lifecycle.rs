@@ -276,6 +276,7 @@ impl PersistentSceneMaterializer {
                                 &node.kind,
                                 NodeKind::Layer(
                                     RetainedLayerDescriptor::Filter { .. }
+                                        | RetainedLayerDescriptor::BlurGroup { .. }
                                         | RetainedLayerDescriptor::Mask(_)
                                 )
                             )
@@ -317,7 +318,7 @@ impl PersistentSceneMaterializer {
                 continue;
             }
             let old_layer_bounds = layer_update_candidate
-                .then(|| old_chunk.map(chunk_layer_influence_bounds))
+                .then(|| old_chunk.map(|chunk| self.layer_output_bounds(*id, chunk)))
                 .flatten();
             // Reuse the chunk and node already located for revision checking.
             // Repeating their hash lookups just to collect bounds added work to
@@ -326,7 +327,7 @@ impl PersistentSceneMaterializer {
             // output before rebuilding, only for dependency domains that need it.
             if let Some(sources) = &mut scoped_sources
                 && let Some(bounds) = old_layer_bounds.or_else(|| {
-                    old_chunk.and_then(|chunk| self.local_output_bounds(&node.kind, chunk))
+                    old_chunk.and_then(|chunk| self.local_output_bounds(*id, &node.kind, chunk))
                 })
             {
                 sources.add_node(*id, bounds);
@@ -338,7 +339,7 @@ impl PersistentSceneMaterializer {
             let new_local_bounds = scoped_sources
                 .as_ref()
                 .and_then(|_| self.chunks.get(id))
-                .and_then(|chunk| self.local_output_bounds(&node.kind, chunk));
+                .and_then(|chunk| self.local_output_bounds(*id, &node.kind, chunk));
             if let (Some(sources), Some(bounds)) = (&mut scoped_sources, new_local_bounds) {
                 sources.add_node(*id, bounds);
             }
@@ -354,8 +355,11 @@ impl PersistentSceneMaterializer {
             } else if layer_update_candidate && matches!(node.kind, NodeKind::Layer(_)) {
                 let (old, new) = self.patch_layer_command(scene, *id);
                 layer_plan_patches.push((*id, old, new));
-                let new_layer_bounds = new_local_bounds
-                    .or_else(|| self.chunks.get(id).map(chunk_layer_influence_bounds));
+                let new_layer_bounds = new_local_bounds.or_else(|| {
+                    self.chunks
+                        .get(id)
+                        .map(|chunk| self.layer_output_bounds(*id, chunk))
+                });
                 layer_bounds_stable &= old_layer_bounds == new_layer_bounds;
                 if let (Some(old), Some(new)) = (old_layer_bounds, new_layer_bounds)
                     && old != new

@@ -17,7 +17,10 @@ impl Canvas {
             Layer::Clip { draw } | Layer::ClipSdf { draw } => {
                 LayerExecution::Fused(LayerStackEntry::Clip { draw: *draw as u32 })
             }
-            Layer::Opacity { draw, opacity } if self.can_fuse(layer, children) => {
+            Layer::Opacity {
+                draw: Some(draw),
+                opacity,
+            } if self.can_fuse(layer, children) => {
                 LayerExecution::Fused(LayerStackEntry::Opacity {
                     draw: *draw as u32,
                     opacity: *opacity,
@@ -41,6 +44,14 @@ impl Canvas {
             Layer::Blend { draw, mode } => LayerExecution::Offscreen(OffscreenLayer::Blend {
                 draw: *draw,
                 mode: *mode,
+            }),
+            Layer::BlurGroup { sigma } => LayerExecution::Offscreen(OffscreenLayer::Filter {
+                filter: crate::Filter::Blur {
+                    std_dev_x: *sigma,
+                    std_dev_y: *sigma,
+                    sampling: crate::BlurSampling::default(),
+                },
+                sample_region: self.paint_region(children),
             }),
             Layer::Filter {
                 filter,

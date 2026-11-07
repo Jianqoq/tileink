@@ -255,7 +255,14 @@ fn execute_to<A: BackdropAdapter>(
                 a.region_mask(mask, layer.region, path, bounds)?;
             }
             active_region(a, bounds).map_or(Ok(()), |output| {
-                a.composite_targets(target, backdrop, mask, output, layer.stack.clone(), None)
+                a.composite_targets(
+                    target,
+                    backdrop,
+                    Some(mask),
+                    output,
+                    layer.stack.clone(),
+                    None,
+                )
             })
         };
         if let Some(work) = output_work {

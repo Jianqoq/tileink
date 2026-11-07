@@ -1,3 +1,4 @@
+use crate::shared::execution::CommandListId;
 use crate::shared::execution::ROOT_COMMAND_LIST_ID;
 use std::collections::HashSet;
 
@@ -83,8 +84,15 @@ impl Canvas {
         self.persistent_frame.clone()
     }
 
+    pub(crate) fn paint_region(&self, list: CommandListId) -> Region {
+        bounds_region(self.command_list_visual_bounds(list))
+    }
     pub(crate) fn visual_bounds(&self) -> Bounds {
         canvas_visual_bounds(self)
+    }
+
+    pub(crate) fn command_list_visual_bounds(&self, list: CommandListId) -> Bounds {
+        list_visual_bounds(self, list, SceneOffset { dx: 0.0, dy: 0.0 })
     }
     /// Propagates already-known output damage through filter dependencies.
     ///
@@ -163,9 +171,26 @@ fn layer_bounds(
         Layer::Clip { draw }
         | Layer::ClipSdf { draw }
         | Layer::Isolate { draw }
-        | Layer::Opacity { draw, .. }
+        | Layer::Opacity {
+            draw: Some(draw), ..
+        }
         | Layer::Blend { draw, .. } => child_bounds
             .intersect(offset.bounds(pixel_bounds(canvas.draw_records[*draw].pixel_bounds))),
+        Layer::Opacity { draw: None, .. } => child_bounds,
+        Layer::BlurGroup { sigma } => {
+            if child_bounds.is_empty() {
+                child_bounds
+            } else {
+                filter::unclipped_filtered_region_bounds(
+                    &crate::Filter::Blur {
+                        std_dev_x: *sigma,
+                        std_dev_y: *sigma,
+                        sampling: crate::BlurSampling::default(),
+                    },
+                    &bounds_region(child_bounds),
+                )
+            }
+        }
         Layer::Filter {
             filter: value,
             sample_region,
@@ -269,6 +294,28 @@ fn propagate_list_damage(
                             dirty_backdrops,
                             retained_owner,
                         );
+                    }
+                    Layer::BlurGroup { sigma } => {
+                        let scope = damage.enter_scope(&pending.unattributed);
+                        propagate_list_damage(
+                            canvas,
+                            *children,
+                            pending,
+                            damage,
+                            dirty_backdrops,
+                            retained_owner,
+                        );
+                        propagate_filter_damage(
+                            &crate::Filter::Blur {
+                                std_dev_x: *sigma,
+                                std_dev_y: *sigma,
+                                sampling: crate::BlurSampling::default(),
+                            },
+                            &canvas.paint_region(*children),
+                            Bounds::canvas(canvas.physical_width(), canvas.physical_height()),
+                            damage,
+                        );
+                        damage.finish_scope(scope);
                     }
                     Layer::Filter {
                         filter: value,
@@ -504,4 +551,16 @@ mod nested_filter_damage_tests {
             "only the final root result is clipped to the canvas"
         );
     }
+}
+
+fn bounds_region(bounds: Bounds) -> Region {
+    Region::rect(
+        peniko::kurbo::Rect::new(
+            f64::from(bounds.x0),
+            f64::from(bounds.y0),
+            f64::from(bounds.x1),
+            f64::from(bounds.y1),
+        ),
+        crate::Radius::ZERO,
+    )
 }

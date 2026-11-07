@@ -146,7 +146,7 @@ impl SurfaceAdapter for Execution<'_> {
         &mut self,
         target: RenderTargetId,
         source: RenderTargetId,
-        mask: RenderTargetId,
+        mask: Option<RenderTargetId>,
         bounds: Bounds,
         stack: Range<usize>,
         blend: Option<peniko::BlendMode>,
@@ -154,7 +154,8 @@ impl SurfaceAdapter for Execution<'_> {
         self.composite(
             self.targets.get(target)?.image(),
             self.targets.get(source)?.image(),
-            Some(self.targets.get(mask)?.image()),
+            mask.map(|mask| self.targets.get(mask).map(Surface::image))
+                .transpose()?,
             bounds,
             stack,
             blend,

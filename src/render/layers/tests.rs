@@ -35,7 +35,7 @@ fn group_variants_preserve_opacity_blend_and_children_before_composite() {
         (OffscreenLayer::Isolate { draw: 0 }, None, None),
         (
             OffscreenLayer::Opacity {
-                draw: 0,
+                draw: Some(0),
                 opacity: 0.375,
             },
             Some(0.375),
@@ -144,7 +144,7 @@ fn shared_layer_dispatch_preserves_the_underlying_recording_error() {
         &canvas,
         &plan,
         &OffscreenLayer::Opacity {
-            draw: 0,
+            draw: Some(0),
             opacity: 0.5,
         },
     );

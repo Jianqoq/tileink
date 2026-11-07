@@ -2,6 +2,8 @@ use std::rc::Rc;
 mod canvas;
 mod selection;
 mod space;
+#[cfg(test)]
+use crate::shared::sdf::Sdf;
 use canvas::translated_scene_for_draws;
 use selection::local_draw_selection;
 use space::LocalSpace;
@@ -23,9 +25,7 @@ use crate::{
             mask::Mask,
             region::Region,
         },
-        line::Line,
         path::PathRecord,
-        sdf::{Sdf, SdfShadow},
     },
 };
 
@@ -154,7 +154,7 @@ fn translate_layer_to_local(
             draw: draw_map[draw],
         },
         OffscreenLayer::Opacity { draw, opacity } => OffscreenLayer::Opacity {
-            draw: draw_map[draw],
+            draw: draw.map(|draw| draw_map[&draw]),
             opacity: *opacity,
         },
         OffscreenLayer::Blend { draw, mode } => OffscreenLayer::Blend {

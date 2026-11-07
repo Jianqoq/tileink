@@ -345,7 +345,7 @@ impl Canvas {
             // Fine rasterization opens/closes a fused group per draw batch. A nested layer
             // changes the stack and splits batches, so the group must isolate the entire
             // composited subtree instead of applying alpha/blend to each fragment separately.
-            Layer::Opacity { .. } | Layer::Blend { .. } => {
+            Layer::Opacity { draw: Some(_), .. } | Layer::Blend { .. } => {
                 self.command_list_has_single_stack(children, children, &mut None)
             }
             _ => false,

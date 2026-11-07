@@ -68,12 +68,20 @@ pub enum RetainedLayerDescriptor {
         tolerance: f64,
         opacity: f32,
     },
+    /// Complete subtree opacity without clipping descendant paint to a path.
+    OpacityGroup {
+        opacity: f32,
+    },
     Blend {
         path: BezPath,
         transform: Affine,
         tolerance: f64,
         mix: Mix,
         compose: Compose,
+    },
+    /// Foreground Gaussian blur of every descendant, preserving overflow.
+    BlurGroup {
+        sigma: f32,
     },
     Filter {
         filter: Filter,
