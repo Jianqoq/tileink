@@ -33,22 +33,22 @@ fn world_edge_bounds_translate_without_wrapping_in_local_surfaces() {
     clippy::lossy_float_literal,
     reason = "The expected value is 2^31, which is exactly representable in f32"
 )]
-fn path_points_translate_from_the_minimum_world_origin_in_float_space() {
+fn path_presentation_rebases_from_the_minimum_world_origin_in_float_space() {
     let local = LocalSpace::new(Bounds::new(
         i32::MIN,
         i32::MIN,
         i32::MIN + 32,
         i32::MIN + 32,
     ));
-    let line = local.line(Line {
-        path_id: 7,
-        _pad: 0.0,
-        p0: [i32::MIN as f32; 2],
-        p1: [0.0; 2],
-    });
-    assert_eq!(line.p0, [0.0; 2]);
-    assert_eq!(line.p1, [2_147_483_648.0; 2]);
-    assert_eq!(line.path_id, 7);
+    let transform = local.gpu_transform(crate::shared::affine::GpuAffine::IDENTITY);
+    assert_eq!(
+        transform.transform_point(i32::MIN as f32, i32::MIN as f32),
+        (0.0, 0.0)
+    );
+    assert_eq!(
+        transform.transform_point(0.0, 0.0),
+        (2_147_483_648.0, 2_147_483_648.0)
+    );
 }
 use crate::shared::{
     execution::ROOT_COMMAND_LIST_ID, fill::FillRule, image::Image, image_resource::ImageKey,
@@ -120,18 +120,12 @@ fn invalid_internal_brush_is_not_replaced_with_an_unpainted_draw() {
 }
 
 #[test]
-fn local_space_shifts_geometry_to_surface_origin() {
+fn local_space_rebases_presentation_and_bounds_to_surface_origin() {
     let local = LocalSpace::new(Bounds::new(10, 20, 30, 40));
 
-    let line = local.line(Line {
-        path_id: 3,
-        _pad: 0.0,
-        p0: [12.0, 23.0],
-        p1: [18.0, 31.0],
-    });
-    assert_eq!(line.path_id, 3);
-    assert_eq!(line.p0, [2.0, 3.0]);
-    assert_eq!(line.p1, [8.0, 11.0]);
+    let transform = local.gpu_transform(crate::shared::affine::GpuAffine::IDENTITY);
+    assert_eq!(transform.transform_point(12.0, 23.0), (2.0, 3.0));
+    assert_eq!(transform.transform_point(18.0, 31.0), (8.0, 11.0));
     assert_eq!(
         local.pixel_bounds(PixelBounds {
             x0: 11,
@@ -233,3 +227,5 @@ fn empty_local_filter_has_no_hidden_geometry_record() {
     assert!(local.canvas.draw_records.is_empty());
     assert_eq!(local.children.len(), 1);
 }
+
+mod placement;

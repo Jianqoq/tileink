@@ -77,12 +77,6 @@ impl Canvas {
 
     fn append_transformed_prepared(&mut self, other: &Self, transform: Affine) {
         let transform = GpuAffine::from_logical(transform, self.scale_factor());
-        let command_offset =
-            if [transform.a, transform.b, transform.c, transform.d] == [1.0, 0.0, 0.0, 1.0] {
-                SceneOffset::new(Point::new(f64::from(transform.e), f64::from(transform.f)))
-            } else {
-                SceneOffset::new(Point::ZERO)
-            };
         // Compose directly while copying into the destination. Building an intermediate Canvas
         // copied every path, draw, glyph, brush, and command twice for each transformed icon.
         self.append_scene_ref_to_list_transformed_unchecked(
@@ -90,7 +84,7 @@ impl Canvas {
             self.current_commands,
             SceneAppendMode::MergeCurrent,
             SceneOffset::new(Point::ZERO),
-            command_offset,
+            SceneOffset::new(Point::ZERO),
             Some(transform),
         );
     }
@@ -136,38 +130,39 @@ impl Canvas {
             SceneAppendMode::MergeCurrent => {
                 let child_list_offset = command_list_offset - 1;
                 for list in other.command_lists.iter().skip(1) {
-                    self.command_lists
-                        .push(Self::translated_remapped_command_list(
-                            list,
-                            draw_offset,
-                            child_list_offset,
-                            command_offset,
-                        ));
+                    self.command_lists.push(Self::placed_command_list(
+                        list,
+                        draw_offset,
+                        child_list_offset,
+                        command_offset,
+                        transform,
+                    ));
                 }
-
                 self.command_lists[target_commands]
                     .commands
                     .reserve(other.command_lists[ROOT_COMMAND_LIST_ID].commands.len());
                 for command in &other.command_lists[ROOT_COMMAND_LIST_ID].commands {
-                    let command = Self::translated_remapped_command(
-                        command,
-                        draw_offset,
-                        child_list_offset,
-                        command_offset,
-                    );
-                    self.command_lists[target_commands].commands.push(command);
+                    self.command_lists[target_commands]
+                        .commands
+                        .push(Self::placed_command(
+                            command,
+                            draw_offset,
+                            child_list_offset,
+                            command_offset,
+                            transform,
+                        ));
                 }
                 None
             }
             SceneAppendMode::AppendAsCommandList => {
                 for list in &other.command_lists {
-                    self.command_lists
-                        .push(Self::translated_remapped_command_list(
-                            list,
-                            draw_offset,
-                            command_list_offset,
-                            command_offset,
-                        ));
+                    self.command_lists.push(Self::placed_command_list(
+                        list,
+                        draw_offset,
+                        command_list_offset,
+                        command_offset,
+                        transform,
+                    ));
                 }
                 Some(command_list_offset)
             }
@@ -222,7 +217,7 @@ impl Canvas {
         }
     }
 
-    pub(super) fn segment_capacity_for_path_record(
+    pub(crate) fn segment_capacity_for_path_record(
         &self,
         record: &PathRecord,
         tile_bbox: crate::shared::bounds::TileBbox,
@@ -473,40 +468,37 @@ impl Canvas {
         }
     }
 
-    pub(super) fn translated_remapped_command_list(
+    fn placed_command_list(
         list: &CommandList,
         draw_offset: usize,
         child_list_offset: usize,
         offset: SceneOffset,
+        transform: Option<GpuAffine>,
     ) -> CommandList {
         CommandList {
             commands: list
                 .commands
                 .iter()
                 .map(|command| {
-                    Self::translated_remapped_command(
-                        command,
-                        draw_offset,
-                        child_list_offset,
-                        offset,
-                    )
+                    Self::placed_command(command, draw_offset, child_list_offset, offset, transform)
                 })
                 .collect(),
         }
     }
 
-    pub(super) fn translated_remapped_command(
+    fn placed_command(
         command: &Command,
         draw_offset: usize,
         child_list_offset: usize,
         offset: SceneOffset,
+        transform: Option<GpuAffine>,
     ) -> Command {
-        let command = command.clone();
-        let command = if offset.is_zero() {
-            command
-        } else {
-            offset.command(command)
-        };
+        let mut command = command.clone();
+        if let Some(transform) = transform {
+            effect_placement::place(&mut command, transform);
+        } else if !offset.is_zero() {
+            command = offset.command(command);
+        }
         Self::remap_command(command, draw_offset, child_list_offset)
     }
 

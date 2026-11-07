@@ -2,6 +2,8 @@ use std::rc::Rc;
 mod canvas;
 mod selection;
 mod space;
+#[cfg(test)]
+use crate::shared::sdf::Sdf;
 use canvas::translated_scene_for_draws;
 use selection::local_draw_selection;
 use space::LocalSpace;
@@ -23,9 +25,7 @@ use crate::{
             mask::Mask,
             region::Region,
         },
-        line::Line,
         path::PathRecord,
-        sdf::{Sdf, SdfShadow},
     },
 };
 

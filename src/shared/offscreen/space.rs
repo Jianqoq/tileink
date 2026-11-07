@@ -1,5 +1,6 @@
 //! Coordinate conversion for compact offscreen geometry and filter descriptors.
 use super::*;
+use crate::shared::affine::GpuAffine;
 
 // Offscreen rendering reuses the main canvas data, but filter kernels and scratch
 // images run in a local surface whose origin may be outside the canvas. Keeping the
@@ -15,13 +16,11 @@ impl LocalSpace {
         Self { surface }
     }
 
-    pub(super) fn line(self, line: Line) -> Line {
-        let dx = -(self.surface.x0 as f32);
-        let dy = -(self.surface.y0 as f32);
-        Line {
-            p0: [line.p0[0] + dx, line.p0[1] + dy],
-            p1: [line.p1[0] + dx, line.p1[1] + dy],
-            ..line
+    pub(super) const fn gpu_transform(self, transform: GpuAffine) -> GpuAffine {
+        GpuAffine {
+            e: transform.e - self.surface.x0 as f32,
+            f: transform.f - self.surface.y0 as f32,
+            ..transform
         }
     }
 
@@ -53,14 +52,6 @@ impl LocalSpace {
 
     pub(super) fn transform(self, transform: Affine) -> Affine {
         Affine::translate((-f64::from(self.surface.x0), -f64::from(self.surface.y0))) * transform
-    }
-
-    pub(super) fn sdf(self, sdf: Sdf) -> Sdf {
-        sdf.translated(self.surface.x0 as f32, self.surface.y0 as f32)
-    }
-
-    pub(super) fn sdf_shadow(self, sdf_shadow: SdfShadow) -> SdfShadow {
-        sdf_shadow.translated(self.surface.x0 as f32, self.surface.y0 as f32)
     }
 
     pub(super) fn brush(self, brush: Brush) -> Brush {

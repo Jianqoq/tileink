@@ -1,6 +1,7 @@
 mod append;
 mod compile;
 mod draw;
+mod effect_placement;
 mod journal;
 mod layers;
 mod offset;
@@ -118,9 +119,10 @@ pub struct Canvas {
     pub(crate) persistent_frame: Option<RetainedFrame>,
     pub(crate) painter: PainterMetadata,
     /// Local-to-device transform installed by retained materialization. Immediate canvases keep
-    /// identity; retained transform edits use the previous value to patch command metadata by a
-    /// delta without ever walking path lines.
+    /// identity; retained transform edits patch records without walking path lines.
     retained_transform: GpuAffine,
+    /// Filter/mask regions retain their original geometry so placement revisions never compound.
+    retained_effects: effect_placement::RetainedEffects,
 }
 
 /// An open layer owns its return address and kind together. Root recording always

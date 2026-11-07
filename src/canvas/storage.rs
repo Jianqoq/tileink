@@ -53,6 +53,7 @@ impl Canvas {
         self.persistent_frame = None;
         self.painter = PainterMetadata::default();
         self.retained_transform = GpuAffine::IDENTITY;
+        self.retained_effects = effect_placement::RetainedEffects::default();
         self.path_cnt = 0;
         self.backdrop_pool_capacity = 0;
         self.tile_cnt = 0;

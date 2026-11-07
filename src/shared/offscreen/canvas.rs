@@ -18,6 +18,13 @@ pub(super) fn translated_scene_for_draws(
     for &old_draw in draws {
         let mut draw = canvas.draw_records[old_draw];
         draw.pixel_bounds = local.pixel_bounds(draw.pixel_bounds);
+        // Geometry and paint are already in the draw's own coordinate frame. Subtracting a
+        // window origin from those buffers would scale/rotate that offset a second time.
+        draw.transform = local.gpu_transform(draw.transform);
+        draw.inverse_transform = draw
+            .transform
+            .inverse()
+            .expect("validated offscreen draw transform");
         // NONE denotes an intentionally absent payload. Present internal records
         // must decode; silently replacing corruption with transparent draws hides
         // the producer error and cannot preserve rendering semantics.
@@ -25,13 +32,12 @@ pub(super) fn translated_scene_for_draws(
             let brush = decode_encoded_brush(&canvas.brush_blob, draw.brush_offset, draw.brush_len)
                 .expect("encoded offscreen brush");
             (draw.brush_offset, draw.brush_len) =
-                push_encoded_brush(&mut translated.brush_blob, &local.brush(brush));
+                push_encoded_brush(&mut translated.brush_blob, &brush);
         }
         if draw.sdf_offset != DrawRecord::NONE {
             let sdf = decode_sdf(&canvas.sdf_blob, draw.sdf_offset, draw.sdf_len)
                 .expect("encoded offscreen SDF");
-            (draw.sdf_offset, draw.sdf_len) =
-                push_encoded_sdf(&mut translated.sdf_blob, local.sdf(sdf));
+            (draw.sdf_offset, draw.sdf_len) = push_encoded_sdf(&mut translated.sdf_blob, sdf);
         }
         if draw.sdf_shadow_offset != DrawRecord::NONE {
             let shadow = decode_sdf_shadow(
@@ -41,7 +47,7 @@ pub(super) fn translated_scene_for_draws(
             )
             .expect("encoded offscreen SDF shadow");
             (draw.sdf_shadow_offset, draw.sdf_shadow_len) =
-                push_encoded_sdf_shadow(&mut translated.sdf_shadow_blob, local.sdf_shadow(shadow));
+                push_encoded_sdf_shadow(&mut translated.sdf_shadow_blob, shadow);
         }
         if let Some(old_path) = draw.path_id() {
             draw.path_id = *path_map.entry(old_path).or_insert_with(|| {
@@ -54,7 +60,7 @@ pub(super) fn translated_scene_for_draws(
                         .iter()
                         .copied()
                         .map(|line| {
-                            let mut line = local.line(line);
+                            let mut line = line;
                             line.path_id = new;
                             line
                         }),
@@ -62,6 +68,7 @@ pub(super) fn translated_scene_for_draws(
                 translated.path_records.push(PathRecord {
                     path_id: new,
                     line_start,
+                    transform: local.gpu_transform(old.transform),
                     ..old
                 });
                 new
@@ -76,13 +83,7 @@ pub(super) fn translated_scene_for_draws(
                     canvas.text_glyphs
                         [old.glyph_start as usize..(old.glyph_start + old.glyph_count) as usize]
                         .iter()
-                        .copied()
-                        .map(|glyph| {
-                            glyph.translated(
-                                -f64::from(local.surface.x0),
-                                -f64::from(local.surface.y0),
-                            )
-                        }),
+                        .copied(),
                 );
                 translated.text_runs.push(crate::text::TextRun {
                     glyph_start,
@@ -153,10 +154,22 @@ fn rebuild_translated_path_backdrops(canvas: &mut Canvas) {
 
 fn translated_path_segment_capacity(canvas: &Canvas, path_id: usize, tile_bbox: TileBbox) -> u32 {
     let record = &canvas.path_records[path_id];
-    let lines =
-        &canvas.lines[record.line_start as usize..(record.line_start + record.line_count) as usize];
-    lines
+    let transform = record.transform;
+    if [transform.a, transform.b, transform.c, transform.d] != [1., 0., 0., 1.] {
+        return canvas.segment_capacity_for_path_record(record, tile_bbox);
+    }
+    // Localization already copies this selected geometry. Keep the previous tight capacity
+    // for ordinary translated paths; general affines use the renderer's conservative bound.
+    canvas.lines[record.line_start as usize..(record.line_start + record.line_count) as usize]
         .iter()
-        .map(|line| crate::shared::scan_line::line_scanned_tile_count(*line, tile_bbox))
-        .sum()
+        .fold(0u32, |capacity, line| {
+            let mut line = *line;
+            line.p0[0] += transform.e;
+            line.p0[1] += transform.f;
+            line.p1[0] += transform.e;
+            line.p1[1] += transform.f;
+            capacity.saturating_add(crate::shared::scan_line::line_scanned_tile_count(
+                line, tile_bbox,
+            ))
+        })
 }
