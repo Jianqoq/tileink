@@ -9,6 +9,13 @@ Incremental rasterization is valid only when old target pixels are trusted. Dama
 
 Persistent frame snapshots may share immutable node arrays and record removals or updates in delta overlays. When the renderer falls back from a directly connected journal delta to snapshot comparison, it resolves those overlays before matching node IDs. A node removed by a delta and later reinserted with the same ID is therefore insertion damage, even when its old base-array entry still exists. Overlay-only nodes and explicit delta damage are included conservatively without escalating the frame to full damage. The fallback diff preserves a contiguous base-array scan and resolves only IDs changed by delta overlays or compacted state pages; it must not add an overlay hash lookup to every base node. Scratch storage is reused across frames, giving average `O(N + P)` time and `O(N + P)` extra scratch space; base-index marks cost one byte per node in each compared frame.
 
+A topology overlay can retain its base painter indices while recording a different output
+order in explicit delta damage. Fallback comparison includes output damage from both the previous
+and current overlays, in addition to comparing their bases. Otherwise returning to an earlier
+base order can incorrectly yield zero dirty tiles and reuse stale pixels in a persistent target.
+This fixes the comparison algorithm; it does not force full redraws or change the direct-delta and
+unchanged-frame fast paths.
+
 `IncrementalOutputMode` reports `InternalHistory` for a renderer-owned render texture and `ExternalHistory` when rendering directly into a caller-owned texture. Transient outputs and outputs with a nonzero origin use an internal texture, then copy the canvas rectangle. `history_copied_to_output` records that copy. A recreated or externally modified persistent texture must receive a new `ExternalTextureHistoryId`.
 
 `IncrementalRenderMode::ForceFull` is a correctness and performance oracle. It forces full raster damage while preserving normal retained materialization, chunk reuse, and incremental uploads.

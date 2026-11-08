@@ -52,13 +52,19 @@ pub(super) fn diff_frames_reusing(
         }
     }
 
-    let mut delta = current.delta.as_deref();
-    while let Some(current) = delta {
-        for &(id, bounds) in current.damage.iter() {
-            damage.add_bounds(bounds);
-            retained.add_node(id, bounds);
+    // A topology overlay retains its base painter indices. Comparing only base nodes can
+    // therefore miss a return to an earlier base order. Resolve both sides: their base diff
+    // plus each overlay's output damage bounds the actual old-to-new change. Consecutive
+    // deltas and unchanged frames keep IncrementalState's existing direct/zero-damage paths.
+    for frame in [previous, current] {
+        let mut delta = frame.delta.as_deref();
+        while let Some(overlay) = delta {
+            for &(id, bounds) in overlay.damage.iter() {
+                damage.add_bounds(bounds);
+                retained.add_node(id, bounds);
+            }
+            delta = overlay.previous.as_deref();
         }
-        delta = current.previous.as_deref();
     }
 
     if !scratch

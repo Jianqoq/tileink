@@ -32,6 +32,11 @@ Transient output 和非零 origin 的输出通过内部纹理渲染，再复制�
 
 持久 frame snapshot 可以共享不可变 node 数组，并在 delta overlay 中记录删除和更新。当 renderer 无法直接消费连续 journal delta、必须比较两个 snapshot 时，必须先解析 overlay，再按 node ID 比较。因此，一个被 delta 删除后又以相同 ID 插入的节点仍然产生插入 damage，即使旧 base array 中还保留该 ID。只存在于 overlay 的节点和显式 delta damage 采用局部保守 damage，不升级为全屏重绘。Fallback diff 保持连续 base array 扫描，只对 delta overlay 和 compacted state page 中实际变化的 ID 做稀疏解析；禁止给每个 base node 增加 overlay hash lookup。scratch storage 跨 frame 复用，平均复杂度为 `O(N + P)`，额外 scratch 空间为 `O(N + P)`；其中每个被比较 frame 的 base-index 标记为每节点一字节。
 
+拓扑 overlay 可以沿用 base 的 painter index，同时通过显式 delta damage 记录已经变化的输出顺序。
+Fallback 比较必须合并前后两个 overlay 的输出损伤，再叠加 base 比较结果；只看当前 overlay
+会把“切回较早的 base 顺序”误判成零损伤，使持久目标显示旧像素。这是帧比较算法的根因修复，
+不会强制全屏重绘，也不改变连续 delta 和静止 frame 的快路径。
+
 ## ForceFull
 
 `IncrementalRenderMode::ForceFull` 是正确性 oracle 和性能对照。它强制完整 raster，但 retained materialization、chunk reuse 和 dirty upload 仍按正常语义运行。
