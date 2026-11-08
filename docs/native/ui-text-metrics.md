@@ -215,3 +215,33 @@ This is the root seam for block line-clamp projections: pixel clipping alone can
 combining mark or italic outline in half. The application groups clusters before filtering and
 retains the full source buffer for selection, copying and later focus/scroll. Neither extraction
 method reshapes or mutates that buffer.
+
+## Caller-prepared paragraph layouts
+
+A native wrapping policy can prepare its own `LayoutLine` arrays while retaining the original
+Cosmic buffer as the logical text, font and paragraph-direction source. `text_layout_runs_from`
+borrows those arrays and applies the same UI baseline, line-height, scroll and visibility rules
+as the ordinary buffer view. A callback result of `None` uses the cached paragraph; an empty
+slice omits that paragraph without renumbering the remaining logical source indices.
+
+`TextContext::layout_runs_filtered` and `text_hit_runs` consume that same prepared run view.
+Their buffer counterparts now delegate to these common paths. This removes the need for a
+wrapping policy to rewrite text, clone a second logical buffer, or maintain a parallel painter
+and hit tester. It is the layout seam needed for balanced wrapping, not an implementation of
+balancing itself. Taffy and Cosmic Text remain official dependencies.
+
+The caller must keep source byte indices, paragraph directions and font-system-local glyph ids
+valid. Supplied geometry is immutable during each view. The view neither shapes nor allocates
+per glyph. Paint preparation retains the existing metadata/color grouping, glyph-cache keys,
+cluster filter and raster/outline conversion; ordinary text adds no new retained layout cache.
+
+Failed-first regressions cover a translated prepared paragraph shared by paint and pointer hits,
+source/cache identity, omitted and empty paragraphs, reflow into fractional-height visual rows,
+viewport filtering, and byte-for-byte-equivalent default run coordinates and glyph borrowing.
+Validation of the prepared-layout seam: 1,047 Release tests across 41 suites passed with
+228 existing opt-in tests unchanged. Formatting, strict all-target Release Clippy, all example
+builds and seven actual native image-example runs passed. All 1,712 SVG images were byte-identical
+to a fresh render of immutable base 1fb6f760, using 3,425 identical adjacent fixture resources.
+Generated fixture images were archived for comparison and restored; this change does not
+regolden the repository's environment-dependent reference PNGs. Balancing remains a separate
+native SDK integration gate. See prepared-text-layout-validation.json for input hashes.

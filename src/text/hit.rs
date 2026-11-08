@@ -10,11 +10,22 @@ use super::text_layout_runs;
 /// physical edge positions honor each glyph's direction, including aligned and mixed-BiDi text.
 #[must_use]
 pub fn text_hit(buffer: &Buffer, x: f32, y: f32) -> Option<Cursor> {
+    text_hit_runs(text_layout_runs(buffer), x, y)
+}
+
+/// Hits an already-prepared UI line view. Paint and interaction can consume the same native
+/// layout projection without editing, reshaping or copying its original buffer.
+#[must_use]
+pub fn text_hit_runs<'a>(
+    runs: impl IntoIterator<Item = LayoutRun<'a>>,
+    x: f32,
+    y: f32,
+) -> Option<Cursor> {
     if !x.is_finite() || !y.is_finite() {
         return None;
     }
     let mut last = None;
-    for run in text_layout_runs(buffer) {
+    for run in runs {
         if y < run.line_top {
             return Some(Cursor::new(run.line_i, 0));
         }

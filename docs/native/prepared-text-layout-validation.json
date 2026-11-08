@@ -1,0 +1,33 @@
+{
+  "base": "1fb6f7602bc99d5a19dfec421b19e56c532a059b",
+  "svg_images": 1712,
+  "byte_identical": 1712,
+  "pixel_differences": [],
+  "identical_adjacent_inputs": 3425,
+  "release_passed": 1047,
+  "release_ignored": 228,
+  "release_suites": 41,
+  "native_png_manifest_sha256": "e4dae5d73d4919e9f0d1daae9a1c35ace0ab5b73851ce714480b2bc77133f17e",
+  "rustc": "1.99.0 (b940084d7 2026-09-28)",
+  "strict_release_all_target_clippy": true,
+  "fmt": true,
+  "all_examples_built": true,
+  "native_image_example_runs": 7,
+  "new_layout_regressions": 4,
+  "failed_first_layout_regressions": 3,
+  "source_format": "UTF-8 with canonical LF",
+  "sources": {
+    "src/lib.rs": "08b5b9e0e9115c0f7ec8d7e8e54d6ad85ee9c48c66806a0ecbd0398bbebfcf70",
+    "src/text.rs": "4008fd2b989abf2b9990bd162e0cb6cfa852a0aa95762d8051128aefbb2afe12",
+    "src/text/context.rs": "635ca9047418004d774e58d3d8e346f8b626691f0e7c5792d7b89dc93aecfe78",
+    "src/text/hit.rs": "f8099108f16ac8409d39660811344b7d97405215e3897f7b85c6005001ccf4b0",
+    "src/text/line_metrics.rs": "d540a9a55da791adad9831347b99722fb55ac5c02a8eb60b26a293a2f3a7d601",
+    "src/text/tests.rs": "8e5e993377aa4d88a8e00d00af6dfe029f97a86466ae64cefd3036585060a287",
+    "src/text/tests/layout_view.rs": "59787c9de2e927a5133d695b13b76057c9330f096b9b9827415e5fd3608d35db",
+    "docs/native/ui-text-metrics.md": "f24531bed48227ae06f80b48231b1a9d335224ef63868bb140b2246112c35385",
+    "website/docs/api/text-and-svg.md": "79893a00de02fcd9ff2c2381dffb2596d17e0c0d526ddce575df94d6e9d535b6"
+  },
+  "unchanged_lock_sha256": "39a209c231c48482fdebad598f0f9c19a640225e75764a72369329577f2125af",
+  "official_cosmic_text": "5ea7aae78611652a6c88ba84d8ef3e3099fb32cf",
+  "scope": "Prepared paragraph view, common paint and hit extraction. Does not implement or claim balanced wrapping."
+}

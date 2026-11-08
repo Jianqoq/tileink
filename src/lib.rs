@@ -95,7 +95,7 @@ pub use text::{
     TextCompositeMode, TextContext, TextLayout, TextLayoutOptions, TextLayoutRun,
     TextRasterOptions, TextSubpixelMode,
 };
-pub use text::{text_hit, text_layout_runs};
+pub use text::{text_hit, text_hit_runs, text_layout_runs, text_layout_runs_from};
 
 #[cfg(any(feature = "dx12", feature = "vulkan", feature = "metal"))]
 mod native;

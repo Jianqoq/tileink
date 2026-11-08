@@ -1,5 +1,5 @@
 //! Shared UI line placement over the caller's retained, already-shaped buffer.
-use cosmic_text::{Buffer, LayoutRun};
+use cosmic_text::{Buffer, LayoutLine, LayoutRun};
 
 /// Iterates visible UI runs with rounded font extents and floored upper half-leading.
 ///
@@ -7,6 +7,19 @@ use cosmic_text::{Buffer, LayoutRun};
 /// their line boxes. Call after shaping; no glyphs are cloned or reshaped here. Positioned
 /// canvas/SVG glyphs retain their explicitly authored coordinates.
 pub fn text_layout_runs(buffer: &Buffer) -> impl Iterator<Item = LayoutRun<'_>> {
+    text_layout_runs_from(buffer, |_| None)
+}
+
+/// Places caller-prepared paragraph layouts using the same UI metrics and visibility as buffers.
+///
+/// `None` uses that paragraph's cached layout; `Some(&[])` omits it. Supplied glyphs must use
+/// unchanged source byte indices, shaping directions and font-system-local ids. The view borrows
+/// those glyphs without cloning, reshaping or changing the source buffer. Use this for native
+/// line-breaking policies rather than making paint and pointer geometry reflow independently.
+pub fn text_layout_runs_from<'a>(
+    buffer: &'a Buffer,
+    mut layouts: impl FnMut(usize) -> Option<&'a [LayoutLine]>,
+) -> impl Iterator<Item = LayoutRun<'a>> {
     let scroll = buffer.scroll();
     let mut paragraph = scroll.line;
     let mut visual_line = 0;
@@ -17,7 +30,7 @@ pub fn text_layout_runs(buffer: &Buffer) -> impl Iterator<Item = LayoutRun<'_>> 
         loop {
             let source = buffer.lines.get(paragraph)?;
             let shape = source.shape_opt()?;
-            let lines = source.layout_opt()?;
+            let lines = layouts(paragraph).or_else(|| source.layout_opt().map(Vec::as_slice))?;
             let current_line = visual_line;
             let Some(line) = lines.get(current_line) else {
                 paragraph += 1;

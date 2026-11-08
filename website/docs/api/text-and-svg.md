@@ -26,6 +26,7 @@ title: Text 与 SVG API
 | `layout(font_system, options)` | 返回 `TextLayout` |
 | `layout_buffer(font_system, buffer)` | 复用 retained `cosmic_text::Buffer`，只 shape pending changes |
 | `layout_buffer_runs(font_system, &buffer)` | 只读提取已排版的分段 `TextLayoutRun`；保留视觉行、metadata 和 RGBA8 颜色，不重新 shaping |
+| `layout_runs_filtered(font_system, runs, include)` | 从调用方准备好的 UI 行视图提取绘制片段，保留原文字索引、位置、metadata 和颜色 |
 | `ink_bounds_at_scale(font_system, layout, origin, scale)` | 当前 DPI／origin 下的非透明字形像素边界，返回逻辑坐标 `Option<Rect>`；按 glyph／raster 配置缓存，空白文本或无效输入返回 None |
 | `layout_outline_path(font_system, layout, origin)` | 收集 glyph outlines |
 | `clear_glyph_caches()` | fonts/resources 发生外部重大变化时清理 |
@@ -60,6 +61,16 @@ canvas.push_svg_with_options(&tree, SvgOptions {
 retaining original glyph advances, line boxes and shaped-buffer identity. `text_hit(&buffer, x, y)`
 uses those line boxes and direction-aware grapheme positions for editing. Both require an already
 shaped buffer. See [the line-metric contract](https://github.com/Jianqoq/tileink/blob/main/docs/native/ui-text-metrics.md).
+
+## 自定义原生换行布局
+
+`text_layout_runs_from(&buffer, layouts)` 复用统一的 UI 基线、滚动与可见性规则，借用调用方准备好的
+段落 `LayoutLine`。回调返回 `None` 时沿用原缓存，返回空切片时省略该段落。逻辑文字、段落方向、
+字形的原文 byte index 和字体库身份保持不变；它不会复制或重新 shaping 源 buffer。
+
+把同一行视图传给 `TextContext::layout_runs_filtered` 与 `text_hit_runs`，即可让绘制和鼠标命中使用
+同一份布局。默认 buffer 接口也委托给这条共用路径。这个接口用于接入原生换行策略，本身不执行
+均衡换行，也不修改字体栅格化、颜色混合或 GPU 采样规则。
 
 ## 已排版的 span 绘制
 

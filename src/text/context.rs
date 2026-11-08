@@ -153,10 +153,25 @@ impl TextContext {
         &mut self,
         font_system: &mut FontSystem,
         buffer: &Buffer,
+        include: impl FnMut(usize, &cosmic_text::LayoutGlyph) -> bool,
+    ) -> Vec<super::layout::TextLayoutRun> {
+        self.layout_runs_filtered(font_system, super::text_layout_runs(buffer), include)
+    }
+
+    /// Prepares paint spans from caller-provided, already-shaped UI lines without reshaping them.
+    ///
+    /// Keep the source byte indices and font-system-local glyph ids valid. Each visible visual
+    /// line, including empty ones, retains its ordinal; metadata/color groups and cluster inclusion
+    /// have the same contract as `layout_buffer_runs_filtered`. The supplied UI baselines and glyph
+    /// positions are authoritative for raster and outline preparation.
+    pub fn layout_runs_filtered<'a>(
+        &mut self,
+        font_system: &mut FontSystem,
+        runs: impl IntoIterator<Item = cosmic_text::LayoutRun<'a>>,
         mut include: impl FnMut(usize, &cosmic_text::LayoutGlyph) -> bool,
     ) -> Vec<super::layout::TextLayoutRun> {
         let mut result = Vec::new();
-        for (line, run) in super::text_layout_runs(buffer).enumerate() {
+        for (line, run) in runs.into_iter().enumerate() {
             let mut start = 0;
             while start < run.glyphs.len() {
                 let metadata = run.glyphs[start].metadata;

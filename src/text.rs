@@ -15,9 +15,9 @@ mod raster;
 mod scaler;
 
 pub use context::TextContext;
-pub use hit::text_hit;
+pub use hit::{text_hit, text_hit_runs};
 pub use layout::{TextLayout, TextLayoutRun};
-pub use line_metrics::text_layout_runs;
+pub use line_metrics::{text_layout_runs, text_layout_runs_from};
 pub use options::{TextCompositeMode, TextLayoutOptions, TextRasterOptions, TextSubpixelMode};
 
 #[cfg(test)]
