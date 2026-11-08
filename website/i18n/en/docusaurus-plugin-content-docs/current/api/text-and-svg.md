@@ -44,3 +44,16 @@ This is the root seam for block line-clamp projections: pixel clipping alone can
 combining mark or italic outline in half. The application groups clusters before filtering and
 retains the full source buffer for selection, copying and later focus/scroll. Neither extraction
 method reshapes or mutates that buffer.
+
+## Caller-prepared native rows
+
+`text_layout_runs_from(&buffer, layouts)` uses caller-supplied paragraph arrays, falling back to
+cached source when the callback returns `None`. An empty slice omits a paragraph.
+`text_layout_runs_by(&buffer, row)` resolves individual borrowed `LayoutLine` values; `None`
+ends that paragraph and an empty line remains a real row. A consumer may combine an owned
+short prefix with the untouched cached tail without copying its glyphs. Both views preserve
+logical source, directions, font identities, UI baselines, scrolling and visibility.
+
+Pass the same view to `TextContext::layout_runs_filtered` and `text_hit_runs`. Ordinary buffer
+interfaces delegate to these shared paths. This provides native line-layout ownership without
+another shaper, painter or hit tester; it does not itself implement balanced wrapping.

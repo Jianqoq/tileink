@@ -72,6 +72,12 @@ shaped buffer. See [the line-metric contract](https://github.com/Jianqoq/tileink
 同一份布局。默认 buffer 接口也委托给这条共用路径。这个接口用于接入原生换行策略，本身不执行
 均衡换行，也不修改字体栅格化、颜色混合或 GPU 采样规则。
 
+
+`text_layout_runs_by(&buffer, |paragraph, row| ...)` resolves individual borrowed `LayoutLine`
+values. `None` ends that paragraph; an empty line remains a real row. A native policy may combine
+an owned short prefix with original cached tail rows without copying their glyphs. The array
+and ordinary buffer views delegate to this same baseline/visibility path.
+
 ## 已排版的 span 绘制
 
 `TextLayoutRun` 提供 `layout`、`line`、`metadata`、`color`。`line` 为视觉行序号，空段落也计数；

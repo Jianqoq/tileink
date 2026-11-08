@@ -245,3 +245,22 @@ to a fresh render of immutable base 1fb6f760, using 3,425 identical adjacent fix
 Generated fixture images were archived for comparison and restored; this change does not
 regolden the repository's environment-dependent reference PNGs. Balancing remains a separate
 native SDK integration gate. See prepared-text-layout-validation.json for input hashes.
+
+## Borrowed row composition
+
+`text_layout_runs_by(buffer, row)` resolves each absolute paragraph and paragraph-local visual
+row through the same line-metric iterator. `None` ends that paragraph; an empty `LayoutLine`
+preserves a real blank line. This lets a consumer borrow a short reflowed/clamped prefix and
+then return untouched cached source rows, without cloning every glyph in a long hidden tail.
+The paragraph-array and default-buffer interfaces delegate to this row resolver. Source text,
+font identities, metadata/color order, scrolling, baseline and clipping rules remain unchanged.
+A regression checks prefix and tail pointer identity, empty/omitted paragraphs, and shared
+paint/hit extraction. This is a source-ownership seam, not another layout or rasterizer.
+
+
+Validation of borrowed row composition: 1,049 all-target Release tests in 48 suites pass
+(228 unchanged opt-in ignores), along with formatting, strict all-target Release Clippy and
+all example builds. Six native image examples plus the complete SVG renderer run successfully.
+All 1,712 SVG PNGs are byte-identical to the archived fresh prepared-layout baseline; the
+3,425 adjacent inputs match its immutable source fixture tree. Generated outputs are archived
+and restored, rather than replacing repository goldens. See borrowed-text-rows-validation.json.

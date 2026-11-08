@@ -140,6 +140,61 @@ fn default_layout_and_supplied_fallback_have_identical_scrolled_geometry() {
 }
 
 #[test]
+fn borrowed_prefix_and_source_tail_share_one_paragraph_without_glyph_copies() {
+    let mut fonts = font_system();
+    let mut buffer = source(
+        &mut fonts,
+        "one two three four five six seven eight nine\n\nlast",
+    );
+    buffer.set_wrap(Wrap::Word);
+    buffer.set_size(Some(45.0), None);
+    buffer.shape_until_scroll(&mut fonts, false);
+    buffer.set_redraw(false);
+    let original = buffer.lines[0].layout_opt().unwrap();
+    assert!(original.len() > 3);
+    let mut prefix = original[0].clone();
+    for glyph in &mut prefix.glyphs {
+        glyph.x += 3.25;
+    }
+    let view = || {
+        text_layout_runs_by(&buffer, |paragraph, row| {
+            if paragraph == 0 && row == 0 {
+                Some(&prefix)
+            } else {
+                buffer.lines.get(paragraph)?.layout_opt().as_ref()?.get(row)
+            }
+        })
+    };
+    let runs: Vec<_> = view().collect();
+    assert!(std::ptr::eq(runs[0].glyphs, prefix.glyphs.as_slice()));
+    for (row, original) in original.iter().enumerate().skip(1) {
+        assert!(std::ptr::eq(runs[row].glyphs, original.glyphs.as_slice()));
+    }
+    let first = &runs[0].glyphs[0];
+    assert_eq!(
+        text_hit_runs(view(), first.x + first.w * 0.25, runs[0].line_top + 5.)
+            .unwrap()
+            .index,
+        first.start
+    );
+    let painted = TextContext::new().layout_runs_filtered(&mut fonts, view(), |_, _| true);
+    assert!(!painted.is_empty());
+    assert!(runs.iter().any(|r| r.line_i == 1 && r.glyphs.is_empty()));
+    assert!(!buffer.redraw());
+    let omitted: Vec<_> = text_layout_runs_by(&buffer, |paragraph, row| {
+        if paragraph == 0 {
+            None
+        } else {
+            buffer.lines.get(paragraph)?.layout_opt().as_ref()?.get(row)
+        }
+    })
+    .collect();
+    assert_eq!(omitted[0].line_i, 1);
+    assert_eq!(omitted[0].line_top, 0.0);
+    assert!(omitted[0].glyphs.is_empty());
+}
+
+#[test]
 fn reflowed_visual_lines_keep_source_cursors_and_the_shared_fractional_baseline() {
     let mut fonts = font_system();
     let mut buffer = source(&mut fonts, "abcd");

@@ -20,6 +20,23 @@ pub fn text_layout_runs_from<'a>(
     buffer: &'a Buffer,
     mut layouts: impl FnMut(usize) -> Option<&'a [LayoutLine]>,
 ) -> impl Iterator<Item = LayoutRun<'a>> {
+    text_layout_runs_by(buffer, move |paragraph, row| {
+        layouts(paragraph)
+            .or_else(|| buffer.lines.get(paragraph)?.layout_opt().map(Vec::as_slice))?
+            .get(row)
+    })
+}
+
+/// Places independently borrowed visual rows with the shared UI baseline and visibility rules.
+///
+/// The resolver receives absolute paragraph and paragraph-local visual-row indices. Return
+/// `None` ends that paragraph. Empty lines use an empty `LayoutLine`, not `None`. Rows may borrow
+/// a short reflowed prefix and the unchanged source tail without cloning the hidden glyphs.
+/// Source clusters, directions and font-system-local ids must remain valid for buffer.
+pub fn text_layout_runs_by<'a>(
+    buffer: &'a Buffer,
+    mut row: impl FnMut(usize, usize) -> Option<&'a LayoutLine>,
+) -> impl Iterator<Item = LayoutRun<'a>> {
     let scroll = buffer.scroll();
     let mut paragraph = scroll.line;
     let mut visual_line = 0;
@@ -30,9 +47,9 @@ pub fn text_layout_runs_from<'a>(
         loop {
             let source = buffer.lines.get(paragraph)?;
             let shape = source.shape_opt()?;
-            let lines = layouts(paragraph).or_else(|| source.layout_opt().map(Vec::as_slice))?;
             let current_line = visual_line;
-            let Some(line) = lines.get(current_line) else {
+            let resolved = row(paragraph, current_line);
+            let Some(line) = resolved else {
                 paragraph += 1;
                 visual_line = 0;
                 continue;
