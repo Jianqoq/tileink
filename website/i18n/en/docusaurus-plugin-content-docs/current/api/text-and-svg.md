@@ -57,3 +57,7 @@ logical source, directions, font identities, UI baselines, scrolling and visibil
 Pass the same view to `TextContext::layout_runs_filtered` and `text_hit_runs`. Ordinary buffer
 interfaces delegate to these shared paths. This provides native line-layout ownership without
 another shaper, painter or hit tester; it does not itself implement balanced wrapping.
+
+## Selected glyph foreground
+
+`Canvas::push_text_layout_highlighted(layout, origin, brush, foreground, ranges, clip)` applies the foreground inside the union of selection rectangles and the original brush elsewhere. Transparent foreground replaces original glyph paint; it is not an overlay. All sections share one prepared glyph run without shaping or rasterizing again. Half-open local device-pixel domains prevent overlapping ranges or retained scale/rotation from blending twice. The optional outer clip follows ordinary rectangular text-overflow clipping.

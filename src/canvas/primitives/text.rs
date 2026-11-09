@@ -1,4 +1,5 @@
 use super::*;
+mod selection;
 
 impl Canvas {
     /// Adds a laid-out text run at `origin`.

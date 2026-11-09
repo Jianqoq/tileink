@@ -7,10 +7,11 @@ struct FineInput {
     const device uint* coarse;
     device uint* spills;
 };
-struct FineDraw {uint brush,sdf,shadow;int4 bounds;Affine inverse;};
+struct FineDraw {uint brush,sdf,shadow;int4 bounds,local_bounds;Affine inverse;};
 FineDraw fine_draw(Words records,uint index) {
     Words p=records.offset(index*31);
     return {p[6],p[2],p[4],as_type<int4>(uint4(p[10],p[11],p[12],p[13])),
+        as_type<int4>(uint4(p[14],p[15],p[16],p[17])),
         Affine{as_type<float4>(uint4(p[25],p[26],p[27],p[28])),as_type<float2>(uint2(p[29],p[30]))}};
 }
 uint draw_brush(FineInput input,texture2d_array<float> atlas,sampler sampling,constant TextureTable& table,FineDraw draw,float2 position) {

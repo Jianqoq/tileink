@@ -16,6 +16,7 @@ mod plan_fragments;
 mod retained_damage;
 mod root_insertions;
 mod root_order;
+mod selection_paint;
 
 fn context() -> Result<NativeContext, Box<dyn std::error::Error>> {
     #[cfg(feature = "dx12")]

@@ -29,7 +29,10 @@ float3 sample_corrected_glyph(FineInput input,Words image,float2 position,float3
 }
 float4 composite_glyphs(FineInput input,texture2d_array<float> atlas,sampler sampling,constant TextureTable& table,
     float4 pixel,uint start,uint end,FineDraw draw,uint2 xy,uint clip) {
-    float2 point=affine_point(draw.inverse,float2(xy)+0.5f)-0.5f;
+    float2 point=affine_point(draw.inverse,float2(xy)+0.5f);
+    // A transformed AABB cannot enforce disjoint local text domains.
+    if(any(point<float2(draw.local_bounds.xy)) || any(point>=float2(draw.local_bounds.zw))) return pixel;
+    point-=0.5f;
     uint list_base=input.config->tile_count*6+input.config->ptcl_capacity*6;
     for(uint i=start;i<end;++i) {
         uint index=input.coarse[list_base+i];

@@ -94,3 +94,7 @@ and ordinary buffer views delegate to this same baseline/visibility path.
 
 这是块级行截断的共享基础：单纯裁剪像素会切断连字、组合重音或斜体轮廓。调用方先按字形簇
 决定保留范围，完整源文本仍可用于选择、复制以及后续的焦点滚动。
+
+## 选区内的字形前景
+
+`Canvas::push_text_layout_highlighted(layout, origin, brush, foreground, ranges, clip)` 在选区矩形的并集内使用指定字色，范围外保留原画刷。透明前景会替换原字形绘制，不会叠在原文字上。所有分区共用一份已经排好的字形数据；改变选区不需要重新排版或重新栅格化。矩形按设备像素中心归属，重叠范围不会重复混合；保留场景缩放和旋转后仍检查局部边界。可选 `clip` 与普通文字的矩形溢出裁剪语义一致。

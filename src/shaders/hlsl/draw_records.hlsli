@@ -13,6 +13,7 @@ static const uint DRAW_SOLID_RECT = 72u;
 static const uint DRAW_TAG = 32u;
 static const uint DRAW_FILL_RULE = 36u;
 static const uint DRAW_PIXEL_BOUNDS = 40u;
+static const uint DRAW_LOCAL_PIXEL_BOUNDS = 56u;
 static const uint DRAW_TRANSFORM = 76u;
 static const uint DRAW_INVERSE_TRANSFORM = 100u;
 static const uint LAYER_RECORD_STRIDE = 12u;

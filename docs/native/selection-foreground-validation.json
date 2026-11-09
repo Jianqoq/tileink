@@ -1,0 +1,156 @@
+{
+  "base_revision": "0b49feec65b1cccf210d8adadc2ddba2ffc98311",
+  "gpu": "NVIDIA RTX 4090 / ea3c010000000000",
+  "native_validation": true,
+  "backends_executed": [
+    "DX12",
+    "Vulkan"
+  ],
+  "metal": "source updated; runtime not verified on this Windows host",
+  "svg_comparison": {
+    "baseline_revision": "2ac9c89fe567dac12d4af5af441e117eb5fa7a1e",
+    "compared": 1712,
+    "changed": []
+  },
+  "logs": {
+    "selection-ink-tileink-release.log": {
+      "sha256": "ed69330f52a3ac02119385f57bca4e89d208ffc7b5cf95de590375af3eefb1e8",
+      "bytes": 164019,
+      "test_results": [
+        "test result: ok. 953 passed; 0 failed; 202 ignored; 0 measured; 0 filtered out; finished in 0.52s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s",
+        "test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s",
+        "test result: ok. 5 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.14s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.52s",
+        "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.96s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.48s",
+        "test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
+        "test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.37s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ]
+    },
+    "selection-ink-tileink-fmt.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "test_results": []
+    },
+    "selection-ink-tileink-clippy.log": {
+      "sha256": "d5f723ec5734d60d408729acd3c95cc38b3c0e083a19668dc9e4172922c9a9f6",
+      "bytes": 137,
+      "test_results": []
+    },
+    "selection-ink-tileink-doc.log": {
+      "sha256": "4493e3d1db9082d8c58deeb19b6e85864af4716c797a09232991dd0fc372b49d",
+      "bytes": 203,
+      "test_results": [
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ]
+    },
+    "selection-ink-gpu-dx12.log": {
+      "sha256": "bc57d05398ea6dc0befc62f31ac2cd35729bbe6d89b35227feeaf0ea141b4956",
+      "bytes": 649,
+      "test_results": [
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 1153 filtered out; finished in 23.96s"
+      ]
+    },
+    "selection-ink-gpu-vulkan.log": {
+      "sha256": "411e958420256f9cb1e0eca7dbb28199478beaa04e13308f67a29c71ba3b85f5",
+      "bytes": 649,
+      "test_results": [
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 1146 filtered out; finished in 21.68s"
+      ]
+    },
+    "selection-ink-existing-dx12.log": {
+      "sha256": "24769b4de0b46efa26c728adcc0a4dfe2a6560bcc07659ae9d047a84b87fcd5d",
+      "bytes": 1098,
+      "test_results": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.59s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.59s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.63s"
+      ]
+    },
+    "selection-ink-existing-vulkan.log": {
+      "sha256": "50fe48ddadbc0b29cef494e211b3890f625611275587901347e21125014d2443",
+      "bytes": 1098,
+      "test_results": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.79s"
+      ]
+    },
+    "selection-ink-contrast-dx12.log": {
+      "sha256": "9b6ac4ac06c11350fc08b730f234e4efe8526a262d9d505173c143ac2ac2b96f",
+      "bytes": 449,
+      "test_results": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1154 filtered out; finished in 0.23s"
+      ]
+    },
+    "selection-ink-contrast-vulkan.log": {
+      "sha256": "2d3ecd12f5ebfbadeee9071349380f8b59833dc12ac08909e61cbb6dd8111a7e",
+      "bytes": 449,
+      "test_results": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1147 filtered out; finished in 0.26s"
+      ]
+    },
+    "selection-ink-svg.log": {
+      "sha256": "f3244637c3336b23615de321e0de9bba9434f87bfdc077121c7369464bc7a36e",
+      "bytes": 274,
+      "test_results": []
+    },
+    "selection-ink-examples.log": {
+      "sha256": "3ce479e18f3f9d278039374ba1e7eaaf2b3770975766046650060d768bc3837d",
+      "bytes": 148,
+      "test_results": []
+    },
+    "selection-ink-svg-comparison.json": {
+      "sha256": "d6f13aae318aaf6b0c58b27cec0f655cc0f80dcc7f01eae0baa578797c73cdbf",
+      "bytes": 112,
+      "test_results": []
+    },
+    "selection-ink-retained-red.log": {
+      "sha256": "70326c03e4b2ecc9a029788f1134c95a47bceb8aa015674ff32ed814751d5251",
+      "bytes": 1536,
+      "test_results": [
+        "test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 1153 filtered out; finished in 1.04s"
+      ]
+    }
+  }
+}

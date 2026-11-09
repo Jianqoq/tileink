@@ -6,7 +6,7 @@
 #include "../coarse_records.hlsli"
 #include "../shared/affine.hlsli"
 
-struct FineDraw { uint brush_offset,sdf_offset,shadow_offset; int4 pixel_bounds; AffineRecord inverse_transform; };
+struct FineDraw { uint brush_offset,sdf_offset,shadow_offset; int4 pixel_bounds,local_pixel_bounds; AffineRecord inverse_transform; };
 FineDraw load_fine_draw(ByteAddressBuffer draws,uint index) {
     uint base=index*DRAW_RECORD_STRIDE;
     FineDraw draw;
@@ -14,6 +14,7 @@ FineDraw load_fine_draw(ByteAddressBuffer draws,uint index) {
     draw.sdf_offset=draws.Load(base+DRAW_SDF);
     draw.shadow_offset=draws.Load(base+DRAW_SHADOW);
     draw.pixel_bounds=asint(draws.Load4(base+DRAW_PIXEL_BOUNDS));
+    draw.local_pixel_bounds=asint(draws.Load4(base+DRAW_LOCAL_PIXEL_BOUNDS));
     draw.inverse_transform=load_affine(draws,base+DRAW_INVERSE_TRANSFORM);
     return draw;
 }

@@ -70,6 +70,7 @@ mod layout_view;
 mod lcd;
 mod prepared;
 mod recording;
+mod selection_paint;
 
 mod line_metrics;
 

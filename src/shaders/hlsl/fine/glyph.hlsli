@@ -65,6 +65,9 @@ float4 composite_glyphs_at(FineInputs input, Texture2D<float4> images[NATIVE_TEX
     float2 local = affine_record_point(
         draw.inverse_transform,
         float2(float(global_x) + 0.5, float(global_y) + 0.5));
+    // World AABBs overlap after fractional/rotated transforms. The inverse pixel center
+    // must also belong to this half-open local domain, otherwise text blends twice.
+    if (any(local < float2(draw.local_pixel_bounds.xy)) || any(local >= float2(draw.local_pixel_bounds.zw))) return pixel;
     local -= 0.5;
     while (true) {
         if (glyph_list_ix >= glyph_end) {
