@@ -1,6 +1,9 @@
 float glass_distance(constant FilterConfig& c,float2 p) {
     float2 relative=p-(float2(c.rect_x0,c.rect_y0)+float2(c.rect_x1,c.rect_y1))*0.5f;
     float2 half_size=max((float2(c.rect_x1,c.rect_y1)-float2(c.rect_x0,c.rect_y0))*0.5f,0.0f);
+    float4 radii(c.radius_top_left,c.radius_top_right,c.radius_bottom_left,c.radius_bottom_right);
+    if(max(max(radii.x,radii.y),max(radii.z,radii.w))>min(half_size.x,half_size.y))
+        return rect_sample(p,float4(c.rect_x0,c.rect_y0,c.rect_x1,c.rect_y1),radii).distance;
     float radius=relative.x>=0?(relative.y<=0?c.radius_top_right:c.radius_bottom_right):(relative.y>0?c.radius_bottom_left:c.radius_top_left);
     radius=max(min(min(radius,half_size.x),half_size.y),0.0f);
     float2 edge=abs(relative)-half_size;

@@ -46,6 +46,32 @@ pub(super) fn records() -> Vec<EncodedSdf> {
         SdfShadow::Rect(SdfRectShadow { rect, options }),
         SdfShadow::Circle(SdfCircleShadow { circle, options }),
     ];
+    // Cross-midpoint corners exercise the same body through fill, stroke, shadow and affine probes.
+    for corner in 0..4 {
+        let mut radii = [0.; 4];
+        radii[corner] = 6.;
+        let large = SdfRect {
+            start: Point::new(2., 3.),
+            end: Point::new(10., 11.),
+            radius: Radius {
+                top_left: radii[0],
+                top_right: radii[1],
+                bottom_left: radii[2],
+                bottom_right: radii[3],
+            },
+        };
+        shapes.extend([
+            Sdf::Rect(large),
+            Sdf::RectStroke(SdfRectStroke {
+                rect: large,
+                widths: StrokeWidths::all(1.25),
+            }),
+        ]);
+        shadows.push(SdfShadow::Rect(SdfRectShadow {
+            rect: large,
+            options,
+        }));
+    }
     for cap in [SdfLineCap::Butt, SdfLineCap::Square, SdfLineCap::Round] {
         let line = SdfLine::new(Point::new(2.0, 3.0), Point::new(12.0, 11.0), 2.0, cap);
         let arc = SdfArc::new(Point::new(8.0, 8.0), 5.0, -0.75, 4.5, 2.5, cap);

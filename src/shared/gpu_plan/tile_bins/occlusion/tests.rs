@@ -309,3 +309,77 @@ fn early_occlusion_retains_order_on_rebuild_and_restores_revealed_geometry() {
         [0, 1]
     );
 }
+
+#[test]
+fn adjacent_edge_corners_keep_every_claimed_opaque_tile_inside_the_true_shape() {
+    let mut claimed = 0;
+    for (width, height) in [(64., 64.), (96., 64.), (64., 96.)] {
+        for authored in [
+            [64., 0., 0., 0.],
+            [0., 64., 0., 0.],
+            [0., 0., 64., 0.],
+            [0., 0., 0., 64.],
+            [48., 16., 0., 0.],
+            [128., 0., 0., 0.],
+            [64.5, 5.5, 12.25, 1.75],
+            [48., 48., 48., 48.],
+        ] {
+            let mut canvas = Canvas::new(width as u32, height as u32, 1.);
+            canvas.push_rect(
+                Rect::new(0., 0., width, height),
+                Radius {
+                    top_left: authored[0] as f32,
+                    top_right: authored[1] as f32,
+                    bottom_left: authored[2] as f32,
+                    bottom_right: authored[3] as f32,
+                },
+                Color::WHITE,
+            );
+            let tiles = geometry::opaque_tiles(&canvas, &canvas.draw_records[0]);
+            let [tl, tr, bl, br] = authored;
+            let factor = [
+                (tl + tr, width),
+                (bl + br, width),
+                (tl + bl, height),
+                (tr + br, height),
+            ]
+            .into_iter()
+            .fold(1.0_f64, |factor, (sum, side)| {
+                if sum > side {
+                    factor.min(side / sum)
+                } else {
+                    factor
+                }
+            });
+            let [tl, tr, bl, br] = authored.map(|r| r * factor);
+            for ty in tiles.y0..tiles.y1 {
+                for tx in tiles.x0..tiles.x1 {
+                    claimed += 1;
+                    let tile = f64::from(crate::TILE_SIZE);
+                    for x in [f64::from(tx) * tile + 0.5, f64::from(tx + 1) * tile - 0.5] {
+                        for y in [f64::from(ty) * tile + 0.5, f64::from(ty + 1) * tile - 0.5] {
+                            assert!(x.min(width - x).min(y).min(height - y) >= 0.5);
+                            for (r, cx, cy, sx, sy) in [
+                                (tl, tl, tl, -1., -1.),
+                                (tr, width - tr, tr, 1., -1.),
+                                (bl, bl, height - bl, -1., 1.),
+                                (br, width - br, height - br, 1., 1.),
+                            ] {
+                                if r > 0. && (x - cx) * sx > 0. && (y - cy) * sy > 0. {
+                                    assert!(
+                                        r - (x - cx).hypot(y - cy) >= 0.5,
+                                        "opaque tile crossed a CSS corner: {authored:?}, {x},{y}"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        claimed > 0,
+        "the conservative proof must exercise actual opaque tiles"
+    );
+}

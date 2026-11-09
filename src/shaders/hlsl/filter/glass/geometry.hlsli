@@ -92,6 +92,9 @@ float liquid_glass_round_rect_distance(float x, float y, float x0, float y0, flo
     float hy = max((y1 - y0) * 0.5, 0.0);
     float px = x - cx;
     float py = y - cy;
+    if (max(max(radius_top_left, radius_top_right), max(radius_bottom_left, radius_bottom_right)) > min(hx, hy))
+        return rect_sdf_distance(x, y, x0, y0, x1, y1,
+            radius_top_left, radius_top_right, radius_bottom_left, radius_bottom_right);
     float radius = max(min(min(liquid_glass_corner_radius(px, py, radius_top_left, radius_top_right, radius_bottom_left, radius_bottom_right), hx), hy), 0.0);
     float ax = abs(px);
     float ay = abs(py);

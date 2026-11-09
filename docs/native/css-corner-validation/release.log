@@ -1,0 +1,1529 @@
+   Compiling tileink v0.1.2 (G:\Code\gfx-ui-shadcn-tileink-css-corners)
+    Finished `release` profile [optimized] target(s) in 32.45s
+     Running unittests src\lib.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\tileink-a93099420789f0f7.exe)
+
+running 1149 tests
+test canvas::damage_history::tests::clipped_damage_history_does_not_retain_empty_source_capacity ... ok
+test canvas::damage_history::tests::domain_exit_and_incomplete_steps_require_recovery_only_across_the_boundary ... ok
+test canvas::damage_history::tests::event_epochs_preserve_the_immediate_partial_path ... ok
+test canvas::damage_history::tests::immediate_resolution_shares_event_bounds ... ok
+test canvas::damage_history::tests::invisible_output_keeps_its_dirty_backdrop_event ... ok
+test canvas::damage_history::tests::resolved_events_outlive_history_updates_and_forks ... ok
+test canvas::damage_history::tests::skipped_updates_union_resolved_output_without_replaying_it ... ok
+test canvas::layers::tests::approximate_closing_point_does_not_expand_the_rectangular_clip ... ok
+test canvas::layers::tests::blur_groups_resolve_descendant_bounds_and_expand_overflow_at_physical_dpi ... ok
+test canvas::layers::tests::nested_blur_groups_are_finite_and_empty_groups_stay_empty ... ok
+test canvas::layers::tests::opacity_group_rejects_nonfinite_alpha - should panic ... ok
+test canvas::layers::tests::opacity_groups_allocate_no_geometry_and_preserve_overflow_bounds ... ok
+test canvas::retained::damage::filter_dependency_tests::erosion_input_changes_damage_neighbouring_output_pixels ... ok
+test canvas::retained::damage::filter_dependency_tests::wrapped_source_damage_reaches_the_opposite_edge_without_dirtying_the_root ... ok
+test canvas::retained::damage::nested_filter_damage_tests::off_canvas_offset_damage_is_preserved_until_outer_wrap_sampling ... ok
+test canvas::retained::damage_buffer::tests::empty_scopes_leave_parent_unchanged ... ok
+test canvas::retained::damage_buffer::tests::isolated_inputs_hide_parent_and_sibling_damage ... ok
+test canvas::retained::damage_buffer::tests::nested_scopes_merge_unique_damage_in_painter_order ... ok
+test canvas::retained::damage_buffer::tests::scope_indices_survive_growth_and_reuse_allocated_storage ... ok
+test canvas::surface::tests::authored_surface_keeps_its_logical_extent_when_backing_allocation_rounds_up ... ok
+test canvas::surface::tests::native_surface_keeps_exact_backing_pixels_and_fractional_logical_size ... ok
+test canvas::surface::tests::retained_surface_resize_and_rollback_preserve_native_extent ... ok
+test canvas::surface::tests::shader_pipeline_physical_coordinates_and_read_footprint_follow_dpi ... ok
+test canvas::tests::append_bounds::path_only_backdrop_allocation_uses_geometry_and_preserves_empty_paths ... ok
+test canvas::tests::append_bounds::translated_path_bounds_remain_local_to_the_appended_geometry ... ok
+test canvas::tests::compile::compile_fuses_generic_sdf_clip_without_path_storage ... ok
+test canvas::tests::compile::compile_fuses_sdf_clip_into_layer_stack ... ok
+test canvas::tests::compile::compile_isolates_opacity_across_nested_batches ... ok
+test canvas::tests::compile::compile_keeps_blend_with_offscreen_child_isolated ... ok
+test canvas::tests::compile::compile_keeps_isolate_as_offscreen_layer ... ok
+test canvas::tests::compile::compile_keeps_mask_content_and_mask_isolated ... ok
+test canvas::tests::compile::compile_keeps_opacity_with_offscreen_child_isolated ... ok
+test canvas::tests::compile::compile_keeps_outer_sdf_clip_on_backdrop_layer_children ... ok
+test canvas::tests::compile::compile_lowers_clip_blend_batches_in_user_order ... ok
+test canvas::tests::compile::empty_fused_groups_preserve_draw_order_and_stack_state ... ok
+test canvas::tests::compile::execution_plan_fingerprint_ignores_buffer_only_changes ... ok
+test canvas::tests::compile::path_api_keeps_fractional_physical_rect_clip_as_path_geometry ... ok
+test canvas::tests::compile::path_api_keeps_non_rectangular_clip_as_path_geometry ... ok
+test canvas::tests::compile::path_api_promotes_axis_aligned_rect_clip_without_path_storage ... ok
+test canvas::tests::compile::reset_discards_cached_execution_plan ... ok
+test canvas::tests::compile::reset_reuses_root_command_storage ... ok
+test canvas::tests::compile::transformed_sdf_clip_keeps_local_geometry_and_gpu_transform ... ok
+test canvas::tests::effect_placement::appended_effect_regions_follow_scale_rotation_and_nested_placement ... ok
+test canvas::tests::effect_placement::retained_effect_regions_recompute_from_original_metadata_across_reversals ... ok
+test canvas::tests::effect_placement::retained_effect_sources_are_independent_on_clone_and_cleared_on_rerecord ... ok
+test canvas::tests::effect_placement::rounded_mask_affines_preserve_the_shape_instead_of_its_bounding_box ... ok
+test canvas::tests::filters::push_backdrop_layer_rejects_rect_liquid_glass_path_region - should panic ... ok
+test canvas::tests::filters::push_filter_layer_rejects_rect_liquid_glass - should panic ... ok
+test canvas::tests::layer_commands::backdrop_opacity_is_a_combined_group_with_isolated_foreground_not_an_outer_opacity ... ok
+test canvas::tests::layer_commands::combined_backdrop_opacity_validates_before_mutating_and_clamps_finite_values ... ok
+test canvas::tests::layer_commands::effect_only_commands_have_no_geometry_dependency_when_remapped ... ok
+test canvas::tests::layer_commands::fused_stack_producers_encode_only_clip_or_path_group_geometry ... ok
+test canvas::tests::layer_commands::geometric_layer_draws_remap_through_every_append_route ... ok
+test canvas::tests::layer_commands::sdf_clip_geometry_does_not_change_the_execution_topology_fingerprint ... ok
+test canvas::tests::offscreen_clips::clip_only_and_empty_clips_never_allocate_surfaces ... ok
+test canvas::tests::offscreen_clips::offscreen_clips_survive_deep_groups_masks_backdrops_and_localization ... ok
+test canvas::tests::offscreen_clips::retained_offscreen_clips_survive_descriptor_topology_and_surface_updates ... ok
+test canvas::tests::offscreen_clips::retained_offscreen_fragment_keeps_inherited_clips_when_children_change ... ok
+test canvas::tests::paths::append_preserves_path_geometry_for_scene_records ... ok
+test canvas::tests::paths::append_preserves_path_geometry_for_scene_records_without_mutating_child ... ok
+test canvas::tests::paths::append_transformed_translation_uses_native_append_representation ... ok
+test canvas::tests::paths::new_scales_path_geometry_before_flattening ... ok
+test canvas::tests::paths::push_arc_adds_draw_and_path_record ... ok
+test canvas::tests::paths::push_layer_path_flattens_transformed_geometry ... ok
+test canvas::tests::paths::push_path_flattens_transformed_geometry ... ok
+test canvas::tests::paths::push_path_reserves_segment_capacity_from_scan_tile_count ... ok
+test canvas::tests::paths::push_stroke_expands_shape_to_fill_path ... ok
+test canvas::tests::primitives::append::append_directly_remaps_root_commands_after_nested_lists ... ok
+test canvas::tests::primitives::append::append_fast_path_translates_sdf_without_mutating_child ... ok
+test canvas::tests::primitives::append::scene_records_rebuild_after_append ... ok
+test canvas::tests::primitives::append::translated_append_composes_after_an_icon_like_nested_scale ... ok
+test canvas::tests::primitives::draws::canvas_reports_unclosed_layers_before_retained_installation ... ok
+test canvas::tests::primitives::draws::draw_id_from_before_reset_is_rejected ... ok
+test canvas::tests::primitives::draws::draw_id_updates_specific_draw_color ... ok
+test canvas::tests::primitives::draws::reset_for_surface_rejects_invalid_scale_without_mutating_canvas ... ok
+test canvas::tests::primitives::draws::reset_for_surface_retargets_canvas_without_discarding_storage_capacity ... ok
+test canvas::tests::primitives::images::append_translates_image_brush_without_mutating_child ... ok
+test canvas::tests::primitives::images::new_keeps_image_brush_sampling_in_logical_coordinates ... ok
+test canvas::tests::primitives::images::push_image_key_records_resource_pattern_rect_draw ... ok
+test canvas::tests::primitives::images::push_image_records_pattern_rect_draw ... ok
+test canvas::tests::primitives::images::push_image_rejects_empty_images_and_rects ... ok
+test canvas::tests::primitives::images::push_image_reuses_scene_resource_for_same_arc ... ok
+test canvas::tests::primitives::lines::no_op_sdf_primitive_returns_no_draw_id ... ok
+test canvas::tests::primitives::lines::push_candlestick_accepts_even_body_and_custom_wick_width_without_path_storage ... ok
+test canvas::tests::primitives::lines::push_candlestick_records_sdf_without_path_storage ... ok
+test canvas::tests::primitives::lines::push_dash_line_records_sdf_without_path_storage ... ok
+test canvas::tests::primitives::lines::push_line_records_sdf_without_path_storage ... ok
+test canvas::tests::primitives::lines::push_sdf_arc_records_sdf_without_path_storage ... ok
+test canvas::tests::primitives::rectangles::new_stores_logical_size_and_scales_sdf_rects ... ok
+test canvas::tests::primitives::rectangles::positive_subpixel_corner_radii_remain_curves_in_the_path_representation ... ok
+test canvas::tests::primitives::rectangles::push_checkerboard_records_two_sdf_draws_independent_of_area ... ok
+test canvas::tests::primitives::rectangles::push_checkerboard_rejects_invalid_inputs_without_partial_draws ... ok
+test canvas::tests::primitives::rectangles::push_checkerboard_scales_geometry_and_cell_size_to_physical_pixels ... ok
+test canvas::tests::primitives::rectangles::push_rect_records_sdf_rect_with_independent_radii ... ok
+test canvas::tests::primitives::rectangles::push_rect_records_sdf_rect_without_path_storage ... ok
+test canvas::tests::primitives::shapes::push_callout_records_unified_fill_stroke_and_shadow_without_paths ... ok
+test canvas::tests::primitives::shapes::push_callout_scales_tail_geometry_and_can_hide_it ... ok
+test canvas::tests::primitives::shapes::push_circle_records_sdf_circle_without_path_storage ... ok
+test canvas::tests::primitives::shapes::push_star_fill_and_stroke_each_record_one_sdf_draw ... ok
+test canvas::tests::primitives::shapes::push_star_rejects_invalid_public_literals_without_mutating_canvas ... ok
+test canvas::tests::primitives::shapes::push_star_scales_radii_stroke_and_center_but_preserves_rotation ... ok
+test canvas::tests::primitives::shapes::push_triangle_records_rounded_sdf_without_path_storage ... ok
+test canvas::tests::primitives::shapes::push_triangle_rejects_invalid_public_struct_literals_without_mutating_canvas ... ok
+test canvas::tests::primitives::shapes::push_triangle_scales_points_radius_and_bounds_to_physical_pixels ... ok
+test canvas::tests::primitives::strokes::push_circle_stroke_records_sdf_without_path_storage ... ok
+test canvas::tests::primitives::strokes::push_dashed_circle_stroke_uses_path_storage ... ok
+test canvas::tests::primitives::strokes::push_rect_stroke_records_sdf_without_path_storage ... ok
+test canvas::tests::primitives::strokes::push_rect_stroke_widths_records_per_side_sdf_widths ... ok
+test canvas::tests::primitives::strokes::push_sdf_stroke_with_zero_width_is_noop ... ok
+test canvas::tests::primitives::strokes::push_shape_shadows_record_sdf_shadow_without_path_storage ... ok
+test canvas::tests::primitives::text::append_fast_path_offsets_text_runs_without_mutating_child ... ok
+test canvas::tests::primitives::text::push_text_layout_scales_glyph_cache_keys_to_physical_size ... ok
+test canvas::tests::primitives::text::text_draw_tracks_run_and_glyph_positions ... ok
+test canvas::tests::recording_state::append_and_mask_imports_do_not_change_the_active_parent ... ok
+test canvas::tests::recording_state::every_layer_kind_restores_its_parent_after_clone ... ok
+test canvas::tests::recording_state::reset_discards_deep_open_groups_and_rejects_stale_draw_handles ... ok
+test canvas::tests::records::append_rejects_a_corrupt_present_brush_instead_of_removing_it - should panic ... ok
+test canvas::tests::records::append_rejects_a_corrupt_present_sdf_instead_of_removing_it - should panic ... ok
+test canvas::tests::records::append_rejects_a_corrupt_present_shadow_instead_of_removing_it - should panic ... ok
+test hex::tests::encoding_preserves_leading_zeroes_and_all_byte_values ... ok
+test native::context::tests::incomplete_texture_table_support_is_rejected_before_a_renderer_exists ... ok
+test native::renderer::gpu_tests::clip_geometry::immediate_sdf_clip_geometry_updates_match_fresh_and_analytic_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::clip_geometry::retained_sdf_clip_geometry_updates_match_fresh_and_analytic_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::command_storage::recycled_command_lists_preserve_both_mask_branches_and_internal_layers ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::command_storage::recycled_mask_branch_remains_correct_after_kind_changes ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::command_topology::appending_plain_content_after_offscreen_content_matches_fresh_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::command_topology::inserting_a_scene_with_offscreen_content_matches_fresh_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::command_topology::moving_plain_content_across_offscreen_content_matches_fresh_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::command_topology::reinserting_a_filtered_scene_retires_its_cached_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::command_topology::reinserting_a_scene_with_offscreen_content_matches_fresh_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::completed_unchanged_owned_frames_need_no_submission ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::dense_clip_slots_survive_reuse_mutation_and_plain_frame ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::early_occlusion::early_occlusion_keeps_sources_when_filter_localization_changes_tile_origin ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::early_occlusion::early_occlusion_preserves_nested_clip_group_and_filter_inputs ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::early_occlusion::early_occlusion_retained_paint_and_movement_match_unculled_reference ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::fragment_membership::appended_multibatch_fragment_matches_fresh_for_local_and_exterior_filter_inputs ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::fragment_resize::fragment_edits_with_resize_refresh_unrelated_filter_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::hierarchy_fragments::moving_an_ancestor_and_child_preserves_final_tree_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::hierarchy_fragments::swapping_mask_subtrees_preserves_content_and_mask_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::hierarchy_fragments::swapping_offscreen_subtrees_preserves_new_ancestor_clip_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::incremental::native_path_scan_preserves_holes_and_growing_allocations ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::incremental::output_history_statistics_follow_actual_native_routes ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::insertion_order::first_insertions_into_empty_mask_branches_keep_their_own_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::insertion_order::insertions_around_clip_boundaries_match_fresh_in_groups_and_mask_branches ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::layer_updates::retained_offscreen_group_updates_match_fresh_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::many_opacity_layers_do_not_exhaust_descriptor_heaps ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::nested_changes::nested_removal_and_ancestor_fusion_match_fresh_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::nested_changes::nested_removal_and_ancestor_move_match_fresh_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::nested_changes::nested_removal_and_reparenting_in_match_fresh_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::nested_changes::nested_removal_and_reparenting_out_match_fresh_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::nested_changes::nested_removal_and_root_content_structure_change_match_fresh_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::nested_changes::nested_removal_and_root_layer_insertion_match_fresh_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::nested_changes::nested_removal_and_root_scene_insertion_match_fresh_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::nested_changes::nested_removal_and_unrelated_scene_removal_match_fresh_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::newly_inserted_clipped_page_matches_fresh_render ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::offscreen_clips::retained_clip_and_offscreen_kind_transitions_match_fresh_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::offscreen_clips::retained_offscreen_clips_match_fresh_pixels_after_nested_insert_and_remove ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::opacity_groups::foreground_blur_tracks_descendant_growth_moves_removal_and_sigma_revisions ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::opacity_groups::nested_unbounded_opacity_inside_a_local_filter_matches_direct_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::opacity_groups::unbounded_opacity_applies_once_preserves_overflow_and_matches_retained_updates ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::owned_resize_reuses_capacity_and_crops_readback_and_external_copy ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::plan_fragments::inserting_before_a_multibatch_leaf_preserves_compositing_order ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::plan_fragments::multibatch_content_revisions_preserve_filter_and_sibling_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::plan_fragments::removing_recompiled_root_layer_preserves_sibling_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::raster_invalidation_preserves_pixels_across_content_updates ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::retained_damage::journal_expiry_rebuilds_backdrop_history_for_later_partial_frames ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::retained_damage::rejected_targets_preserve_damage_across_pruned_versions ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::retained_opacity_updates_match_fresh_render ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::retained_resource_brush_survives_transform_then_sdf_arena_growth ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::root_insertions::root_insertion_before_a_grouped_clip_preserves_its_stack ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::root_insertions::root_insertion_before_a_multibatch_scene_preserves_operation_order ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::root_insertions::root_insertion_does_not_move_plain_leaves_across_a_later_layer ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::root_order::middle_root_insertion_keeps_order_after_a_later_full_compilation ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::gpu_tests::root_order::root_reorder_with_parameter_and_kind_updates_matches_fresh_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::renderer::tests::image_extent_is_checked_independently_on_both_axes ... ok
+test native::runtime::batch_gpu_tests::compute_batch_submits_once_and_keeps_each_dispatch_uniform_immutable ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::batch_gpu_tests::mixed_verification_programs_share_compute_recording_and_ordered_readbacks ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::batch_gpu_tests::rejected_compute_work_preserves_device_and_receipts_pin_the_context ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::compute::buffers::packing::tests::adjacent_uploads_share_one_copy_but_preserve_holes ... ok
+test native::runtime::compute::buffers::packing::tests::fragmented_and_adjacent_uploads_match_independent_cpu_patches ... ok
+test native::runtime::compute::buffers::packing::tests::packed_upload_owns_payload_after_source_changes ... ok
+test native::runtime::compute::buffers::packing::tests::packing_rejects_invalid_ranges_before_coalescing ... ok
+test native::runtime::compute::buffers::packing::tests::uploads_preserve_the_highest_aligned_byte_addresses_and_reject_overruns ... ok
+test native::runtime::compute::buffers::scatter::tests::later_import_uploads_precede_previously_recorded_commands ... ok
+test native::runtime::compute::buffers::scatter::tests::scatter_packet_preserves_descriptors_and_payload ... ok
+test native::runtime::compute::buffers::scatter::tests::scatter_preserves_high_destination_addresses_without_large_allocations ... ok
+test native::runtime::compute::buffers::scatter::tests::scatter_thresholds_use_coalesced_copy_count ... ok
+test native::runtime::compute::buffers::scatter::tests::small_uploads_keep_the_copy_path ... ok
+test native::runtime::compute::copy::tests::copies_and_dispatches_retain_recording_order ... ok
+test native::runtime::compute::copy::tests::texture_copy_checks_resource_ownership_kind_and_every_axis ... ok
+test native::runtime::compute::filter_tiles::tests::empty_lists_and_maximum_u32_tile_ids_keep_checked_range_semantics ... ok
+test native::runtime::compute::filter_tiles::tests::independently_prepared_proofs_share_one_uploaded_list ... ok
+test native::runtime::compute::filter_tiles::tests::owned_keys_detect_reused_input_storage_and_keep_old_gpu_bytes_immutable ... ok
+test native::runtime::compute::filter_tiles::tests::validation_proofs_are_batch_owned_and_do_not_allocate_gpu_resources ... ok
+test native::runtime::compute::resource::tests::float_texture_byte_extent_and_transfer_alignment_include_precision ... ok
+test native::runtime::compute::surfaces::tests::image_pool_preserves_kind_and_recovers_unpinned_storage ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::compute::surfaces::tests::pinned_surface_rejoins_pool_after_owner_releases_it ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::compute::surfaces::tests::scratch_capacity_grows_reuses_shrinks_and_respects_device_limit ... ok
+test native::runtime::compute::tests::compute_buffers_are_owned_and_readbacks_are_deduplicated ... ok
+test native::runtime::compute::tests::compute_launch_rejects_layout_aliases_and_oversized_grids ... ok
+test native::runtime::compute::tests::sampler_resources_reject_foreign_handles_byte_readback_and_wrong_bindings ... ok
+test native::runtime::compute::tests::texture_array_dimensions_and_binding_views_are_explicit ... ok
+test native::runtime::compute::tests::texture_resources_reject_invalid_extent_kind_owner_and_writable_alias ... ok
+test native::runtime::compute::tests::texture_tables_require_owned_2d_images_and_have_no_readback ... ok
+test native::runtime::compute::uniforms::tests::empty_unused_and_invalid_uniform_layouts_are_handled ... ok
+test native::runtime::compute::uniforms::tests::immutable_uniform_slots_are_aligned_distinct_and_zero_padded ... ok
+test native::runtime::compute::uniforms::tests::packed_offsets_always_own_nonempty_arena_ranges ... ok
+test native::runtime::compute::uniforms::tests::readback_and_storage_aliases_are_never_packed_as_immutable_constants ... ok
+test native::runtime::dx12::command_cache_tests::completed_descriptor_heaps_are_reused_without_in_flight_aliasing ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::dx12::compute_bindings::readonly_alias_requires_union_of_descriptor_access_states ... ok
+test native::runtime::dx12::compute_bindings::required_states_merges_repeated_texture_table_images ... ok
+test native::runtime::dx12::compute_bindings::required_states_reuses_scratch_without_retaining_previous_pass_resources ... ok
+test native::runtime::dx12::compute_tables::paging::tests::empty_passes_preserve_command_indices_and_oversized_tables_are_rejected ... ok
+test native::runtime::dx12::compute_tables::paging::tests::packs_exact_limits_and_splits_before_overflow_without_splitting_tables ... ok
+test native::runtime::dx12::compute_tables::tests::page_selection_handles_prepend_scatter_and_skipped_initialization ... ok
+test native::runtime::dx12::import::tests::import_rejects_missing_shader_access_and_invalid_shape ... ok
+test native::runtime::dx12::retirement::tests::a_failed_wait_stays_unretired_instead_of_releasing_live_resources ... ok
+test native::runtime::dx12::retirement::tests::failed_signal_cannot_turn_into_a_wait_for_an_unqueued_fence ... ok
+test native::runtime::dx12::synchronization::tests::rejects_write_combinations_and_unavailable_target_usage ... ok
+test native::runtime::dx12::tests::completed_unused_buffers_survive_alternating_frame_sizes ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::dx12::tests::disabled_validation_never_panics_before_failed_retirement_quarantine ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::dx12::tests::failed_retirement_retains_fence_owner_until_process_exit ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::dx12::tests::late_validation_preserves_an_existing_plain_context ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::dx12::tests::optimized_clear_warning_is_reported ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::dx12::tests::probe_pipelines_are_created_only_for_probe_submissions ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::dx12::tests::rejected_cache_diagnostics_do_not_hide_other_attempts ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::dx12::tests::signal_failure_after_execute_retains_the_attempt_and_blocks_reuse ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::dx12::tests::staging_reuse_preserves_in_flight_and_resized_uploads ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::dx12::validation::cache_recovery_never_masks_device_loss_or_unrelated_validation ... ok
+test native::runtime::lifecycle_gpu_tests::brush_bounds::native_brush_reads_preserve_valid_words_and_reject_out_of_range_addresses ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::clip_slots::native_nested_clip_slots_match_regular_allocation ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::clip_slots::native_reused_clip_slots_terminate_rejected_tiles ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::completion_and_history::native_capacity_target_renders_directly_and_preserves_unused_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::completion_and_history::native_public_completion_poll_preserves_queued_images_until_readback ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::completion_and_history::native_retained_output_rectangles_preserve_sentinels_and_history_contracts ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::filter_tiles::native_cached_filter_tiles_preserve_sparse_history_across_ordered_passes ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::interop::dx12_target_use_orders_external_queues_even_without_damage ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::interop::dx12_target_use_signal_failure_does_not_publish_state_or_history ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::interop::imported_contexts_preserve_host_images_and_restore_declared_states ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::persistent_buffer::native_cached_buffer_rebuilds_after_discarded_dirty_upload ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::persistent_buffer::native_fragmented_uploads_preserve_holes_and_queued_readbacks ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::persistent_buffer::native_persistent_buffers_patch_ranges_and_keep_inflight_allocations_alive ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::persistent_image::abandoned_vector_cache_is_rebuilt_before_sampling ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::persistent_image::native_image_cache_reuses_initialized_arrays_without_upload ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::persistent_image::native_image_retention_pins_gpu_output_without_copying_or_pool_reuse ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::persistent_image::native_vector_aliases_share_one_recording_per_batch ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::persistent_image::retained_image_uploads_preserve_queued_array_versions ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::persistent_texture::native_persistent_texture_preserves_untouched_pixels_across_submissions ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::persistent_texture::native_surface_pool_preserves_pinned_history_across_batches ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::persistent_texture::native_surface_pool_reuses_only_resolved_batches_and_clears_old_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::pixel_rounding::native_interpolation_preserves_fused_half_channel_rounding ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::queued_native_submissions_keep_leases_and_reject_wrong_devices ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::renderer_rounding::native_gradient_ramp_preserves_fused_fraction ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::renderer_rounding::native_pattern_transform_preserves_product_residual ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::renderer_rounding::native_row_intersection_preserves_half_channel_rounding ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::renderer_rounding::native_tile_edge_area_preserves_half_channel_rounding ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::shared_blur::native_shared_blur_preserves_partial_groups_and_sparse_history ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::lifecycle_gpu_tests::text_composite::native_text_contrast_preserves_linear_color_and_coverage ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::mesh_gpu::native_mesh_inverse_handles_nonparallelograms_and_transparent_exterior ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::mesh_gpu::native_mesh_malformed_payloads_are_bounded_and_transparent ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::mesh_gpu::native_mesh_parameter_samples_cover_skew_winding_alpha_modes_and_bin_edges ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::mesh_gpu::pixels::native_mesh_filter_brush_and_translated_offscreen_match_direct_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::mesh_gpu::pixels::native_mesh_pixels_match_oracle_under_scale_append_and_affine_transform ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::mesh_gpu::pixels::native_mesh_retained_color_geometry_changes_and_removal_match_fresh_frames ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::probe_cases::host_parameters_match_shader_offsets_size_and_alignment ... ok
+test native::runtime::program::cached_buffer::tests::cached_buffers_require_native_storage_without_substituting_cpu_uploads ... ok
+test native::runtime::program::cached_buffer::tests::dense_dirty_ranges_use_one_copy_and_keep_later_sparse_edits ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::cached_buffer::tests::patch_snapshots_reinitialize_new_grown_and_abandoned_storage ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::cached_buffer::tests::unchanged_immediate_data_avoids_upload_but_later_edits_are_visible ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::cumsum::tests::borrowed_cumsum_metadata_preserves_validation_and_dispatches ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::cumsum::tests::cumsum_accepts_empty_arena_rows_and_unowned_empty_chunks ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::cumsum::tests::cumsum_encodes_ordered_stages_and_guards_padded_two_dimensional_groups ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::cumsum::tests::cumsum_metadata_rejects_overlapping_writes_missing_rows_and_long_chunks ... ok
+test native::runtime::program::filter::brush::tests::brush_dispatch_rejects_nonrecord_offsets_aliases_and_foreign_batches ... ok
+test native::runtime::program::filter::progressive::gpu_tests::progressive_gpu_matches_clear_and_uniform_plateaus_and_gaussian_reference ... ignored, requires pinned TILEINK_NATIVE_GPU
+test native::runtime::program::filter::progressive::gpu_tests::progressive_gpu_preserves_premultiplication_and_handles_tiny_odd_images ... ignored, requires pinned TILEINK_NATIVE_GPU
+test native::runtime::program::filter::progressive::quality_tests::progressive_gpu_diagonal_details_match_a_two_dimensional_gaussian ... ignored, requires pinned TILEINK_NATIVE_GPU
+test native::runtime::program::filter::progressive::quality_tests::progressive_gpu_shallow_edges_match_gaussian_and_remain_stable_when_moving ... ignored, requires pinned TILEINK_NATIVE_GPU
+test native::runtime::program::filter::progressive::quality_tests::progressive_gpu_strength_changes_are_continuous_at_level_boundaries ... ignored, requires pinned TILEINK_NATIVE_GPU
+test native::runtime::program::filter::progressive::tests::pyramid_delays_downsampling_and_bounds_resources ... ok
+test native::runtime::program::filter::progressive::tests::source_halo_contains_every_kernel_and_reconstruction_sample ... ok
+test native::runtime::program::filter::progressive::tests::zero_blur_is_identity_and_invalid_parameters_record_no_work ... ok
+test native::runtime::program::filter::validation_tests::cached_tile_validation_rechecks_content_bounds_and_preserves_failure_atomicity ... ok
+test native::runtime::program::filter::validation_tests::direct_composite_ignores_sdf_geometry_but_surface_bounds_are_checked ... ok
+test native::runtime::program::filter::validation_tests::filter_passes_share_validated_tile_buffers_by_contents_and_preserve_order ... ok
+test native::runtime::program::filter::validation_tests::filter_rounding_operand_requires_positive_zero_before_recording ... ok
+test native::runtime::program::fine::tests::native_fine_rejects_target_and_spill_capacity_before_recording ... ok
+test native::runtime::program::scatter::tests::scatter_rejects_truncated_payloads_and_overlapping_destinations ... ok
+test native::runtime::program::scene::clip_tiles::tests::bitmap_selection_preserves_exact_threshold_order_and_empty_semantics ... ok
+test native::runtime::program::scene::clip_tiles::tests::broad_clip_keeps_dense_binning ... ok
+test native::runtime::program::scene::clip_tiles::tests::broad_clip_only_schedules_tiles_with_child_draws ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::clip_tiles::tests::broad_pure_clip_uses_one_preallocated_dense_emit ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::clip_tiles::tests::clip_emit_dispatch_covers_both_sides_of_a_scalar_workgroup ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::clip_tiles::tests::clip_slots_reject_nonempty_opacity_and_blend_stacks ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::clip_tiles::tests::clip_stack_collection_combines_content_from_every_batch_and_skips_empty_bounds ... ok
+test native::runtime::program::scene::clip_tiles::tests::clip_stack_collection_visits_dense_and_empty_stacks_once_in_first_use_order ... ok
+test native::runtime::program::scene::clip_tiles::tests::fixed_clip_slots_are_disjoint_bounded_and_drop_out_for_mixed_passes ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::clip_tiles::tests::nested_disjoint_clips_have_no_tiles ... ok
+test native::runtime::program::scene::clip_tiles::tests::opacity_only_stacks_need_no_clip_dispatch ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::clip_tiles::tests::retained_bitmap_clip_selection_matches_list_reference_for_edges_holes_and_order ... ok
+test native::runtime::program::scene::clip_tiles::tests::small_clip_limits_dispatch_and_intersects_damage ... ok
+test native::runtime::program::scene::clip_tiles::tests::sparse_clip_preserves_reverse_order_at_row_and_column_edges ... ok
+test native::runtime::program::scene::filter_geometry_tests::scene_filter_mask_rejects_invalid_logical_draws_before_recording ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::fine_specialization_tests::scene_fine_specialization_membership_survives_work_arena_reuse ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::images::tests::empty_images_have_initialized_atlas_and_complete_table ... ok
+test native::runtime::program::scene::images::tests::fresh_vector_targets_are_filled_even_with_clean_cached_placements ... ok
+test native::runtime::program::scene::images::tests::image_upload_preserves_atlas_borders_and_table_pixels ... ok
+test native::runtime::program::scene::images::tests::malformed_atlas_pages_are_rejected_before_recording ... ok
+test native::runtime::program::scene::images::tests::mixed_vector_and_raster_images_keep_atlas_copies_and_direct_texture_slots ... ok
+test native::runtime::program::scene::images::tests::multiple_atlas_pages_preserve_layer_order_and_ownership ... ok
+test native::runtime::program::scene::images::tests::oversized_vector_dimensions_are_rejected_before_pixel_allocation ... ok
+test native::runtime::program::scene::images::tests::unresolved_vectors_are_rejected_before_resources_are_recorded ... ok
+test native::runtime::program::scene::images::tests::vector_output_failures_never_return_ready_image_handles ... ok
+test native::runtime::program::scene::images::tests::vector_outputs_reject_float_formats_for_atlas_and_texture_placements ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::images::tests::vector_texture_placement_binds_child_output_without_placeholder_or_copy ... ok
+test native::runtime::program::scene::scan_retained_tests::accepted_unchanged_retained_geometry_skips_scan_and_cumsum ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::scan_retained_tests::journals::retained_journal_gap_refreshes_draw_paint_and_tile_inputs ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::scan_retained_tests::journals::reuse_after_removal_cannot_leave_stale_full_cumsum_metadata ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::scan_retained_tests::journals::skipped_retained_geometry_version_rebuilds_current_path_plans ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::scan_retained_tests::paint_edits_reuse_paths_but_abandoned_batches_force_full_scan ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::scan_retained_tests::retained_scan_pixels_match_full_replay_after_growth_removal_and_slot_reuse ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::scan_retained_tests::sparse_retained_scan_preserves_unchanged_paths_and_switches_cumsum_layouts ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::scan_retained_tests::sparse_scan_cumsum_preserves_multiple_chunk_rows ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::tests::discarded_scene_preparation_never_claims_unrecorded_metadata_is_uploaded ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::tests::explicit_scene_plan_does_not_poison_cached_canvas_metadata ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::tests::failed_scene_preparation_can_be_retried_without_stale_plan_state ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::tests::failed_scene_recording_does_not_reuse_the_previous_canvas_plan ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::tests::gpu_tests::scene_work_allocations_are_persistent_and_reused ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::tests::scene_batch_ids_are_not_physical_draw_ranges ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::tests::scene_cache_reuses_execution_metadata_and_refreshes_canvas_geometry ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::tests::scene_filters_reuse_scan_buffers_and_reject_foreign_batches ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::tests::scene_layer_bounds_follow_uploaded_records_not_replaced_metadata ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::tests::scene_rejects_foreign_batches_and_invalid_layer_ranges ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::upload_journal_tests::filter_candidates_are_spatial_and_keep_recorded_scene_identity ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::upload_journal_tests::filter_candidates_keep_offcanvas_sources ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::upload_journal_tests::scene_upload_consumes_tile_dirty_journals_across_retained_updates ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene::upload_journal_tests::sparse_tile_bin_uploads_only_changed_records_and_exact_index_ranges ... ok
+test native::runtime::program::scene_scan::tests::cumsum_grid_overflow_is_reported ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene_scan::tests::empty_scene_records_no_geometry_dispatches ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene_scan::tests::geometry_stages_precede_gpu_backdrop_cumsum ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::program::scene_scan::tests::invalid_dispatch_limits_are_rejected_even_for_empty_scenes ... ok
+test native::runtime::program::scene_scan::tests::same_count_stale_plan_is_refreshed_for_the_new_layout ... ok
+test native::runtime::program::scene_scan::work::tests::line_dirty_ranges_close_over_all_edges_chunks_and_rows_of_their_owner ... ok
+test native::runtime::program::scene_scan::work::tests::missing_storage_unaccepted_versions_gaps_and_foreign_materializations_require_full_scan ... ok
+test native::runtime::program::scene_scan::work::tests::removed_paths_are_not_dispatched_and_dense_updates_keep_direct_indexing ... ok
+test native::runtime::program::tests::bounds_and_alignment_are_checked_before_native_recording ... ok
+test native::runtime::program::tests::fixed_coordinates_reject_signed_minimum_and_overflowing_products ... ok
+test native::runtime::program::tests::recording_rejects_invalid_later_commands_and_preserves_zero_work_outputs ... ok
+test native::runtime::program::tests::sampling_rejects_nonfinite_overflow_and_missing_texels ... ok
+test native::runtime::program::tests::verification_programs_have_complete_per_entry_compute_layouts ... ok
+test native::runtime::program_shader::dxc::spirv::uniform::tests::raw_uniform_extents_include_member_offsets_array_padding_and_matrix_major_order ... ok
+test native::runtime::program_shader::dxc::spirv::uniform::tests::raw_uniform_extents_reject_recursive_missing_overflowing_and_short_strides ... ok
+test native::runtime::program_shader::pipeline::builtin_tests::builtin_pipeline_plan_reuse_does_not_capture_handles_or_stale_group_counts ... ok
+test native::runtime::program_shader::pipeline::builtin_tests::builtin_pipeline_tables_validate_counts_and_destination_aliases ... ok
+test native::runtime::program_shader::pipeline::builtin_tests::builtin_pipelines_reject_invalid_bindings_and_preserve_read_only_aliases ... ok
+test native::runtime::program_shader::pipeline::builtin_tests::every_builtin_filter_pipeline_preserves_native_layout_and_resident_resources ... ok
+test native::runtime::program_shader::pipeline::tests::pipeline_region_rounds_in_the_original_divisor_grid_and_clamps_halos ... ok
+test native::runtime::program_shader::tests::pipeline_cache_population_does_not_change_execution_plan_fingerprint ... ok
+test native::runtime::program_shader::tests::shader_compilation_receives_exact_user_source_and_cache_excludes_instance_data ... ok
+test native::runtime::program_shader::tests::source_cache_keys_distinguish_standard_config_from_raw_constant_blocks ... ok
+test native::runtime::renderer::images::cache::tests::missing_pool_cannot_bypass_image_caching_or_record_partial_resources ... ok
+test native::runtime::renderer::recording::gpu_tests::filter_scene_buffers_survive_between_frames_without_sibling_aliasing ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::renderer::recording::tests::invalid_frame_limits_fail_before_resources_or_cache_are_modified ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::renderer::targets::tests::batch_owned_pixels_cannot_become_a_retained_frame_target ... ok
+test native::runtime::renderer::targets::tests::capacity_target_keeps_logical_scratch_extent_and_rejects_invalid_bounds ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::renderer::targets::tests::exact_roots_cannot_consume_scratch_capacity_during_resize ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::renderer::targets::tests::extracted_surfaces_remain_owned_and_replacement_does_not_retire_commands ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::renderer::targets::tests::invalid_surface_contexts_fail_without_changing_live_slots ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::renderer::targets::tests::nested_slots_reuse_only_released_allocations ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::renderer::targets::tests::resizing_scratch_reuses_capacity_without_changing_logical_bounds ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::renderer::targets::tests::retained_surfaces_import_into_later_batches_on_the_same_device ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::renderer::targets::tests::root_clear_color_does_not_leak_into_scratch_allocations ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::renderer::targets::tests::surface_allocation_requires_a_renderer_pool_without_recording_cpu_pixels ... ok
+test native::runtime::renderer::tests::direct_root_plan_has_no_offscreen_filter_resources ... ok
+test native::runtime::renderer::tests::extracting_released_scratch_cannot_silently_discard_a_cache_entry ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::renderer::tests::filter_context::failed_filter_context_preparation_keeps_parent_active ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::renderer::tests::filter_context::local_filter_context_restores_parent_after_scan_failure ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::renderer::tests::filter_context::nested_filter_contexts_restore_each_parent_scene_before_recording_more_draws ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::renderer::tests::frame_records_directly_into_supplied_target_without_full_frame_copy ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::renderer::tests::frame_rejects_foreign_image_upload_before_recording ... ok
+test native::runtime::sdf_gpu::css_corners::native_css_corner_arcs_match_independent_boundary_geometry_across_midpoints_and_affines ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::sdf_gpu::equivalence::native_sdf_dash_phase_is_periodic_for_each_line_cap ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::sdf_gpu::equivalence::native_sdf_degenerate_line_caps_and_full_arcs_have_geometric_equivalents ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::sdf_gpu::equivalence::native_sdf_hidden_callout_tails_preserve_body_stroke_and_shadow ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::sdf_gpu::native_sdf_absent_unknown_and_out_of_range_records_are_transparent ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::sdf_gpu::native_sdf_all_kinds_preserve_coverage_under_physical_coordinate_changes ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::sdf_gpu::native_triangle_edge_coverage_is_invariant_under_tiny_and_large_coordinate_scales ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::sdf_gpu::oracle::native_sdf_identity_rect_circle_match_exact_independent_oracles ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::sdf_gpu::oracle::native_sdf_rect_circle_match_analytic_coverage_under_affines ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::sdf_gpu::scales::native_sdf_arcs_preserve_positive_geometry_at_every_scale ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::sdf_gpu::scales::native_sdf_lines_and_dash_gaps_preserve_coverage_at_every_scale ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::sdf_gpu::scales::native_sdf_polygon_unions_preserve_authored_coordinate_scale ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::sdf_gpu::scales::native_sdf_round_boundaries_match_the_f64_oracle_at_every_scale ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::shader_gpu::native_shader_reports_compilation_missing_entry_and_backend_errors_without_fallback ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::shader_gpu::pixels::native_shader_brush_and_filter_coordinates_survive_dpi_append_and_offscreen ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::shader_gpu::pixels::native_shader_brush_flood_and_clip_preserve_coordinates_and_coverage ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::shader_gpu::pixels::native_shader_point_filters_handle_alpha_chains_graphs_and_backdrops ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::shader_gpu::pixels::native_shader_retained_uniform_and_program_replacements_match_fresh_frames ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::shader_gpu::pixels::retained::native_shader_retained_filter_history_handles_local_source_and_uniform_edits ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::shader_gpu::sampling::native_shader_sampling_is_bilinear_bounded_transparent_and_padding_safe ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::shader_gpu::sampling::pixels::native_shader_backdrop_samples_outside_its_output_region ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::shader_gpu::sampling::pixels::native_shader_sampling_coordinates_survive_dpi_append_and_offscreen ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::shader_gpu::sampling::pixels::native_shader_sampling_retained_neighbour_damage_matches_fresh_layers_and_backdrops ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::shader_gpu::scene_cache::native_shader_brush_retry_after_compilation_failure_keeps_current_paint ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::shader_gpu::scene_cache::native_shader_brush_switches_without_changing_execution_topology ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::shader_pipeline_gpu::graph::native_shader_pipeline_full_span_output_growth_remains_visible_and_reuses_renderer ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::shader_pipeline_gpu::graph::native_shader_pipeline_graph_binds_ordered_dynamic_inputs_and_crops_outputs ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::shader_pipeline_gpu::graph::native_shader_pipeline_graph_composite_matches_builtin_and_nested_graphs ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::shader_pipeline_gpu::graph::native_shader_pipeline_output_growth_matches_offset_and_shadow_at_multiple_dpis ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::shader_pipeline_gpu::graph::retained::native_shader_pipeline_retained_graph_edges_and_output_growth_match_fresh ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::shader_pipeline_gpu::native_shader_pipeline_hdr_multiresources_and_barriers_reuse_correctly ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::shader_pipeline_gpu::native_shader_pipeline_multiple_writable_images_preserve_distinct_results ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::shader_pipeline_gpu::native_shader_pipeline_region_dispatch_preserves_phase_and_outside_pixels ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::shader_pipeline_gpu::retained::native_shader_pipeline_renderer_backdrop_and_retained_updates_match_fresh_frames ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::shader_pipeline_gpu::retained::native_shader_pipeline_retained_backdrop_tracks_reads_outside_output_region ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::submissions::tests::failed_cleanup_never_waits_again_and_unknown_completion_never_releases ... ok
+test native::runtime::submissions::tests::queues_reject_foreign_tickets_even_on_the_same_physical_device ... ok
+test native::runtime::submissions::tests::readback_order_is_independent_and_fence_sentinel_is_never_issued ... ok
+test native::runtime::submissions::tests::rejected_attempt_releases_only_its_lease_and_never_reuses_its_ticket ... ok
+test native::runtime::submissions::tests::tickets_never_release_gpu_owners_and_only_observed_work_can_retire ... ok
+test native::runtime::submissions::tests::unconfirmed_attempt_keeps_lease_and_blocks_new_work ... ok
+test native::runtime::sweep_gpu::native_sweep_is_periodic_for_positive_negative_and_reversed_angles ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::runtime::sweep_gpu::native_sweep_large_finite_angles_finish_with_correct_samples ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test native::submission::tests::readback_preserves_premultiplied_and_transparent_channels_exactly ... ok
+test native::submission::tests::readback_rejects_extra_outputs_padding_and_incomplete_pixels ... ok
+test native::target_use::tests::outgoing_state_has_concrete_backend_layout ... ok
+test native::tests::unavailable_backends_never_fall_back ... ok
+test pixel_grid::primitives::tests::typed_fitting_preserves_empty_degenerate_and_unsupported_geometry_contracts ... ok
+test pixel_grid::primitives::tests::typed_polygons_and_lines_match_path_fitting_at_fractional_dpi_zoom_and_reflections ... ok
+test pixel_grid::tests::adjusted_curve_endpoints_keep_their_tangent_handles ... ok
+test pixel_grid::tests::curves_and_diagonals_preserve_shape_and_antialiasing ... ok
+test pixel_grid::tests::fills_close_on_pixel_edges_and_reflections_are_supported ... ok
+test pixel_grid::tests::rotation_skew_and_nonuniform_scale_do_not_deform_artwork ... ok
+test pixel_grid::tests::stroke_edges_fit_odd_and_even_device_widths_at_fractional_dpi_and_zoom ... ok
+test pixel_grid::tests::zero_width_and_extreme_coordinates_do_not_create_visible_or_nonfinite_geometry ... ok
+test render::backdrops::tests::cached_composite_failure_preserves_history_and_consumes_backdrop_resources ... ok
+test render::backdrops::tests::clean_path_cache_keeps_coverage_and_still_executes_dirty_foreground ... ok
+test render::backdrops::tests::clean_rect_cache_uses_its_direct_composite_and_preserves_foreground ... ok
+test render::backdrops::tests::combined_backdrop_errors_restore_work_and_release_every_scratch_lease ... ok
+test render::backdrops::tests::combined_backdrop_exhaustion_releases_parent_and_filter_leases ... ok
+test render::backdrops::tests::composite_failure_keeps_complete_history_but_skips_foreground ... ok
+test render::backdrops::tests::direct_backdrop_failure_aborts_without_fallback_or_foreground ... ok
+test render::backdrops::tests::downsampled_rect_shortcut_preserves_foreground_and_obeys_cache_and_clip_rules ... ok
+test render::backdrops::tests::empty_backdrop_consumes_its_resources_and_preserves_foreground ... ok
+test render::backdrops::tests::exhausted_scratch_releases_every_already_acquired_slot ... ok
+test render::backdrops::tests::failed_filter_or_coverage_restores_work_and_discards_incomplete_history ... ok
+test render::backdrops::tests::forced_redraw_does_not_capture_backdrop_history ... ok
+test render::backdrops::tests::full_filter_rebuild_restores_active_work_before_composite ... ok
+test render::backdrops::tests::nested_backdrop_foreground_preserves_its_scratch_target ... ok
+test render::backdrops::tests::partial_blur_reuses_unfiltered_history_without_suspending_work ... ok
+test render::backdrops::tests::path_without_outer_clips_records_coverage_before_foreground ... ok
+test render::backdrops::tests::rectangle_fast_path_is_used_only_without_outer_clips ... ok
+test render::backdrops::tests::work::active_region_distinguishes_complete_and_empty_redraws ... ok
+test render::backdrops::tests::work::active_region_does_not_join_unrelated_dirty_tiles_across_a_clean_gap ... ok
+test render::backdrops::tests::work::active_region_preserves_filter_bounds_and_leaves_tile_masking_to_the_adapter ... ok
+test render::coarse::layout::tests::every_addressable_particle_prefix_fits_the_fine_descriptor ... ok
+test render::coarse::layout::tests::validation_covers_the_complete_shared_coarse_layout ... ok
+test render::coarse::tests::chunked_coarse_allocation_precedes_counts_and_emission ... ok
+test render::coarse::tests::coarse_bins_cover_partial_edge_tiles ... ok
+test render::coarse::tests::dense_and_sparse_coarse_preserve_count_prefix_emit_order ... ok
+test render::coarse::tests::empty_work_skips_dispatch_but_empty_draws_still_clear_tile_counts ... ok
+test render::coarse::tests::invalid_coarse_dimensions_ranges_and_limits_are_rejected ... ok
+test render::coarse::tests::resolving_pipelines_keeps_every_live_dispatch_and_skips_padding ... ok
+test render::damage_tiles::tests::bounds_union_tracks_disjoint_damage_without_scanning_the_gap ... ok
+test render::damage_tiles::tests::coalesced_rects_keep_different_row_runs_separate ... ok
+test render::damage_tiles::tests::coalesced_rects_merge_adjacent_dirty_tile_rows ... ok
+test render::damage_tiles::tests::full_sets_exact_non_word_aligned_tile_range ... ok
+test render::damage_tiles::tests::large_damage_crossing_words_keeps_exact_row_major_tiles ... ok
+test render::damage_tiles::tests::narrow_and_large_damage_share_one_deduplicated_worklist ... ok
+test render::damage_tiles::tests::optimized_damage_matches_per_tile_reference_for_clipped_and_unaligned_bounds ... ok
+test render::damage_tiles::tests::outset_includes_filter_source_tiles_beyond_visible_output ... ok
+test render::damage_tiles::tests::overlapping_large_damage_appends_only_new_tiles ... ok
+test render::damage_tiles::tests::vertical_halos_match_pixel_bounds_and_preserve_sparse_columns ... ok
+test render::damage_tiles::tests::word_queries_and_coalescing_match_per_tile_reference ... ok
+test render::draw_batches::tests::a_failed_draw_before_or_after_writing_stops_successors ... ok
+test render::draw_batches::tests::empty_and_dead_batches_do_no_work ... ok
+test render::draw_batches::tests::live_membership_uses_retained_counts_or_immediate_draws ... ok
+test render::draw_batches::tests::partial_roots_preserve_undamaged_pixels_for_odd_and_even_batch_counts ... ok
+test render::draw_batches::tests::plan_order_skips_dead_batches_and_preserves_painter_order ... ok
+test render::draw_batches::tests::scratch_draws_keep_root_statistics_separate ... ok
+test render::filter_pass::tests::allocation_failure_does_not_touch_history_or_advance_filter_resources ... ok
+test render::filter_pass::tests::failed_history_capture_does_not_apply_the_filter ... ok
+test render::filter_pass::tests::full_render_captures_unfiltered_history_before_applying_filter ... ok
+test render::filter_pass::tests::partial_erosion_reads_its_neighbour_halo_before_updating_only_output_damage ... ok
+test render::filter_pass::tests::partial_failure_releases_temp_and_preserves_both_caller_owned_history_slots ... ok
+test render::filter_pass::tests::partial_filter_processes_dependency_halo_but_updates_only_output_damage ... ok
+test render::filter_pass::tests::uncached_filter_has_no_history_copy_and_consumes_its_resources_once ... ok
+test render::filter_program::tests::a_failed_graph_clear_stops_before_copying_stale_pixels ... ok
+test render::filter_program::tests::blur_skips_zero_axes_and_morphology_handles_canvas_limits ... ok
+test render::filter_program::tests::chain_stops_when_a_color_kernel_cannot_be_recorded ... ok
+test render::filter_program::tests::direct_blur_inapplicability_is_distinct_from_recording_failure ... ok
+test render::filter_program::tests::effects_stop_at_every_failed_kernel_and_release_scratch ... ok
+test render::filter_program::tests::filter_errors_are_preserved_and_cleanup_does_not_hide_recording_failure ... ok
+test render::filter_program::tests::graph_releases_every_allocation_on_each_recording_and_allocation_failure ... ok
+test render::filter_program::tests::graph_releases_published_and_unpublished_outputs_on_every_cleanup_failure ... ok
+test render::filter_program::tests::graph_reuses_source_alpha_and_preserves_merge_painter_order ... ok
+test render::filter_program::tests::graph_shader::graph_scratch_counts_source_alpha_in_merge_input_vectors ... ok
+test render::filter_program::tests::graph_shader::shader_graph_checks_edges_and_counts_and_releases_all_failure_paths ... ok
+test render::filter_program::tests::invalid_merge_input_releases_the_new_output ... ok
+test render::filter_program::tests::work::downsampled_blur_uses_low_work_then_restores_output_work_on_every_exit ... ok
+test render::filter_program::tests::work::glass_selects_sampled_or_materialized_blur_and_releases_failed_outputs ... ok
+test render::filter_program::tests::work::partial_blur_expands_vertical_halo_without_changing_output_work ... ok
+test render::filter_program::tests::work::partial_blur_large_halo_covers_all_rows_before_reporting_encoding_failure ... ok
+test render::filter_program::tests::work::partial_glass_restores_incremental_state_even_when_a_blur_pass_fails ... ok
+test render::filter_program::tests::work::sampled_programs_release_their_immutable_input_output_on_every_exit ... ok
+test render::filter_program::tests::work::shader_pipeline_crops_partial_output_and_releases_failed_scratch ... ok
+test render::filter_resources::paths::tests::empty_paths_reserve_indices_and_rectangles_do_not ... ok
+test render::filter_resources::paths::tests::path_coordinates_keep_signed_half_step_rounding_and_saturation ... ok
+test render::filter_resources::tests::filter_tables_follow_backdrop_then_children_then_parent_order ... ok
+test render::filter_resources::tests::graph_image_and_flood_brush_offsets_match_the_actual_shared_encoder ... ok
+test render::filter_resources::tests::graph_turbulence_indices_match_seeded_selector_and_gradient_tables ... ok
+test render::filter_resources::tests::ordering::empty_and_table_free_filters_prepare_no_payloads ... ok
+test render::filter_resources::tests::ordering::mixed_payloads_follow_nested_backdrop_mask_and_enclosing_filter_order ... ok
+test render::filter_resources::tests::skipping_nested_filter_work_keeps_following_table_indices_aligned ... ok
+test render::filter_resources::tests::variable_convolve_offsets_match_the_shared_upload_blob ... ok
+test render::filter_scene::tests::borrowing_the_root_plan_does_not_expand_the_requested_child_list ... ok
+test render::filter_scene::tests::cropped_surface_queries_once_and_compacts_geometry_in_local_coordinates ... ok
+test render::filter_scene::tests::full_surface_borrows_scene_plan_and_children_without_querying_draws ... ok
+test render::filter_scene::tests::full_surface_detection_uses_physical_size_and_includes_the_origin ... ok
+test render::filter_scene::tests::nested_wrap_retains_input_outside_the_outer_surface_in_painter_order ... ok
+test render::filter_scene::tests::off_canvas_filter_sources_survive_the_root_spatial_index_clip ... ok
+test render::filter_scene::tests::scratch_capacity_includes_filter_temporaries_and_both_history_slots ... ok
+test render::filters::tests::clean_filter_cache_advances_resources_without_entering_local_context ... ok
+test render::filters::tests::composite_failure_preserves_successfully_recorded_filter_history ... ok
+test render::filters::tests::cropped_filter_uses_local_resources_and_restores_parent_size_and_origin ... ok
+test render::filters::tests::cursors::cropped_filter_after_prefix_uses_compacted_resource_indices ... ok
+test render::filters::tests::cursors::filter_child_paths_follow_full_or_compacted_plan_layout ... ok
+test render::filters::tests::cursors::full_canvas_filter_on_scratch_preserves_prefix_resource_indices ... ok
+test render::filters::tests::edge_filter_keeps_expanded_surface_origin_separate_from_visible_output ... ok
+test render::filters::tests::empty_filter_advances_both_resource_sequences_without_gpu_work ... ok
+test render::filters::tests::entering_or_allocating_failure_preserves_the_parent_context ... ok
+test render::filters::tests::every_recording_error_restores_context_drops_invalid_cache_and_allows_retry ... ok
+test render::filters::tests::partial_filter_keeps_both_history_images_and_restores_parent_damage ... ok
+test render::filters::tests::uncached_filter_restores_parent_pool_and_processes_children_before_parent ... ok
+test render::fine::tests::fine_empty_and_invalid_inputs_do_not_launch_work ... ok
+test render::fine::tests::fine_grid_keeps_linear_order_at_two_dimensional_limit ... ok
+test render::fine::tests::fine_rejects_unrepresentable_coarse_layouts_before_offset_arithmetic ... ok
+test render::fine::tests::fine_spills_partition_every_physical_lane_including_sparse_frames ... ok
+test render::groups::tests::a_new_generation_cannot_reuse_the_previous_group_image ... ok
+test render::groups::tests::cached_composite_failure_still_retains_its_source_and_advances_cursors ... ok
+test render::groups::tests::cached_mask_allocation_failure_releases_its_source_and_can_retry ... ok
+test render::groups::tests::clean_cached_group_keeps_ownership_and_skips_all_child_work ... ok
+test render::groups::tests::composite_failure_is_returned_after_uncached_targets_are_released ... ok
+test render::groups::tests::dirty_cached_group_reuses_both_surfaces_and_counts_only_active_tiles ... ok
+test render::groups::tests::failed_cached_recording_returns_both_surfaces_and_allows_a_same_pool_retry ... ok
+test render::groups::tests::failed_children_release_the_new_source_and_do_not_reach_mask_or_composite ... ok
+test render::groups::tests::failed_composite_transfers_recorded_surfaces_to_the_cache_once ... ok
+test render::groups::tests::fallible_recording_releases_uncached_scratch_and_allows_a_same_pool_retry ... ok
+test render::groups::tests::mask_allocation_failure_releases_the_rendered_source ... ok
+test render::groups::tests::no_scratch_capacity_rejects_before_any_child_or_composite_work ... ok
+test render::groups::tests::tile_accounting_clips_negative_bounds_covers_edges_and_saturates ... ok
+test render::groups::tests::uncached_group_clears_renders_then_masks_and_composites_in_order ... ok
+test render::groups::tests::unmasked_cached_groups_reuse_one_surface_and_only_repaint_dirty_tiles ... ok
+test render::groups::tests::unmasked_opacity_renders_once_without_a_mask_allocation ... ok
+test render::incremental::config::tests::all_positive_finite_full_redraw_thresholds_through_one_are_valid ... ok
+test render::incremental::config::tests::invalid_full_redraw_thresholds_are_rejected ... ok
+test render::incremental::tests::frame_diff::a_new_instance_with_the_same_generation_dirties_its_unchanged_bounds ... ok
+test render::incremental::tests::frame_diff::compacted_state_equal_to_the_rebuilt_base_adds_no_damage ... ok
+test render::incremental::tests::frame_diff::insertion_does_not_make_unchanged_siblings_look_reordered ... ok
+test render::incremental::tests::frame_diff::overlay_only_insertion_participates_in_fallback_damage ... ok
+test render::incremental::tests::frame_diff::removal_delta_is_resolved_before_the_same_id_is_reinserted ... ok
+test render::incremental::tests::frame_diff::removal_dirties_the_removed_nodes_old_tiles ... ok
+test render::incremental::tests::frame_diff::reordered_pair_spanning_many_tiles_is_recorded_once ... ok
+test render::incremental::tests::frame_diff::reordering_dirties_both_overlapping_nodes ... ok
+test render::incremental::tests::frame_diff::reordering_non_overlapping_nodes_does_not_create_damage ... ok
+test render::incremental::tests::frame_diff::retained_layer_revision_change_dirties_its_bounds ... ok
+test render::incremental::tests::frame_diff::reused_frame_diff_scratch_does_not_leak_old_tile_adjacency ... ok
+test render::incremental::tests::frame_diff::revision_change_dirties_union_of_old_and_new_tiles ... ok
+test render::incremental::tests::frame_diff::spatial_reorder_matches_brute_force_for_every_ordering ... ok
+test render::incremental::tests::planning::dirty_threshold_switches_to_the_full_fast_path ... ok
+test render::incremental::tests::planning::indexed_delta_omits_unused_oracle_sources_without_losing_damage ... ok
+test render::incremental::tests::planning::journal_removal_propagates_old_pixels_through_backdrop ... ok
+test render::incremental::tests::planning::renderer_invalidation_reports_its_own_fallback_reason ... ok
+test render::incremental::tests::planning::stale_history_preserves_scene_damage_for_output_strategy ... ok
+test render::incremental::tests::planning::surface_change_forces_full_redraw ... ok
+test render::incremental::tests::previous_topology::fallback_comparison_includes_topology_output_from_both_sides ... ok
+test render::incremental::tests::previous_topology::previous_topology_damage_survives_rebuilt_or_shared_base_order ... ok
+test render::incremental::tests::previous_topology::unchanged_topology_overlay_keeps_the_zero_damage_fast_path ... ok
+test render::layers::tests::filters_render_local_children_while_backdrops_sample_the_existing_parent_target ... ok
+test render::layers::tests::group_variants_preserve_opacity_blend_and_children_before_composite ... ok
+test render::layers::tests::shared_layer_dispatch_preserves_the_underlying_recording_error ... ok
+test render::masks::tests::cached_mask_source_failure_returns_all_slots_and_allows_retry ... ok
+test render::masks::tests::clean_cached_composite_failure_preserves_images_and_resource_cursors ... ok
+test render::masks::tests::clean_cached_mask_skips_work_but_advances_both_resource_sequences ... ok
+test render::masks::tests::composite_failure_keeps_valid_cached_images_without_occupied_slots ... ok
+test render::masks::tests::dirty_cached_mask_reuses_content_and_coverage_with_active_tile_accounting ... ok
+test render::masks::tests::empty_mask_advances_resources_without_allocation_or_child_work ... ok
+test render::masks::tests::every_recording_failure_releases_scratch_and_allows_a_same_pool_retry ... ok
+test render::masks::tests::failure_while_rendering_mask_source_releases_cached_coverage_too ... ok
+test render::masks::tests::mask_generation_change_replaces_cached_images ... ok
+test render::masks::tests::path_region_advances_once_when_empty_cached_or_rendered ... ok
+test render::masks::tests::uncached_masks_preserve_content_coverage_region_and_composite_order ... ok
+test render::operations::tests::dead_batches_do_not_issue_extra_work ... ok
+test render::operations::tests::empty_plan_is_success_without_issuing_gpu_work ... ok
+test render::operations::tests::empty_root_selection_still_visits_layers_and_shares_resource_cursors ... ok
+test render::operations::tests::layer_rejection_stops_before_children_and_succeeding_siblings ... ok
+test render::operations::tests::nested_failure_reaches_the_frame_owner_before_any_later_work ... ok
+test render::operations::tests::root_selection_preserves_painter_order_and_nested_target_contents ... ok
+test render::prepare::tests::a_new_topology_rebuilds_metadata_and_does_not_share_another_renderers_cache ... ok
+test render::prepare::tests::an_installed_plan_does_not_imply_initialized_preparation_metadata ... ok
+test render::prepare::tests::draw_membership_changes_refresh_program_detection_without_reencoding_brushes ... ok
+test render::prepare::tests::first_preparation_and_a_missing_cached_plan_require_complete_metadata ... ok
+test render::prepare::tests::patched_values_consume_the_new_plan_but_keep_its_size_metadata ... ok
+test render::prepare::tests::structural_reuse_refreshes_values_when_the_fingerprint_changes ... ok
+test render::prepare::tests::text_journal_gap_reconciles_skipped_glyph_positions ... ok
+test render::prepare::tests::text_preparation_reconciles_immediate_and_unproven_journals ... ok
+test render::prepare::tests::unchanged_plan_reuses_cached_plan_and_metadata ... ok
+test render::retained::tests::active_tile_diagnostics_follow_the_explicit_capture_setting ... ok
+test render::retained::tests::dirty_threshold_redraw_keeps_backdrop_history_for_the_next_incremental_frame ... ok
+test render::retained::tests::every_surface_metadata_component_participates_in_cache_identity ... ok
+test render::retained::tests::evicting_a_backdrop_forces_the_next_root_to_rebuild ... ok
+test render::retained::tests::failed_frame_completion_releases_backdrop_protection_before_budget_changes ... ok
+test render::retained::tests::failed_frames_do_not_commit_damage_and_retry_rebuilds_history ... ok
+test render::retained::tests::growing_an_earlier_surface_preserves_unvisited_backdrop_input_in_the_current_frame ... ok
+test render::retained::tests::local_damage_is_projected_from_root_tiles_and_keeps_empty_distinct_from_full ... ok
+test render::retained::tests::persistent_history_requires_the_same_owner_and_successful_update ... ok
+test render::retained::tests::two_renderers_do_not_share_their_incremental_cursor ... ok
+test render::retained_surfaces::tests::a_rejected_backdrop_requires_history_rebuild_even_without_a_previous_entry ... ok
+test render::retained_surfaces::tests::a_taken_and_reinserted_surface_becomes_most_recently_used ... ok
+test render::retained_surfaces::tests::a_visited_backdrop_is_evictable_and_invalidates_the_next_frame ... ok
+test render::retained_surfaces::tests::budget_changes_cannot_invalidate_protected_history_during_a_partial_frame - should panic ... ok
+test render::retained_surfaces::tests::budget_pressure_rejects_the_new_entry_when_only_protected_history_can_pay ... ok
+test render::retained_surfaces::tests::clock_rebase_preserves_both_sides_of_the_partial_frame_boundary ... ok
+test render::retained_surfaces::tests::clock_wrap_does_not_turn_the_newest_cache_entry_into_the_oldest ... ok
+test render::retained_surfaces::tests::full_redraw_and_frame_end_allow_normal_backdrop_eviction ... ok
+test render::retained_surfaces::tests::node_removal_covers_every_slot_and_preserves_other_nodes ... ok
+test render::retained_surfaces::tests::partial_frame_protects_unvisited_backdrop_but_keeps_ordinary_lru_eviction ... ok
+test render::retained_surfaces::tests::rejected_replacement_cannot_leave_the_previous_contents_cached ... ok
+test render::retained_surfaces::tests::taking_and_replacing_updates_accounting_without_double_charging ... ok
+test render::retained_surfaces::tests::the_budget_counts_all_three_allocations_and_exact_fit ... ok
+test render::scene_resources::tests::a_size_miss_retargets_the_existing_allocation_without_replacing_it ... ok
+test render::scene_resources::tests::clearing_the_pool_drops_both_available_and_pending_ownership ... ok
+test render::scene_resources::tests::exact_size_reuse_preserves_the_unmatched_lifo_fallback ... ok
+test render::scene_resources::tests::newly_recycled_resources_do_not_hide_older_available_allocations ... ok
+test render::scene_resources::tests::siblings_cannot_reuse_an_unsubmitted_allocation ... ok
+test render::scratch_slots::tests::scratch_leases_reuse_first_free_without_aliasing_live_slots ... ok
+test render::scratch_slots::tests::scratch_transfer_and_context_reset_preserve_lease_state ... ok
+test render::target_capacity::tests::geometric_growth_saturates_before_applying_the_limit ... ok
+test render::target_capacity::tests::growth_queries_limits_once_for_both_dimensions ... ok
+test render::target_capacity::tests::reuse_and_shrink_do_not_query_device_limits ... ok
+test render::target_capacity::tests::target_capacity_does_not_grow_past_device_limit ... ok
+test render::target_capacity::tests::target_capacity_grows_geometrically ... ok
+test render::target_capacity::tests::target_capacity_releases_disproportionate_allocations ... ok
+test render::target_capacity::tests::target_capacity_reuses_interactive_shrink_range ... ok
+test render::upload::glyph_capacity::tests::changed_draw_rebinds_future_glyph_damage_to_its_new_run ... ok
+test render::upload::glyph_capacity::tests::changed_glyphs_collect_each_dependent_draw_once ... ok
+test render::upload::glyph_capacity::tests::flat_draw_diff_coalesces_changed_tail_with_appended_draws ... ok
+test render::upload::glyph_capacity::tests::flat_text_changes_update_only_dependent_glyph_capacity_draws ... ok
+test render::upload::glyph_capacity::tests::shrinking_text_state_removes_stale_run_and_draw_membership ... ok
+test render::upload::paint::tests::draw_only_updates_preserve_resource_brushes_when_paint_storage_relayouts ... ok
+test render::upload::paint::tests::growth_rebases_and_uploads_all_segments_including_clean_ones ... ok
+test render::upload::paint::tests::image_placement_changes_repatch_brushes_without_a_scene_mutation ... ok
+test render::upload::paint::tests::immediate_upload_borrows_the_three_original_slices ... ok
+test render::upload::paint::tests::paint_layout_keeps_segment_bases_stable_until_capacity_is_exhausted ... ok
+test render::upload::paint::tests::resource_membership_is_rebuilt_after_mutations_with_no_image_table ... ok
+test render::upload::paint::tests::retained_partial_ranges_keep_offsets_and_unmodified_words ... ok
+test render::upload::paint::tests::switching_through_immediate_upload_rebuilds_retained_storage ... ok
+test render::upload::ranges::tests::contiguous_dirty_indices_are_coalesced_without_bridging_gaps ... ok
+test render::upload::ranges::tests::growing_text_ranges_merge_the_dirty_tail_upstream ... ok
+test render::upload::ranges::tests::sorted_change_ranges_are_traversed_without_materializing_indices ... ok
+test render::upload::ranges::tests::sorted_draw_and_painter_ranges_merge_linearly ... ok
+test render::upload::scene::tests::active_batch_query_preserves_shared_spatial_index ... ok
+test render::upload::scene::tests::layer_stack_refresh_converts_only_dirty_entries ... ok
+test render::upload::scene::tests::work_capacity_does_not_thrash_under_alternating_layer_depth ... ok
+test render::upload::scene::tests::work_capacity_releases_sustained_excess_capacity ... ok
+test render::upload::text::tests::flat_text_changes_patch_only_changed_gpu_glyph_records ... ok
+test render::vector_images::tests::atlas_copies_duplicate_all_edges_and_corners_without_neighbor_bleed ... ok
+test render::vector_images::tests::detached_vectors_are_evicted_even_while_external_owners_survive ... ok
+test render::vector_images::tests::retaining_a_new_graph_drops_only_its_detached_sources ... ok
+test render::vector_images::tests::shared_vector_sources_reuse_one_cached_renderer ... ok
+test render::vector_images::tests::weak_identity_guard_prevents_editing_cached_canvas_in_place ... ok
+test render::vector_images::tests::zero_sized_atlas_placement_is_rejected - should panic ... ok
+test retained_scene::materializer::chunk_canvas::tests::mutable_canvas_access_invalidates_empty_and_populated_bounds ... ok
+test retained_scene::materializer::chunk_canvas::tests::repeated_visual_bounds_queries_traverse_geometry_once ... ok
+test retained_scene::materializer::command_storage::tests::holes_split_and_coalesce_without_moving_live_list_ids ... ok
+test retained_scene::materializer::command_storage::tests::releasing_an_interior_range_drops_commands_before_reuse ... ok
+test retained_scene::materializer::command_storage::tests::releasing_the_middle_of_two_holes_merges_both_sides ... ok
+test retained_scene::materializer::damage::backdrop_tests::changing_a_nested_filter_invalidates_its_off_canvas_backdrop_before_outer_offset ... ok
+test retained_scene::materializer::damage::backdrop_tests::consecutive_opacity_updates_keep_layer_output_bounds ... ok
+test retained_scene::materializer::damage::backdrop_tests::expanding_an_ancestor_clip_invalidates_the_backdrop_input_it_reveals ... ok
+test retained_scene::materializer::damage::delta_storage_tests::affine_updates_reuse_unchanged_index_and_keep_old_patches_immutable ... ok
+test retained_scene::materializer::damage::delta_storage_tests::empty_payloads_survive_delete_and_reinsert_without_changing_old_frames ... ok
+test retained_scene::materializer::damage::delta_storage_tests::invalidation_only_updates_reuse_empty_payloads_and_preserve_version_links ... ok
+test retained_scene::materializer::damage::delta_storage_tests::multi_node_patch_indexes_rebuild_without_a_reuse_scan ... ok
+test retained_scene::materializer::damage::delta_storage_tests::removal_patches_preserve_slots_without_reusing_live_node_states ... ok
+test retained_scene::materializer::damage::delta_storage_tests::singleton_index_reuse_checks_both_node_identity_and_exact_slot ... ok
+test retained_scene::materializer::damage::filter_dependency_tests::composed_influence_preserves_off_canvas_intermediate_filter_output ... ok
+test retained_scene::materializer::damage::filter_dependency_tests::composing_a_farther_filter_cannot_revive_an_empty_nearer_clip ... ok
+test retained_scene::materializer::damage::filter_dependency_tests::nested_off_canvas_damage_reaches_the_visible_ancestor_output ... ok
+test retained_scene::materializer::damage::filter_dependency_tests::retained_filter_damage_uses_the_encoded_physical_filter_at_high_dpi ... ok
+test retained_scene::materializer::damage::filter_dependency_tests::retained_mask_damage_uses_its_encoded_physical_region_at_high_dpi ... ok
+test retained_scene::materializer::damage::isolation_tests::blend_blocks_outside_damage_from_its_internal_backdrop ... ok
+test retained_scene::materializer::damage::isolation_tests::isolate_blocks_outside_damage_from_its_internal_backdrop ... ok
+test retained_scene::materializer::damage::isolation_tests::mask_content_does_not_invalidate_its_independent_mask_branch_backdrop ... ok
+test retained_scene::materializer::damage::isolation_tests::opacity_blocks_outside_damage_from_its_internal_backdrop ... ok
+test retained_scene::materializer::damage::order_tests::changing_from_fused_clip_to_isolation_invalidates_the_child_input_domain ... ok
+test retained_scene::materializer::damage::order_tests::mixed_layer_and_leaf_updates_still_detect_changed_input_domains ... ok
+test retained_scene::materializer::damage::order_tests::parent_backdrop_parameter_changes_reach_its_later_child_backdrop ... ok
+test retained_scene::materializer::damage::scoped_history_tests::leaf_bounds_updates_keep_partial_damage_when_frame_metadata_rebuilds ... ok
+test retained_scene::materializer::damage::scoped_history_tests::nested_damage_reaches_later_root_backdrops_in_the_same_event ... ok
+test retained_scene::materializer::damage::scoped_history_tests::scoped_leaf_removal_and_reinsertion_preserve_complete_damage_history ... ok
+test retained_scene::materializer::damage::scoped_history_tests::scoped_subtree_removal_keeps_old_dependency_domain_damage ... ok
+test retained_scene::materializer::damage::scoped_history_tests::skipped_same_node_updates_survive_state_delta_pruning ... ok
+test retained_scene::materializer::damage::scoped_history_tests::state_page_compaction_and_event_epochs_preserve_each_rendered_update ... ok
+test retained_scene::materializer::draw_order::tests::indexed_order_preserves_compiled_painter_order ... ok
+test retained_scene::materializer::draw_order::tests::sequential_order_needs_only_its_length ... ok
+test retained_scene::materializer::helpers::changed_value_range_tests::appended_suffix_is_uploaded ... ok
+test retained_scene::materializer::helpers::changed_value_range_tests::removed_suffix_does_not_emit_an_out_of_bounds_upload_range ... ok
+test retained_scene::materializer::lifecycle::tests::raster_invalidation_publishes_empty_upload_delta ... ok
+test retained_scene::materializer::lifecycle::tests::resized_node_reencode_matches_fresh_path_allocations ... ok
+test retained_scene::materializer::plan::root_contracts::inserting_a_root_layer_in_the_middle_keeps_authoritative_command_order ... ok
+test retained_scene::materializer::plan::root_contracts::promoting_an_offscreen_child_to_root_publishes_a_current_compiled_plan ... ok
+test retained_scene::materializer::plan::root_contracts::root_reorder_and_parameter_update_preserve_the_new_filter ... ok
+test retained_scene::materializer::plan::root_contracts::root_reorder_preserves_fragment_ranges_and_unrelated_draw_storage_on_removal ... ok
+test retained_scene::materializer::plan::root_contracts::root_reorder_then_removal_matches_fresh_for_every_layer_kind_pair ... ok
+test retained_scene::materializer::plan::tests::a_large_inserted_run_keeps_the_existing_plan_and_batch ... ok
+test retained_scene::materializer::plan::tests::empty_mask_branches_keep_independent_batches_on_first_insertion ... ok
+test retained_scene::materializer::plan::tests::root_fragment_ranges_follow_all_layer_kind_transitions_and_empty_children ... ok
+test retained_scene::materializer::plan::tests::wrapping_existing_empty_layers_rebuilds_their_execution_ownership ... ok
+test retained_scene::materializer::scoped_damage::tests::dependency_edits_refresh_scoped_backdrop_classification ... ok
+test retained_scene::materializer::scoped_damage::tests::fixed_isolated_inputs_skip_rechecks_but_domain_transitions_do_not ... ok
+test retained_scene::materializer::scoped_damage::tests::moving_only_a_dependency_ancestor_refreshes_scoped_classification ... ok
+test retained_scene::materializer::scoped_damage::tests::ordinary_revisions_reuse_scoped_backdrop_classification ... ok
+test retained_scene::materializer::scoped_damage::tests::ordinary_root_backdrop_updates_reuse_painter_order ... ok
+test retained_scene::materializer::scoped_damage::tests::reparenting_filter_only_layer_preserves_surface_dependency ... ok
+test retained_scene::materializer::scoped_damage::tests::root_dependency_order_tracks_moves_removal_and_journal_recovery ... ok
+test retained_scene::materializer::scoped_damage::tests::same_scale_resize_refreshes_classification_then_resumes_reuse ... ok
+test retained_scene::materializer::scoped_damage::tests::scene_replacement_refreshes_root_and_nested_dependency_domains ... ok
+test retained_scene::materializer::scoped_damage::tests::scoped_layer_patch_reuses_already_computed_local_bounds ... ok
+test retained_scene::materializer::spatial_tiles::tests::clips_negative_and_oversized_bounds_to_canvas ... ok
+test retained_scene::materializer::spatial_tiles::tests::exact_length_tracks_consumption ... ok
+test retained_scene::materializer::spatial_tiles::tests::rejects_empty_and_fully_outside_bounds ... ok
+test retained_scene::materializer::spatial_tiles::tests::traverses_bounds_in_row_major_order ... ok
+test retained_scene::materializer::structural_damage::tests::moving_a_group_across_a_backdrop_uses_both_painter_orders ... ok
+test retained_scene::materializer::structural_damage::tests::reparenting_between_mask_branches_dirties_only_old_and_new_input_domains ... ok
+test retained_scene::tests::batch_classification::content_classification_changes_preserve_unchanged_members ... ok
+test retained_scene::tests::batch_classification::content_replacement_compaction_keeps_batch_membership_and_order ... ok
+test retained_scene::tests::batch_classification::mixed_change_set_preserves_an_unchanged_generation ... ok
+test retained_scene::tests::batch_classification::mixed_content_revisions_match_fresh_painter_metadata ... ok
+test retained_scene::tests::batch_classification::position_patch_and_mixed_plan_replacement_match_fresh_batches ... ok
+test retained_scene::tests::batch_classification::resize_and_content_classification_restore_exact_metadata ... ok
+test retained_scene::tests::command_storage::repeated_mask_kind_changes_reclaim_the_retired_branch ... ok
+test retained_scene::tests::command_storage::repeated_nested_subtree_edits_reclaim_command_lists ... ok
+test retained_scene::tests::command_storage::repeated_non_tail_root_removal_reclaims_command_lists ... ok
+test retained_scene::tests::command_storage::repeated_reparenting_reclaims_both_previous_offscreen_trees ... ok
+test retained_scene::tests::command_storage::scene_fragments_release_all_internal_clip_filter_and_mask_lists ... ok
+test retained_scene::tests::command_storage::swapping_subtrees_recycles_old_ownership_after_new_locations_are_published ... ok
+test retained_scene::tests::command_topology::appending_plain_content_after_offscreen_content_uses_a_new_run ... ok
+test retained_scene::tests::command_topology::inserting_a_scene_with_offscreen_content_compiles_its_operations ... ok
+test retained_scene::tests::command_topology::instances::node_instance_transitions_match_fresh_commands_and_batch_partitions ... ok
+test retained_scene::tests::command_topology::instances::same_id_new_instance_changes_the_materialized_revision ... ok
+test retained_scene::tests::command_topology::moving_plain_content_across_offscreen_content_changes_its_batch ... ok
+test retained_scene::tests::command_topology::moving_plain_content_inside_a_layer_synchronizes_its_command_order ... ok
+test retained_scene::tests::command_topology::reinserting_a_scene_as_an_empty_group_retires_its_command ... ok
+test retained_scene::tests::command_topology::reinserting_a_scene_with_offscreen_content_compiles_its_operations ... ok
+test retained_scene::tests::command_topology::reinserting_an_empty_group_as_a_scene_preserves_the_flat_plan ... ok
+test retained_scene::tests::deferred_surface::resize_with_hierarchy_changes_defers_full_frame_and_spatial_rebuild ... ok
+test retained_scene::tests::deferred_surface::resize_with_layer_updates_defers_full_frame_and_spatial_rebuild ... ok
+test retained_scene::tests::deferred_surface::resize_with_root_filter_insertion_avoids_the_deferred_spatial_index ... ok
+test retained_scene::tests::deferred_surface::structural_edit_after_resize_rebuilds_deferred_surface_metadata ... ok
+test retained_scene::tests::dependencies::clip_bounds_update_inside_filter_uses_full_frame_fallback ... ok
+test retained_scene::tests::dependencies::expanding_nested_clip_patches_newly_visible_raw_spatial_candidates ... ok
+test retained_scene::tests::dependencies::same_plan_content_revision_keeps_embedded_backdrop_index ... ok
+test retained_scene::tests::dependencies::scene_content_replacement_refreshes_embedded_backdrop_index ... ok
+test retained_scene::tests::fragment_membership::appended_root_fragment_preserves_every_batch_of_a_layered_leaf ... ok
+test retained_scene::tests::fragment_membership::content_recompilation_reclassifies_a_leaf_before_its_next_revision ... ok
+test retained_scene::tests::fragment_membership::inserted_plain_leaf_before_a_multibatch_sibling_uses_the_first_batch ... ok
+test retained_scene::tests::fragment_membership::root_fragment_reclassifies_a_reparented_leaf_that_now_spans_batches ... ok
+test retained_scene::tests::hierarchy_fragments::moving_an_ancestor_and_child_rebuilds_overlapping_fragments_from_the_final_tree ... ok
+test retained_scene::tests::hierarchy_fragments::swapping_mask_branches_replaces_each_draw_membership ... ok
+test retained_scene::tests::hierarchy_fragments::swapping_offscreen_subtrees_updates_both_ancestor_clip_scopes ... ok
+test retained_scene::tests::journal::journal_gap_detects_remove_and_reinsert_of_the_same_node_id ... ok
+test retained_scene::tests::journal::journal_gap_requires_one_full_resynchronization ... ok
+test retained_scene::tests::journal::journal_merges_skipped_versions ... ok
+test retained_scene::tests::journal::long_content_delta_chain_compacts_into_state_pages ... ok
+test retained_scene::tests::layer_updates::combined_backdrop_scope_changes_recompile_but_opacity_samples_only_patch_values ... ok
+test retained_scene::tests::layer_updates::effect_parameter_updates_do_not_upload_unmodified_clip_stacks ... ok
+test retained_scene::tests::layer_updates::empty_fused_groups_keep_real_stack_entries_when_updated ... ok
+test retained_scene::tests::layer_updates::filter_updates_do_not_remove_an_unrelated_fused_layer_index ... ok
+test retained_scene::tests::layer_updates::layer_kind_changes_recompile_instead_of_claiming_a_descriptor_patch ... ok
+test retained_scene::tests::layer_updates::offscreen_blend_updates_its_compiled_descriptor_without_rebuilding_batches ... ok
+test retained_scene::tests::layer_updates::offscreen_layer_updates_reach_both_mask_branches ... ok
+test retained_scene::tests::layer_updates::offscreen_opacity_updates_its_compiled_descriptor_without_rebuilding_batches ... ok
+test retained_scene::tests::layer_updates::unbounded_opacity_parameter_updates_preserve_the_descendant_output_domain ... ok
+test retained_scene::tests::nested_changes::local_nested_removal_and_insertion_keep_unrelated_draw_storage ... ok
+test retained_scene::tests::nested_changes::nested_removal_and_ancestor_fusion_compile_the_current_structure ... ok
+test retained_scene::tests::nested_changes::nested_removal_and_ancestor_move_publish_the_new_painter_order ... ok
+test retained_scene::tests::nested_changes::nested_removal_and_inside_insertion_publish_the_new_subtree ... ok
+test retained_scene::tests::nested_changes::nested_removal_and_reparenting_in_retire_the_previous_outer_command ... ok
+test retained_scene::tests::nested_changes::nested_removal_and_reparenting_out_publish_the_new_command_scope ... ok
+test retained_scene::tests::nested_changes::nested_removal_and_root_content_structure_change_publish_both_changes ... ok
+test retained_scene::tests::nested_changes::nested_removal_and_root_layer_insertion_publish_both_changes ... ok
+test retained_scene::tests::nested_changes::nested_removal_and_root_scene_insertion_publish_both_changes ... ok
+test retained_scene::tests::nested_changes::nested_removal_and_unrelated_scene_removal_retire_both_commands ... ok
+test retained_scene::tests::painter::lifecycle::empty_painter_metadata_survives_insert_remove_and_dpi_rebuild ... ok
+test retained_scene::tests::painter::lifecycle::multi_leaf_painter_patch_preserves_immutable_snapshot_and_layered_membership ... ok
+test retained_scene::tests::painter::painter_dirty_ranges_drop_removed_suffix_after_draw_arena_compaction ... ok
+test retained_scene::tests::painter::painter_rebuild_uploads_batch_only_metadata_changes ... ok
+test retained_scene::tests::placement::bounded_translation_keeps_fixed_output_domain_without_tile_duplication ... ok
+test retained_scene::tests::placement::ordinary_transform_exits_fixed_damage_bounds ... ok
+test retained_scene::tests::placement::replaced_scene_geometry_is_used_before_later_transform_only_updates ... ok
+test retained_scene::tests::placement::reusing_a_node_id_between_scene_and_layer_refreshes_placement ... ok
+test retained_scene::tests::placement::small_invertible_animation_scales_materialize_and_recover ... ok
+test retained_scene::tests::placement::transform_only_update_keeps_local_geometry_and_blobs_clean ... ok
+test retained_scene::tests::plan_fragments::removing_a_root_fragment_after_a_layer_kind_change_keeps_its_sibling ... ok
+test retained_scene::tests::reorder::move_before_changes_materialized_painter_order ... ok
+test retained_scene::tests::reorder::repeated_reorder_with_groups_preserves_painter_order ... ok
+test retained_scene::tests::reorder::successful_rebalance_reports_every_sibling_with_a_new_order_key ... ok
+test retained_scene::tests::resources::removing_an_unregistered_chunk_resource_is_an_ownership_error ... ok
+test retained_scene::tests::resources::replacing_retained_vector_content_removes_only_its_previous_resource ... ok
+test retained_scene::tests::resources::vector_resources_follow_live_retained_nodes_and_shared_references ... ok
+test retained_scene::tests::rollback::failed_transaction_restores_order_keys_after_rebalance ... ok
+test retained_scene::tests::rollback::transaction_is_atomic_when_a_late_mutation_is_invalid ... ok
+test retained_scene::tests::rollback::undo_log_restores_values_order_removals_and_surface_after_late_failure ... ok
+test retained_scene::tests::root_layer_classification::replacing_a_root_layer_in_one_transaction_keeps_the_new_page_in_the_plan ... ok
+test retained_scene::tests::root_layer_classification::root_layer_insertion_survives_a_journal_gap ... ok
+test retained_scene::tests::storage::cached_node_draw_order_tracks_content_and_arena_relocation ... ok
+test retained_scene::tests::storage::content_revision_reuses_chunk_canvas_storage ... ok
+test retained_scene::tests::storage::empty_chunk_allocations_grow_and_shrink_without_full_sync ... ok
+test retained_scene::tests::storage::materialized_dirty_range_buffers_rotate_between_frames ... ok
+test retained_scene::tests::surface::same_scale_resize_and_removal_restore_live_spatial_nodes_after_resize ... ok
+test retained_scene::tests::surface::surface_resize_discards_removed_path_chunks_before_resizing_scan_allocations ... ok
+test retained_scene::tests::surface::surface_resize_preserves_painter_keys_when_backdrop_rebuilds_the_plan ... ok
+test retained_scene::tests::surface::surface_resize_reuses_chunks_and_refreshes_path_tile_bounds ... ok
+test retained_scene::tests::text_storage::retained_text_mutations_match_fresh_immediate_rendering ... ignored, requires explicitly pinned physical GPU; run with --ignored
+test retained_scene::tests::text_storage::text_storage_preserves_runs_and_glyphs_through_empty_growth_and_compaction ... ok
+test retained_scene::tests::topology::appended_root_layer_fragment_is_visible_in_cached_execution_plan ... ok
+test retained_scene::tests::topology::flat_topology_commands_patch_order_and_reuse_fragment_storage ... ok
+test retained_scene::tests::transactions::insert_before_rejects_invalid_siblings_even_when_the_branch_is_empty ... ok
+test retained_scene::tests::transactions::move_before_self_requires_an_existing_node ... ok
+test retained_scene::tests::transactions::reparent_invalid_mask_branch_reports_the_actual_target_and_preserves_order ... ok
+test retained_scene::tests::transactions::scene_leaves_reject_retained_children_in_both_branches ... ok
+test retained_scene::tests::validation::bounded_translation_rejects_linear_transform_changes_atomically ... ok
+test retained_scene::tests::validation::gpu_transform_validation_uses_the_physical_surface_scale ... ok
+test retained_scene::tests::validation::layer_geometry_rejects_non_finite_coordinates_atomically ... ok
+test retained_scene::tests::validation::mask_branch_is_only_valid_for_masks ... ok
+test retained_scene::tests::validation::reparent_rejects_cycles ... ok
+test retained_scene::tests::validation::transaction_rejects_non_finite_and_singular_transforms_atomically ... ok
+test retained_scene::validation::backdrop_opacity_tests::retained_combined_backdrop_rejects_invalid_opacity_without_normalizing_authored_data ... ok
+test retained_scene::validation::opacity_group_tests::retained_opacity_group_validates_alpha_without_normalizing_authored_data ... ok
+test shared::affine::tests::inverse_handles_small_large_and_reflected_gpu_scales ... ok
+test shared::affine::tests::inverse_rejects_nonfinite_singular_and_unrepresentable_results ... ok
+test shared::bounds::tests::coordinate_extents_cover_the_full_signed_domain_without_wrapping ... ok
+test shared::bounds::tests::pixel_bounds_intersection_is_canonical_when_disjoint ... ok
+test shared::bounds::tests::pixel_bounds_intersection_preserves_overlap ... ok
+test shared::bounds::tests::unsigned_expansion_matches_wide_arithmetic_at_every_coordinate_edge ... ok
+test shared::brush::mesh::tests::mesh_accepts_skewed_and_reflected_quads_and_preserves_encoding ... ok
+test shared::brush::mesh::tests::mesh_rejects_folded_degenerate_and_inconsistently_wound_cells ... ok
+test shared::brush::mesh::tests::mesh_rejects_globally_wrapped_boundary_despite_convex_local_cells ... ok
+test shared::brush::mesh::tests::mesh_rejects_invalid_dimensions_counts_and_nonfinite_inputs ... ok
+test shared::brush::mesh::tests::mesh_rejects_nearly_collapsed_corners_that_amplify_coefficient_rounding ... ok
+test shared::brush::mesh::tests::mesh_rejects_subnormal_geometry_that_gpu_arithmetic_can_flush_to_zero ... ok
+test shared::brush::mesh::tests::mesh_spatial_bins_cover_shared_edges_without_searching_all_patches ... ok
+test shared::brush::mesh::tests::mesh_vertex_grid_can_exceed_spatial_bin_dimensions ... ok
+test shared::brush::tests::encoded_brush_blob_round_trips_variable_payload_brushes ... ok
+test shared::brush::tests::encoded_brush_descriptors_reject_unknown_values_instead_of_substituting_defaults ... ok
+test shared::brush::tests::estimated_ramp_size_grows_with_span ... ok
+test shared::brush::tests::estimated_ramp_size_respects_stop_density ... ok
+test shared::brush::tests::fixed_brush_parameters_round_trip_and_truncated_payloads_are_rejected ... ok
+test shared::brush::tests::from_gradient_automatically_estimates_small_linear_ramp ... ok
+test shared::brush::tests::from_gradient_with_ramp_size_uses_dynamic_len ... ok
+test shared::brush::tests::resource_payload_requires_exactly_one_three_word_image_id ... ok
+test shared::brush::tests::sweep_rejects_nonfinite_angles_and_noncanonical_encoded_orientation ... ok
+test shared::brush::tests::sweep_upload_normalizes_orientation_and_keeps_the_signed_span ... ok
+test shared::brush::tests::valid_resource_descriptors_preserve_scope_sampling_extend_and_opacity ... ok
+test shared::dense_set::tests::dense_index_set_retains_capacity_without_retaining_membership ... ok
+test shared::dense_set::tests::generation_marks_clear_logically_and_survive_wraparound ... ok
+test shared::draw_record::tests::draw_record_is_gpu_buffer_layout ... ok
+test shared::draw_record::tests::draw_tag_words_preserve_typed_tags_and_reject_unknown_words ... ok
+test shared::filter_config_tests::filter_defaults_preserve_the_native_uniform_bytes ... ok
+test shared::gpu_brush::tests::draw_uses_resource_brush_only_for_resource_patterns ... ok
+test shared::gpu_brush::tests::patch_scene_brush_blob_clears_missing_resource_placement ... ok
+test shared::gpu_brush::tests::resource_headers_resolve_repeated_shared_draws_and_relocated_records ... ok
+test shared::gpu_coarse::layer_encoding_tests::layer_records_preserve_draw_identity_opacity_and_blend_bytes ... ok
+test shared::gpu_coarse::tests::coarse_record_structs_are_gpu_word_layouts ... ok
+test shared::gpu_coarse::tests::coarse_work_sections_are_tightly_packed_words ... ok
+test shared::gpu_coarse::tests::hlsl_tile_record_offsets_match_host_fields ... ok
+test shared::gpu_coarse::tests::tile_coarse_record_is_gpu_word_layout ... ok
+test shared::gpu_layout::tests::native_brush_constants_match_serialized_layout ... ok
+test shared::gpu_plan::capacity::tests::glyph_capacity_covers_bilinear_neighbours_before_transforming ... ok
+test shared::gpu_plan::capacity::tests::text_lengths_count_only_tiles_intersecting_glyph_bounds ... ok
+test shared::gpu_plan::capacity::tests::text_lengths_track_whether_gpu_text_data_was_prepared ... ok
+test shared::gpu_plan::path_plans::tests::cumsum_plan_splits_each_backdrop_row_into_fixed_size_chunks ... ok
+test shared::gpu_plan::path_plans::tests::persistent_path_plan_recycles_all_dirty_range_capacities ... ok
+test shared::gpu_plan::path_plans::tests::persistent_path_plans_rebuild_only_changed_path_allocations ... ok
+test shared::gpu_plan::path_plans::tests::regrown_vacant_scan_slots_are_uploaded_over_retained_gpu_contents ... ok
+test shared::gpu_plan::path_plans::tests::scan_chunks_cover_each_backdrop_record_in_fixed_size_tiles ... ok
+test shared::gpu_plan::path_plans::tests::scan_plan_records_are_gpu_word_layouts ... ok
+test shared::gpu_plan::path_plans::tests::selected_cumsum_rows_preserve_offsets_and_rebase_chunk_ownership ... ok
+test shared::gpu_plan::path_plans::tests::vacant_stable_path_slot_does_not_clobber_path_zero_scan_range ... ok
+test shared::gpu_plan::tile_bins::active_batches::producer_tests::generated_damage_and_bins_share_the_complete_membership_domain ... ok
+test shared::gpu_plan::tile_bins::active_batches::tests::active_batches_preserve_exact_sets_for_flat_and_paged_bins ... ok
+test shared::gpu_plan::tile_bins::active_batches::tests::dense_damage_matches_exact_bin_membership_including_inactive_and_degenerate_draws ... ok
+test shared::gpu_plan::tile_bins::lists::tests::exact_build_growing_lists_and_reused_holes_preserve_unrelated_lists ... ok
+test shared::gpu_plan::tile_bins::lists::tests::repeated_edits_match_independent_vectors_across_size_classes ... ok
+test shared::gpu_plan::tile_bins::lists::tests::stable_retention_empty_reuse_and_fragmented_compaction_preserve_order ... ok
+test shared::gpu_plan::tile_bins::occlusion::tests::adjacent_edge_corners_keep_every_claimed_opaque_tile_inside_the_true_shape ... ok
+test shared::gpu_plan::tile_bins::occlusion::tests::early_occlusion_does_not_dirty_unculled_indices_for_batch_only_changes ... ok
+test shared::gpu_plan::tile_bins::occlusion::tests::early_occlusion_full_rebuild_uses_one_gpu_arena_across_spatial_edits ... ok
+test shared::gpu_plan::tile_bins::occlusion::tests::early_occlusion_only_replaces_tile_lists_when_a_predecessor_is_hidden ... ok
+test shared::gpu_plan::tile_bins::occlusion::tests::early_occlusion_preserves_alpha_aa_corners_and_uncertain_transforms ... ok
+test shared::gpu_plan::tile_bins::occlusion::tests::early_occlusion_preserves_every_draw_at_partial_clip_edges ... ok
+test shared::gpu_plan::tile_bins::occlusion::tests::early_occlusion_refreshes_persistent_paint_without_geometry_or_rank_changes ... ok
+test shared::gpu_plan::tile_bins::occlusion::tests::early_occlusion_rejects_unknown_brush_and_clip_coverage ... ok
+test shared::gpu_plan::tile_bins::occlusion::tests::early_occlusion_removes_hidden_gpu_refs_but_keeps_filter_source_queries ... ok
+test shared::gpu_plan::tile_bins::occlusion::tests::early_occlusion_retains_order_on_rebuild_and_restores_revealed_geometry ... ok
+test shared::gpu_plan::tile_bins::occlusion::tests::early_occlusion_selects_each_tiles_last_local_occluder ... ok
+test shared::gpu_plan::tile_bins::occlusion::tests::early_occlusion_stays_inside_each_batch_and_keeps_fused_wrappers ... ok
+test shared::gpu_plan::tile_bins::tests::build::fused_lengths_reuse_the_same_tile_draw_bins ... ok
+test shared::gpu_plan::tile_bins::tests::build::tile_capacity_includes_fused_layer_stack_particles ... ok
+test shared::gpu_plan::tile_bins::tests::build::tile_draw_bins_keep_each_tiles_draws_in_scene_order ... ok
+test shared::gpu_plan::tile_bins::tests::build::tile_draw_bins_query_region_without_scanning_unrelated_tiles ... ok
+test shared::gpu_plan::tile_bins::tests::build::tile_draw_chunk_count_sums_per_tile_draw_chunks ... ok
+test shared::gpu_plan::tile_bins::tests::membership::partial_edge_tiles_preserve_membership_across_sparse_and_rank_updates ... ok
+test shared::gpu_plan::tile_bins::tests::order_queries::retained_queries_use_current_order_in_both_storage_modes ... ok
+test shared::gpu_plan::tile_bins::tests::storage::retained_surface_resize_uses_dense_bins_then_restores_incremental_index ... ok
+test shared::gpu_plan::tile_bins::tests::storage::tile_bins_recycle_dirty_record_and_index_capacities ... ok
+test shared::gpu_plan::tile_bins::tests::storage::tile_bins_release_oversized_dirty_capacity ... ok
+test shared::gpu_plan::tile_bins::tests::storage::tile_bins_switch_from_transient_upload_back_to_persistent_ranges ... ok
+test shared::gpu_plan::tile_bins::tests::storage::tile_index_arena_compacts_after_fragmentation_exceeds_threshold ... ok
+test shared::gpu_plan::tile_bins::tests::storage::transient_bins_reuse_packed_arenas_when_persistent_membership_recovers ... ok
+test shared::gpu_plan::tile_bins::tests::updates::dense_retained_spatial_change_stays_flat_only_while_geometry_keeps_moving ... ok
+test shared::gpu_plan::tile_bins::tests::updates::dirty_draw_with_stable_bounds_and_rank_does_not_rewrite_tile_indices ... ok
+test shared::gpu_plan::tile_bins::tests::updates::incremental_tile_ranges_rewrite_only_old_and_new_bounds_tiles ... ok
+test shared::gpu_plan::tile_bins::tests::updates::local_motion_does_not_trigger_whole_scene_bin_rebuild ... ok
+test shared::gpu_plan::tile_bins::tests::updates::overlapping_changed_ranges_update_each_draw_and_tile_once ... ok
+test shared::gpu_plan::tile_bins::tests::updates::sustained_sparse_low_density_bins_keep_compact_index_storage ... ok
+test shared::gpu_plan::tile_bins::tests::updates::sustained_sparse_motion_uses_local_deltas_from_first_edit ... ok
+test shared::gpu_plan::tile_bins::tests::updates::transient_density_excludes_inactive_retained_draw_slots ... ok
+test shared::gpu_sdf::tests::encoded_sdf_blob_round_trips_sdf_and_shadow_records ... ok
+test shared::gpu_sdf::tests::encoded_sdf_requires_a_complete_record_and_preserves_float_bits ... ok
+test shared::gpu_sdf::tests::sdf_enum_fields_reject_unknown_fractional_and_nonfinite_values ... ok
+test shared::gpu_text::tests::glyph_records_are_gpu_word_layouts ... ok
+test shared::gpu_text::tests::text_blob_sections_are_tightly_packed_words ... ok
+test shared::image::tests::from_rgba8_premultiplies_external_straight_alpha_pixels ... ok
+test shared::image::tests::from_rgba8_rejects_wrong_byte_count - should panic ... ok
+test shared::image::tests::image_new_stores_premultiplied_clear_color ... ok
+test shared::image::tests::rgba8_bytes_returns_pixels_in_rgba_order ... ok
+test shared::image::tests::save_writes_rgba_png_to_path ... ok
+test shared::image_resource::identity_tests::cached_image_identity_does_not_retain_source_pixels ... ok
+test shared::image_resource::identity_tests::changed_image_after_source_release_invalidates_cached_upload ... ok
+test shared::image_resource::placement_tests::renderer_and_scene_keys_keep_independent_pixels_across_empty_transitions ... ok
+test shared::image_resource::placement_tests::selected_images_fit_non_power_of_two_pages_and_capacity_boundaries ... ok
+test shared::image_resource::placement_tests::texture_selection_accepts_exact_limit_and_rejects_oversized_images ... ok
+test shared::image_resource::tests::atlas_page_count_is_capped_by_device_layer_limit ... ok
+test shared::image_resource::tests::large_image_texture_table_respects_actual_table_len ... ok
+test shared::image_resource::tests::large_images_use_texture_table_when_enabled ... ok
+test shared::image_resource::tests::oversized_atlas_image_does_not_drop_other_atlas_images ... ok
+test shared::image_resource::tests::remove_and_clear_update_image_resource_uploads ... ok
+test shared::image_resource::tests::small_images_pack_into_multiple_atlas_pages ... ok
+test shared::image_resource::tests::unchanged_upload_marks_pages_and_textures_clean ... ok
+test shared::image_resource::tests::updating_one_atlas_page_dirties_only_that_page ... ok
+test shared::image_resource::tests::updating_one_large_texture_dirties_only_that_texture ... ok
+test shared::image_resource::vector_tests::empty_resource_graph_drops_old_vector_dependencies ... ok
+test shared::image_resource::vector_tests::empty_vector_and_over_capacity_placement_do_not_create_phantom_uploads ... ok
+test shared::image_resource::vector_tests::large_vector_uses_texture_table_without_fake_raster_bytes ... ok
+test shared::image_resource::vector_tests::mixed_atlas_keeps_raster_texels_and_reserves_a_vector_border ... ok
+test shared::image_resource::vector_tests::unchanged_vector_reuses_placement_but_replacement_requires_refresh ... ok
+test shared::image_resource::vector_tests::vector_extent_uses_canvas_physical_pixels_without_raster_storage ... ok
+test shared::image_resource::vector_tests::vector_identity_guard_forces_copy_on_write_without_retaining_scene ... ok
+test shared::layer::filter::progressive::tests::invalid_parameters_are_rejected_and_zero_has_no_halo ... ok
+test shared::layer::filter::progressive::tests::projection_supports_reverse_diagonal_and_uniform_gradients ... ok
+test shared::layer::filter::progressive::tests::quality_is_independent_of_strength_and_survives_coordinate_changes ... ok
+test shared::layer::filter::tests::a_large_convolution_anchor_cannot_wrap_the_source_footprint_to_empty ... ok
+test shared::layer::filter::tests::both_lighting_effects_read_one_pixel_for_their_sobel_normal ... ok
+test shared::layer::filter::tests::combined_filter_radii_do_not_wrap_or_stop_at_the_signed_limit ... ok
+test shared::layer::filter::tests::dilation_keeps_its_existing_output_and_input_expansion ... ok
+test shared::layer::filter::tests::erosion_read_dependency_is_independent_of_its_zero_output_expansion ... ok
+test shared::layer::filter::tests::fixed_chains_and_graphs_keep_a_nested_wrap_domain ... ok
+test shared::layer::filter::tests::fixed_chains_and_graphs_preserve_erosion_input_dependencies ... ok
+test shared::layer::filter::tests::local_convolution_dependency_covers_every_kernel_offset ... ok
+test shared::layer::filter::tests::no_op_convolution_has_no_neighbour_dependency ... ok
+test shared::layer::filter::tests::tile_dependency_preserves_distances_across_the_signed_coordinate_domain ... ok
+test shared::layer::filter::tests::whole_region_damage_uses_the_unsigned_extent_without_truncation ... ok
+test shared::layer::filter::tests::wrapped_convolution_keeps_the_original_domain_outside_the_visible_target ... ok
+test shared::offscreen::tests::empty_local_filter_has_no_hidden_geometry_record ... ok
+test shared::offscreen::tests::invalid_internal_brush_is_not_replaced_with_an_unpainted_draw - should panic ... ok
+test shared::offscreen::tests::local_scene_compacts_draw_and_path_ids_to_the_filter_region ... ok
+test shared::offscreen::tests::local_scene_ignores_layer_stacks_outside_its_children ... ok
+test shared::offscreen::tests::local_selection_represents_every_requested_batch_even_when_empty ... ok
+test shared::offscreen::tests::local_space_keeps_brush_sampling_in_world_space ... ok
+test shared::offscreen::tests::local_space_rebases_presentation_and_bounds_to_surface_origin ... ok
+test shared::offscreen::tests::path_presentation_rebases_from_the_minimum_world_origin_in_float_space ... ok
+test shared::offscreen::tests::placement::rebasing_transformed_offscreen_ink_preserves_its_physical_position ... ok
+test shared::offscreen::tests::translated_scene_preserves_scene_image_resources ... ok
+test shared::offscreen::tests::world_edge_bounds_translate_without_wrapping_in_local_surfaces ... ok
+test shared::path_flatten::tests::circle_flattens_to_many_small_lines ... ok
+test shared::path_flatten::tests::closed_rect_keeps_all_edges ... ok
+test shared::path_flatten::tests::duplicate_points_and_repeated_close_preserve_only_real_edges ... ok
+test shared::path_flatten::tests::final_open_contour_is_closed ... ok
+test shared::path_flatten::tests::line_after_move_to_is_not_skipped ... ok
+test shared::scene_arena::tests::allocation_reports_only_coalesced_logical_dirty_ranges ... ok
+test shared::scene_arena::tests::dirty_range_buffers_exchange_capacities ... ok
+test shared::scene_arena::tests::dirty_ranges_into_reuses_output_and_clips_ranges ... ok
+test shared::scene_arena::tests::filled_insert_initializes_without_exposing_padding ... ok
+test shared::scene_arena::tests::filled_replace_initializes_growth_within_existing_capacity ... ok
+test shared::scene_arena::tests::filled_replace_resets_same_length_gpu_scratch ... ok
+test shared::scene_arena::tests::fresh_allocation_marks_vacant_gpu_padding_dirty ... ok
+test shared::scene_arena::tests::mapped_write_transforms_directly_into_the_allocation ... ok
+test shared::scene_arena::tests::releasing_an_allocation_twice_is_an_ownership_error ... ok
+test shared::scene_arena::tests::removed_ranges_are_reused_and_neutralized ... ok
+test shared::scene_arena::tests::removing_trailing_allocation_keeps_an_inactive_dirty_physical_slot ... ok
+test shared::scene_arena::tests::replacement_compaction_remaps_survivors_without_copying_freed_allocation ... ok
+test shared::scene_arena::tests::same_length_resize_preserves_allocation_and_live_length ... ok
+test shared::scene_arena::tests::unrelated_allocations_keep_offsets_across_variable_length_updates ... ok
+test shared::scene_arena::tests::vacant_insert_reuses_cleared_storage_but_marks_it_dirty_again ... ok
+test shared::scene_arena::tests::vacant_replace_uses_initialized_storage_after_compaction_and_move ... ok
+test shared::sdf::arc::tests::arc_bounds_include_endpoints_quadrants_and_stroke_width ... ok
+test shared::sdf::arc::tests::positive_sweeps_are_preserved_and_near_full_sweeps_keep_their_gap ... ok
+test shared::sdf::callout::tests::bounds_include_each_tail_direction ... ok
+test shared::sdf::callout::tests::hidden_tail_reduces_fill_stroke_and_shadow_to_the_body ... ok
+test shared::sdf::callout::tests::invalid_struct_literals_are_empty ... ok
+test shared::sdf::callout::tests::stroke_and_shadow_expand_the_complete_union ... ok
+test shared::sdf::callout::tests::translation_preserves_relative_tail_offset ... ok
+test shared::sdf::candlestick::tests::bounds_include_wick_and_body ... ok
+test shared::sdf::candlestick::tests::doji_body_expands_to_one_pixel_line ... ok
+test shared::sdf::candlestick::tests::even_body_width_is_valid_and_keeps_one_unit_wick ... ok
+test shared::sdf::candlestick::tests::wick_width_is_user_controlled ... ok
+test shared::sdf::checkerboard::tests::bounds_normalize_reversed_rectangles ... ok
+test shared::sdf::checkerboard::tests::invalid_public_literals_are_empty ... ok
+test shared::sdf::line::tests::butt_bounds_include_stroke_width_without_cap_extension ... ok
+test shared::sdf::line::tests::short_lines_and_dash_gaps_keep_their_authored_geometry ... ok
+test shared::sdf::line::tests::square_bounds_extend_by_half_width_along_axis ... ok
+test shared::sdf::line::tests::zero_length_butt_line_is_empty ... ok
+test shared::sdf::star::tests::invalid_public_literals_are_empty ... ok
+test shared::sdf::star::tests::rotated_star_bounds_include_rounded_outer_vertices ... ok
+test shared::sdf::star::tests::translation_preserves_geometry_and_moves_center ... ok
+test shared::sdf::tests::translated_shifts_sdf_bounds_into_local_space ... ok
+test shared::sdf::triangle::tests::collinear_or_non_finite_triangle_is_empty ... ok
+test shared::sdf::triangle::tests::positive_triangles_remain_geometry_across_layout_scales ... ok
+test shared::sdf::triangle::tests::rounded_bounds_expand_all_three_vertices ... ok
+test shared::shader::pipeline::compiled_tests::precompiled_bindings_preserve_precision_and_nontexture_sizes ... ok
+test shared::shader::pipeline::compiled_tests::precompiled_writable_texture_sizes_cannot_default_to_rgba8 ... ok
+test shared::shader::pipeline::tests::chained_output_growth_saturates_before_clipping_instead_of_wrapping ... ok
+test shared::shader::pipeline::tests::compact_tile_ids_cannot_be_mutated_through_a_pipeline_binding ... ok
+test shared::shader::pipeline::tests::extent_rounds_up_odd_dimensions_and_precision_tracks_bytes ... ok
+test shared::shader::pipeline::tests::immutable_pipeline_snapshots_keep_identity_and_updates_never_reuse_it ... ok
+test shared::shader::pipeline::tests::indexed_inputs_validate_and_output_growth_is_independent_of_read_radius ... ok
+test shared::shader::pipeline::tests::invalid_resource_descriptors_and_dispatches_are_rejected ... ok
+test shared::shader::pipeline::tests::pipeline_snapshot_fingerprints_are_stable_and_do_not_format_image_payloads ... ok
+test shared::shader::pipeline::tests::pipeline_validates_lifetimes_formats_aliases_and_snapshot_updates ... ok
+test shared::shader::pipeline::tests::precompiled_filter_kernels_use_the_public_constructor_and_full_binding_contract ... ok
+test shared::shader::pipeline::tests::public_invocations_validate_uniforms_external_indices_types_and_aliases ... ok
+test shared::shader::pipeline::tests::shader_read_radius_covers_the_full_unsigned_coordinate_distance ... ok
+test shared::shader::pipeline::tests::zero_group_passes_do_not_initialize_intermediates_or_canvas_output ... ok
+test shared::shader::tests::brush_decode_rejects_retired_input_metadata_and_malformed_payloads ... ok
+test shared::shader::tests::brush_encoding_contains_only_source_uniforms_and_transform ... ok
+test shared::shader::tests::shader_sampling_declaration_preserves_transformed_dependencies_without_output_outset ... ok
+test shared::shader::tests::shader_source_and_instance_roundtrip_without_changing_bytes ... ok
+test shared::shader::tests::shader_validates_sources_entry_uniform_size_and_input_declaration ... ok
+test svg::deferred_resources::cloned_canvases_share_immutable_subscenes_and_reset_drops_their_resources ... ok
+test svg::deferred_resources::fe_image_is_deferred_in_filter_buffer_coordinates ... ok
+test svg::deferred_resources::fractional_pattern_keeps_ceil_extent_without_a_gpu_device ... ok
+test svg::deferred_resources::nested_svg_image_preserves_requested_raster_extent_as_vector_scene ... ok
+test svg::filter::color::tests::color_matrices_preserve_identity_alpha_and_arbitrary_coefficients ... ok
+test svg::filter::color::tests::component_transfer_quantizes_channels_independently ... ok
+test svg::filter::color::tests::standard_matrices_keep_their_specialized_filters ... ok
+test svg::filter::color::tests::transfer_tables_keep_empty_singleton_and_endpoint_semantics ... ok
+test svg::filter::tests::blur_and_dilation_track_transformed_source_domains ... ok
+test svg::filter::tests::filter_regions_keep_affine_rectangle_bounds ... ok
+test svg::filter::tests::merge_and_tile_preserve_union_and_empty_input_domains ... ok
+test svg::image::tests::decode_png_image_preserves_rgba_pixels ... ok
+test svg::image::tests::image_sampling_preserves_explicit_crisp_modes ... ok
+test svg::image::tests::svg_image_raster_size_uses_axis_scale ... ok
+test svg::tests::push_svg_unsupported_features_do_not_modify_scene ... ok
+test text::context::glyph::tests::measurement_and_render_preparation_share_raster_entries ... ok
+test text::context::glyph::tests::visible_bounds_exclude_padding_and_use_color_alpha ... ok
+test text::context::ink::tests::physical_ink_tracks_dpi_origin_and_cache_reset ... ok
+test text::context::tests::image_cache_reuses_data_and_separates_raster_options ... ok
+test text::context::tests::mask_weight_options_change_pixels_and_reuse_only_the_selected_mode ... ok
+test text::context::tests::missing_glyph_results_are_cached_and_clear_invalidates_both_caches ... ok
+test text::context::tests::outline_cache_ignores_subpixel_bins_and_preserves_translation ... ok
+test text::hit::tests::rtl_ligature_hits_follow_logical_graphemes_from_the_right ... ok
+test text::options::tests::mask_weight_cache_keys_preserve_bitwise_float_identity ... ok
+test text::options::tests::mask_weights_preserve_defaults_and_select_the_active_raster_mode ... ok
+test text::raster::tests::harmony_preserves_independently_antialiased_channel_coverage ... ok
+test text::rasterizer::windows::font::tests::clamped_weights_share_one_native_instance ... ok
+test text::rasterizer::windows::mask::tests::alpha_texture_lengths_fit_the_native_u32_buffer_contract ... ok
+test text::tests::bounds::aligned_layout_does_not_wrap_out_of_domain_cosmic_positions ... ok
+test text::tests::bounds::layout_buffer_preserves_shaping_keys_and_shared_subpixel_baselines ... ok
+test text::tests::bounds::nonfinite_text_origins_do_not_record_substitute_positions ... ok
+test text::tests::bounds::prepared_glyph_bounds_clamp_after_complete_endpoint_arithmetic ... ok
+test text::tests::bounds::prepared_run_filter_retains_whole_glyphs_and_does_not_change_source_layout ... ok
+test text::tests::bounds::prepared_runs_keep_shaping_positions_metadata_and_colors_without_mutating_the_buffer ... ok
+test text::tests::bounds::prepared_runs_keep_visual_line_identity_across_empty_paragraphs ... ok
+test text::tests::bounds::raster_glyph_bounds_clamp_after_complete_endpoint_arithmetic ... ok
+test text::tests::bounds::scaled_text_layout_bounds_transform_before_coordinate_clipping ... ok
+test text::tests::bounds::text_glyph_cache_positions_saturate_without_wrapping ... ok
+test text::tests::bounds::text_outside_the_coordinate_domain_does_not_append_empty_runs ... ok
+test text::tests::bounds::text_position_binning_preserves_cosmic_text_thresholds_and_key_metadata ... ok
+test text::tests::bounds::text_translation_preserves_fractional_offsets_after_large_coordinate_cancellation ... ok
+test text::tests::bounds::translated_text_layout_bounds_do_not_wrap_at_coordinate_edges ... ok
+test text::tests::hit::aligned_text_uses_the_closest_physical_edge_in_both_directions ... ok
+test text::tests::hit::cluster_hits_preserve_grapheme_and_utf8_boundaries ... ok
+test text::tests::hit::partially_visible_empty_paragraphs_remain_hittable ... ok
+test text::tests::layout::bounded_none_wrap_keeps_text_on_one_line ... ok
+test text::tests::layout::layout_handles_emoji_sequences_without_panicking ... ok
+test text::tests::layout::layout_options_pass_alignment_to_cosmic_buffer ... ok
+test text::tests::layout::layout_options_pass_cosmic_attrs_to_shaping ... ok
+test text::tests::layout::layout_options_pass_hinting_flags_to_glyph_keys ... ok
+test text::tests::layout::layout_options_preserve_cosmic_text_default_wrap ... ok
+test text::tests::layout::layout_outline_path_extracts_scalable_glyph_paths ... ok
+test text::tests::layout::load_font_file_makes_font_available_to_layout ... ok
+test text::tests::layout::shaped_cosmic_buffer_layout_matches_owned_layout ... ok
+test text::tests::layout::shaped_cosmic_buffer_preserves_alignment_and_no_wrap ... ok
+test text::tests::layout::ui_line_metrics_place_raster_and_outline_on_the_same_browser_baseline ... ok
+test text::tests::layout_view::borrowed_prefix_and_source_tail_share_one_paragraph_without_glyph_copies ... ok
+test text::tests::layout_view::default_layout_and_supplied_fallback_have_identical_scrolled_geometry ... ok
+test text::tests::layout_view::omitted_paragraphs_keep_logical_indices_and_empty_line_boxes ... ok
+test text::tests::layout_view::reflowed_visual_lines_keep_source_cursors_and_the_shared_fractional_baseline ... ok
+test text::tests::layout_view::supplied_layout_drives_borrowed_paint_and_hit_without_mutating_source ... ok
+test text::tests::lcd::canonical_image_layouts_preserve_alpha_color_and_lcd_bytes ... ok
+test text::tests::lcd::canonical_lcd_rejects_four_byte_data ... ok
+test text::tests::lcd::empty_masks_remain_empty_without_lcd_padding ... ok
+test text::tests::lcd::harmony_lcd_merge_unions_shifted_channel_masks ... ok
+test text::tests::lcd::harmony_lcd_outline_shifts_follow_freetype_default_geometry ... ok
+test text::tests::lcd::image_byte_contract_cannot_wrap_large_extents ... ok
+test text::tests::lcd::lcd_outline_shifts_require_an_lcd_mode ... ok
+test text::tests::lcd::raster_contract_merge_rejects_color_channels ... ok
+test text::tests::lcd::raster_contract_merge_rejects_truncated_channels ... ok
+test text::tests::lcd::raster_contract_rejects_invalid_native_lengths ... ok
+test text::tests::lcd::raster_contract_rejects_retired_swash_lcd_format ... ok
+test text::tests::lcd::text_context_uses_subpixel_raster_by_default ... ok
+test text::tests::lcd::text_raster_options_use_linear_compositing_by_default ... ok
+test text::tests::line_metrics::fallback_and_combining_offsets_share_raster_and_outline_line_placement ... ok
+test text::tests::line_metrics::fractional_and_empty_lines_preserve_boxes_and_borrowed_shaping ... ok
+test text::tests::line_metrics::negative_leading_and_fractional_scroll_do_not_truncate_the_resolved_baseline ... ok
+test text::tests::line_metrics::wrapped_scrolled_and_rtl_runs_keep_their_own_font_metrics ... ok
+test text::tests::platform_windows::explicit_expansion_preserves_the_portable_outline_contract ... ok
+test text::tests::platform_windows::native_empty_glyphs_have_no_raster_image ... ok
+test text::tests::platform_windows::ordinary_windows_glyphs_preserve_native_coverage_through_the_real_cache ... ok
+test text::tests::prepared::clearing_text_context_invalidates_prepared_atlas_generation ... ok
+test text::tests::prepared::prepared_glyph_image_keeps_three_byte_subpixel_masks ... ok
+test text::tests::prepared::prepared_glyph_image_preserves_independent_harmony_subpixel_channels ... ok
+test text::tests::prepared::prepared_text_budget_rebuild_discards_replaced_glyph_images ... ok
+test text::tests::prepared::prepared_text_keeps_bundled_color_emoji_glyphs ... ok
+test text::tests::prepared::prepared_text_reconcile_adds_only_new_glyph_images ... ok
+test text::tests::prepared::prepared_text_reconcile_rebuilds_when_raster_options_change ... ok
+test text::tests::prepared::prepared_text_reconcile_reports_same_length_glyph_replacement ... ok
+test text::tests::prepared::prepared_text_reconcile_reuses_images_for_position_only_flat_canvas ... ok
+test text::tests::prepared::prepared_text_reconcile_truncates_removed_glyphs_and_runs ... ok
+test text::tests::prepared::prepared_text_signature_changes_with_composite_mode ... ok
+test text::tests::prepared::prepared_text_signature_changes_with_glyph_images ... ok
+test text::tests::prepared::prepared_text_signature_changes_with_subpixel_mode ... ok
+test text::tests::prepared::prepared_text_updates_only_dirty_glyph_slots_without_rebuilding_atlas ... ok
+test text::tests::recording::clipped_text_draw_rejects_empty_or_disjoint_bounds_without_appending_glyphs ... ok
+test text::tests::recording::clipped_text_draw_uses_scaled_pixel_bounds_without_a_clip_layer ... ok
+test text::tests::recording::scene_glyph_translation_recomputes_subpixel_cache_key ... ok
+test text::tests::recording::scene_path_text_uses_path_draws_not_glyph_atlas ... ok
+
+test result: ok. 949 passed; 0 failed; 200 ignored; 0 measured; 0 filtered out; finished in 0.51s
+
+     Running tests\backend_features.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\backend_features-99feb2261ddb0f35.exe)
+
+running 1 test
+test at_most_one_backend_is_accepted_by_the_compiler ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s
+
+     Running tests\fractional_glyph_motion.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\fractional_glyph_motion-d038681fe878c158.exe)
+
+running 1 test
+test transformed_glyphs_preserve_eighth_pixel_motion ... ignored, requires a native GPU
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\hlsl_constants.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\hlsl_constants-bdff86449557a458.exe)
+
+running 4 tests
+test constants_reject_ambiguous_or_unsupported_definitions ... ok
+test constants_resolve_hlsl_literals_aliases_and_products ... ok
+test fine_stack_host_layout_uses_shader_owned_constants ... ok
+test native_sdf_test_layout_uses_shader_owned_constants ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\mac_test_runner.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\mac_test_runner-8e7179bcdde1cfd4.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\metal_toolchain.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\metal_toolchain-8c06ef9863b80a2c.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\native_device_creation.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\native_device_creation-15dac62e7fe60725.exe)
+
+running 2 tests
+test healthy_creation_gate_preserves_state_and_exclusive_ownership ... ok
+test poisoned_native_creation_gate_rejects_reentry ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\native_example_cli.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\native_example_cli-3fd7c32f9372de4b.exe)
+
+running 1 test
+test unsupported_native_present_exits_with_an_error ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+
+     Running tests\native_filter_errors.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\native_filter_errors-155b2903837712a7.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\native_range_scatter.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\native_range_scatter-4e144f960a296af1.exe)
+
+running 3 tests
+test accepts_empty_adjacent_and_multi_workgroup_ranges ... ok
+test rejects_malformed_headers_bounds_and_overlapping_writes ... ok
+test scatter::tests::scatter_rejects_truncated_payloads_and_overlapping_destinations ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\native_shader_abi.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\native_shader_abi-1c17139d4d5f8818.exe)
+
+running 8 tests
+test compute_layout_rejects_duplicate_slots_and_invalid_uniform_fields ... ok
+test dxil_resource_kind_and_parameter_layout_must_match_byte_buffer_abi ... ok
+test invalid_typed_interfaces_are_rejected_and_invalidate_cache_keys ... ok
+test metal_internal_lengths_are_typed_bounded_and_part_of_the_cache_contract ... ok
+test range_scatter_has_two_buffers_no_uniforms_and_256_threads ... ok
+test shader_interfaces_do_not_depend_on_abi_json_files ... ok
+test texture_table_count_and_register_ranges_are_explicit ... ok
+test uniform_scalar_types_are_reflected_and_invalidate_shader_cache_keys ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\native_shader_artifacts.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\native_shader_artifacts-3afc2fd58ab8da9a.exe)
+
+running 1 test
+test native_build_embeds_each_expected_nonempty_program ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\native_shader_batch.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\native_shader_batch-204ab9073ef5a4be.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\native_shader_cache.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\native_shader_cache-aba23f6b5d2a1259.exe)
+
+running 10 tests
+test a_second_cache_instance_reuses_compiled_bytes_without_invoking_compiler ... ok
+test acceptance_errors_preserve_the_entry_without_invoking_compilation ... ok
+test concurrent_builds_compile_one_artifact_and_observe_complete_bytes ... ok
+test corrupt_or_truncated_entries_recompile_instead_of_returning_bad_shader ... ok
+test cross_process_cache_worker ... ok
+test failed_or_empty_compilation_is_never_cached ... ok
+test hex::tests::encoding_preserves_leading_zeroes_and_all_byte_values ... ok
+test key_frames_parts_and_invalidates_every_compilation_input ... ok
+test separate_processes_compile_the_same_key_only_once ... ok
+test target_rejection_rebuilds_the_entry_under_the_same_lock ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+     Running tests\native_shader_catalog.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\native_shader_catalog-dcfad152e027dcd3.exe)
+
+running 3 tests
+test catalog_buffer_permissions_match_declared_hlsl_resources ... ok
+test every_catalog_entry_has_a_valid_unique_interface_and_ordered_bindings ... ok
+test production_texture_tables_share_the_shader_owned_capacity_and_binding ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests\native_shader_compiler.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\native_shader_compiler-e00fc7103341f8c8.exe)
+
+running 8 tests
+test entries::every_hlsl_entry_compiles_for_both_targets ... ignored, requires explicitly pinned TILEINK_NATIVE_DXC_PATH
+test entry_resource_bindings_are_not_hidden_in_headers ... ok
+test every_hlsl_header_compiles_without_callers_globals ... ignored, requires explicitly pinned TILEINK_NATIVE_DXC_PATH
+test hex::tests::encoding_preserves_leading_zeroes_and_all_byte_values ... ok
+test hlsl_blend_modes_match_serialized_scene_modes ... ok
+test hlsl_declarations_avoid_editor_type_keywords ... ok
+test pinned_dxc_reports_invalid_source_for_both_targets ... ignored, requires explicitly pinned TILEINK_NATIVE_DXC_PATH
+test unavailable_compilers_and_unknown_targets_fail_explicitly ... ok
+
+test result: ok. 5 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests\native_shader_reflection.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\native_shader_reflection-282f2b6d9898e321.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\native_shader_retirement.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\native_shader_retirement-0f09a145e0360b9f.exe)
+
+running 2 tests
+test retirement::tests::a_failed_wait_stays_unretired_instead_of_releasing_live_resources ... ok
+test retirement::tests::failed_signal_cannot_turn_into_a_wait_for_an_unqueued_fence ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\native_shader_source.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\native_shader_source-9fa38a7e98446a91.exe)
+
+running 5 tests
+test include_guards_track_diamond_dependencies_and_guarded_self_includes ... ok
+test malformed_and_reused_include_guards_are_rejected ... ok
+test missing_macro_and_escaping_includes_are_rejected ... ok
+test nested_include_contents_are_expanded_and_tracked ... ok
+test spirv_format_attribute_is_explicit_and_cannot_hide_shader_dependencies ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests\native_toolchain_discovery.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\native_toolchain_discovery-b9c521ad5c3253a6.exe)
+
+running 6 tests
+test cache_layout_uses_cargo_output_and_preserves_precedence ... ok
+test consumer_output_cache_does_not_resolve_from_the_dependency_root ... ok
+test explicit_override_is_authoritative_even_when_missing ... ok
+test explicit_target_triple_also_finds_the_shared_target_cache ... ok
+test missing_defaults_report_searched_paths_and_configuration ... ok
+test missing_override_uses_the_first_installed_default_cache ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\native_user_shader_compiler.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\native_user_shader_compiler-7d987ec9baf6a77f.exe)
+
+running 11 tests
+test dynamic_user_interface_preserves_names_slots_precision_and_workgroup ... ok
+test hex::tests::encoding_preserves_leading_zeroes_and_all_byte_values ... ok
+test missing_hlsl_source_is_reported_before_toolchain_discovery ... ok
+test process::cached_abi_errors_are_returned_without_recompiling ... ok
+test process::cached_reflection_encoding_errors_are_returned_without_recompiling ... ok
+test process::cached_reflection_process_errors_are_returned_without_recompiling ... ok
+test process::compiler_library_changes_invalidate_runtime_cache_identity ... ok
+test process::runtime_cache_reuses_source_identity_recovers_truncation_and_never_caches_failures ... ok
+test process::validator_library_changes_and_presence_invalidate_runtime_cache_identity ... ok
+test runtime_dxc::spirv::uniform::tests::raw_uniform_extents_include_member_offsets_array_padding_and_matrix_major_order ... ok
+test runtime_dxc::spirv::uniform::tests::raw_uniform_extents_reject_recursive_missing_overflowing_and_short_strides ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.66s
+
+     Running tests\native_user_shader_reflection.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\native_user_shader_reflection-b47e0590e2d5d77a.exe)
+
+running 9 tests
+test raw_user_constant_blocks_validate_byte_size_without_builtin_field_names ... ok
+test spirv::uniform::tests::raw_uniform_extents_include_member_offsets_array_padding_and_matrix_major_order ... ok
+test spirv::uniform::tests::raw_uniform_extents_reject_recursive_missing_overflowing_and_short_strides ... ok
+test spirv_access::readonly_buffer_requires_nonwritable_on_its_own_variable_or_member ... ok
+test spirv_access::readonly_byte_buffer_accepts_member_or_variable_nonwritable ... ok
+test spirv_access::readonly_byte_buffer_rejects_writable_spirv_for_builtin_and_user_interfaces ... ok
+test spirv_access::readwrite_buffer_allows_readonly_optimization_or_writable_source ... ok
+test user_shader_interfaces_support_float_storage_and_buffer_only_passes ... ok
+test user_shader_reflection_allows_inactive_resources_but_rejects_wrong_launch_or_bindings ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\native_vulkan_pipeline_cache.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\native_vulkan_pipeline_cache-d3cdf1fd15b28d7a.exe)
+
+running 8 tests
+test cache_hits_do_not_export_unchanged_driver_data ... ok
+test cached_cache_creation_errors_propagate_without_retry ... ok
+test cached_pipeline_creation_errors_propagate_without_retry ... ok
+test cold_driver_errors_retire_cache_and_partial_pipeline_without_publication ... ok
+test driver_cache_identity_separates_shader_and_device_versions ... ok
+test failed_cache_publication_retires_created_native_objects ... ok
+test hex::tests::encoding_preserves_leading_zeroes_and_all_byte_values ... ok
+test opaque_driver_cache_is_forwarded_without_host_header_policy ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s
+
+     Running tests\native_vulkan_quiet.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\native_vulkan_quiet-55dea95367e75622.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\native_vulkan_validation.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\native_vulkan_validation-c463824852517c7b.exe)
+
+running 5 tests
+test absent_device_address_message_preserves_collected_diagnostics ... ok
+test callback_preserves_utf8_empty_messages_and_order_without_aborting ... ok
+test independent_context_owners_receive_only_their_own_messages ... ok
+test poisoned_collection_does_not_unwind_through_the_native_callback ... ok
+test registration_preserves_callback_owner_filters_and_native_return_contract ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\offcanvas_filter.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\offcanvas_filter-53889145b5c5d932.exe)
+
+running 1 test
+test offset_filter_preserves_offcanvas_input ... ignored, requires pinned TILEINK_TEST_GPU; run each backend separately
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\offscreen_clip_stack.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\offscreen_clip_stack-ee77a7daf8bf2944.exe)
+
+running 3 tests
+test deep_offscreen_clips_preserve_filter_mask_and_group_pixels ... ignored, requires pinned TILEINK_TEST_GPU; run each backend separately
+test group_opacity_is_applied_once_across_child_clip_batches ... ignored, requires pinned TILEINK_TEST_GPU; run each backend separately
+test large_clip_bounds_survive_filter_surface_offsets ... ignored, requires pinned TILEINK_TEST_GPU; run each backend separately
+
+test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\powershell_runner.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\powershell_runner-32c826215e54b1cc.exe)
+
+running 5 tests
+test cargo_and_harness_arguments_keep_their_boundaries_and_contents ... ok
+test cargo_failure_remains_a_failure_and_displays_its_diagnostic ... ok
+test default_command_uses_first_cargo_on_path_and_repository_directory ... ok
+test overriding_test_threads_is_rejected_before_launching_cargo ... ok
+test rayon_is_serial_even_when_the_parent_environment_is_parallel ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.41s
+
+     Running tests\powershell_scripts.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\powershell_scripts-32a7048e019c05aa.exe)
+
+running 1 test
+test quiet_commands_follow_powershell_location ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.28s
+
+     Running tests\progressive_blur_gpu.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\progressive_blur_gpu-20907711f863179b.exe)
+
+running 3 tests
+test progressive_retained_dirty_and_clean_frames_match_fresh_render ... ignored, requires pinned TILEINK_NATIVE_GPU
+test progressive_reused_pyramid_ignores_spare_capacity ... ignored, requires pinned TILEINK_NATIVE_GPU
+test progressive_scale_and_offscreen_origin_preserve_gradient_coordinates ... ignored, requires pinned TILEINK_NATIVE_GPU
+
+test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\scaled_turbulence.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\scaled_turbulence-b0e739d46a03ce7a.exe)
+
+running 3 tests
+test reference::noise_lattice_and_constant_cases_have_analytic_colors ... ok
+test reference::unit_gradients_have_closed_form_interpolation_and_octave_colors ... ok
+test scaled_turbulence_matches_svg_noise_semantics ... ignored, requires pinned TILEINK_TEST_GPU; run each backend separately
+
+test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\svg_filter_color_space.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\svg_filter_color_space-b5fa13829da7babc.exe)
+
+running 6 tests
+test svg_color_matrix_uses_linear_rgb_and_unassociated_channels ... ignored, requires a native GPU; run explicitly with --ignored
+test svg_convolve_bias_matches_reference_pixels ... ignored, requires a native GPU; run explicitly with --ignored
+test svg_filter_color_interpolation_matches_reference_pixels ... ignored, requires a native GPU; run explicitly with --ignored
+test svg_negative_spot_cone_angle_still_limits_light ... ignored, requires a native GPU; run explicitly with --ignored
+test svg_pattern_tracks_viewbox_scale ... ignored, requires a native GPU; run explicitly with --ignored
+test svg_point_light_tracks_viewbox_and_shape_transforms ... ignored, requires a native GPU; run explicitly with --ignored
+
+test result: ok. 0 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\svg_masking.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\svg_masking-b6acd07f9c6af342.exe)
+
+running 3 tests
+test linear_rgb_luminance_mask_keeps_gradient_coverage ... ignored, requires a native GPU; run explicitly with --ignored
+test rotated_mask_region_tracks_its_target ... ignored, requires a native GPU; run explicitly with --ignored
+test transformed_text_uses_its_object_bounding_box_clip ... ignored, requires a native GPU; run explicitly with --ignored
+
+test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\svg_stroke_dashes.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\svg_stroke_dashes-0def1b1d0aa4a40d.exe)
+
+running 3 tests
+test miter_clip_stroke_keeps_dash_gaps ... ignored, requires a native GPU; run explicitly with --ignored
+test zero_length_dashes_respect_line_caps ... ignored, requires a native GPU; run explicitly with --ignored
+test zero_length_subpaths_respect_line_caps ... ignored, requires a native GPU; run explicitly with --ignored
+
+test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\svg_symbol.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\svg_symbol-be68de545bf0d9bc.exe)
+
+running 2 tests
+test symbol_clip_follows_use_transform ... ignored, requires a native GPU; run explicitly with --ignored
+test symbol_default_overflow_clips_to_use_viewport ... ignored, requires a native GPU; run explicitly with --ignored
+
+test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\svg_text.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\svg_text-8f788f5e2b0d64cc.exe)
+
+running 1 test
+test svg_text_uses_fallback_and_bold_fonts ... ignored, requires a native GPU; run explicitly with --ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\text_coordinate_domain.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\text_coordinate_domain-c65fdc2f2eade73f.exe)
+
+running 1 test
+test appended_text_preserves_fractional_pixels_after_large_coordinate_cancellation ... ignored, requires explicitly pinned physical GPU
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\text_ellipsis.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\text_ellipsis-5585611d8edbcf5f.exe)
+
+running 1 test
+test ellipsis_does_not_reintroduce_the_discarded_wrap_space ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests\text_fade.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\text_fade-3f58286920ec4e79.exe)
+
+running 1 test
+test fading_clipped_label_does_not_gain_ink ... ignored, requires a native GPU
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests examples\compare_png_pixels\main.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\examples\compare_png_pixels-224a36707d73293a.exe)
+
+running 7 tests
+test tests::color_types_and_sample_depths_compare_as_lossless_rgba ... ok
+test tests::compression_filters_and_metadata_do_not_change_pixels ... ok
+test tests::corrupt_truncated_and_animated_images_cannot_pass ... ok
+test tests::detects_one_step_in_every_channel_even_under_zero_alpha ... ok
+test tests::git_baseline_checks_all_pngs_without_rewriting_them_or_trusting_the_index ... ok
+test tests::git_blob_stream_handles_binary_empty_repeated_and_missing_objects ... ok
+test tests::reports_dimensions_and_counts_all_changed_pixels ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.22s
+
+     Running unittests examples\native_window\main.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\examples\native_present-40cb21d93fb31f17.exe)
+
+running 3 tests
+test platform::win32::tests::hidden_window_reports_requested_client_sizes ... ok
+test platform::win32::tests::invalid_window_geometry_errors_are_reported ... ok
+test platform::win32::tests::unrepresentable_window_extents_are_rejected ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

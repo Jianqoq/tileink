@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "baseline_revision": "2ac9c89fe567dac12d4af5af441e117eb5fa7a1e",
+  "gpu": {
+    "name": "NVIDIA GeForce RTX 4090",
+    "luid": "ea3c010000000000",
+    "validation": true
+  },
+  "tests": {
+    "release": {
+      "passed": 1052,
+      "ignored": 229,
+      "suites": 41
+    },
+    "dx12-sdf": {
+      "passed": 13,
+      "ignored": 0,
+      "suites": 1
+    },
+    "vulkan-sdf": {
+      "passed": 13,
+      "ignored": 0,
+      "suites": 1
+    }
+  },
+  "new_oracle": {
+    "unique_points": 142956,
+    "batch_replays": 3,
+    "maximum_coverage_error_u8": 1
+  },
+  "svg": {
+    "count": 1712,
+    "changed_files": 0,
+    "pixel_changed": 0,
+    "changes": []
+  },
+  "metal_device_verified": false,
+  "sources": {
+    "src/shaders/hlsl/shared/sdf/basic.hlsli": "f7a11df8ddc63dc61015f6d89403848159747ad99ec0c044ebdfec1a1dc81a11",
+    "src/shaders/metal/shared/sdf/base.metal": "58d0fe848c9a3ea464455505275156d52c543a9d25c6cc71b8ab4d78e3c42fd4",
+    "src/shaders/hlsl/filter/glass/geometry.hlsli": "b5909b06577b83ccbeec62a5645b7382410f5a941bdff31d4e720911230e1d71",
+    "src/shaders/metal/filter/glass/geometry.metal": "280405d4e41ec35d04f4bbcf5626c3a9893b17ed4e6f7024e013e6b86baaae42",
+    "src/native/runtime/tests/sdf/css_corners.rs": "ac20766f032cac74e168fa466c5899d059d5e8ac358f8707ebf18ce1cad8e19f",
+    "src/native/runtime/tests/sdf/cases.rs": "9ba6504e48e48645ad912691648a444cb6c0aab94d4e888e04601a3403b52b80",
+    "src/shared/gpu_plan/tile_bins/occlusion/geometry.rs": "7ef539466d287fe5aba52e5ba9ee1ab77da5f20bcd5d2f0a6efedde02b8c7c3d",
+    "src/shared/gpu_plan/tile_bins/occlusion/tests.rs": "429f4b174a7a9182722222fc08b210e0e8fac3ae0857048147dd03d9e891b86d"
+  },
+  "evidence": {
+    "clippy.log": "a88f501d4463d591fc4f39eb198b6ecd218a58ab8006880be1ccf2fcbfc7b83d",
+    "dx12-sdf.log": "c704070bf87dd2ef895bdb41038082382ccaf2c395843d1b14a1f906bf512dd3",
+    "examples.log": "e9ae672a5fbccf0b7a42e28868ffae3429b4760101d71392092789b22c403b6a",
+    "fmt.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "release.log": "1e3779f1e1b9b8bd65fdd61b5c595e800ba52be50984526a97ac66c465495c72",
+    "svg-baseline.json": "532a155be04b2470291b0b0ec3104cb03929168aeb10629cf51fb378579127cd",
+    "svg-comparison.json": "f70e39ea51729dc82e6268ffdd7ff8cae051d7feedd542c2d839a5c42d5e0b30",
+    "svg.log": "fae882aabda313301c0670012b57a522e1def97bb60678ac2cd36e67e7ba0029",
+    "vulkan-sdf.log": "fae0dd6bc3652766bab5154e37f7a5c25d26d5132c95045cdf27eba79becc6f4"
+  }
+}

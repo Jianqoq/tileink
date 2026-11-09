@@ -12,6 +12,8 @@ use peniko::kurbo::{Affine, Point};
 
 #[path = "sdf/cases.rs"]
 mod cases;
+#[path = "sdf/css_corners.rs"]
+mod css_corners;
 #[path = "sdf/equivalence.rs"]
 mod equivalence;
 #[path = "sdf/oracle.rs"]

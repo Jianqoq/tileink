@@ -106,6 +106,9 @@ fn rect_tiles(canvas: &Canvas, draw: &DrawRecord) -> TileBbox {
     let [x0, y0, x1, y1] = sdf.coords.map(f64::from);
     let (x0, x1) = (x0.min(x1), x0.max(x1));
     let (y0, y1) = (y0.min(y1), y0.max(y1));
+    // This is a conservative interior inset, not the painted radius normalization.
+    // For a larger valid corner r<=short_side, the central half-side square is inside
+    // its circular cut. The adjacent-edge regression checks that proof on full tiles.
     let max_radius = ((x1 - x0).min(y1 - y0) * 0.5).max(0.0);
     let [tl, tr, bl, br] = sdf.radii.map(|v| f64::from(v).clamp(0.0, max_radius));
     // The central rectangle excludes rounded corners. Integer data is exact in the native

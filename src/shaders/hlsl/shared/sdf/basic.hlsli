@@ -31,6 +31,56 @@ SdfSample circle_sdf_sample(float x, float y, float cx, float cy, float radius) 
     return make_sdf_sample(sdf_length(delta) - radius, normalized_or(delta, float2(1.0, 0.0)));
 }
 
+
+// CSS Backgrounds 3: constrain adjacent sums with one common scale. Work in
+// radius-relative units so a finite oversized input cannot overflow a sum.
+float4 css_rect_radii(float4 radii, float2 size) {
+    radii = max(radii, float4(0.0, 0.0, 0.0, 0.0));
+    float largest = max(max(radii.x, radii.y), max(radii.z, radii.w));
+    if (largest == 0.0) return radii;
+    float4 unit;
+    if (largest > 18446744073709551616.0) {
+        // Keep the divisor's reciprocal normal on GPUs that flush float subnormals.
+        // 2^-64 is an exact range change, not a geometry tolerance.
+        precise float4 scaled = radii * 5.42101086242752217e-20;
+        precise float divisor = largest * 5.42101086242752217e-20;
+        unit = scaled / divisor;
+    } else {
+        unit = radii / largest;
+    }
+    float scale = largest;
+    if (unit.x + unit.y > 0.0) scale = min(scale, size.x / (unit.x + unit.y));
+    if (unit.z + unit.w > 0.0) scale = min(scale, size.x / (unit.z + unit.w));
+    if (unit.x + unit.z > 0.0) scale = min(scale, size.y / (unit.x + unit.z));
+    if (unit.y + unit.w > 0.0) scale = min(scale, size.y / (unit.y + unit.w));
+    return unit * scale;
+}
+
+
+SdfSample extended_rect_sdf_sample(float2 p, float4 bounds, float4 radii) {
+    float2 size = bounds.zw - bounds.xy;
+    float2 center = (bounds.xy + bounds.zw) * 0.5;
+    float2 q = p - center;
+    float4 r = css_rect_radii(radii, size);
+    float largest = max(max(r.x, r.y), max(r.z, r.w));
+    if (largest <= min(size.x, size.y) * 0.5) {
+        float radius = q.x >= 0.0 ? (q.y <= 0.0 ? r.y : r.w) : (q.y > 0.0 ? r.z : r.x);
+        return rounded_box_sdf_sample(q.x, q.y, size.x * 0.5, size.y * 0.5, radius);
+    }
+    // A large corner crosses the midpoint, so quadrant selection is insufficient.
+    // Intersect the box with each applicable circular cut and retain its true normal.
+    SdfSample result = rounded_box_sdf_sample(q.x, q.y, size.x * 0.5, size.y * 0.5, 0.0);
+    if (r.x > 0.0 && p.x < bounds.x + r.x && p.y < bounds.y + r.x)
+        result = farther_sdf_sample(result, circle_sdf_sample(p.x, p.y, bounds.x + r.x, bounds.y + r.x, r.x));
+    if (r.y > 0.0 && p.x > bounds.z - r.y && p.y < bounds.y + r.y)
+        result = farther_sdf_sample(result, circle_sdf_sample(p.x, p.y, bounds.z - r.y, bounds.y + r.y, r.y));
+    if (r.z > 0.0 && p.x < bounds.x + r.z && p.y > bounds.w - r.z)
+        result = farther_sdf_sample(result, circle_sdf_sample(p.x, p.y, bounds.x + r.z, bounds.w - r.z, r.z));
+    if (r.w > 0.0 && p.x > bounds.z - r.w && p.y > bounds.w - r.w)
+        result = farther_sdf_sample(result, circle_sdf_sample(p.x, p.y, bounds.z - r.w, bounds.w - r.w, r.w));
+    return result;
+}
+
 SdfSample rect_sdf_sample(float x, float y, float x0_raw, float y0_raw, float x1_raw, float y1_raw, float top_left, float top_right, float bottom_left, float bottom_right) {
     float x0 = min(x0_raw, x1_raw);
     float y0 = min(y0_raw, y1_raw);
@@ -42,6 +92,10 @@ SdfSample rect_sdf_sample(float x, float y, float x0_raw, float y0_raw, float x1
     float hy = (y1 - y0) * 0.5;
     float px = x - cx;
     float py = y - cy;
+    if (max(max(top_left, top_right), max(bottom_left, bottom_right)) > min(hx, hy)) {
+        return extended_rect_sdf_sample(float2(x, y), float4(x0, y0, x1, y1),
+            float4(top_left, top_right, bottom_left, bottom_right));
+    }
     float radius = top_left;
     if (px >= 0.0) {
         if (py <= 0.0) {

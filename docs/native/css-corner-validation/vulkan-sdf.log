@@ -1,0 +1,20 @@
+    Finished `release` profile [optimized] target(s) in 0.12s
+     Running unittests src\lib.rs (G:\Code\northstar-trading-app\target\tileink-css-corners-build\release\deps\tileink-ee9d64b312f8add7.exe)
+
+running 13 tests
+test native::runtime::sdf_gpu::css_corners::native_css_corner_arcs_match_independent_boundary_geometry_across_midpoints_and_affines ... ok
+test native::runtime::sdf_gpu::equivalence::native_sdf_dash_phase_is_periodic_for_each_line_cap ... ok
+test native::runtime::sdf_gpu::equivalence::native_sdf_degenerate_line_caps_and_full_arcs_have_geometric_equivalents ... ok
+test native::runtime::sdf_gpu::equivalence::native_sdf_hidden_callout_tails_preserve_body_stroke_and_shadow ... ok
+test native::runtime::sdf_gpu::native_sdf_absent_unknown_and_out_of_range_records_are_transparent ... ok
+test native::runtime::sdf_gpu::native_sdf_all_kinds_preserve_coverage_under_physical_coordinate_changes ... ok
+test native::runtime::sdf_gpu::native_triangle_edge_coverage_is_invariant_under_tiny_and_large_coordinate_scales ... ok
+test native::runtime::sdf_gpu::oracle::native_sdf_identity_rect_circle_match_exact_independent_oracles ... ok
+test native::runtime::sdf_gpu::oracle::native_sdf_rect_circle_match_analytic_coverage_under_affines ... ok
+test native::runtime::sdf_gpu::scales::native_sdf_arcs_preserve_positive_geometry_at_every_scale ... ok
+test native::runtime::sdf_gpu::scales::native_sdf_lines_and_dash_gaps_preserve_coverage_at_every_scale ... ok
+test native::runtime::sdf_gpu::scales::native_sdf_polygon_unions_preserve_authored_coordinate_scale ... ok
+test native::runtime::sdf_gpu::scales::native_sdf_round_boundaries_match_the_f64_oracle_at_every_scale ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 1129 filtered out; finished in 2.46s
+
